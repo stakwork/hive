@@ -399,7 +399,8 @@ async function seedTasks(
       title: "Review authentication PR #42",
       description:
         "Review the pull request for the new OAuth implementation. Check for security issues and code quality.",
-      status: TaskStatus.TODO,
+      status: TaskStatus.IN_PROGRESS, // Changed from TODO to trigger notification
+      workflowStatus: WorkflowStatus.IN_PROGRESS,
       sourceType: TaskSourceType.USER,
       priority: Priority.HIGH,
       assignToTeamMember: 0, // Alice (ADMIN)
@@ -418,8 +419,8 @@ async function seedTasks(
       title: "Fix login redirect bug",
       description:
         "Users are being redirected to the wrong page after login. Fixed by updating the callback URL handling.",
-      status: TaskStatus.DONE,
-      workflowStatus: WorkflowStatus.COMPLETED,
+      status: TaskStatus.IN_PROGRESS, // Changed from DONE to trigger notification
+      workflowStatus: WorkflowStatus.PENDING, // Changed from COMPLETED
       sourceType: TaskSourceType.USER,
       priority: Priority.CRITICAL,
       assignToTeamMember: 3, // David (DEVELOPER)
@@ -1207,38 +1208,48 @@ async function seedChatMessagesWithArtifacts(
       });
     }
 
-    // Add FORM artifact (for task index 0 and 2)
-    if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 2) {
-      const formMsg = await db.chatMessage.create({
+    // Add CODE artifact FIRST for task index 4 (will add FORM later as older message)
+    if (tasks.indexOf(task) === 4) {
+      const oldFormMsg = await db.chatMessage.create({
         data: {
           taskId: task.id,
-          message: "I've created a form for collecting user feedback:",
+          message: "I need some configuration details. Please fill out this form:",
           role: "ASSISTANT",
+          createdAt: new Date(Date.now() - 3600000), // 1 hour ago (OLD)
         },
       });
 
       await db.artifact.create({
         data: {
-          messageId: formMsg.id,
+          messageId: oldFormMsg.id,
           type: ArtifactType.FORM,
           content: {
-            formId: "feedback-form-v1",
-            title: "User Feedback Survey",
+            formId: "config-form-v1",
+            title: "Configuration Settings",
             fields: [
-              { name: "email", type: "email", required: true, label: "Email Address" },
-              { name: "rating", type: "select", required: true, label: "Overall Rating", options: ["1", "2", "3", "4", "5"] },
-              { name: "comments", type: "textarea", required: false, label: "Additional Comments" },
+              { name: "apiKey", type: "text", required: true, label: "API Key" },
+              { name: "environment", type: "select", required: true, label: "Environment", options: ["development", "staging", "production"] },
             ],
             schema: {
               type: "object",
               properties: {
-                email: { type: "string", format: "email" },
-                rating: { type: "string", enum: ["1", "2", "3", "4", "5"] },
-                comments: { type: "string" },
+                apiKey: { type: "string" },
+                environment: { type: "string", enum: ["development", "staging", "production"] },
               },
-              required: ["email", "rating"],
+              required: ["apiKey", "environment"],
             },
           },
+          createdAt: new Date(Date.now() - 3600000), // 1 hour ago
+        },
+      });
+
+      // Add a newer message AFTER the form (so FORM is NOT the latest)
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Thanks! I've received your configuration and started implementing the caching layer.",
+          role: "ASSISTANT",
+          createdAt: new Date(Date.now() - 1800000), // 30 min ago (NEWER than FORM)
         },
       });
     }
@@ -1457,7 +1468,85 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
     }
   }
 
+  // NOW add FORM artifacts for tasks 0 and 2 as the LATEST messages (to trigger notification)
+  // These are created AFTER all other artifacts to ensure they are the most recent
+  if (tasks.length > 0) {
+    const formMsg0 = await db.chatMessage.create({
+      data: {
+        taskId: tasks[0].id,
+        message: "I need your input on the PR review. Please fill out this feedback form:",
+        role: "ASSISTANT",
+        createdAt: new Date(), // Current time - LATEST message
+      },
+    });
+
+    await db.artifact.create({
+      data: {
+        messageId: formMsg0.id,
+        type: ArtifactType.FORM,
+        content: {
+          formId: "pr-review-form-v1",
+          title: "PR Review Feedback",
+          fields: [
+            { name: "approved", type: "select", required: true, label: "Approval Status", options: ["Approved", "Changes Requested", "Comment"] },
+            { name: "securityConcerns", type: "textarea", required: false, label: "Security Concerns" },
+            { name: "codeQuality", type: "select", required: true, label: "Code Quality", options: ["Excellent", "Good", "Needs Improvement"] },
+          ],
+          schema: {
+            type: "object",
+            properties: {
+              approved: { type: "string", enum: ["Approved", "Changes Requested", "Comment"] },
+              securityConcerns: { type: "string" },
+              codeQuality: { type: "string", enum: ["Excellent", "Good", "Needs Improvement"] },
+            },
+            required: ["approved", "codeQuality"],
+          },
+        },
+        createdAt: new Date(),
+      },
+    });
+  }
+
+  if (tasks.length > 2) {
+    const formMsg2 = await db.chatMessage.create({
+      data: {
+        taskId: tasks[2].id,
+        message: "I need clarification on the redirect bug fix. Please answer these questions:",
+        role: "ASSISTANT",
+        createdAt: new Date(), // Current time - LATEST message
+      },
+    });
+
+    await db.artifact.create({
+      data: {
+        messageId: formMsg2.id,
+        type: ArtifactType.FORM,
+        content: {
+          formId: "bug-fix-clarification-v1",
+          title: "Bug Fix Clarification",
+          fields: [
+            { name: "targetUrl", type: "text", required: true, label: "What should the correct redirect URL be?" },
+            { name: "affectsAllUsers", type: "select", required: true, label: "Does this affect all users?", options: ["Yes", "No", "Only specific roles"] },
+            { name: "urgency", type: "select", required: true, label: "Urgency Level", options: ["Critical", "High", "Medium", "Low"] },
+          ],
+          schema: {
+            type: "object",
+            properties: {
+              targetUrl: { type: "string" },
+              affectsAllUsers: { type: "string", enum: ["Yes", "No", "Only specific roles"] },
+              urgency: { type: "string", enum: ["Critical", "High", "Medium", "Low"] },
+            },
+            required: ["targetUrl", "affectsAllUsers", "urgency"],
+          },
+        },
+        createdAt: new Date(),
+      },
+    });
+  }
+
   console.log(`[MockSeed] Created chat messages with artifacts for ${tasks.length} tasks`);
+  console.log(`[MockSeed] Added FORM artifacts as LATEST messages for tasks 0 and 2 (will trigger notification)`);
+  console.log(`[MockSeed] Added OLD FORM artifact for task 4 (should NOT trigger notification)`);
 }
 
 /**
@@ -1971,6 +2060,7 @@ async function seedJanitorData(
 /**
  * Seeds StakworkRuns for AI generation history
  * Creates 2-3 runs per feature with realistic types and statuses
+ * Some runs have decision=null to test "needs attention" feature
  */
 async function seedStakworkRuns(
   workspaceId: string,
@@ -1979,7 +2069,10 @@ async function seedStakworkRuns(
   const mockWebhookUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
   for (const feature of features) {
-    // Architecture run (completed)
+    // Determine if this feature should need attention (first 2 features)
+    const needsAttention = features.indexOf(feature) < 2;
+
+    // Architecture run (completed - needs attention for some features)
     await db.stakworkRun.create({
       data: {
         workspaceId,
@@ -1994,7 +2087,7 @@ async function seedStakworkRuns(
           technologies: ["Node.js", "PostgreSQL", "Redis", "Docker"],
         }),
         dataType: "json",
-        decision: StakworkRunDecision.ACCEPTED,
+        decision: needsAttention ? null : StakworkRunDecision.ACCEPTED, // null = needs attention
         createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
         updatedAt: new Date(Date.now() - 86400000 * 2),
       },

@@ -17,7 +17,7 @@ import { devtools } from "zustand/middleware";
 const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
-  repositories: [{ repositoryUrl: "", branch: "main", name: "" }],
+  repositories: [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true, embeddingsEnabled: true }],
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",
@@ -131,7 +131,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
             const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
-              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
+              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true, embeddingsEnabled: true }],
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",
@@ -236,20 +236,25 @@ export const useStakgraphStore = create<StakgraphStore>()(
       set({ loading: true });
 
       try {
-        // Extract repository name from URL for dev container paths
-        // The cwd path should always be based on the actual repo name, not the project name
-        const primaryRepo = state.formData.repositories[0];
-        const repoName = (() => {
-          if (!primaryRepo?.repositoryUrl) return state.formData.name;
-          try {
-            const { repo } = parseGithubOwnerRepo(primaryRepo.repositoryUrl);
-            return repo;
-          } catch {
-            // Fallback to extracting from URL pattern if parseGithubOwnerRepo fails
-            const match = primaryRepo.repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
-            return match?.[1]?.replace(/\.git$/i, "") || state.formData.name;
-          }
-        })();
+        // Extract all repository names for multi-repo cwd resolution
+        const repoNames = state.formData.repositories
+          .map((repo) => {
+            if (!repo.repositoryUrl) return null;
+            try {
+              const { repo: name } = parseGithubOwnerRepo(repo.repositoryUrl);
+              return name;
+            } catch {
+              // Fallback to extracting from URL pattern if parseGithubOwnerRepo fails
+              const match = repo.repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
+              return match?.[1]?.replace(/\.git$/i, "") || null;
+            }
+          })
+          .filter((name): name is string => name !== null);
+
+        // Fallback to project name if no repos
+        if (repoNames.length === 0) {
+          repoNames.push(state.formData.name);
+        }
 
         // Get global env vars (those without a serviceName) for PM2 config
         const globalEnvVars = state.envVars.map((env) => ({
@@ -259,7 +264,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
         const containerFiles = {
           ...state.formData.containerFiles,
-          "pm2.config.js": getPM2AppsContent(repoName, state.formData.services, globalEnvVars)?.content || "",
+          "pm2.config.js": getPM2AppsContent(repoNames, state.formData.services, globalEnvVars)?.content || "",
         };
 
         const base64EncodedFiles = Object.entries(containerFiles).reduce(

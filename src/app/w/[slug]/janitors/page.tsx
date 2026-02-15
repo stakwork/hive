@@ -7,7 +7,20 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
-import { BookOpen, Bot, CheckCircle2, GitPullRequest, ListTodo, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
+import {
+  BookOpen,
+  Bot,
+  CheckCircle2,
+  GitMerge,
+  GitPullRequest,
+  ListTodo,
+  Package,
+  RefreshCw,
+  Shield,
+  TestTube,
+  Type,
+  Wrench,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 import { useEffect } from "react";
 
@@ -15,13 +28,6 @@ import { useEffect } from "react";
 const allJanitors = getAllJanitorItems();
 const testingJanitors: JanitorItem[] = [
   ...allJanitors.filter((j) => j.id !== "SECURITY_REVIEW" && j.id !== "GENERAL_REFACTORING"),
-  {
-    id: "pr-reviews",
-    name: "PR Reviews",
-    icon: GitPullRequest,
-    description: "Enable automatic PR reviews.",
-    comingSoon: true,
-  },
 ];
 const securityReviewJanitor = allJanitors.find((j) => j.id === "SECURITY_REVIEW");
 const refactoringJanitor = allJanitors.find((j) => j.id === "GENERAL_REFACTORING");
@@ -29,8 +35,20 @@ const refactoringJanitor = allJanitors.find((j) => j.id === "GENERAL_REFACTORING
 // Maintainability janitors - refactoring is active, others coming soon
 const maintainabilityJanitors: JanitorItem[] = [
   ...(refactoringJanitor ? [refactoringJanitor] : []),
-  { id: "semantic", name: "Semantic Renaming", icon: Type, description: "Suggest better variable names.", comingSoon: true },
-  { id: "documentation", name: "Documentation", icon: BookOpen, description: "Generate missing documentation.", comingSoon: true },
+  {
+    id: "semantic",
+    name: "Semantic Renaming",
+    icon: Type,
+    description: "Suggest better variable names.",
+    comingSoon: true,
+  },
+  {
+    id: "documentation",
+    name: "Documentation",
+    icon: BookOpen,
+    description: "Generate missing documentation.",
+    comingSoon: true,
+  },
 ];
 
 // Security janitors
@@ -63,13 +81,60 @@ const taskCoordinatorJanitors: JanitorItem[] = [
   },
 ];
 
+// PR Monitor janitors
+const prMonitorJanitors: JanitorItem[] = [
+  {
+    id: "pr-monitor",
+    name: "PR Monitoring",
+    icon: GitPullRequest,
+    description: "Monitor open PRs for conflicts, CI failures, and out-of-date branches",
+    configKey: "prMonitorEnabled",
+  },
+  {
+    id: "pr-conflict-fix",
+    name: "Auto-fix Conflicts",
+    icon: GitMerge,
+    description: "Automatically resolve merge conflicts via agent",
+    configKey: "prConflictFixEnabled",
+  },
+  {
+    id: "pr-ci-failure-fix",
+    name: "Auto-fix CI Failures",
+    icon: TestTube,
+    description: "Automatically fix failing CI tests via agent",
+    configKey: "prCiFailureFixEnabled",
+  },
+  {
+    id: "pr-out-of-date-fix",
+    name: "Auto-update Branches",
+    icon: RefreshCw,
+    description: "Automatically update PR branches when behind base branch",
+    configKey: "prOutOfDateFixEnabled",
+    childOptions: [
+      {
+        id: "pr-use-merge",
+        name: "Merge Strategy",
+        icon: GitMerge,
+        description: "Merge base branch into PR branch (creates merge commit)",
+        configKey: "prUseMergeForUpdates",
+        exclusiveGroup: "pr-update-strategy",
+      },
+      {
+        id: "pr-use-rebase",
+        name: "Rebase Strategy",
+        icon: RefreshCw,
+        description: "Rebase PR branch onto base branch (cleaner linear history)",
+        configKey: "prUseRebaseForUpdates",
+        exclusiveGroup: "pr-update-strategy",
+      },
+    ],
+  },
+];
+
 export default function DefenseJanitorsPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
-  const {
-    fetchJanitorConfig,
-    reset
-  } = useInsightsStore();
+  const { fetchJanitorConfig, reset } = useInsightsStore();
 
   if (!canAccessDefense) {
     redirect("/");
@@ -104,6 +169,13 @@ export default function DefenseJanitorsPage() {
           description="Automated testing recommendations and coverage analysis"
           icon={<TestTube className="h-5 w-5 text-blue-500" />}
           janitors={testingJanitors}
+        />
+
+        <JanitorSection
+          title="PR Monitor"
+          description="Automatically monitor and fix issues with open pull requests"
+          icon={<GitPullRequest className="h-5 w-5 text-purple-500" />}
+          janitors={prMonitorJanitors}
         />
 
         <JanitorSection

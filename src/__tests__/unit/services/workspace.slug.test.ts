@@ -35,7 +35,11 @@ describe("Workspace Slug Validation", () => {
         isValid: false,
         error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
-      expect(validateWorkspaceSlug("invalid_underscore")).toEqual({
+      expect(validateWorkspaceSlug("_invalid")).toEqual({
+        isValid: false,
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
+      });
+      expect(validateWorkspaceSlug("invalid_")).toEqual({
         isValid: false,
         error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });

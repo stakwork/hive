@@ -1101,4 +1101,328 @@ describe("Stakwork Runs API Integration Tests", () => {
       expect(responseData.error).toContain("StakworkRun not found");
     });
   });
+
+  describe("Latest Run Per Type Logic", () => {
+    test("should only consider latest run per type for tab indicators", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // Create old ARCHITECTURE run with pending decision
+      const oldRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Old architecture",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+
+      // Create newer ARCHITECTURE run with accepted decision
+      const newRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.ACCEPTED,
+          result: "New architecture",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/stakwork/runs?workspaceId=${workspace.id}&featureId=${feature.id}&status=COMPLETED`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      
+      // Group by type and check only latest
+      const latestPerType = new Map();
+      data.runs.forEach((run: any) => {
+        if (!latestPerType.has(run.type)) {
+          latestPerType.set(run.type, run);
+        }
+      });
+
+      const architectureLatest = latestPerType.get("ARCHITECTURE");
+      expect(architectureLatest.id).toBe(newRun.id);
+      expect(architectureLatest.decision).toBe("ACCEPTED");
+
+      // Verify old run exists but should be ignored
+      const allArchRuns = data.runs.filter((r: any) => r.type === "ARCHITECTURE");
+      expect(allArchRuns.length).toBe(2);
+    });
+
+    test("should show pending when latest run has null decision", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // Create old REQUIREMENTS run with accepted decision
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.ACCEPTED,
+          result: "Old requirements",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+
+      // Create newer REQUIREMENTS run with pending decision
+      const newRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "New requirements",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/stakwork/runs?workspaceId=${workspace.id}&featureId=${feature.id}&status=COMPLETED`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      
+      const latestPerType = new Map();
+      data.runs.forEach((run: any) => {
+        if (!latestPerType.has(run.type)) {
+          latestPerType.set(run.type, run);
+        }
+      });
+
+      const requirementsLatest = latestPerType.get("REQUIREMENTS");
+      expect(requirementsLatest.id).toBe(newRun.id);
+      expect(requirementsLatest.decision).toBeNull();
+    });
+
+    test("should handle mixed states across different types", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // ARCHITECTURE: latest is accepted
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Old",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.ACCEPTED,
+          result: "New",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      // REQUIREMENTS: latest is pending
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.ACCEPTED,
+          result: "Old",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "New",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      // TASK_GENERATION: multiple old pending, latest is accepted
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Old 1",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Old 2",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-15"),
+        },
+      });
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.ACCEPTED,
+          result: "New",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      // USER_STORIES: latest is pending
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.USER_STORIES,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Latest",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/stakwork/runs?workspaceId=${workspace.id}&featureId=${feature.id}&status=COMPLETED`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      
+      // Compute pending types using same logic as production
+      const latestPerType = new Map();
+      data.runs.forEach((run: any) => {
+        if (!latestPerType.has(run.type)) {
+          latestPerType.set(run.type, run);
+        }
+      });
+
+      const pendingTypes = Array.from(latestPerType.values())
+        .filter((run: any) => run.decision === null)
+        .map((run: any) => run.type);
+
+      // Only REQUIREMENTS and USER_STORIES should be pending
+      expect(pendingTypes).toContain("REQUIREMENTS");
+      expect(pendingTypes).toContain("USER_STORIES");
+      expect(pendingTypes).not.toContain("ARCHITECTURE");
+      expect(pendingTypes).not.toContain("TASK_GENERATION");
+      expect(pendingTypes.length).toBe(2);
+    });
+
+    test("should handle rejected decisions same as accepted", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // Old pending run
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Old",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-01-01"),
+        },
+      });
+
+      // New rejected run
+      const newRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: StakworkRunDecision.REJECTED,
+          result: "New",
+          dataType: "string",
+          webhookUrl: "https://example.com/webhook",
+          createdAt: new Date("2024-02-01"),
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/stakwork/runs?workspaceId=${workspace.id}&featureId=${feature.id}&status=COMPLETED`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      
+      const latestPerType = new Map();
+      data.runs.forEach((run: any) => {
+        if (!latestPerType.has(run.type)) {
+          latestPerType.set(run.type, run);
+        }
+      });
+
+      const architectureLatest = latestPerType.get("ARCHITECTURE");
+      expect(architectureLatest.id).toBe(newRun.id);
+      expect(architectureLatest.decision).toBe("REJECTED");
+
+      // Should NOT be pending
+      const pendingTypes = Array.from(latestPerType.values())
+        .filter((run: any) => run.decision === null)
+        .map((run: any) => run.type);
+      
+      expect(pendingTypes).not.toContain("ARCHITECTURE");
+    });
+  });
 });

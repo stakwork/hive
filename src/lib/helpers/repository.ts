@@ -10,6 +10,11 @@ export type RepositoryInfo = {
   name: string;
   description: string | null;
   branch: string;
+  // Sync configuration
+  codeIngestionEnabled: boolean;
+  docsEnabled: boolean;
+  mocksEnabled: boolean;
+  embeddingsEnabled: boolean;
 };
 
 export async function getPrimaryRepository(workspaceId: string): Promise<RepositoryInfo | null> {
@@ -27,6 +32,10 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
           name: true,
           description: true,
           branch: true,
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -49,6 +58,10 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
     name: primaryRepo.name,
     description: primaryRepo.description,
     branch: primaryRepo.branch,
+    codeIngestionEnabled: primaryRepo.codeIngestionEnabled,
+    docsEnabled: primaryRepo.docsEnabled,
+    mocksEnabled: primaryRepo.mocksEnabled,
+    embeddingsEnabled: primaryRepo.embeddingsEnabled,
   };
 }
 
@@ -67,6 +80,10 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
           name: true,
           description: true,
           branch: true,
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -87,5 +104,9 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
     name: repo.name,
     description: repo.description,
     branch: repo.branch,
+    codeIngestionEnabled: repo.codeIngestionEnabled,
+    docsEnabled: repo.docsEnabled,
+    mocksEnabled: repo.mocksEnabled,
+    embeddingsEnabled: repo.embeddingsEnabled,
   }));
 }

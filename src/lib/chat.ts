@@ -87,10 +87,12 @@ export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string; // For direct rendering from graph (current/updated version)
   originalWorkflowJson?: string; // Original workflow JSON before changes
-  workflowId?: number; // Workflow ID from graph
+  workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
   workflowVersionId?: number; // Version ID to fetch updated spec from Stakwork
+  projectInfo?: any; // Project data for project debugger mode
+  debuggerProjectId?: string; // Project ID for debugger context
 }
 
 export interface PublishWorkflowContent {
@@ -163,6 +165,26 @@ export interface MediaContent {
   uploadedAt: string; // ISO timestamp
 }
 
+export interface BountyContent {
+  status: "PENDING" | "READY";
+  bountyTitle: string;
+  bountyDescription: string;
+  estimatedHours?: number;
+  dueDate?: string;
+  priceUsd?: number;
+  priceSats?: number;
+  staking?: boolean;
+  bountyCode: string;
+  sourceTaskId: string;
+  sourceWorkspaceId: string;
+  sourceWorkspaceSlug: string;
+  sourceUserId: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
+  repoUrl?: string;
+  targetWorkspaceId?: string;
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -177,16 +199,26 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | PullRequestContent
     | DiffContent
     | MediaContent
-    | PublishWorkflowContent;
+    | PublishWorkflowContent
+    | BountyContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
 export type Attachment = PrismaAttachment;
 
-export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
+export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags"> {
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
   attachments?: Attachment[];
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    githubAuth?: {
+      githubUsername: string;
+    } | null;
+  };
 }
 
 // Helper functions to create client-side types with proper conversions
@@ -202,6 +234,15 @@ export function createChatMessage(data: {
   attachments?: Attachment[];
   sourceWebsocketID?: string;
   replyId?: string;
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    githubAuth?: {
+      githubUsername: string;
+    } | null;
+  };
 }): ChatMessage {
   return {
     id: data.id,
@@ -216,6 +257,8 @@ export function createChatMessage(data: {
     replyId: data.replyId || null,
     artifacts: data.artifacts || [],
     attachments: data.attachments || [],
+    createdBy: data.createdBy,
+    userId: data.createdBy?.id || null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -237,7 +280,8 @@ export function createArtifact(data: {
     | PullRequestContent
     | DiffContent
     | MediaContent
-    | PublishWorkflowContent;
+    | PublishWorkflowContent
+    | BountyContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

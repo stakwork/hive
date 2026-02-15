@@ -11,6 +11,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { EncryptionService } from "@/lib/encryption";
 import { buildFeatureContext } from "@/services/task-coordinator";
+import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -53,12 +54,14 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
     status: msg.status,
     timestamp: msg.createdAt.toISOString(),
     contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
-    artifacts: msg.artifacts.map((artifact) => ({
-      id: artifact.id,
-      type: artifact.type,
-      content: artifact.content,
-      icon: artifact.icon,
-    })),
+    artifacts: msg.artifacts
+      .filter((artifact) => artifact.type === "LONGFORM")
+      .map((artifact) => ({
+        id: artifact.id,
+        type: artifact.type,
+        content: artifact.content,
+        icon: artifact.icon,
+      })),
     attachments:
       msg.attachments?.map((attachment) => ({
         id: attachment.id,
@@ -154,6 +157,13 @@ export async function POST(request: NextRequest) {
         agentPassword: true,
         featureId: true,
         phaseId: true,
+        repository: {
+          select: {
+            name: true,
+            repositoryUrl: true,
+            branch: true,
+          },
+        },
         workspace: {
           select: {
             ownerId: true,
@@ -220,6 +230,7 @@ export async function POST(request: NextRequest) {
         taskId,
         message,
         role: ChatRole.USER,
+        userId,
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
         sourceWebsocketID,
@@ -242,6 +253,17 @@ export async function POST(request: NextRequest) {
       include: {
         artifacts: true,
         attachments: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            githubAuth: {
+              select: { githubUsername: true },
+            },
+          },
+        },
         task: {
           select: {
             id: true,
@@ -252,7 +274,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Convert to client-side type
-    const clientMessage: ChatMessage = {
+    const clientMessage = {
       ...chatMessage,
       contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
@@ -260,7 +282,7 @@ export async function POST(request: NextRequest) {
         content: artifact.content as unknown,
       })) as Artifact[],
       attachments: chatMessage.attachments || [],
-    };
+    } as ChatMessage;
 
     console.log("clientMessage", clientMessage);
 
@@ -286,10 +308,10 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    // Extract repository URL, branch, and name from workspace repositories
-    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
-    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
-    const repoName = task.workspace.repositories?.[0]?.name || null;
+    // Extract repository URL, branch, and name — prefer task-linked repo, fallback to workspace first repo
+    const repoUrl = task.repository?.repositoryUrl || task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.repository?.branch || task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.repository?.name || task.workspace.repositories?.[0]?.name || null;
     const taskBranch = task.branch || null;
 
     let stakworkData = null;
@@ -347,30 +369,18 @@ export async function POST(request: NextRequest) {
       });
 
       if (stakworkData.success) {
-        const updateData: {
-          workflowStatus: WorkflowStatus;
-          workflowStartedAt: Date;
-          stakworkProjectId?: number;
-        } = {
+        await updateTaskWorkflowStatus({
+          taskId,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
-        };
-
-        // Store the Stakwork project ID if available
-        if (stakworkData.data?.project_id) {
-          updateData.stakworkProjectId = stakworkData.data.project_id;
-        }
-
-        await db.task.update({
-          where: { id: taskId },
-          data: updateData,
+          additionalData: stakworkData.data?.project_id
+            ? { stakworkProjectId: stakworkData.data.project_id }
+            : undefined,
         });
       } else {
-        await db.task.update({
-          where: { id: taskId },
-          data: {
-            workflowStatus: WorkflowStatus.FAILED,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
         });
       }
     } else {

@@ -1,16 +1,23 @@
 "use client";
 
+import React, { useEffect, useRef, useState } from "react";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import type { Artifact, ChatMessage, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Github, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, Github, GitCommit, Monitor, Server, ServerOff } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
@@ -38,6 +45,7 @@ interface AgentChatAreaProps {
   prUrl?: string | null;
   featureId?: string | null;
   featureTitle?: string | null;
+  onOpenBountyRequest?: () => void;
 }
 
 export function AgentChatArea({
@@ -63,10 +71,12 @@ export function AgentChatArea({
   prUrl = null,
   featureId,
   featureTitle,
+  onOpenBountyRequest,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -196,12 +206,12 @@ export function AgentChatArea({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={onReleasePod}
+                        onClick={() => setShowReleaseConfirm(true)}
                         disabled={isReleasingPod}
                         className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
                       >
                         <span className="relative w-4 h-4">
-                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
                           <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
                         </span>
                       </Button>
@@ -213,18 +223,32 @@ export function AgentChatArea({
                 </TooltipProvider>
               )}
 
-              {/* Create PR / Open PR Button */}
+              {/* Create PR / Open PR Dropdown */}
               {onCommit && (
                 prUrl ? (
-                  <Button
-                    size="sm"
-                    onClick={() => window.open(prUrl, '_blank')}
-                    className="flex-shrink-0 gap-1 text-white hover:opacity-90"
-                    style={{ backgroundColor: "#238636" }}
-                  >
-                    <Github className="w-3 h-3" />
-                    Open PR
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        className="flex-shrink-0 gap-1 text-white hover:opacity-90"
+                        style={{ backgroundColor: "#238636" }}
+                      >
+                        <Github className="w-3 h-3" />
+                        PR Actions
+                        <ChevronDown className="w-3 h-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => window.open(prUrl, '_blank')}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Open PR
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={onCommit} disabled={isCommitting}>
+                        <GitCommit className="w-4 h-4 mr-2" />
+                        {isCommitting ? "Pushing..." : "Push New Commit"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : (
                   <Button
                     size="sm"
@@ -282,7 +306,21 @@ export function AgentChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         workspaceSlug={workspaceSlug}
+        onOpenBountyRequest={onOpenBountyRequest}
       />
+
+      {onReleasePod && (
+        <ConfirmDialog
+          open={showReleaseConfirm}
+          onOpenChange={setShowReleaseConfirm}
+          title="Release Pod?"
+          description="This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
+          confirmText="Release Pod"
+          variant="destructive"
+          onConfirm={onReleasePod}
+          testId="release-pod-dialog"
+        />
+      )}
     </motion.div>
   );
 }

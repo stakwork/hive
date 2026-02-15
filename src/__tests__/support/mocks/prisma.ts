@@ -55,6 +55,8 @@ function createDbMock() {
   const model = () => createModelMock(register);
 
   const $transaction = register(vi.fn());
+  const $queryRaw = register(vi.fn());
+  const $executeRaw = register(vi.fn());
 
   const db = {
     workspace: model(),
@@ -78,6 +80,8 @@ function createDbMock() {
     feature: model(),
     phase: model(),
     $transaction,
+    $queryRaw,
+    $executeRaw,
   } satisfies Record<string, ReturnType<typeof model> | MockFn>;
 
   const reset = () => {

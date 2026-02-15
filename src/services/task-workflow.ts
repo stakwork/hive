@@ -5,7 +5,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
-import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -111,6 +111,7 @@ export async function createTaskWithStakworkWorkflow(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -175,6 +176,13 @@ export async function sendMessageToStakwork(params: {
       deleted: false,
     },
     include: {
+      repository: {
+        select: {
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+        },
+      },
       workspace: {
         include: {
           swarm: {
@@ -190,6 +198,7 @@ export async function sendMessageToStakwork(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -243,6 +252,14 @@ export async function startTaskWorkflow(params: {
       sourceType: true,
       runBuild: true,
       runTestSuite: true,
+      autoMerge: true,
+      repository: {
+        select: {
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+        },
+      },
       workspace: {
         select: {
           id: true,
@@ -260,6 +277,7 @@ export async function startTaskWorkflow(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -297,6 +315,7 @@ export async function startTaskWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr: task.autoMerge,
   });
 }
 
@@ -324,6 +343,13 @@ export async function createChatMessageAndTriggerStakwork(params: {
     task = await db.task.findUnique({
       where: { id: taskId },
       include: {
+        repository: {
+          select: {
+            name: true,
+            repositoryUrl: true,
+            branch: true,
+          },
+        },
         workspace: {
           include: {
             swarm: true,
@@ -332,7 +358,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         },
       },
     });
-    
+
     if (!task) {
       throw new Error("Task not found");
     }
@@ -344,6 +370,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
       taskId,
       message,
       role: "USER",
+      userId,
       contextTags: JSON.stringify(contextTags),
       status: "SENT",
     },
@@ -384,10 +411,10 @@ export async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
-    // Get repository URL and branch
-    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
-    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
-    const repoName = task.workspace.repositories?.[0]?.name || null;
+    // Get repository URL and branch — prefer task-linked repo, fallback to workspace first repo
+    const repoUrl = task.repository?.repositoryUrl || task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.repository?.branch || task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.repository?.name || task.workspace.repositories?.[0]?.name || null;
     const taskBranch = task.branch || null;
 
     // Decrypt pod password if available
@@ -424,20 +451,8 @@ export async function createChatMessageAndTriggerStakwork(params: {
       });
 
       if (stakworkData.success) {
-        const updateData: {
-          workflowStatus: WorkflowStatus;
-          workflowStartedAt: Date;
-          stakworkProjectId?: number;
-          status?: TaskStatus;
-        } = {
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          workflowStartedAt: new Date(),
-        };
-
         // Extract project ID from Stakwork response
-        if (stakworkData.data?.project_id) {
-          updateData.stakworkProjectId = stakworkData.data.project_id;
-        } else {
+        if (!stakworkData.data?.project_id) {
           console.warn("No project_id found in Stakwork response:", stakworkData);
         }
 
@@ -447,65 +462,32 @@ export async function createChatMessageAndTriggerStakwork(params: {
           select: { status: true },
         });
 
+        const additionalData: Record<string, unknown> = {};
+        if (stakworkData.data?.project_id) {
+          additionalData.stakworkProjectId = stakworkData.data.project_id;
+        }
         if (currentTask?.status === TaskStatus.TODO) {
-          updateData.status = TaskStatus.IN_PROGRESS;
+          additionalData.status = TaskStatus.IN_PROGRESS;
         }
 
-        const updatedTask = await db.task.update({
-          where: { id: taskId },
-          data: updateData,
-          select: {
-            featureId: true,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: new Date(),
+          additionalData: Object.keys(additionalData).length > 0 ? additionalData : undefined,
         });
-
-        // Sync feature status if task belongs to a feature
-        if (updatedTask.featureId) {
-          try {
-            await updateFeatureStatusFromTasks(updatedTask.featureId);
-          } catch (error) {
-            console.error('Failed to sync feature status:', error);
-            // Don't fail the request if feature sync fails
-          }
-        }
       } else {
-        const updatedTask = await db.task.update({
-          where: { id: taskId },
-          data: { workflowStatus: WorkflowStatus.FAILED },
-          select: {
-            featureId: true,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
         });
-
-        // Sync feature status if task belongs to a feature
-        if (updatedTask.featureId) {
-          try {
-            await updateFeatureStatusFromTasks(updatedTask.featureId);
-          } catch (error) {
-            console.error('Failed to sync feature status:', error);
-            // Don't fail the request if feature sync fails
-          }
-        }
       }
     } catch (error) {
       console.error("Error calling Stakwork:", error);
-      const updatedTask = await db.task.update({
-        where: { id: taskId },
-        data: { workflowStatus: "FAILED" },
-        select: {
-          featureId: true,
-        },
+      await updateTaskWorkflowStatus({
+        taskId,
+        workflowStatus: WorkflowStatus.FAILED,
       });
-
-      // Sync feature status if task belongs to a feature
-      if (updatedTask.featureId) {
-        try {
-          await updateFeatureStatusFromTasks(updatedTask.featureId);
-        } catch (error) {
-          console.error('Failed to sync feature status:', error);
-          // Don't fail the request if feature sync fails
-        }
-      }
     }
   }
 
@@ -593,6 +575,7 @@ export async function callStakworkAPI(params: {
     message,
     contextTags,
     webhookUrl,
+    sourceHiveUrl: appBaseUrl,
     alias: userName,
     username: userName,
     accessToken,
@@ -630,6 +613,12 @@ export async function callStakworkAPI(params: {
   }
   if (branch) {
     vars.branch = branch;
+  }
+  if (process.env.EXA_API_KEY) {
+    vars.searchApiKey = process.env.EXA_API_KEY;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    vars.summaryApiKey = process.env.ANTHROPIC_API_KEY;
   }
 
   // Get workflow ID (replicating workflow selection logic)
@@ -686,6 +675,73 @@ export async function callStakworkAPI(params: {
     return { success: result.success, data: result.data };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Call Stackwork bounty workflow to generate a mini-app repo for a bounty.
+ * Fire-and-forget: Stackwork will call back to Hive when done.
+ */
+export async function callStakworkBountyAPI(params: {
+  taskId: string;
+  podId: string;
+  agentPassword: string;
+  username: string;
+  accessToken: string;
+  bountyTitle: string;
+  bountyDescription: string;
+  artifactId: string;
+}): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const workflowId = config.STAKWORK_BOUNTY_WORKFLOW_ID;
+  if (!workflowId) {
+    console.error("STAKWORK_BOUNTY_WORKFLOW_ID is not configured");
+    return { success: false, error: "Bounty workflow ID not configured" };
+  }
+
+  const webhookUrl = `${getBaseUrl()}/api/bounty/webhook`;
+
+  const payload = {
+    name: "hive_bounty",
+    workflow_id: parseInt(workflowId),
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            taskId: params.taskId,
+            podId: params.podId,
+            username: params.username,
+            accessToken: params.accessToken,
+            bountyTitle: params.bountyTitle,
+            bountyDescription: params.bountyDescription,
+            artifactId: params.artifactId,
+            podPassword: params.agentPassword,
+            webhookUrl,
+          },
+        },
+      },
+    },
+  };
+
+  try {
+    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to call Stakwork bounty API: ${response.statusText}`);
+      return { success: false, error: response.statusText };
+    }
+
+    const result = await response.json();
+    return { success: result.success, data: result.data };
+  } catch (error) {
+    console.error("Error calling Stakwork bounty API:", error);
     return { success: false, error: String(error) };
   }
 }

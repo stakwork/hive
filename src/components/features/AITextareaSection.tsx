@@ -35,9 +35,13 @@ interface AITextareaSectionProps {
   saved: boolean;
   onChange: (value: string) => void;
   onBlur: (value: string | null) => void;
+  onFocus?: () => void;
   rows?: number;
   className?: string;
   initialDiagramUrl?: string | null;
+  onDecisionMade?: () => void;
+  isListening?: boolean;
+  transcript?: string;
 }
 
 /**
@@ -59,9 +63,13 @@ export function AITextareaSection({
   saved,
   onChange,
   onBlur,
+  onFocus,
   rows = 8,
   className,
   initialDiagramUrl = null,
+  onDecisionMade,
+  isListening = false,
+  transcript = "",
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
@@ -74,7 +82,7 @@ export function AITextareaSection({
   // Map the section type to StakworkRunType
   const stakworkType = getStakworkType(type);
   
-  const { latestRun, refetch } = useStakworkGeneration({
+  const { latestRun, refetch, stopRun, isStopping } = useStakworkGeneration({
     featureId,
     type: stakworkType,
     enabled: true, // Enable for both requirements and architecture
@@ -121,10 +129,12 @@ export function AITextareaSection({
 
     await aiGeneration.accept();
     setMode("preview");
+    onDecisionMade?.();
   };
 
   const handleReject = async () => {
     await aiGeneration.reject();
+    onDecisionMade?.();
   };
 
   const handleProvideFeedback = async (feedback: string) => {
@@ -259,9 +269,11 @@ export function AITextareaSection({
               onQuickGenerate={() => {}}
               onDeepThink={handleDeepThink}
               onRetry={handleRetry}
+              onStop={stopRun}
               status={latestRun?.status}
               isLoading={aiGeneration.isLoading || initiatingDeepThink}
               isQuickGenerating={false}
+              isStopping={isStopping}
               disabled={false}
               showDeepThink={true}
               showGenerateDiagram={type === "architecture" && mode === "preview" && !!value?.trim()}
@@ -278,7 +290,10 @@ export function AITextareaSection({
       )}
 
       {latestRun?.status === "IN_PROGRESS" && latestRun.projectId ? (
-        <DeepResearchProgress projectId={latestRun.projectId} />
+        <DeepResearchProgress
+          projectId={latestRun.projectId}
+          runId={latestRun.id}
+        />
       ) : parsedContent?.type === "questions" ? (
         <ClarifyingQuestionsPreview
           questions={parsedContent.data.content}
@@ -321,10 +336,11 @@ export function AITextareaSection({
                 <Textarea
                   ref={textareaRef}
                   id={id}
-                  placeholder={`Type your ${label.toLowerCase()} here...`}
+                  placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : `Type your ${label.toLowerCase()} here...`}
                   value={value || ""}
                   onChange={(e) => onChange(e.target.value)}
                   onBlur={(e) => onBlur(e.target.value || null)}
+                  onFocus={onFocus}
                   rows={rows}
                   className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
                   isDragging={isDragging}

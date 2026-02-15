@@ -72,6 +72,9 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | "updatedAt" | undefined;
     const sortOrder = searchParams.get("sortOrder") as "asc" | "desc" | undefined;
 
+    // Needs attention filter
+    const needsAttention = searchParams.get("needsAttention") === "true";
+
     if (!workspaceId) {
       return NextResponse.json(
         { error: "workspaceId query parameter is required" },
@@ -117,6 +120,7 @@ export async function GET(request: NextRequest) {
       search,
       sortBy,
       sortOrder,
+      needsAttention,
     });
 
     return NextResponse.json<FeatureListResponse>(

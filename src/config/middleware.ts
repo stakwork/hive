@@ -23,6 +23,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/api/auth", strategy: "prefix", access: "public" },
+  { path: "/api/auth/sphinx", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
@@ -34,6 +35,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
+  { path: "/api/bounty/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/tasks/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/recording", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
@@ -42,6 +44,9 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
+  { path: "/api/members", strategy: "prefix", access: "webhook" },
+  { path: "/api/workspaces", strategy: "exact", access: "webhook" },
+  { path: "/api/mcp/*", strategy: "pattern", access: "webhook" },
 ] as const;
 
 function normalizePath(pathname: string): string {

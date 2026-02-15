@@ -16,7 +16,7 @@ export function MetricDisplayCountOnly({ label, count, icon }: MetricDisplayCoun
           {icon}
           <span className="text-xs font-medium text-muted-foreground">{label}</span>
         </div>
-        <Badge variant="outline" className="text-foreground border-gray-300 bg-gray-50">
+        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
           {formatNumber(count)} {count === 1 ? "test" : "tests"}
         </Badge>
       </div>

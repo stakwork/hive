@@ -117,15 +117,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Check if swarm has pool configuration
-    if (!workspace.swarm.id || !workspace.swarm.poolApiKey) {
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
+    // Claim pod from database
+    const swarmId = workspace.swarm?.id;
+
+    if (!swarmId) {
+      return NextResponse.json({ error: "Workspace has no swarm configured" }, { status: 400 });
     }
-
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Call Pool Manager API to claim pod
-    const poolId = workspace.swarm.id || workspace.swarm.poolName;
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     // Get services from swarm
     const services = workspace.swarm.services as
@@ -133,13 +130,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | null
       | undefined;
 
-    // Only pass taskId as user_info in agent mode (goose=true)
     const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
 
-    const {
-      frontend,
-      workspace: podWorkspace,
-    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined, userInfo);
+    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
+      swarmId,
+      userInfo,
+      services || undefined,
+    );
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {

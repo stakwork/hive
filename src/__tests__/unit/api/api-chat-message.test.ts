@@ -342,12 +342,24 @@ describe("POST /api/chat/message", () => {
           status: ChatStatus.SENT,
           sourceWebsocketID: undefined,
           replyId: undefined,
+          userId: mockUserId,
           artifacts: { create: [] },
           attachments: { create: [] },
         },
         include: {
           artifacts: true,
           attachments: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              githubAuth: {
+                select: { githubUsername: true },
+              },
+            },
+          },
           task: { select: { id: true, title: true } },
         },
       });
@@ -381,6 +393,7 @@ describe("POST /api/chat/message", () => {
           status: ChatStatus.SENT,
           sourceWebsocketID: undefined,
           replyId: undefined,
+          userId: mockUserId,
           artifacts: {
             create: artifacts.map((artifact) => ({
               type: artifact.type,
@@ -392,6 +405,17 @@ describe("POST /api/chat/message", () => {
         include: {
           artifacts: true,
           attachments: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              githubAuth: {
+                select: { githubUsername: true },
+              },
+            },
+          },
           task: { select: { id: true, title: true } },
         },
       });
@@ -427,6 +451,7 @@ describe("POST /api/chat/message", () => {
           status: ChatStatus.SENT,
           sourceWebsocketID: undefined,
           replyId: undefined,
+          userId: mockUserId,
           artifacts: { create: [] },
           attachments: {
             create: attachments.map((attachment) => ({
@@ -440,6 +465,17 @@ describe("POST /api/chat/message", () => {
         include: {
           artifacts: true,
           attachments: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              githubAuth: {
+                select: { githubUsername: true },
+              },
+            },
+          },
           task: { select: { id: true, title: true } },
         },
       });
@@ -496,6 +532,12 @@ describe("POST /api/chat/message", () => {
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 123,
         },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
+          workspace: { select: { slug: true } },
+        },
       });
     });
 
@@ -516,6 +558,12 @@ describe("POST /api/chat/message", () => {
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.FAILED,
+        },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });

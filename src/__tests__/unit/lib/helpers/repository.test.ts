@@ -31,6 +31,10 @@ describe("getPrimaryRepository", () => {
           name: "test-repo",
           description: null,
           branch: "main",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -53,6 +57,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -68,6 +76,10 @@ describe("getPrimaryRepository", () => {
       name: "test-repo",
       description: null,
       branch: "main",
+      codeIngestionEnabled: true,
+      docsEnabled: true,
+      mocksEnabled: true,
+      embeddingsEnabled: true,
     });
   });
 
@@ -95,6 +107,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -122,6 +138,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -144,6 +164,10 @@ describe("getPrimaryRepository", () => {
           name: "oldest-repo",
           description: null,
           branch: "main",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
         {
           id: "repo-2",
@@ -155,6 +179,10 @@ describe("getPrimaryRepository", () => {
           name: "newer-repo",
           description: "A newer repository",
           branch: "develop",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -177,6 +205,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -208,6 +240,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -236,6 +272,10 @@ describe("getPrimaryRepository", () => {
             name: true,
             description: true,
             branch: true,
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -257,6 +297,10 @@ describe("getPrimaryRepository", () => {
           name: "primary-repo",
           description: null,
           branch: "main",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -290,6 +334,10 @@ describe("getPrimaryRepository", () => {
           name: "test-repo",
           description: "Test repository",
           branch: "main",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -308,6 +356,10 @@ describe("getPrimaryRepository", () => {
       name: "test-repo",
       description: "Test repository",
       branch: "main",
+      codeIngestionEnabled: true,
+      docsEnabled: true,
+      mocksEnabled: true,
+      embeddingsEnabled: true,
     });
     expect(result).toHaveProperty("id");
     expect(result).toHaveProperty("name");
@@ -318,6 +370,10 @@ describe("getPrimaryRepository", () => {
     expect(result).toHaveProperty("integrationGlob");
     expect(result).toHaveProperty("e2eGlob");
     expect(result).toHaveProperty("description");
+    expect(result).toHaveProperty("codeIngestionEnabled");
+    expect(result).toHaveProperty("docsEnabled");
+    expect(result).toHaveProperty("mocksEnabled");
+    expect(result).toHaveProperty("embeddingsEnabled");
   });
 
   test("should handle Prisma query timeout errors", async () => {
@@ -343,6 +399,10 @@ describe("getPrimaryRepository", () => {
           name: "test-repo",
           description: null,
           branch: "main",
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -365,6 +425,10 @@ describe("getPrimaryRepository", () => {
               name: true,
               description: true,
               branch: true,
+              codeIngestionEnabled: true,
+              docsEnabled: true,
+              mocksEnabled: true,
+              embeddingsEnabled: true,
             },
           }),
         }),

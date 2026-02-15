@@ -1,21 +1,13 @@
-import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { JlistProcess } from "@/types/pod-repair";
-
-const encryptionService = EncryptionService.getInstance();
+import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES } from "./constants";
 
 // Import for internal use
 import { POD_PORTS, PROCESS_NAMES } from "./constants";
-
-// Get the Pool Manager base URL (already resolved for mock mode in env.ts)
-function getBaseUrl(): string {
-  return config.POOL_MANAGER_BASE_URL;
-}
 
 export interface PodWorkspace {
   branches: string[];
@@ -45,103 +37,6 @@ interface ProcessInfo {
   pm_uptime: number;
   port?: string;
   cwd?: string;
-}
-
-export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace | null> {
-  console.log(">>> getWorkspaceFromPool poolName", poolName);
-  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${poolApiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Pool Manager API error: ${response.status} - ${errorText}`);
-    throw new Error(`Failed to get workspace from pool: ${response.status}`);
-  }
-
-  const data = await response.json();
-  console.log(">>> getWorkspaceFromPool workspace data", data);
-  return (data.workspace as PodWorkspace) || null;
-}
-
-export async function getPodFromPool(podId: string, poolApiKey: string): Promise<PodWorkspace> {
-  const url = `${getBaseUrl()}/workspaces/${podId}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${poolApiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Pool Manager API error: ${response.status} - ${errorText}`);
-    throw new Error(`Failed to get workspace from pool: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data as PodWorkspace;
-}
-
-async function markWorkspaceAsUsed(
-  poolName: string,
-  workspaceId: string,
-  poolApiKey: string,
-  userInfo?: string,
-): Promise<void> {
-  const markUsedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
-
-  console.log(`>>> Marking workspace as used: POST ${markUsedUrl}`);
-
-  const response = await fetch(markUsedUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${poolApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(userInfo ? { user_info: userInfo } : {}),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Failed to mark workspace as used: ${response.status} - ${errorText}`);
-    throw new Error(`Failed to mark workspace as used: ${response.status}`);
-  }
-
-  const responseData = await response.text();
-  console.log(`>>> Workspace marked as used successfully (${response.status}):`, responseData || "No response body");
-}
-
-async function markWorkspaceAsUnused(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
-  const markUnusedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-unused`;
-
-  console.log(`>>> Marking workspace as unused: POST ${markUnusedUrl}`);
-
-  const response = await fetch(markUnusedUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${poolApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({}),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Failed to drop pod: ${response.status} - ${errorText}`);
-    throw new Error(`Failed to drop pod: ${response.status}`);
-  }
-
-  const responseData = await response.text();
-  console.log(`>>> Pod dropped successfully (${response.status}):`, responseData || "No response body");
 }
 
 async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
@@ -213,22 +108,58 @@ interface ServiceInfo {
 }
 
 export async function claimPodAndGetFrontend(
-  poolName: string,
-  poolApiKey: string,
-  services?: ServiceInfo[],
+  swarmId: string,
   userInfo?: string,
+  services?: ServiceInfo[],
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
-  // Get workspace from pool
-  const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
+  // Claim a pod from the database atomically
+  const pod = await claimAvailablePod(swarmId, userInfo);
 
-  if (!workspace) {
-    throw new Error(`No available workspaces in pool: ${poolName}`);
+  if (!pod) {
+    throw new Error(`No available pods for swarm: ${swarmId}`);
   }
 
-  console.log(">>> workspace data", workspace);
+  console.log(">>> claimed pod", pod.podId);
 
-  // Mark the workspace as used (pass userInfo for tracking, e.g. taskId in agent mode)
-  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey, userInfo);
+  // Password is already decrypted from the database
+  if (!pod.password) {
+    throw new Error("Pod password not found");
+  }
+  const password = pod.password;
+
+  // Get port mappings as number array
+  const portArray = (pod.portMappings as number[] | null) || [];
+
+  // Convert port array to URL dictionary for PodWorkspace compatibility
+  const portMappings: Record<string, string> = {};
+  for (const port of portArray) {
+    portMappings[port.toString()] = buildPodUrl(pod.podId, port);
+  }
+
+  // Convert database pod to PodWorkspace format for compatibility
+  const workspace: PodWorkspace = {
+    id: pod.podId,
+    password,
+    portMappings,
+    state: pod.status,
+    usage_status: pod.usageStatus,
+    marked_at: pod.usageStatusMarkedAt?.toISOString() || "",
+    // Legacy fields - not used but kept for type compatibility
+    branches: [],
+    created: pod.createdAt.toISOString(),
+    customImage: false,
+    flagged_for_recreation: pod.flaggedForRecreation,
+    fqdn: "",
+    image: "",
+    primaryRepo: "",
+    repoName: "",
+    repositories: [],
+    subdomain: pod.podId,
+    url: "",
+    useDevContainer: false,
+  };
+
+  console.log(">>> workspace data", workspace);
 
   let frontend: string | undefined;
   let processList: ProcessInfo[] | undefined;
@@ -324,8 +255,16 @@ export async function claimPodAndGetFrontend(
   return { frontend, workspace, processList };
 }
 
-export async function dropPod(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
-  await markWorkspaceAsUnused(poolName, workspaceId, poolApiKey);
+/**
+ * Drop a pod by releasing it back to the available pool
+ * @deprecated Use releasePodById() directly instead
+ */
+export async function dropPod(podId: string): Promise<void> {
+  const released = await releasePodById(podId);
+  if (!released) {
+    throw new Error(`Failed to release pod: ${podId} not found`);
+  }
+  console.log(`>>> Pod ${podId} released successfully`);
 }
 
 export interface PodUsage {
@@ -334,25 +273,22 @@ export interface PodUsage {
   workspace_id: string;
 }
 
-export async function getPodUsage(poolName: string, podId: string, poolApiKey: string): Promise<PodUsage> {
-  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${podId}/usage`;
+/**
+ * Get pod usage status from database
+ * @deprecated Use getPodUsageStatus() directly instead
+ */
+export async function getPodUsage(podId: string): Promise<PodUsage> {
+  const status = await getPodUsageStatus(podId);
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${poolApiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Failed to get pod usage: ${response.status} - ${errorText}`);
-    throw new Error(`Failed to get pod usage: ${response.status}`);
+  if (!status) {
+    throw new Error(`Pod ${podId} not found`);
   }
 
-  const data = await response.json();
-  return data as PodUsage;
+  return {
+    usage_status: status.usageStatus === "USED" ? "used" : "unused",
+    user_info: status.usageStatusMarkedBy,
+    workspace_id: podId,
+  };
 }
 
 export async function updatePodRepositories(
@@ -398,8 +334,8 @@ export interface FrontendCheckResult {
  */
 export async function checkFrontendAvailable(
   jlist: JlistProcess[],
-  portMappings: Record<string, string>,
-  controlPortUrl: string
+  portMappings: number[],
+  podId: string,
 ): Promise<FrontendCheckResult> {
   // 1. Find frontend process in jlist
   const frontendProcess = jlist.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
@@ -410,18 +346,22 @@ export async function checkFrontendAvailable(
 
   // 2. Resolve frontend URL using same fallback logic as claimPodAndGetFrontend
   let frontendUrl: string | null = null;
+  const frontendPort = frontendProcess.port ? parseInt(frontendProcess.port, 10) : null;
+  const fallbackPort = parseInt(POD_PORTS.FRONTEND_FALLBACK, 10);
 
-  if (frontendProcess.port && portMappings[frontendProcess.port]) {
-    frontendUrl = portMappings[frontendProcess.port];
-  } else if (portMappings[POD_PORTS.FRONTEND_FALLBACK]) {
-    frontendUrl = portMappings[POD_PORTS.FRONTEND_FALLBACK];
-  } else if (controlPortUrl) {
-    const fallbackPort = frontendProcess.port || POD_PORTS.FRONTEND_FALLBACK;
-    frontendUrl = controlPortUrl.replace(POD_PORTS.CONTROL, fallbackPort);
-  }
+  // Ensure portMappings is actually an array before using .includes()
+  const isValidArray = Array.isArray(portMappings);
 
-  if (!frontendUrl) {
-    return { available: false, frontendUrl: null, error: "Could not resolve frontend URL" };
+  if (frontendPort && isValidArray && portMappings.includes(frontendPort)) {
+    frontendUrl = buildPodUrl(podId, frontendPort);
+  } else if (isValidArray && portMappings.includes(fallbackPort)) {
+    frontendUrl = buildPodUrl(podId, fallbackPort);
+  } else if (frontendPort) {
+    // Use discovered frontend port even if not in mappings
+    frontendUrl = buildPodUrl(podId, frontendPort);
+  } else {
+    // Final fallback to default frontend port
+    frontendUrl = buildPodUrl(podId, POD_PORTS.FRONTEND_FALLBACK);
   }
 
   // 3. HTTP health check to frontend (5s timeout)
@@ -485,12 +425,9 @@ export interface ReleaseTaskPodResult {
 
 /**
  * Release a pod from a task - handles full cleanup flow:
- * 1. Fetch workspace with swarm config
- * 2. Decrypt pool API key
- * 3. Verify pod ownership (optional)
- * 4. Reset repositories (optional)
- * 5. Drop pod (mark as unused)
- * 6. Clear task pod fields (optional)
+ * 1. Verify pod ownership (optional)
+ * 2. Reset repositories (optional)
+ * 3. Release pod via database (mark as unused, clear task associations)
  */
 export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<ReleaseTaskPodResult> {
   const {
@@ -509,84 +446,45 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     taskCleared: false,
   };
 
-  // Helper to build task update data - only includes workflowStatus if not null
-  const buildTaskUpdateData = () => ({
-    podId: null,
-    agentUrl: null,
-    agentPassword: null,
-    ...(newWorkflowStatus && { workflowStatus: newWorkflowStatus }),
-    ...(newWorkflowStatus === "HALTED" && { workflowCompletedAt: new Date() }),
-  });
-
   try {
     console.log(`[releaseTaskPod] Starting release for task ${taskId}, pod ${podId}`);
 
-    // Skip actual API calls in mock environment
+    // Skip actual operations in mock environment
     if (process.env.MOCK_BROWSER_URL) {
       console.log("[releaseTaskPod] Mock environment detected, skipping pod release");
-      if (clearTaskFields) {
-        await db.task.update({
-          where: { id: taskId },
-          data: buildTaskUpdateData(),
-        });
-        result.taskCleared = true;
-      }
       result.success = true;
       result.podDropped = true;
+      result.taskCleared = true;
       return result;
     }
 
-    // Fetch workspace with swarm config
-    const workspace = await db.workspace.findFirst({
-      where: { id: workspaceId },
-      include: {
-        swarm: true,
-        repositories: true,
-      },
-    });
+    // Fetch workspace for repository reset if needed
+    const workspace = resetRepositories
+      ? await db.workspace.findFirst({
+          where: { id: workspaceId },
+          include: {
+            repositories: true,
+          },
+        })
+      : null;
 
-    if (!workspace) {
-      result.error = "Workspace not found";
-      console.error(`[releaseTaskPod] ${result.error}`);
-      return result;
-    }
-
-    if (!workspace.swarm?.id || !workspace.swarm?.poolApiKey) {
-      console.log(`[releaseTaskPod] No pool config for workspace ${workspaceId}, skipping pod drop`);
-      // Still clear task fields even if we can't drop the pod
-      if (clearTaskFields) {
-        await db.task.update({
-          where: { id: taskId },
-          data: buildTaskUpdateData(),
-        });
-        result.taskCleared = true;
-      }
-      result.success = true;
-      return result;
-    }
-
-    const poolId = workspace.swarm.id;
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", workspace.swarm.poolApiKey);
-
-    // Verify pod ownership if requested
+    // Verify pod ownership if requested (check if pod is assigned to this task)
     if (verifyOwnership) {
       try {
-        const podUsage = await getPodUsage(poolId, podId, poolApiKeyPlain);
+        const podUsage = await getPodUsageStatus(podId);
 
-        if (podUsage.user_info !== taskId) {
+        if (!podUsage) {
+          result.error = "Pod not found";
+          console.error(`[releaseTaskPod] ${result.error}`);
+          return result;
+        }
+
+        // Check if pod is assigned to a different task
+        if (podUsage.usageStatusMarkedBy !== taskId) {
           console.log(
-            `[releaseTaskPod] Pod ${podId} user_info (${podUsage.user_info}) does not match taskId (${taskId})`
+            `[releaseTaskPod] Pod ${podId} is assigned to different task (${podUsage.usageStatusMarkedBy}) not this task (${taskId})`,
           );
           result.reassigned = true;
-
-          // Clear stale reference from this task (but don't drop the pod - it belongs to another task)
-          if (clearTaskFields) {
-            await db.task.update({
-              where: { id: taskId },
-              data: buildTaskUpdateData(),
-            });
-            result.taskCleared = true;
-          }
           result.success = true;
           return result;
         }
@@ -595,68 +493,67 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
       } catch (error) {
         console.error("[releaseTaskPod] Error verifying pod ownership:", error);
         result.error = "Failed to verify pod ownership";
-        // Still try to clear task fields
-        if (clearTaskFields) {
-          try {
-            await db.task.update({
-              where: { id: taskId },
-              data: buildTaskUpdateData(),
-            });
-            result.taskCleared = true;
-          } catch (updateError) {
-            console.error("[releaseTaskPod] Error clearing task fields:", updateError);
-          }
-        }
         return result;
       }
     }
 
-    // Reset repositories if requested
-    if (resetRepositories) {
+    // Reset repositories if requested (uses Pool Manager API for container operations)
+    if (resetRepositories && workspace) {
       try {
-        const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-        const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+        const podDetails = await getPodDetails(podId);
 
-        if (controlPortUrl) {
-          const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
-          if (repositories.length > 0) {
-            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
-            console.log("[releaseTaskPod] Pod repositories reset");
+        if (podDetails && podDetails.portMappings) {
+          const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+          const hasControlPort = podDetails.portMappings.includes(controlPort);
+          const password = podDetails.password;
+
+          if (hasControlPort && password) {
+            const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
+            const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+            if (repositories.length > 0) {
+              await updatePodRepositories(controlPortUrl, password, repositories);
+              console.log("[releaseTaskPod] Pod repositories reset");
+            }
+          } else {
+            console.log(`[releaseTaskPod] Control port or password not found, skipping repository reset`);
           }
-        } else {
-          console.log(`[releaseTaskPod] Control port not found, skipping repository reset`);
         }
       } catch (error) {
         console.error("[releaseTaskPod] Error resetting pod repositories:", error);
-        // Continue with pod drop even if repository reset fails
+        // Continue with pod release even if repository reset fails
       }
     }
 
-    // Drop the pod
+    // Release the pod via database (atomically clears task associations)
     try {
-      await dropPod(poolId, podId, poolApiKeyPlain);
-      result.podDropped = true;
-      console.log(`[releaseTaskPod] Pod ${podId} dropped successfully`);
+      const released = await releasePodById(podId);
+
+      if (released) {
+        result.podDropped = true;
+        result.taskCleared = true; // releasePodById clears task associations atomically
+        console.log(`[releaseTaskPod] Pod ${podId} released successfully`);
+      } else {
+        console.log(`[releaseTaskPod] Pod ${podId} not found in database`);
+        result.error = "Pod not found";
+      }
     } catch (error) {
-      console.error("[releaseTaskPod] Error dropping pod:", error);
-      result.error = "Failed to drop pod";
-      // Still try to clear task fields
+      console.error("[releaseTaskPod] Error releasing pod:", error);
+      result.error = "Failed to release pod";
     }
 
-    // Clear task pod fields
-    if (clearTaskFields) {
+    // Update task workflow status if needed
+    if (clearTaskFields && newWorkflowStatus && result.taskCleared) {
       try {
         await db.task.update({
           where: { id: taskId },
-          data: buildTaskUpdateData(),
+          data: {
+            workflowStatus: newWorkflowStatus,
+            ...(newWorkflowStatus === "HALTED" && { workflowCompletedAt: new Date() }),
+          },
         });
-        result.taskCleared = true;
-        console.log(
-          `[releaseTaskPod] Task ${taskId} pod fields cleared` +
-          (newWorkflowStatus ? `, workflowStatus set to ${newWorkflowStatus}` : "")
-        );
+        console.log(`[releaseTaskPod] Task ${taskId} workflowStatus set to ${newWorkflowStatus}`);
       } catch (error) {
-        console.error("[releaseTaskPod] Error clearing task pod fields:", error);
+        console.error("[releaseTaskPod] Error updating task workflow status:", error);
       }
     }
 

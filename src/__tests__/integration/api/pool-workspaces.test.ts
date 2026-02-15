@@ -436,7 +436,7 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
     expect(data.data.workspaces[1].state).toBe("stopped");
   });
 
-  it("should return 503 when pool service is unavailable", async () => {
+  it("should return 200 with basic data when pool service is unavailable", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Unable to connect to pool service")
     );
@@ -449,13 +449,16 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to connect to pool service");
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
+    expect(data.data.workspaces).toBeDefined();
+    expect(Array.isArray(data.data.workspaces)).toBe(true);
   });
 
-  it("should return 503 when workspace data cannot be fetched", async () => {
+  it("should return 200 with basic data when workspace data cannot be fetched", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Unable to fetch workspace data at the moment")
     );
@@ -468,13 +471,15 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to fetch workspace data at the moment");
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
+    expect(data.data.workspaces).toBeDefined();
   });
 
-  it("should handle network errors gracefully", async () => {
+  it("should return 200 with basic data on network errors", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Network error: Connection timeout")
     );
@@ -487,10 +492,11 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toBeDefined();
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
   });
 
   it("should decrypt poolApiKey before calling external service", async () => {
@@ -695,4 +701,72 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     expect(data.data.workspaces[0].id).toBe("vm-1");
     expect(data.data.workspaces[4].id).toBe("vm-5");
   });
+
+  it("should return basic data when pool-manager times out after 5 seconds", async () => {
+    // Create pods in database for fallback data
+    const uniqueSuffix = Date.now();
+    const pod1 = await db.pod.create({
+      data: {
+        podId: `timeout-pod-1-${uniqueSuffix}`,
+        swarmId: swarm.id,
+        status: "RUNNING",
+        usageStatus: "UNUSED",
+        password: "test-password",
+        portMappings: [3000],
+      },
+    });
+
+    const pod2 = await db.pod.create({
+      data: {
+        podId: `timeout-pod-2-${uniqueSuffix}`,
+        swarmId: swarm.id,
+        status: "RUNNING",
+        usageStatus: "USED",
+        password: "test-password-2",
+        portMappings: [3000],
+        usageStatusMarkedBy: owner.id,
+        usageStatusMarkedAt: new Date(),
+      },
+    });
+
+    // Mock pool-manager to timeout (throw error after 5s)
+    vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
+      new Error("Request timeout")
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${workspace.slug}/pool/workspaces`,
+      owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    
+    // Should still succeed with warning
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    
+    // Should return basic data from database
+    expect(data.data.workspaces).toHaveLength(2);
+    
+    // Verify resource_usage.available is false for all VMs
+    data.data.workspaces.forEach((vm) => {
+      expect(vm.resource_usage.available).toBe(false);
+    });
+
+    // Verify basic VM data is present
+    const vm1 = data.data.workspaces.find((vm) => vm.subdomain === `timeout-pod-1-${uniqueSuffix}`);
+    const vm2 = data.data.workspaces.find((vm) => vm.subdomain === `timeout-pod-2-${uniqueSuffix}`);
+    
+    expect(vm1).toBeDefined();
+    expect(vm1?.state).toBe("running");
+    expect(vm1?.usage_status).toBe("unused");
+    
+    expect(vm2).toBeDefined();
+    expect(vm2?.state).toBe("running");
+    expect(vm2?.usage_status).toBe("used");
+  });
 });
+

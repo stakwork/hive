@@ -1,14 +1,18 @@
 "use client";
 
 import { useMemo, useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
+import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -50,13 +54,16 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   // - workflowJson: Latest published workflow (for Editor tab)
   // - originalWorkflowJson: Original workflow before changes (for Changes tab)
   // - projectId: Latest execution project (for Stakwork tab)
+  // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
     let workflowJson: string | undefined;
     let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
-    let workflowId: number | undefined;
+    let workflowId: number | string | undefined;
     let workflowName: string | undefined;
     let workflowRefId: string | undefined;
+    let projectInfo: any = undefined;
+    let debuggerProjectId: string | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
     for (const artifact of artifacts) {
@@ -67,12 +74,26 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       if (content?.workflowId) workflowId = content.workflowId;
       if (content?.workflowName) workflowName = content.workflowName;
       if (content?.workflowRefId) workflowRefId = content.workflowRefId;
+      if (content?.projectInfo) projectInfo = content.projectInfo;
+      if (content?.debuggerProjectId) debuggerProjectId = content.debuggerProjectId;
     }
 
-    return { workflowJson, originalWorkflowJson, projectId, workflowId, workflowName, workflowRefId };
+    return {
+      workflowJson,
+      originalWorkflowJson,
+      projectId,
+      workflowId,
+      workflowName,
+      workflowRefId,
+      projectInfo,
+      debuggerProjectId,
+    };
   }, [artifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId } = mergedContent;
+  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId } = mergedContent;
+
+  // Detect if we're in project debugger context
+  const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
 
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
@@ -141,6 +162,18 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
+        {projectId && (
+          <Button variant="outline" size="sm" asChild className="mb-2 self-start ml-2 mt-2">
+            <Link
+              href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View on Stakwork
+              <ExternalLink className="w-4 h-4 ml-1" />
+            </Link>
+          </Button>
+        )}
         <Tabs
           value={activeDisplayTab}
           onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
@@ -187,7 +220,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
           )}
 
           <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
-            <PromptsPanel workflowId={workflowId} />
+            <PromptsPanel workflowId={typeof workflowId === "number" ? workflowId : undefined} />
           </TabsContent>
 
           <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
@@ -266,21 +299,52 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
-      <WorkflowComponent
-        props={{
-          workflowData: workflowData,
-          show_only: true,
-          mode: "project",
-          projectId: projectId,
-          isAdmin: false,
-          workflowId: "",
-          workflowVersion: "",
-          defaultZoomLevel: 0.65,
-          useAssistantDimensions: false,
-          rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
-          onStepClick: onStepSelect ? handleStepClick : undefined,
-        }}
-      />
+      <div className="overflow-y-auto flex-1">
+        {projectId && (
+          <div className="px-4 pt-4">
+            <Button variant="outline" size="sm" asChild className="mb-2">
+              <Link
+                href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on Stakwork
+                <ExternalLink className="w-4 h-4 ml-1" />
+              </Link>
+            </Button>
+          </div>
+        )}
+
+        {/* Render ProjectInfoCard if in project debugger mode */}
+        {isProjectDebuggerMode && projectInfo && (
+          <div className="px-4 pt-2">
+            <ProjectInfoCard
+              projectData={{
+                ...projectInfo,
+                current_transition_completion: polledWorkflowData?.current_transition_completion,
+              }}
+            />
+          </div>
+        )}
+
+        <div className="flex-1">
+          <WorkflowComponent
+            props={{
+              workflowData: workflowData,
+              show_only: true,
+              mode: "project",
+              projectId: projectId,
+              isAdmin: false,
+              workflowId: "",
+              workflowVersion: "",
+              defaultZoomLevel: 0.65,
+              useAssistantDimensions: false,
+              rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+              onStepClick: isProjectDebuggerMode ? undefined : onStepSelect ? handleStepClick : undefined,
+            }}
+          />
+        </div>
+      </div>
       <StepDetailsModal
         step={clickedStep}
         isOpen={isModalOpen}

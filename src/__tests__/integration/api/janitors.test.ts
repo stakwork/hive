@@ -255,7 +255,8 @@ describe("Janitor API Integration Tests", () => {
           },
         },
       });
-      expect(runs).toHaveLength(1);
+      const expectedRunsCount = 1; // Should have created exactly one run
+      expect(runs).toHaveLength(expectedRunsCount);
       expect(runs[0].janitorType).toBe("UNIT_TESTS");
     });
 

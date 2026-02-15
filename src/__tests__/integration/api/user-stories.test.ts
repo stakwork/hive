@@ -78,7 +78,8 @@ describe("User Stories API - Integration Tests", () => {
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 200);
-      expect(data.data).toHaveLength(3);
+      const expectedStoriesCount = 3; // Created above in specific order
+      expect(data.data).toHaveLength(expectedStoriesCount);
       expect(data.data[0].title).toBe("Story 1");
       expect(data.data[1].title).toBe("Story 2");
       expect(data.data[2].title).toBe("Story 3");

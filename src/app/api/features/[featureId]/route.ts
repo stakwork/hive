@@ -110,12 +110,24 @@ export async function GET(
                 updatedAt: true,
                 systemAssigneeType: true,
                 dependsOnTaskIds: true,
+                bountyCode: true,
+                autoMerge: true,
+                deploymentStatus: true,
+                deployedToStagingAt: true,
+                deployedToProductionAt: true,
                 assignee: {
                   select: {
                     id: true,
                     name: true,
                     email: true,
                     image: true,
+                  },
+                },
+                repository: {
+                  select: {
+                    id: true,
+                    name: true,
+                    repositoryUrl: true,
                   },
                 },
               },
@@ -144,12 +156,24 @@ export async function GET(
             updatedAt: true,
             systemAssigneeType: true,
             dependsOnTaskIds: true,
+            bountyCode: true,
+            autoMerge: true,
+            deploymentStatus: true,
+            deployedToStagingAt: true,
+            deployedToProductionAt: true,
             assignee: {
               select: {
                 id: true,
                 name: true,
                 email: true,
                 image: true,
+              },
+            },
+            repository: {
+              select: {
+                id: true,
+                name: true,
+                repositoryUrl: true,
               },
             },
           },

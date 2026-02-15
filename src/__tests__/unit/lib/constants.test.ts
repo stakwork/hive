@@ -81,13 +81,16 @@ describe("constants", () => {
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("myworkspace")).toBe(true);
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("work123")).toBe(true);
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("my-work-space")).toBe(true);
+      expect(WORKSPACE_SLUG_PATTERNS.VALID.test("work_space")).toBe(true);
+      expect(WORKSPACE_SLUG_PATTERNS.VALID.test("my_awesome_workspace")).toBe(true);
     });
 
     it("should reject invalid slug formats", () => {
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("-invalid")).toBe(false);
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("invalid-")).toBe(false);
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("Invalid")).toBe(false);
-      expect(WORKSPACE_SLUG_PATTERNS.VALID.test("in_valid")).toBe(false);
+      expect(WORKSPACE_SLUG_PATTERNS.VALID.test("_invalid")).toBe(false);
+      expect(WORKSPACE_SLUG_PATTERNS.VALID.test("invalid_")).toBe(false);
     });
 
     it("should have min length of 2", () => {

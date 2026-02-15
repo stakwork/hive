@@ -62,6 +62,7 @@ vi.mock("axios", () => ({
 
 vi.mock("@/utils/mockSetup", () => ({
   ensureMockWorkspaceForUser: vi.fn(),
+  ensureStakworkMockWorkspace: vi.fn(),
 }));
 
 vi.mock("@/lib/logger", () => ({

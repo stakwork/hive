@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, Bot } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2, Bot, Mic, Rocket } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import type { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -12,6 +14,7 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -23,6 +26,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import type { FeatureDetail } from "@/types/roadmap";
+import { getPusherClient } from "@/lib/pusher";
+import { PUSHER_EVENTS } from "@/lib/pusher";
+import { toast } from "sonner";
 
 export default function FeatureDetailPage() {
   const router = useRouter();
@@ -48,6 +54,23 @@ export default function FeatureDetailPage() {
   const [creatingStory, setCreatingStory] = useState(false);
   const storyFocusRef = useRef(false);
 
+  // Speech recognition state
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const ctrlHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isCtrlHoldingRef = useRef(false);
+  const fieldForTranscriptRef = useRef<string | null>(null);
+  const wasListeningRef = useRef(false);
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
+
+  // Pending StakworkRuns state (for tab indicators)
+  const [pendingRunTypes, setPendingRunTypes] = useState<Set<StakworkRunType>>(new Set());
+
+  // Auto-launch state management
+  const [isAutoLaunching, setIsAutoLaunching] = useState(false);
+  const [autoLaunchStep, setAutoLaunchStep] = useState<"architecture" | "tasks" | null>(null);
+  const [currentAutoLaunchRunId, setCurrentAutoLaunchRunId] = useState<string | null>(null);
+
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
     if (!response.ok) {
@@ -66,6 +89,108 @@ export default function FeatureDetailPage() {
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Fetch pending StakworkRuns for this feature (for tab indicators)
+  const fetchPendingRuns = useCallback(async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      const params = new URLSearchParams({
+        workspaceId,
+        featureId,
+        status: "COMPLETED",
+      });
+      const response = await fetch(`/api/stakwork/runs?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Check if tasks already exist in the feature
+        const hasTasks = feature?.phases?.some(phase => phase.tasks && phase.tasks.length > 0) ?? false;
+        
+        // Group runs by type and keep only the most recent run per type
+        // Runs are already ordered by createdAt desc from the API
+        const latestPerType = new Map<StakworkRunType, { type: StakworkRunType; decision: string | null }>();
+        data.runs.forEach((run: { type: StakworkRunType; decision: string | null }) => {
+          if (!latestPerType.has(run.type)) {
+            latestPerType.set(run.type, run);
+          }
+        });
+        
+        // Filter for latest runs that need attention (decision is null)
+        const pendingTypes = new Set<StakworkRunType>(
+          Array.from(latestPerType.values())
+            .filter((run) => {
+              if (run.decision !== null) return false;
+              // If tasks already exist, don't show indicator for TASK_GENERATION
+              if (run.type === "TASK_GENERATION" && hasTasks) return false;
+              return ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"].includes(run.type);
+            })
+            .map((run) => run.type)
+        );
+        setPendingRunTypes(pendingTypes);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pending runs:", err);
+    }
+  }, [workspaceId, featureId, feature?.phases]);
+
+  useEffect(() => {
+    fetchPendingRuns();
+  }, [fetchPendingRuns]);
+
+  // Clear focused field when clicking outside text inputs
+  useEffect(() => {
+    const handleFocusOut = (e: FocusEvent) => {
+      // Check if the new focus target is a text input
+      const relatedTarget = e.relatedTarget as HTMLElement | null;
+      const isTextInput = relatedTarget?.tagName === "TEXTAREA" || relatedTarget?.tagName === "INPUT";
+      if (!isTextInput) {
+        setFocusedField(null);
+      }
+    };
+
+    document.addEventListener("focusout", handleFocusOut);
+    return () => document.removeEventListener("focusout", handleFocusOut);
+  }, []);
+
+  // Handle Ctrl key hold for speech recognition (only when a field is focused)
+  useEffect(() => {
+    if (!isSupported || !focusedField) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control" && !e.repeat && !isCtrlHoldingRef.current) {
+        ctrlHoldTimerRef.current = setTimeout(() => {
+          isCtrlHoldingRef.current = true;
+          startListening();
+        }, 500);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        if (ctrlHoldTimerRef.current) {
+          clearTimeout(ctrlHoldTimerRef.current);
+          ctrlHoldTimerRef.current = null;
+        }
+        if (isCtrlHoldingRef.current) {
+          isCtrlHoldingRef.current = false;
+          stopListening();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      if (ctrlHoldTimerRef.current) clearTimeout(ctrlHoldTimerRef.current);
+      // Stop listening if component unmounts or focusedField changes while recording
+      if (isCtrlHoldingRef.current) {
+        isCtrlHoldingRef.current = false;
+        stopListening();
+      }
+    };
+  }, [isSupported, focusedField, startListening, stopListening]);
 
   const handleSave = useCallback(
     async (updates: Partial<FeatureDetail> | { assigneeId: string | null }) => {
@@ -93,6 +218,52 @@ export default function FeatureDetailPage() {
     data: feature,
     onSave: handleSave,
   });
+
+  // Track which field we're recording for, and apply transcript when listening stops
+  useEffect(() => {
+    // When listening starts, capture which field we're recording for
+    if (isListening && !wasListeningRef.current) {
+      fieldForTranscriptRef.current = focusedField;
+      wasListeningRef.current = true;
+    }
+    
+    // When listening stops, apply the transcript to the field
+    if (!isListening && wasListeningRef.current) {
+      wasListeningRef.current = false;
+      const targetField = fieldForTranscriptRef.current;
+      
+      if (transcript && targetField) {
+        if (targetField === "newStory") {
+          // For user stories input, append to the current value (no auto-save needed)
+          const currentValue = newStoryTitle;
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          setNewStoryTitle(newValue);
+        } else if (feature) {
+          const currentValue = 
+            targetField === "brief" ? (feature.brief || "") :
+            targetField === "requirements" ? (feature.requirements || "") :
+            targetField === "architecture" ? (feature.architecture || "") : "";
+          
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          
+          // Update local state and trigger auto-save
+          if (targetField === "brief") {
+            updateFeature({ brief: newValue });
+            handleFieldBlur("brief", newValue);
+          } else if (targetField === "requirements") {
+            updateFeature({ requirements: newValue });
+            handleFieldBlur("requirements", newValue);
+          } else if (targetField === "architecture") {
+            updateFeature({ architecture: newValue });
+            handleFieldBlur("architecture", newValue);
+          }
+        }
+      }
+      
+      resetTranscript();
+      fieldForTranscriptRef.current = null;
+    }
+  }, [isListening, transcript, focusedField, feature, updateFeature, resetTranscript, newStoryTitle, setNewStoryTitle, handleFieldBlur]);
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
@@ -229,6 +400,17 @@ export default function FeatureDetailPage() {
     window.history.pushState({}, "", url.toString());
   };
 
+  // Map tabs to their associated StakworkRun types
+  const TAB_RUN_TYPES: Record<string, StakworkRunType[]> = {
+    overview: ["REQUIREMENTS", "USER_STORIES"],
+    architecture: ["ARCHITECTURE"],
+    tasks: ["TASK_GENERATION"],
+  };
+
+  const tabNeedsAttention = (tab: string): boolean => {
+    return TAB_RUN_TYPES[tab]?.some((type) => pendingRunTypes.has(type)) ?? false;
+  };
+
   const handleDeleteFeature = async () => {
     try {
       const response = await fetch(`/api/features/${featureId}`, {
@@ -270,6 +452,164 @@ export default function FeatureDetailPage() {
       throw error;
     }
   };
+
+  // Auto-launch handlers
+  const handleLaunchTasks = useCallback(async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      setAutoLaunchStep("tasks");
+      
+      const response = await fetch("/api/stakwork/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "TASK_GENERATION",
+          featureId,
+          workspaceId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start task generation");
+      }
+
+      const result = await response.json();
+      if (result.success && result.data?.id) {
+        setCurrentAutoLaunchRunId(result.data.id);
+      }
+    } catch (error) {
+      console.error("Failed to launch tasks:", error);
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.error("Failed to start task generation. Please try again.");
+    }
+  }, [workspaceId, featureId]);
+
+  const handleLaunch = async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      setIsAutoLaunching(true);
+      setAutoLaunchStep("architecture");
+
+      const response = await fetch("/api/stakwork/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "ARCHITECTURE",
+          featureId,
+          workspaceId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start architecture generation");
+      }
+
+      const result = await response.json();
+      if (result.success && result.data?.id) {
+        setCurrentAutoLaunchRunId(result.data.id);
+        toast.success("Auto-launch started");
+      }
+    } catch (error) {
+      console.error("Failed to launch:", error);
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.error("Failed to start auto-launch. Please try again.");
+    }
+  };
+
+  const handleStopLaunch = async () => {
+    if (!currentAutoLaunchRunId) return;
+
+    try {
+      const response = await fetch(`/api/stakwork/runs/${currentAutoLaunchRunId}/stop`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to stop run");
+      }
+
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.success("Auto-launch stopped");
+    } catch (error) {
+      console.error("Failed to stop launch:", error);
+      toast.error("Failed to stop auto-launch. Please try again.");
+    }
+  };
+
+  // Pusher event listener for sequential execution
+  useEffect(() => {
+    if (!workspaceSlug || !featureId) return;
+
+    const pusher = getPusherClient();
+    const channelName = `workspace-${workspaceSlug}`;
+    const channel = pusher.subscribe(channelName);
+
+    const handleStakworkRunUpdate = (data: {
+      runId: string;
+      type: StakworkRunType;
+      status: WorkflowStatus;
+      featureId?: string;
+      timestamp: Date;
+    }) => {
+      // Only process events for this feature
+      if (data.featureId !== featureId) return;
+
+      // Handle completion of architecture run during auto-launch
+      if (
+        data.type === "ARCHITECTURE" &&
+        data.status === "COMPLETED" &&
+        isAutoLaunching &&
+        autoLaunchStep === "architecture"
+      ) {
+        handleLaunchTasks();
+      }
+
+      // Handle completion of task generation run during auto-launch
+      if (
+        data.type === "TASK_GENERATION" &&
+        data.status === "COMPLETED" &&
+        isAutoLaunching &&
+        autoLaunchStep === "tasks"
+      ) {
+        setIsAutoLaunching(false);
+        setAutoLaunchStep(null);
+        setCurrentAutoLaunchRunId(null);
+        toast.success("Auto-launch completed successfully");
+      }
+
+      // Handle failures during auto-launch
+      if (
+        isAutoLaunching &&
+        (data.status === "FAILED" || data.status === "ERROR" || data.status === "HALTED")
+      ) {
+        setIsAutoLaunching(false);
+        setAutoLaunchStep(null);
+        setCurrentAutoLaunchRunId(null);
+        toast.error("Deep research failed. Please try again.", {
+          position: "top-right",
+        });
+      }
+    };
+
+    channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+
+    return () => {
+      channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+      pusher.unsubscribe(channelName);
+    };
+  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks]);
 
   if (loading) {
     return (
@@ -450,10 +790,32 @@ export default function FeatureDetailPage() {
               return (
                 <div className="flex items-center gap-4 mb-6">
                   <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="architecture">Architecture</TabsTrigger>
-                    <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                    {["overview", "architecture", "tasks"].map((tab) => (
+                      <TabsTrigger key={tab} value={tab}>
+                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        {tabNeedsAttention(tab) && (
+                          <span className="ml-1.5 w-1.5 h-1.5 bg-amber-500 rounded-full inline-block" />
+                        )}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
+
+                  {/* Speech Recognition Indicator */}
+                  {isSupported && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className={`flex items-center gap-1.5 text-xs ${isListening ? "text-foreground" : "text-muted-foreground"}`}>
+                            <Mic className={`h-4 w-4 ${isListening ? "animate-pulse" : ""}`} />
+                            {isListening && <span>Listening...</span>}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Hold Ctrl while focused on a text field to use voice input</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
 
                   {/* Task Coordinator Progress */}
                   {showTcProgress && (
@@ -496,8 +858,11 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ brief: value })}
                 onBlur={(value) => handleFieldBlur("brief", value)}
+                onFocus={() => setFocusedField("brief")}
                 featureId={featureId}
                 enableImageUpload={true}
+                isListening={isListening && focusedField === "brief"}
+                transcript={focusedField === "brief" ? transcript : ""}
               />
 
               {/* User Personas - Always visible */}
@@ -523,6 +888,9 @@ export default function FeatureDetailPage() {
                 onReorderUserStories={handleReorderUserStories}
                 onAcceptGeneratedStory={handleAcceptGeneratedStory}
                 shouldFocusRef={storyFocusRef}
+                onFocus={() => setFocusedField("newStory")}
+                isListening={isListening && focusedField === "newStory"}
+                transcript={focusedField === "newStory" ? transcript : ""}
               />
 
               {/* Requirements - Always visible */}
@@ -537,10 +905,26 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ requirements: value })}
                 onBlur={(value) => handleFieldBlur("requirements", value)}
+                onFocus={() => setFocusedField("requirements")}
+                onDecisionMade={fetchPendingRuns}
+                isListening={isListening && focusedField === "requirements"}
+                transcript={focusedField === "requirements" ? transcript : ""}
               />
 
               {/* Navigation buttons */}
-              <div className="flex justify-end pt-4">
+              <div className="flex justify-between items-center pt-4">
+                <Button
+                  onClick={isAutoLaunching ? handleStopLaunch : handleLaunch}
+                  disabled={
+                    !feature?.requirements ||
+                    feature.requirements.trim() === "" ||
+                    (savedField === "requirements" && saving)
+                  }
+                  variant={isAutoLaunching ? "destructive" : "default"}
+                >
+                  <Rocket className="mr-2 h-4 w-4" />
+                  {isAutoLaunching ? "Stop Launch" : "Launch"}
+                </Button>
                 <Button onClick={() => setActiveTab("architecture")}>Next</Button>
               </div>
             </TabsContent>
@@ -557,14 +941,17 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ architecture: value })}
                 onBlur={(value) => handleFieldBlur("architecture", value)}
+                onFocus={() => setFocusedField("architecture")}
                 initialDiagramUrl={feature.diagramUrl}
+                onDecisionMade={fetchPendingRuns}
+                isListening={isListening && focusedField === "architecture"}
+                transcript={focusedField === "architecture" ? transcript : ""}
               />
 
               {/* Whiteboard Section */}
               <FeatureWhiteboardSection
                 featureId={featureId}
                 workspaceId={workspaceId}
-                workspaceSlug={workspaceSlug}
               />
 
               {/* Navigation buttons */}
@@ -577,7 +964,7 @@ export default function FeatureDetailPage() {
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-6 pt-0">
-              <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} />
+              <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} onDecisionMade={fetchPendingRuns} />
 
               {/* Navigation buttons */}
               <div className="flex justify-start pt-4">

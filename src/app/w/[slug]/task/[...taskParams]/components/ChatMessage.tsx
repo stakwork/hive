@@ -1,13 +1,18 @@
 "use client";
 
-import React, { memo, useState, useMemo } from "react";
+import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, User, X, Image as ImageIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { cn } from "@/lib/utils";
 
 /**
  * Parse message content to extract <logs> sections
@@ -38,8 +43,9 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   const messageEqual =
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
-    prevProps.message.artifacts?.length === nextProps.message.artifacts?.length &&
-    prevProps.message.workflowUrl === nextProps.message.workflowUrl;
+    prevProps.message.artifacts === nextProps.message.artifacts &&
+    prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    prevProps.message.createdBy?.id === nextProps.message.createdBy?.id;
 
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
@@ -50,12 +56,18 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Parse logs from message content
   const { content: messageContent, logs } = useMemo(
     () => (message.message ? parseLogsFromMessage(message.message) : { content: "", logs: [] }),
-    [message.message],
+    [message.message]
   );
+
+  const handleImageError = useCallback((attachmentId: string) => {
+    setFailedImages(prev => new Set(prev).add(attachmentId));
+  }, []);
 
   return (
     <motion.div
@@ -67,7 +79,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+      <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
             className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
@@ -108,6 +120,64 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             )}
           </div>
         )}
+
+        {/* Image attachments */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
+            <div className="grid grid-cols-2 gap-2 max-w-md">
+              {message.attachments.map((attachment) => {
+                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
+                const hasFailed = failedImages.has(attachment.id);
+                
+                return (
+                  <div 
+                    key={attachment.id} 
+                    className={cn(
+                      "relative rounded-lg overflow-hidden border",
+                      !hasFailed && "cursor-pointer hover:opacity-90 transition-opacity"
+                    )}
+                    onClick={() => !hasFailed && setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
+                  >
+                    {hasFailed ? (
+                      <div className="w-full h-32 flex flex-col items-center justify-center bg-muted p-4 text-center">
+                        <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
+                        <p className="text-xs text-muted-foreground font-medium">{attachment.filename}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">Failed to load image</p>
+                      </div>
+                    ) : (
+                      <img
+                        src={imageUrl}
+                        alt={attachment.filename}
+                        className="w-full h-auto object-cover"
+                        loading="lazy"
+                        onError={() => handleImageError(attachment.id)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Avatar for USER messages - positioned after bubble (right side) */}
+        {message.role === "USER" && message.createdBy && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-6 shrink-0">
+                  <AvatarImage src={message.createdBy.image || undefined} />
+                  <AvatarFallback className="text-xs bg-muted">
+                    <User className="w-3 h-3" />
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{message.createdBy.name || message.createdBy.githubAuth?.githubUsername || "User"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       {/* Only Form Artifacts in Chat */}
@@ -119,7 +189,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           if (replyMessage && artifact.content) {
             const formContent = artifact.content as FormContent;
             selectedOption = formContent.options?.find(
-              (option: Option) => option.optionResponse === replyMessage.message,
+              (option: Option) => option.optionResponse === replyMessage.message
             );
           }
 
@@ -172,6 +242,41 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           </div>
         ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "BOUNTY")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <BountyArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {/* Image Enlargement Dialog */}
+      <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+          <VisuallyHidden>
+            <DialogTitle>Image Preview</DialogTitle>
+          </VisuallyHidden>
+          <div className="relative w-full h-full flex items-center justify-center bg-black/90">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {enlargedImage && (
+              <img
+                src={enlargedImage.url}
+                alt={enlargedImage.alt}
+                className="max-w-full max-h-[90vh] object-contain"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }, arePropsEqual);

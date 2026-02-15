@@ -43,8 +43,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       const member = await createTestUser();
       const workspace = await createTestWorkspace({ ownerId: owner.id });
       
-      // Create member with initial lastAccessedAt
-      const initialTime = new Date("2024-01-01T00:00:00.000Z");
+      // Create member with initial lastAccessedAt set to 1 hour ago
+      const initialTime = new Date(Date.now() - 60 * 60 * 1000);
       await createTestMembership({
         workspaceId: workspace.id,
         userId: member.id,

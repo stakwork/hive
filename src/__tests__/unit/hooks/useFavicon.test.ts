@@ -126,4 +126,143 @@ describe('useFavicon', () => {
       });
     });
   });
+
+  describe('Notification Dot', () => {
+    // Mock canvas and image for notification dot tests
+    beforeEach(() => {
+      // Mock HTMLCanvasElement.toDataURL
+      HTMLCanvasElement.prototype.toDataURL = vi.fn(() => 'data:image/png;base64,mockBase64');
+      
+      // Mock canvas context
+      const mockContext = {
+        drawImage: vi.fn(),
+        beginPath: vi.fn(),
+        arc: vi.fn(),
+        fill: vi.fn(),
+        stroke: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 0,
+        shadowColor: '',
+        shadowBlur: 0,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+      };
+      
+      HTMLCanvasElement.prototype.getContext = vi.fn(() => mockContext as any);
+    });
+
+    it('should display notification dot on default favicon when workspace logo fails CORS', async () => {
+      const workspaceLogoUrl = 'https://example.com/cors-blocked-logo.png';
+      
+      // Mock Image to trigger error on workspace logo but succeed on default
+      let imageLoadAttempts = 0;
+      const OriginalImage = window.Image;
+      (window as any).Image = class extends OriginalImage {
+        constructor() {
+          super();
+          setTimeout(() => {
+            imageLoadAttempts++;
+            if (imageLoadAttempts === 1) {
+              // First attempt (workspace logo) fails
+              this.onerror?.(new Event('error'));
+            } else {
+              // Second attempt (default favicon) succeeds
+              this.onload?.(new Event('load'));
+            }
+          }, 0);
+        }
+      };
+
+      renderHook(() => useFavicon({ workspaceLogoUrl, enabled: true, showNotificationDot: true }));
+
+      await waitFor(() => {
+        const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+        links.forEach((link) => {
+          // Should use data URL (canvas-generated notification dot)
+          expect(link.href).toMatch(/^data:image\/png/);
+        });
+      });
+
+      // Restore original Image
+      window.Image = OriginalImage;
+    });
+
+    it('should display notification dot on default favicon when no workspace logo exists', async () => {
+      // Mock Image to succeed immediately
+      const OriginalImage = window.Image;
+      (window as any).Image = class extends OriginalImage {
+        constructor() {
+          super();
+          setTimeout(() => {
+            this.onload?.(new Event('load'));
+          }, 0);
+        }
+      };
+
+      renderHook(() => useFavicon({ workspaceLogoUrl: null, enabled: true, showNotificationDot: true }));
+
+      await waitFor(() => {
+        const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+        links.forEach((link) => {
+          // Should use data URL (canvas-generated notification dot)
+          expect(link.href).toMatch(/^data:image\/png/);
+        });
+      });
+
+      // Restore original Image
+      window.Image = OriginalImage;
+    });
+
+    it('should NOT display notification dot when showNotificationDot is false', async () => {
+      const workspaceLogoUrl = 'https://example.com/workspace-logo.png';
+
+      renderHook(() => useFavicon({ workspaceLogoUrl, enabled: true, showNotificationDot: false }));
+
+      await waitFor(() => {
+        const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+        links.forEach((link) => {
+          // Should use workspace logo directly, not data URL
+          expect(link.href).toBe(workspaceLogoUrl);
+          expect(link.href).not.toMatch(/^data:image\/png/);
+        });
+      });
+    });
+
+    it('should prioritize notification dot over workspace logo on CORS failure', async () => {
+      const corsBlockedLogoUrl = 'https://s3.amazonaws.com/cors-blocked.png';
+      
+      // Mock Image to fail on workspace logo, succeed on default
+      let imageLoadAttempts = 0;
+      const OriginalImage = window.Image;
+      (window as any).Image = class extends OriginalImage {
+        constructor() {
+          super();
+          setTimeout(() => {
+            imageLoadAttempts++;
+            if (this.src.includes('s3.amazonaws.com')) {
+              // S3 URL fails
+              this.onerror?.(new Event('error'));
+            } else {
+              // Default favicon succeeds
+              this.onload?.(new Event('load'));
+            }
+          }, 0);
+        }
+      };
+
+      renderHook(() => useFavicon({ workspaceLogoUrl: corsBlockedLogoUrl, enabled: true, showNotificationDot: true }));
+
+      await waitFor(() => {
+        const link = document.querySelector<HTMLLinkElement>('link[sizes="32x32"]');
+        // Should NOT use the CORS-blocked URL
+        expect(link?.href).not.toBe(corsBlockedLogoUrl);
+        // Should use data URL (notification dot on default favicon)
+        expect(link?.href).toMatch(/^data:image\/png/);
+      });
+
+      // Restore original Image
+      window.Image = OriginalImage;
+    });
+  });
 });

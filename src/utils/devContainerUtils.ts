@@ -1,6 +1,50 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { ServiceConfig } from "@/services/swarm/db";
 
+/**
+ * Resolves a service's cwd field to an absolute /workspaces path.
+ * 
+ * @param cwd - The cwd value from the service config (can be empty, relative, or absolute)
+ * @param repoNames - Array of repository names in the workspace
+ * @param defaultRepoName - The primary/first repository name (fallback)
+ * @returns The resolved absolute cwd path
+ */
+export function resolveCwd(
+  cwd: string | undefined,
+  repoNames: string[],
+  defaultRepoName: string
+): string {
+  // Step 1: Handle empty cwd - use default repo
+  if (!cwd || cwd.trim() === "") {
+    return `/workspaces/${defaultRepoName}`;
+  }
+
+  const trimmedCwd = cwd.trim();
+
+  // Step 2: Already absolute path - use as-is
+  if (trimmedCwd.startsWith("/workspaces/")) {
+    return trimmedCwd;
+  }
+
+  // Step 3: Single repo - always treat as relative to that repo
+  if (repoNames.length <= 1) {
+    const cleanedCwd = trimmedCwd.replace(/^\/+/, "");
+    return `/workspaces/${defaultRepoName}/${cleanedCwd}`;
+  }
+
+  // Step 4: Multiple repos - check if first segment matches a repo name
+  const segments = trimmedCwd.replace(/^\/+/, "").split("/");
+  const firstSegment = segments[0];
+
+  // Step 5: First segment matches a repo name exactly - use that repo
+  if (repoNames.includes(firstSegment)) {
+    return `/workspaces/${segments.join("/")}`;
+  }
+
+  // Step 6: No repo match - treat as relative to default repo
+  return `/workspaces/${defaultRepoName}/${trimmedCwd.replace(/^\/+/, "")}`;
+}
+
 // These are service configuration commands, not actual env vars to persist
 // Used to filter out non-sensitive/non-secret values when saving or displaying
 export const SERVICE_CONFIG_ENV_VARS = [
@@ -23,10 +67,12 @@ export interface DevContainerFile {
 
 // Helper function to generate PM2 apps from services data
 export const generatePM2Apps = (
-  repoName: string,
+  repoNames: string[],
   servicesData: ServiceDataConfig[],
   globalEnvVars?: Array<{ name: string; value: string }>
 ) => {
+  const defaultRepoName = repoNames[0] || "workspace";
+
   if (!servicesData || servicesData.length === 0) {
     // Build env object with merged variables
     const env: Record<string, string> = {};
@@ -52,7 +98,7 @@ export const generatePM2Apps = (
       {
         name: "default-service",
         script: "npm start",
-        cwd: `/workspaces/${repoName}`,
+        cwd: `/workspaces/${defaultRepoName}`,
         instances: 1,
         autorestart: true,
         watch: false,
@@ -63,9 +109,8 @@ export const generatePM2Apps = (
   }
 
   return servicesData.map((service) => {
-    // If cwd is specified, treat it as a subdirectory within the workspace
-    // Otherwise use the workspace root
-    const cwd = service.cwd ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, "")}` : `/workspaces/${repoName}`;
+    // Resolve cwd using smart logic for single/multi-repo workspaces
+    const cwd = resolveCwd(service.cwd, repoNames, defaultRepoName);
 
     const appConfig = {
       name: service.name,
@@ -244,11 +289,13 @@ export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
 };
 
 export const getPM2AppsContent = (
-  repoName: string,
+  repoNames: string | string[],
   servicesData: ServiceDataConfig[],
   globalEnvVars?: Array<{ name: string; value: string }>
 ) => {
-  const pm2Apps = generatePM2Apps(repoName, servicesData, globalEnvVars);
+  // Normalize to array for backward compatibility
+  const repoNamesArray = Array.isArray(repoNames) ? repoNames : [repoNames];
+  const pm2Apps = generatePM2Apps(repoNamesArray, servicesData, globalEnvVars);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
 
   return {
@@ -351,10 +398,11 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         if (!block.trim()) continue;
 
         // Extract fields using regex
-        const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
-        const scriptMatch = block.match(/script:\s*["']([^"']+)["']/);
-        const cwdMatch = block.match(/cwd:\s*["']([^"']+)["']/);
-        const interpreterMatch = block.match(/interpreter:\s*["']([^"']+)["']/);
+        // Use separate patterns for double-quoted and single-quoted values to handle nested quotes
+        const nameMatch = block.match(/name:\s*"([^"]+)"/) || block.match(/name:\s*'([^']+)'/);
+        const scriptMatch = block.match(/script:\s*"([^"]+)"/) || block.match(/script:\s*'([^']+)'/);
+        const cwdMatch = block.match(/cwd:\s*"([^"]+)"/) || block.match(/cwd:\s*'([^']+)'/);
+        const interpreterMatch = block.match(/interpreter:\s*"([^"]+)"/) || block.match(/interpreter:\s*'([^']+)'/);
 
         // Extract env variables
         const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
@@ -370,13 +418,14 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         if (envMatch) {
           const envContent = envMatch[1];
           const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
-          const installMatch = envContent.match(/INSTALL_COMMAND:\s*["']([^"']+)["']/);
-          const buildMatch = envContent.match(/BUILD_COMMAND:\s*["']([^"']+)["']/);
-          const testMatch = envContent.match(/TEST_COMMAND:\s*["']([^"']+)["']/);
-          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
-          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
-          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
-          const resetMatch = envContent.match(/RESET_COMMAND:\s*["']([^"']+)["']/);
+          // For command values, match double-quoted strings (which may contain single quotes) or single-quoted strings (which may contain double quotes)
+          const installMatch = envContent.match(/INSTALL_COMMAND:\s*"([^"]+)"/) || envContent.match(/INSTALL_COMMAND:\s*'([^']+)'/);
+          const buildMatch = envContent.match(/BUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/BUILD_COMMAND:\s*'([^']+)'/);
+          const testMatch = envContent.match(/TEST_COMMAND:\s*"([^"]+)"/) || envContent.match(/TEST_COMMAND:\s*'([^']+)'/);
+          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/PRE_START_COMMAND:\s*'([^']+)'/);
+          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/POST_START_COMMAND:\s*'([^']+)'/);
+          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/REBUILD_COMMAND:\s*'([^']+)'/);
+          const resetMatch = envContent.match(/RESET_COMMAND:\s*"([^"]+)"/) || envContent.match(/RESET_COMMAND:\s*'([^']+)'/);
 
           if (portMatch) port = parseInt(portMatch[1]);
           if (installMatch) installCmd = installMatch[1];
@@ -389,15 +438,17 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         }
 
         if (nameMatch && scriptMatch) {
-          // Extract cwd to determine if it's a subdirectory
+          // Extract cwd - preserve everything after /workspaces/ for multi-repo support
+          // e.g., /workspaces/jarvis-backend -> "jarvis-backend"
+          // e.g., /workspaces/jarvis-boltwall/boltwall -> "jarvis-boltwall/boltwall"
           let serviceDir: string | undefined;
           if (cwdMatch) {
             const cwdPath = cwdMatch[1];
-            // Extract subdirectory from path like /workspaces/reponame/subdirectory
+            // Extract everything after /workspaces/
             const pathParts = cwdPath.split("/").filter((p) => p);
-            if (pathParts.length > 2) {
-              // Has subdirectory beyond /workspaces/reponame
-              serviceDir = pathParts.slice(2).join("/");
+            if (pathParts.length >= 2 && pathParts[0] === "workspaces") {
+              // Join all parts after "workspaces" (reponame + any subdirs)
+              serviceDir = pathParts.slice(1).join("/");
             }
           }
 

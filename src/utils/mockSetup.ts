@@ -162,6 +162,9 @@ export async function ensureMockWorkspaceForUser(
         unitGlob: "src/**/*.{test,spec}.{ts,tsx}",
         integrationGlob: "src/__tests__/integration/**/*.test.ts",
         e2eGlob: "src/__tests__/e2e/specs/**/*.spec.ts",
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
       },
     });
 
@@ -196,6 +199,204 @@ export async function ensureMockWorkspaceForUser(
     await seedMockData(userId, workspace.id);
   } catch (error) {
     console.error("[MockSetup] Failed to seed mock data:", error);
+    // Don't fail workspace creation if seeding fails
+  }
+
+  return workspace.slug;
+}
+
+/**
+ * Ensures a "stakwork" workspace exists for a given user with production ID cmh4vrcj70001id04idolu9br.
+ * This enables testing of workflow editor, project debugger, and workflow prompt management features
+ * that are restricted to the stakwork workspace.
+ * Returns the workspace slug ("stakwork").
+ * All DB operations wrapped in transaction for atomicity.
+ */
+export async function ensureStakworkMockWorkspace(
+  userId: string,
+): Promise<string> {
+  const STAKWORK_WORKSPACE_ID = "cmh4vrcj70001id04idolu9br";
+  const STAKWORK_SLUG = "stakwork";
+
+  // Check if workspace with production ID already exists (idempotent)
+  const existing = await db.workspace.findUnique({
+    where: { id: STAKWORK_WORKSPACE_ID },
+    select: { id: true, slug: true },
+  });
+
+  if (existing?.slug) return existing.slug;
+
+  // Get user info for building mock GitHub username
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { name: true, email: true },
+  });
+
+  // Generate mock GitHub username from user's name or email (stakwork-specific)
+  const mockGitHubUsername = `${user?.name?.toLowerCase().replace(/\s+/g, "-") || user?.email?.split("@")[0] || "mock-user"}-stakwork`;
+  const mockGitHubUserId = String(mockGitHubIdCounter++);
+  const mockInstallationId = mockGitHubIdCounter++;
+
+  // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
+  let encryptedPoolApiKey: string | null = null;
+  let encryptedGitHubToken: string | null = null;
+  let encryptedGitHubRefreshToken: string | null = null;
+
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    encryptedPoolApiKey = JSON.stringify(
+      encryptionService.encryptField("poolApiKey", "mock-stakwork-pool-api-key")
+    );
+    encryptedGitHubToken = JSON.stringify(
+      encryptionService.encryptField("access_token", `gho_mock_stakwork_token_${mockGitHubUserId}`)
+    );
+    encryptedGitHubRefreshToken = JSON.stringify(
+      encryptionService.encryptField("refresh_token", `ghr_mock_stakwork_refresh_${mockGitHubUserId}`)
+    );
+  } catch {
+    // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
+    // This is fine for E2E tests - mocks will work without encrypted keys
+  }
+
+  // Wrap all DB operations in transaction to prevent partial state
+  const workspace = await db.$transaction(async (tx) => {
+    // 1. Create GitHubAuth record (links user to their GitHub identity)
+    await tx.gitHubAuth.upsert({
+      where: { userId },
+      create: {
+        userId,
+        githubUserId: mockGitHubUserId,
+        githubUsername: mockGitHubUsername,
+        githubNodeId: `MDQ6VXNlcjEwMDAwMA==`,
+        name: user?.name || "Mock User (Stakwork)",
+        accountType: "User",
+        publicRepos: 10,
+        followers: 5,
+        following: 3,
+        scopes: ["repo", "user", "read:org"],
+      },
+      update: {
+        // If already exists, just update scopes
+        scopes: ["repo", "user", "read:org"],
+      },
+    });
+
+    // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
+    const sourceControlOrg = await tx.sourceControlOrg.upsert({
+      where: { githubLogin: mockGitHubUsername },
+      create: {
+        githubLogin: mockGitHubUsername,
+        type: SourceControlOrgType.USER,
+        githubInstallationId: mockInstallationId,
+        createdAt: new Date(),
+      },
+      update: {
+        // If already exists, don't update
+      },
+    });
+
+    // 3. Create SourceControlToken (encrypted GitHub App tokens for API access)
+    if (encryptedGitHubToken) {
+      await tx.sourceControlToken.upsert({
+        where: {
+          userId_sourceControlOrgId: {
+            userId,
+            sourceControlOrgId: sourceControlOrg.id,
+          },
+        },
+        create: {
+          userId,
+          sourceControlOrgId: sourceControlOrg.id,
+          token: encryptedGitHubToken,
+          refreshToken: encryptedGitHubRefreshToken,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 hours from now
+          scopes: ["repo", "user", "read:org"],
+        },
+        update: {
+          token: encryptedGitHubToken,
+          refreshToken: encryptedGitHubRefreshToken,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    // 4. Create workspace with hardcoded production ID and slug
+    const workspace = await tx.workspace.create({
+      data: {
+        id: STAKWORK_WORKSPACE_ID,
+        name: "Stakwork",
+        description: "Development workspace for stakwork-specific features (mock)",
+        slug: STAKWORK_SLUG,
+        ownerId: userId,
+        sourceControlOrgId: sourceControlOrg.id,
+        logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(STAKWORK_SLUG)}`,
+        logoKey: null,
+      },
+      select: { id: true, slug: true },
+    });
+
+    // 5. Create WorkspaceMember record (role=OWNER for the user)
+    await tx.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId,
+        role: "OWNER",
+        joinedAt: new Date(),
+      },
+    });
+
+    // 6. Create Repository record for "hive"
+    await tx.repository.create({
+      data: {
+        name: "hive",
+        repositoryUrl: "https://github.com/stakwork/hive",
+        branch: "master",
+        status: RepositoryStatus.SYNCED,
+        workspaceId: workspace.id,
+        // Test setup flags for mock workspaces
+        testingFrameworkSetup: true,
+        playwrightSetup: true,
+        unitGlob: "src/**/*.{test,spec}.{ts,tsx}",
+        integrationGlob: "src/__tests__/integration/**/*.test.ts",
+        e2eGlob: "src/__tests__/e2e/specs/**/*.spec.ts",
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
+      },
+    });
+
+    // 7. Create Swarm record with poolState=COMPLETE and podState=COMPLETED
+    await tx.swarm.create({
+      data: {
+        name: slugify(`${workspace.slug}-swarm`),
+        status: SwarmStatus.ACTIVE,
+        instanceType: "XL",
+        environmentVariables: [{ name: "NODE_ENV", value: "development" }],
+        services: [
+          { name: "stakgraph", port: 7799, scripts: { start: "start" } },
+          { name: "repo2graph", port: 3355, scripts: { start: "start" } },
+        ],
+        workspaceId: workspace.id,
+        swarmUrl: "http://localhost",
+        agentRequestId: null,
+        agentStatus: null,
+        containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
+        poolState: PoolState.COMPLETE, // Skip "Launch Pods" step for mock users
+        podState: PodState.COMPLETED, // Skip "Validating..." message for mock users
+        poolName: "mock-stakwork-pool",
+        poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
+      },
+    });
+
+    return workspace;
+  });
+
+  // Seed mock data (features, tasks, janitor config, etc.)
+  // This runs outside the transaction - workspace creation succeeds even if seeding fails
+  try {
+    await seedMockData(userId, workspace.id);
+  } catch (error) {
+    console.error("[MockSetup] Failed to seed stakwork mock data:", error);
     // Don't fail workspace creation if seeding fails
   }
 

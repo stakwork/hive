@@ -447,6 +447,17 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
             },
           },
           attachments: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              githubAuth: {
+                select: { githubUsername: true },
+              },
+            },
+          },
         },
         orderBy: {
           timestamp: "asc",

@@ -1,11 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
-import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -14,9 +10,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
-import { PenLine, Plus, ExternalLink, Unlink, Loader2, CheckCircle2 } from "lucide-react";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { getInitialAppState } from "@/lib/excalidraw-config";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
+import type {
+  AppState,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Unlink, Wifi, WifiOff } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
@@ -34,20 +40,18 @@ interface WhiteboardData {
   name: string;
   elements: unknown[];
   appState: Record<string, unknown>;
+  version: number;
 }
 
 interface FeatureWhiteboardSectionProps {
   featureId: string;
   workspaceId: string;
-  workspaceSlug: string;
 }
 
 export function FeatureWhiteboardSection({
   featureId,
   workspaceId,
-  workspaceSlug,
 }: FeatureWhiteboardSectionProps) {
-  const router = useRouter();
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [availableWhiteboards, setAvailableWhiteboards] = useState<WhiteboardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +59,26 @@ export function FeatureWhiteboardSection({
   const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
+
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const versionRef = useRef<number>(0);
+
+  // Collaboration hook
+  const {
+    collaborators,
+    excalidrawCollaborators,
+    isConnected,
+    broadcastElements,
+    broadcastCursor,
+    senderId,
+  } = useWhiteboardCollaboration({
+    whiteboardId: whiteboard?.id || "",
+    excalidrawAPI,
+  });
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -64,6 +86,7 @@ export function FeatureWhiteboardSection({
       const data = await res.json();
       if (data.success && data.data) {
         setWhiteboard(data.data);
+        versionRef.current = data.data.version || 0;
       } else {
         setWhiteboard(null);
       }
@@ -114,6 +137,7 @@ export function FeatureWhiteboardSection({
       const data = await res.json();
       if (data.success) {
         setWhiteboard(data.data);
+        versionRef.current = data.data.version || 0;
       }
     } catch (error) {
       console.error("Error creating whiteboard:", error);
@@ -163,7 +187,8 @@ export function FeatureWhiteboardSection({
     }
   };
 
-  const saveWhiteboard = useCallback(
+  // Save to database (debounced)
+  const saveToDatabase = useCallback(
     async (
       elements: readonly ExcalidrawElement[],
       appState: AppState,
@@ -181,6 +206,8 @@ export function FeatureWhiteboardSection({
             gridSize: appState.gridSize,
           },
           files,
+          broadcast: false, // Don't broadcast again, we already did real-time
+          senderId,
         };
 
         const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
@@ -192,6 +219,12 @@ export function FeatureWhiteboardSection({
         if (!res.ok) {
           throw new Error("Failed to save");
         }
+
+        const result = await res.json();
+        if (result.data?.version) {
+          versionRef.current = result.data.version;
+        }
+
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (error) {
@@ -200,28 +233,41 @@ export function FeatureWhiteboardSection({
         setSaving(false);
       }
     },
-    [whiteboard]
+    [whiteboard, senderId]
   );
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // Skip autosave on initial load
+      // Skip on initial load
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
         return;
       }
 
-      // Clear existing timeout
+      // Broadcast immediately for real-time collaboration (100ms throttle in hook)
+      broadcastElements(elements, appState);
+
+      // Clear existing save timeout
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
 
-      // Debounce save by 1 second
+      // Debounce database save by 2 seconds
       saveTimeoutRef.current = setTimeout(() => {
-        saveWhiteboard(elements, appState, files);
-      }, 1000);
+        saveToDatabase(elements, appState, files);
+      }, 2000);
     },
-    [saveWhiteboard]
+    [broadcastElements, saveToDatabase]
+  );
+
+  // Handle pointer/cursor updates for collaboration
+  const handlePointerUpdate = useCallback(
+    (payload: { pointer: { x: number; y: number }; button: string }) => {
+      if (payload.pointer) {
+        broadcastCursor(payload.pointer.x, payload.pointer.y);
+      }
+    },
+    [broadcastCursor]
   );
 
   // Cleanup timeout on unmount
@@ -232,6 +278,24 @@ export function FeatureWhiteboardSection({
       }
     };
   }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
+  // Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
 
   if (loading) {
     return (
@@ -294,6 +358,18 @@ export function FeatureWhiteboardSection({
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Whiteboard</Label>
         <div className="flex items-center gap-2">
+          {/* Collaborators */}
+          <CollaboratorAvatars collaborators={collaborators} />
+
+          {/* Connection status */}
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            {isConnected ? (
+              <Wifi className="w-4 h-4 text-green-500" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-500" />
+            )}
+          </div>
+
           <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
             {saving && (
               <>
@@ -324,24 +400,58 @@ export function FeatureWhiteboardSection({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              router.push(`/w/${workspaceSlug}/whiteboards/${whiteboard.id}`)
-            }
+            onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+            title="Zoom to fit"
+            disabled={!excalidrawAPI}
           >
-            <ExternalLink className="w-4 h-4 mr-2" />
+            <Scan className="w-4 h-4 mr-2" />
+            Fit
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleFullscreen}
+            title="Enter fullscreen"
+          >
+            <Maximize2 className="w-4 h-4 mr-2" />
             Full Screen
           </Button>
         </div>
       </div>
-      <Card className="h-[500px] overflow-hidden">
-        <Excalidraw
-          initialData={{
-            elements: (whiteboard.elements || []) as never,
-            appState: whiteboard.appState as never,
-          }}
-          onChange={handleChange}
-        />
-      </Card>
+      <div
+        ref={containerRef}
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-50 bg-white"
+            : ""
+        }
+      >
+        {isFullscreen && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="absolute top-4 right-4 z-50"
+            title="Exit fullscreen"
+          >
+            <Minimize2 className="w-4 h-4" />
+          </Button>
+        )}
+        <Card className={isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"}>
+          <Excalidraw
+            excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
+            initialData={{
+              elements: (whiteboard.elements || []) as readonly ExcalidrawElement[],
+              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
+            }}
+            onChange={handleChange}
+            onPointerUpdate={handlePointerUpdate}
+            isCollaborating={excalidrawCollaborators.size > 0}
+            // @ts-expect-error - collaborators prop exists at runtime but not in types for v0.18
+            collaborators={excalidrawCollaborators}
+          />
+        </Card>
+      </div>
     </div>
   );
 }

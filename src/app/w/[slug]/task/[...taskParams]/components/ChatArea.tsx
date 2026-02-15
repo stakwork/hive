@@ -2,9 +2,8 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -12,6 +11,7 @@ import { getAgentIcon } from "@/lib/icons";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
@@ -19,7 +19,7 @@ import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -33,17 +33,18 @@ interface ChatAreaProps {
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   taskTitle?: string | null;
-  stakworkProjectId?: number | null;
   workspaceSlug?: string;
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
   taskMode?: string;
+  taskId?: string | null;
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
   featureId?: string | null;
   featureTitle?: string | null;
+  onOpenBountyRequest?: () => void;
 }
 
 export function ChatArea({
@@ -61,21 +62,23 @@ export function ChatArea({
   onRemoveStepAttachment,
   workflowStatus,
   taskTitle,
-  stakworkProjectId,
   workspaceSlug,
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
   taskMode,
+  taskId,
   podId,
   onReleasePod,
   isReleasingPod = false,
   featureId,
   featureTitle,
+  onOpenBountyRequest,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -197,12 +200,12 @@ export function ChatArea({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={onReleasePod}
+                      onClick={() => setShowReleaseConfirm(true)}
                       disabled={isReleasingPod}
                       className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
                     >
                       <span className="relative w-4 h-4">
-                        <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                        <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
                         <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
                       </span>
                     </Button>
@@ -212,19 +215,6 @@ export function ChatArea({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-
-            {/* Stakwork Project Link - Outside AnimatePresence to prevent flickering */}
-            {stakworkProjectId && (
-              <Link
-                href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
-              >
-                Workflow
-                <ExternalLink className="w-3 h-3" />
-              </Link>
             )}
           </div>
         </div>
@@ -300,8 +290,23 @@ export function ChatArea({
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
+        taskId={taskId ?? undefined}
         workspaceSlug={workspaceSlug}
+        onOpenBountyRequest={onOpenBountyRequest}
       />
+
+      {onReleasePod && (
+        <ConfirmDialog
+          open={showReleaseConfirm}
+          onOpenChange={setShowReleaseConfirm}
+          title="Release Pod?"
+          description="This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
+          confirmText="Release Pod"
+          variant="destructive"
+          onConfirm={onReleasePod}
+          testId="release-pod-dialog"
+        />
+      )}
     </motion.div>
   );
 }

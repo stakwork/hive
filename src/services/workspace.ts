@@ -687,27 +687,17 @@ export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
 }
 
 /**
- * Deletes a workspace by slug if user has admin access (owner)
+ * Cleans up infrastructure for a workspace (Pool Manager pool/user, EC2 instance)
+ * Used by both deleteWorkspaceBySlug and deleteWorkspaceById
  */
-export async function deleteWorkspaceBySlug(
-  slug: string,
-  userId: string,
+async function cleanupWorkspaceInfrastructure(
+  workspaceId: string,
+  workspaceIdentifier: string, // slug or id for logging
 ): Promise<void> {
-  // First check if user has access and is owner
-  const workspace = await getWorkspaceBySlug(slug, userId);
-
-  if (!workspace) {
-    throw new Error("Workspace not found or access denied");
-  }
-
-  if (workspace.userRole !== "OWNER") {
-    throw new Error("Only workspace owners can delete workspaces");
-  }
-
   // Check for associated Swarm infrastructure
   const swarm = await db.swarm.findFirst({
     where: {
-      workspaceId: workspace.id,
+      workspaceId,
     },
     select: {
       id: true,
@@ -727,7 +717,7 @@ export async function deleteWorkspaceBySlug(
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
 
       if (decryptedApiKey) {
-        console.log(`Attempting to delete pool: ${poolName} for workspace: ${slug}`);
+        console.log(`Attempting to delete pool: ${poolName} for workspace: ${workspaceIdentifier}`);
         const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
           method: "DELETE",
           headers: {
@@ -756,13 +746,13 @@ export async function deleteWorkspaceBySlug(
       }
     } catch (error) {
       // Log error but don't block workspace deletion
-      console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
+      console.error(`Failed to delete pool ${poolName} for workspace ${workspaceIdentifier}:`, error);
     }
 
     // Delete the pool user using admin authentication
     if (swarm.name) {
       try {
-        console.log(`Attempting to delete pool user: ${swarm.name} for workspace: ${slug}`);
+        console.log(`Attempting to delete pool user: ${swarm.name} for workspace: ${workspaceIdentifier}`);
 
         // First authenticate with Pool Manager admin credentials
         const authResponse = await fetch(`${poolManagerUrl}/auth/login`, {
@@ -807,7 +797,7 @@ export async function deleteWorkspaceBySlug(
         }
       } catch (error) {
         // Log error but don't block workspace deletion
-        console.error(`Failed to delete pool user ${swarm.name} for workspace ${slug}:`, error);
+        console.error(`Failed to delete pool user ${swarm.name} for workspace ${workspaceIdentifier}:`, error);
       }
     }
   }
@@ -815,7 +805,7 @@ export async function deleteWorkspaceBySlug(
   // Deletes the ec2 instance
   if (swarm?.ec2Id) {
     try {
-      console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
+      console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${workspaceIdentifier}`);
 
       const swarmConfig = getServiceConfig("swarm");
       const swarmService = new SwarmService(swarmConfig);
@@ -830,9 +820,58 @@ export async function deleteWorkspaceBySlug(
       console.log(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
     } catch (error) {
       // Log error but don't block workspace deletion
-      console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);
+      console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${workspaceIdentifier}:`, error);
     }
   }
+}
+
+/**
+ * Deletes a workspace by slug if user has admin access (owner)
+ */
+export async function deleteWorkspaceBySlug(
+  slug: string,
+  userId: string,
+): Promise<void> {
+  // First check if user has access and is owner
+  const workspace = await getWorkspaceBySlug(slug, userId);
+
+  if (!workspace) {
+    throw new Error("Workspace not found or access denied");
+  }
+
+  if (workspace.userRole !== "OWNER") {
+    throw new Error("Only workspace owners can delete workspaces");
+  }
+
+  // Clean up infrastructure
+  await cleanupWorkspaceInfrastructure(workspace.id, slug);
+
+  // Proceed with soft delete of workspace
+  await softDeleteWorkspace(workspace.id);
+}
+
+/**
+ * Deletes a workspace by ID (for API token authentication)
+ * No ownership check - API token authorization is sufficient
+ */
+export async function deleteWorkspaceById(workspaceId: string): Promise<void> {
+  // Find workspace by ID (must not be deleted)
+  const workspace = await db.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      deleted: false,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!workspace) {
+    throw new Error("Workspace not found");
+  }
+
+  // Clean up infrastructure
+  await cleanupWorkspaceInfrastructure(workspace.id, workspaceId);
 
   // Proceed with soft delete of workspace
   await softDeleteWorkspace(workspace.id);
@@ -892,6 +931,22 @@ export async function recoverWorkspace(
     createdAt: recoveredWorkspace.createdAt.toISOString(),
     updatedAt: recoveredWorkspace.updatedAt.toISOString(),
   };
+}
+
+// Re-export from shared utility
+export { extractRepoNameFromUrl } from "@/lib/utils/slug";
+import { nextIndexedName } from "@/lib/utils/slug";
+
+/**
+ * Ensures a slug is unique by finding max index and adding 1
+ */
+export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
+  const workspaces = await db.workspace.findMany({
+    where: { deleted: false },
+    select: { slug: true },
+  });
+  const slugs = workspaces.map((w) => w.slug.toLowerCase());
+  return nextIndexedName(baseSlug, slugs);
 }
 
 /**

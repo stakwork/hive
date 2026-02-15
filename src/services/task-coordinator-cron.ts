@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
+import { WorkflowStatus } from "@prisma/client";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { releaseTaskPod } from "@/lib/pods";
+import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -107,7 +109,7 @@ export async function areDependenciesSatisfied(
 /**
  * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
  */
-async function processTicketSweep(
+export async function processTicketSweep(
   workspaceId: string,
   workspaceSlug: string
 ): Promise<boolean> {
@@ -121,8 +123,20 @@ async function processTicketSweep(
       status: "TODO",
       systemAssigneeType: "TASK_COORDINATOR",
       deleted: false,
+      OR: [
+        { featureId: null },
+        { feature: { status: { not: "CANCELLED" } } },
+      ],
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      featureId: true,
+      priority: true,
+      createdAt: true,
+      createdById: true,
+      dependsOnTaskIds: true,
+      autoMerge: true,
       feature: {
         select: {
           id: true,
@@ -207,19 +221,17 @@ async function processTicketSweep(
  * Can be called by cron job or manually
  * @param taskId - The task ID to halt
  * @param clearPodFields - If true, also clears podId, agentUrl, agentPassword
+ * @param notifyPusher - If true, broadcasts status change via Pusher (default: false for cron jobs)
  */
-export async function haltTask(taskId: string, clearPodFields = false): Promise<void> {
-  await db.task.update({
-    where: { id: taskId },
-    data: {
-      workflowStatus: "HALTED",
-      workflowCompletedAt: new Date(),
-      ...(clearPodFields && {
-        podId: null,
-        agentUrl: null,
-        agentPassword: null,
-      }),
-    },
+export async function haltTask(taskId: string, clearPodFields = false, notifyPusher = false): Promise<void> {
+  await updateTaskWorkflowStatus({
+    taskId,
+    workflowStatus: WorkflowStatus.HALTED,
+    workflowCompletedAt: new Date(),
+    additionalData: clearPodFields
+      ? { podId: null, agentUrl: null, agentPassword: null }
+      : undefined,
+    skipPusher: !notifyPusher,
   });
 }
 

@@ -13,19 +13,22 @@ interface ArtifactsPanelProps {
   artifacts: Artifact[];
   workspaceId?: string;
   taskId?: string;
+  podId?: string | null;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   isMobile?: boolean;
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
   const codeArtifacts = artifacts.filter((a) => a.type === "CODE");
-  const browserArtifacts = artifacts.filter((a) => a.type === "BROWSER");
-  const ideArtifacts = artifacts.filter((a) => a.type === "IDE");
+  const allBrowserArtifacts = artifacts.filter((a) => a.type === "BROWSER");
+  const browserArtifacts = allBrowserArtifacts.length > 0 ? [allBrowserArtifacts[allBrowserArtifacts.length - 1]] : [];
+  const allIdeArtifacts = artifacts.filter((a) => a.type === "IDE");
+  const ideArtifacts = allIdeArtifacts.length > 0 ? [allIdeArtifacts[allIdeArtifacts.length - 1]] : [];
   const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
   const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
   const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
@@ -111,6 +114,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
@@ -123,6 +127,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 ide={true}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />

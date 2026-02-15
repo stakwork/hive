@@ -42,8 +42,13 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
           order: true,
           featureId: true,
           phaseId: true,
+          workspaceId: true,
           bountyCode: true,
+          autoMerge: true,
           dependsOnTaskIds: true,
+          deploymentStatus: true,
+          deployedToStagingAt: true,
+          deployedToProductionAt: true,
           createdAt: true,
           updatedAt: true,
           systemAssigneeType: true,
@@ -53,6 +58,13 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
               name: true,
               email: true,
               image: true,
+            },
+          },
+          repository: {
+            select: {
+              id: true,
+              name: true,
+              repositoryUrl: true,
             },
           },
           phase: {

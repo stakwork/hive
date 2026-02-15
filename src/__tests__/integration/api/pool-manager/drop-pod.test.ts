@@ -15,6 +15,7 @@ import {
   createTestWorkspaceScenario,
   createTestSwarm,
 } from "@/__tests__/support/fixtures";
+import { createTestPod } from "@/__tests__/support/factories/pod.factory";
 import { db } from "@/lib/db";
 
 // Mock environment config
@@ -228,34 +229,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    test("returns 400 when swarm missing poolApiKey", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-      });
-
-      // Set poolName but leave poolApiKey null
-      await db.swarm.update({
-        where: { id: swarm.id },
-        data: { poolName: "test-pool", poolApiKey: null },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectError(response, "Swarm not properly configured with pool information", 400);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
   });
 
   describe("Authorization", () => {
@@ -288,7 +262,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("allows workspace owner to drop pod", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
+      const swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: "test-swarm",
         status: "ACTIVE",
@@ -296,12 +270,16 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
+      // Create a pod in the database
+      const pod = await createTestPod({
+        podId: "pod-owner-test",
+        swarmId: swarm.id,
+      });
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodDropMocks(false);
-
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
       );
 
       const response = await POST(request, {
@@ -318,7 +296,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       const memberUser = members[0];
 
-      await createTestSwarm({
+      const swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: "test-swarm",
         status: "ACTIVE",
@@ -326,12 +304,16 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
+      // Create a pod in the database
+      const pod = await createTestPod({
+        podId: "pod-member-test",
+        swarmId: swarm.id,
+      });
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(memberUser));
 
-      setupSuccessfulPodDropMocks(false);
-
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
       );
 
       const response = await POST(request, {
@@ -346,7 +328,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("successfully drops pod with required parameters", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
+      const swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: "test-swarm",
         status: "ACTIVE",
@@ -354,12 +336,17 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
+      // Create a pod in the database
+      const pod = await createTestPod({
+        podId: "pod-123",
+        swarmId: swarm.id,
+        portMappings: [3000, 3010, 15551, 15552],
+      });
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodDropMocks(false);
-
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
       );
 
       const response = await POST(request, {
@@ -371,7 +358,33 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       expect(data.message).toBe("Pod dropped successfully");
     });
 
-    test("calls Pool Manager API with correct URL and headers", async () => {
+    test("returns 404 when pod does not exist", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=nonexistent-pod&latest=true`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectNotFound(response, "Pod not found");
+    });
+  });
+
+  describe("Optional Repository Reset", () => {
+    test("resets repositories when latest=true and pod exists", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -382,169 +395,11 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      setupSuccessfulPodDropMocks(false);
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      // Verify Pool Manager API call (using swarm.id as poolName)
-      expect(mockFetch).toHaveBeenCalledWith(
-        `https://pool-manager.test.com/pools/${encodeURIComponent(swarm.id)}/workspaces/pod-123/mark-unused`,
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            Authorization: "Bearer decrypted-api-key",
-            "Content-Type": "application/json",
-          }),
-        })
-      );
-    });
-
-    test("decrypts poolApiKey before making API call", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      setupSuccessfulPodDropMocks(false);
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      // Verify the API was called with the decrypted key (from mocked EncryptionService)
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: "Bearer decrypted-api-key",
-          }),
-        })
-      );
-    });
-
-    test("returns 500 when Pool Manager API returns non-200 status", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: async () => "Internal Server Error",
-      });
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectError(response, "Failed to drop pod", 500);
-    });
-
-    test("returns 500 when Pool Manager API network failure", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      mockFetch.mockRejectedValue(new Error("Network request failed"));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectError(response, "Failed to drop pod", 500);
-    });
-  });
-
-  describe("Optional Repository Reset", () => {
-    test("skips repository reset when latest parameter is not provided", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      // Add a repository to the workspace
-      await db.repository.create({
-        data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
-          workspaceId: workspace.id,
-          status: "SYNCED",
-        },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      setupSuccessfulPodDropMocks(false);
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      // Should only call mark-unused, not getPodFromPool or updatePodRepositories
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-    });
-
-    test("resets repositories when latest=true", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+      // Create a pod in the database with control port
+      const pod = await createTestPod({
+        podId: "pod-with-repos",
+        swarmId: swarm.id,
+        portMappings: [3000, 3010, 15551, 15552],
       });
 
       // Add repositories to the workspace
@@ -559,49 +414,29 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodDropMocks(true);
+      // Mock updatePodRepositories fetch call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+        text: async () => "Success",
+      });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`
       );
 
-      await POST(request, {
+      const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // Should call: getPodFromPool, updatePodRepositories, mark-unused
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      await expectSuccess(response, 200);
 
-      // Verify getPodFromPool call
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        1,
-        "https://pool-manager.test.com/workspaces/pod-123",
-        expect.objectContaining({
-          method: "GET",
-          headers: expect.objectContaining({
-            Authorization: "Bearer decrypted-api-key",
-          }),
-        })
-      );
-
-      // Verify updatePodRepositories call
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        2,
-        "https://control.example.com/latest",
+      // Should call updatePodRepositories with URL built from podId
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://pod-with-repos-15552.workspaces.sphinx.chat/latest",
         expect.objectContaining({
           method: "PUT",
-          headers: expect.objectContaining({
-            Authorization: "Bearer pod-password",
-          }),
-        })
-      );
-
-      // Verify mark-unused call
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        3,
-        expect.stringContaining("/mark-unused"),
-        expect.objectContaining({
-          method: "POST",
         })
       );
     });
@@ -609,12 +444,19 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("handles missing control port gracefully when latest=true", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
+      const swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: "test-swarm",
         status: "ACTIVE",
         poolName: "test-pool",
         poolApiKey: "test-api-key",
+      });
+
+      // Create a pod without control port
+      const pod = await createTestPod({
+        podId: "pod-no-control",
+        swarmId: swarm.id,
+        portMappings: [3000],
       });
 
       await db.repository.create({
@@ -628,30 +470,8 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch
-        // getPodFromPool returns workspace without control port
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: "pod-workspace-123",
-            password: "pod-password",
-            portMappings: {
-              "3000": "https://frontend.example.com",
-            },
-          }),
-          text: async () => JSON.stringify({}),
-        })
-        // mark-unused succeeds
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
-          text: async () => "Success",
-        });
-
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`
       );
 
       const response = await POST(request, {
@@ -661,155 +481,8 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       // Should succeed despite missing control port
       await expectSuccess(response, 200);
 
-      // Should call getPodFromPool and mark-unused, but skip updatePodRepositories
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-    });
-
-    test("handles empty repository list when latest=true", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      // No repositories added to workspace
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      mockFetch
-        // getPodFromPool returns workspace with control port
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: "pod-workspace-123",
-            password: "pod-password",
-            portMappings: {
-              "15552": "https://control.example.com",
-              "3000": "https://frontend.example.com",
-            },
-          }),
-          text: async () => JSON.stringify({}),
-        })
-        // mark-unused succeeds
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
-          text: async () => "Success",
-        });
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectSuccess(response, 200);
-
-      // Should call getPodFromPool and mark-unused, but skip updatePodRepositories (no repos)
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-    });
-
-    test("continues pod drop even if repository reset fails", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      await db.repository.create({
-        data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
-          workspaceId: workspace.id,
-          status: "SYNCED",
-        },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      mockFetch
-        // getPodFromPool succeeds
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: "pod-workspace-123",
-            password: "pod-password",
-            portMappings: {
-              "15552": "https://control.example.com",
-              "3000": "https://frontend.example.com",
-            },
-          }),
-          text: async () => JSON.stringify({}),
-        })
-        // updatePodRepositories fails
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          text: async () => "Failed to update repositories",
-        })
-        // mark-unused succeeds
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
-          text: async () => "Success",
-        });
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      // Should succeed despite repository reset failure
-      await expectSuccess(response, 200);
-    });
-  });
-
-  describe("Mock Environment Bypass", () => {
-    test("returns mock success when MOCK_BROWSER_URL is set", async () => {
-      process.env.MOCK_BROWSER_URL = "https://mock.example.com";
-
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      const data = await expectSuccess(response, 200);
-      expect(data.success).toBe(true);
+      // Should not call updatePodRepositories
       expect(mockFetch).not.toHaveBeenCalled();
-
-      delete process.env.MOCK_BROWSER_URL;
     });
   });
 });

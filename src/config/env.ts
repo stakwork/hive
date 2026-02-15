@@ -36,9 +36,7 @@ export const optionalEnvVars = {
     : "https://github.com/login/oauth/access_token",
   // Gemini API base URL (routes to mock endpoint when USE_MOCKS=true)
   GEMINI_API_BASE_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/gemini` : "https://generativelanguage.googleapis.com",
-  STAKWORK_BASE_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/stakwork`
-    : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
+  STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
@@ -46,8 +44,10 @@ export const optionalEnvVars = {
   STAKWORK_TRANSCRIPT_WORKFLOW_ID: process.env.STAKWORK_TRANSCRIPT_WORKFLOW_ID,
   STAKWORK_AI_GENERATION_WORKFLOW_ID: process.env.STAKWORK_AI_GENERATION_WORKFLOW_ID,
   STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID,
+  STAKWORK_WORKFLOW_PROJECT_DEBUGGER_ID: process.env.STAKWORK_WORKFLOW_PROJECT_DEBUGGER_ID,
   STAKWORK_POD_REPAIR_WORKFLOW_ID: process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID,
   STAKWORK_TASK_WORKFLOW_ID: process.env.STAKWORK_TASK_WORKFLOW_ID,
+  STAKWORK_BOUNTY_WORKFLOW_ID: process.env.STAKWORK_BOUNTY_WORKFLOW_ID,
   POOL_MANAGER_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",

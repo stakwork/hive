@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { decodeWebhookToken, verifyWebhookToken } from "@/lib/auth/agent-jwt";
 import { ChatRole, ChatStatus } from "@prisma/client";
+import { generateAndSaveDiff } from "@/lib/pods/diff";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -33,7 +35,15 @@ interface ToolResultPayload {
   timestamp: number;
 }
 
-type WebhookPayload = TextPayload | ToolCallPayload | ToolResultPayload;
+interface FinishPayload {
+  sessionId: string;
+  type: "finish";
+  finishReason: string;
+  totalUsage: any;
+  timestamp: number;
+}
+
+type WebhookPayload = TextPayload | ToolCallPayload | ToolResultPayload | FinishPayload;
 
 export async function POST(request: NextRequest) {
   // 1. Extract token from query params
@@ -53,10 +63,22 @@ export async function POST(request: NextRequest) {
   const { taskId } = decoded;
   console.log("[Webhook] Processing request for taskId:", taskId);
 
-  // 3. Load task and get webhook secret
+  // 3. Load task with workspace/swarm relations (need poolApiKey, podId for diff generation)
   const task = await db.task.findUnique({
     where: { id: taskId },
-    select: { agentWebhookSecret: true },
+    select: {
+      agentWebhookSecret: true,
+      podId: true,
+      workspace: {
+        select: {
+          swarm: {
+            select: {
+              poolApiKey: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!task || !task.agentWebhookSecret) {
@@ -112,6 +134,36 @@ export async function POST(request: NextRequest) {
           toolName: body.type === "tool-call" ? body.toolName : undefined,
           toolCallId: body.toolCallId,
         });
+        break;
+
+      case "finish":
+        console.log(`[Webhook] Finish event received for task ${taskId}`);
+
+        // Generate diff and broadcast via Pusher
+        if (task.podId) {
+          try {
+            const diffResult = await generateAndSaveDiff({
+              taskId,
+              podId: task.podId,
+            });
+
+            if (diffResult.success && diffResult.message) {
+              // Broadcast the new message via Pusher (using NEW_MESSAGE event)
+              // The payload is just the message ID - frontend fetches full message
+              await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, diffResult.message.id);
+              console.log(`[Webhook] Diff message broadcasted for task ${taskId}`);
+            } else if (diffResult.noDiffs) {
+              console.log(`[Webhook] No diffs to broadcast for task ${taskId}`);
+            } else if (diffResult.error) {
+              console.error(`[Webhook] Diff generation failed for task ${taskId}:`, diffResult.error);
+            }
+          } catch (error) {
+            // Log error but don't fail the webhook - finish event is still valid
+            console.error(`[Webhook] Error generating diff for task ${taskId}:`, error);
+          }
+        } else {
+          console.log(`[Webhook] Skipping diff generation - missing podId for task ${taskId}`);
+        }
         break;
 
       default:

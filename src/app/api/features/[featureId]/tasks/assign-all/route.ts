@@ -4,6 +4,9 @@ import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
+import { getServiceConfig } from "@/config/services";
+import { PoolManagerService } from "@/services/pool-manager";
+import { processTicketSweep } from "@/services/task-coordinator-cron";
 
 interface AssignAllResponse {
   success: boolean;
@@ -30,6 +33,16 @@ export async function POST(
       where: { id: featureId },
       select: {
         id: true,
+        status: true,
+        workspace: {
+          select: {
+            id: true,
+            slug: true,
+            swarm: {
+              select: { id: true, poolApiKey: true },
+            },
+          },
+        },
         phases: {
           orderBy: { order: "asc" },
           take: 1,
@@ -44,6 +57,13 @@ export async function POST(
       return NextResponse.json(
         { error: "Feature not found" },
         { status: 404 }
+      );
+    }
+
+    if (feature.status === "CANCELLED") {
+      return NextResponse.json(
+        { error: "Cannot assign tasks for a cancelled feature" },
+        { status: 400 }
       );
     }
 
@@ -93,10 +113,30 @@ export async function POST(
       },
     });
 
-    // Step 8: Update feature status from tasks
+    // Step 8: Eagerly start the highest-priority eligible task if a machine is available
+    const ws = feature.workspace;
+    const swarm = ws?.swarm;
+    if (ws && swarm?.id && swarm?.poolApiKey) {
+      try {
+        const config = getServiceConfig("poolManager");
+        const poolManagerService = new PoolManagerService(config);
+        const poolStatus = await poolManagerService.getPoolStatus(
+          swarm.id,
+          swarm.poolApiKey
+        );
+
+        if (poolStatus.status.unusedVms > 1) {
+          processTicketSweep(ws.id, ws.slug).catch(() => {});
+        }
+      } catch {
+        // Pool service unreachable — skip eager start
+      }
+    }
+
+    // Step 9: Update feature status from tasks
     await updateFeatureStatusFromTasks(featureId);
 
-    // Step 9: Return success response
+    // Step 10: Return success response
     return NextResponse.json<AssignAllResponse>(
       {
         success: true,
@@ -108,13 +148,12 @@ export async function POST(
     console.error("Error bulk assigning tasks:", error);
     const message =
       error instanceof Error ? error.message : "Failed to assign tasks";
-    const status = message.includes("not found")
-      ? 404
-      : message.includes("denied")
-        ? 403
-        : message.includes("required") || message.includes("Invalid")
-          ? 400
-          : 500;
+
+    let status = 500;
+    if (message.includes("not found")) status = 404;
+    else if (message.includes("denied")) status = 403;
+    else if (message.includes("required") || message.includes("Invalid"))
+      status = 400;
 
     return NextResponse.json({ error: message }, { status });
   }

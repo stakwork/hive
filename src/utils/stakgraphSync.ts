@@ -42,7 +42,7 @@ export function syncPM2AndServices(
   existingContainerFiles: Record<string, string>,
   incomingServices: ServiceConfig[] | undefined,
   incomingContainerFiles: Record<string, string> | undefined,
-  repoName: string,
+  repoNames: string[],
   globalEnvVars?: Array<{ name: string; value: string }>
 ): SyncResult {
   // Differentiate between "not sent" (undefined) and "explicitly empty" ([])
@@ -58,7 +58,7 @@ export function syncPM2AndServices(
 
   // Case 6: Empty services array explicitly sent - clear services and regenerate empty pm2.config.js
   if (hasEmptyServicesArray && !hasIncomingPM2) {
-    const pm2Content = getPM2AppsContent(repoName, [], globalEnvVars);
+    const pm2Content = getPM2AppsContent(repoNames, [], globalEnvVars);
     const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
     mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
     return { services: [], containerFiles: mergedFiles };
@@ -74,7 +74,7 @@ export function syncPM2AndServices(
   // Case 2: Only services sent (non-empty) - use incoming services directly (replace, not merge)
   // UI sends the complete services array, so deletions are reflected by absence
   if (hasIncomingServices && !hasIncomingPM2) {
-    const pm2Content = getPM2AppsContent(repoName, incomingServices as ServiceDataConfig[], globalEnvVars);
+    const pm2Content = getPM2AppsContent(repoNames, incomingServices as ServiceDataConfig[], globalEnvVars);
     const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
     mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
     return { services: incomingServices, containerFiles: mergedFiles };
@@ -93,7 +93,7 @@ export function syncPM2AndServices(
   // Case 4: Both sent - services wins (replace, not merge), regenerate pm2.config.js
   console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using services array");
   const finalServices = incomingServices!;
-  const pm2Content = getPM2AppsContent(repoName, finalServices as ServiceDataConfig[], globalEnvVars);
+  const pm2Content = getPM2AppsContent(repoNames, finalServices as ServiceDataConfig[], globalEnvVars);
   const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
   mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
   return { services: finalServices, containerFiles: mergedFiles };

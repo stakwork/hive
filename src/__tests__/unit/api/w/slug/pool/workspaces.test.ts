@@ -31,12 +31,17 @@ vi.mock("@/services/pool-manager", () => ({
   PoolManagerService: vi.fn(),
 }));
 
+vi.mock("@/lib/pods/capacity-queries", () => ({
+  getBasicVMDataFromPods: vi.fn(),
+}));
+
 // Import after mocks
 import { GET } from "@/app/api/w/[slug]/pool/workspaces/route";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { PoolManagerService } from "@/services/pool-manager";
 import { db } from "@/lib/db";
+import { getBasicVMDataFromPods } from "@/lib/pods/capacity-queries";
 
 describe("GET /api/w/[slug]/pool/workspaces", () => {
   const mockUser = {
@@ -111,6 +116,28 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
     ],
   };
 
+  const mockBasicWorkspaces = [
+    {
+      id: "vm-1",
+      subdomain: "vm-1.test.com",
+      state: "running",
+      usage_status: "in-use",
+      user_info: {
+        id: mockUser.id,
+        email: mockUser.email,
+      },
+      url: "https://vm-1.test.com",
+    },
+    {
+      id: "vm-2",
+      subdomain: "vm-2.test.com",
+      state: "idle",
+      usage_status: "available",
+      user_info: null,
+      url: "https://vm-2.test.com",
+    },
+  ];
+
   let mockRequest: NextRequest;
   let mockPoolManagerService: any;
 
@@ -139,6 +166,9 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
     // Mock PoolManagerService constructor to return our mock instance
     vi.mocked(PoolManagerService).mockImplementation(() => mockPoolManagerService);
+    
+    // Setup mock for fallback basic workspaces function
+    vi.mocked(getBasicVMDataFromPods).mockResolvedValue(mockBasicWorkspaces);
   });
 
   afterEach(() => {
@@ -346,7 +376,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
   });
 
   describe("Pool Manager Service Integration", () => {
-    it("should return 503 when Pool Manager service is unavailable", async () => {
+    it("should return fallback basic data when Pool Manager service is unavailable", async () => {
       mockPoolManagerService.getPoolWorkspaces.mockRejectedValue(
         new Error("Unable to connect to pool service")
       );
@@ -357,14 +387,15 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
       const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data).toEqual({
-        success: false,
-        message: "Unable to connect to pool service",
-      });
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.pool_name).toBe(mockSwarm.id);
+      expect(data.data.workspaces).toEqual(mockBasicWorkspaces);
+      expect(data.warning).toBeDefined();
+      expect(getBasicVMDataFromPods).toHaveBeenCalledWith(mockSwarm.id);
     });
 
-    it("should return 503 when Pool Manager returns error", async () => {
+    it("should return fallback basic data when Pool Manager returns error", async () => {
       mockPoolManagerService.getPoolWorkspaces.mockRejectedValue(
         new Error("Unable to fetch workspace data at the moment")
       );
@@ -375,14 +406,14 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
       const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data).toEqual({
-        success: false,
-        message: "Unable to fetch workspace data at the moment",
-      });
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.pool_name).toBe(mockSwarm.id);
+      expect(data.data.workspaces).toEqual(mockBasicWorkspaces);
+      expect(data.warning).toBeDefined();
     });
 
-    it("should handle generic errors from Pool Manager service", async () => {
+    it("should return fallback basic data on generic errors from Pool Manager service", async () => {
       mockPoolManagerService.getPoolWorkspaces.mockRejectedValue(
         new Error("Network timeout")
       );
@@ -393,12 +424,14 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
       const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Network timeout");
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.pool_name).toBe(mockSwarm.id);
+      expect(data.data.workspaces).toEqual(mockBasicWorkspaces);
+      expect(data.warning).toBeDefined();
     });
 
-    it("should handle non-Error exceptions from Pool Manager", async () => {
+    it("should return fallback basic data on non-Error exceptions from Pool Manager", async () => {
       mockPoolManagerService.getPoolWorkspaces.mockRejectedValue("String error");
 
       const response = await GET(mockRequest, {
@@ -407,11 +440,11 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
       const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data).toEqual({
-        success: false,
-        message: "Unable to fetch workspace data right now",
-      });
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.pool_name).toBe(mockSwarm.id);
+      expect(data.data.workspaces).toEqual(mockBasicWorkspaces);
+      expect(data.warning).toBeDefined();
     });
   });
 

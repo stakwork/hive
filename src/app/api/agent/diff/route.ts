@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 import { ActionResult } from "@/lib/chat";
 import { ChatRole, ChatStatus } from "@prisma/client";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
+import { generateAndSaveDiff } from "@/lib/pods/diff";
 
 export async function POST(request: NextRequest) {
   try {
@@ -139,68 +136,21 @@ index 1234567..abcdefg 100644
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
+    console.log(">>> [DIFF] Generating diff using shared helper");
 
-    // Check if swarm has pool configuration
-    if (!poolApiKey) {
-      console.log(">>> [DIFF] Swarm not configured with pool API key");
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
-    }
-
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
-
-    console.log(">>> [DIFF] Getting pod from pool, podId:", podId);
-
-    // Fetch pod details to get port mappings and password
-    let podWorkspace;
-    try {
-      podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-      console.log(">>> [DIFF] Pod workspace retrieved:", {
-        id: podWorkspace.id,
-        state: podWorkspace.state,
-        hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
-      });
-    } catch (error) {
-      console.error(">>> [DIFF] Failed to get pod from pool:", error);
-      throw error;
-    }
-
-    const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
-
-    if (!controlPortUrl) {
-      console.log(">>> [DIFF] Control port not found in port mappings");
-      return NextResponse.json(
-        { error: `Control port (${POD_PORTS.CONTROL}) not found in port mappings` },
-        { status: 500 },
-      );
-    }
-
-    console.log(">>> [DIFF] Fetching diff from control port:", controlPortUrl);
-
-    // GET /diff from the control port
-    const diffUrl = `${controlPortUrl}/diff`;
-    const diffResponse = await fetch(diffUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${podWorkspace.password}`,
-      },
+    // Use the shared helper to generate and save the diff
+    const result = await generateAndSaveDiff({
+      taskId,
+      podId,
     });
 
-    if (!diffResponse.ok) {
-      const errorText = await diffResponse.text();
-      console.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`);
-      return NextResponse.json(
-        { error: `Failed to fetch diff: ${diffResponse.status}`, details: errorText },
-        { status: diffResponse.status },
-      );
+    if (!result.success) {
+      console.error(">>> [DIFF] Diff generation failed:", result.error);
+      return NextResponse.json({ error: result.error || "Failed to fetch diff" }, { status: 500 });
     }
 
-    const diffs: ActionResult[] = await diffResponse.json();
-    console.log(">>> [DIFF] Diff fetched successfully, count:", diffs.length);
-
-    // If there are no diffs, don't create an artifact
-    if (!diffs || diffs.length === 0) {
-      console.log(">>> [DIFF] No diffs to display, skipping artifact creation");
+    if (result.noDiffs) {
+      console.log(">>> [DIFF] No diffs to display");
       return NextResponse.json(
         {
           success: true,
@@ -210,36 +160,12 @@ index 1234567..abcdefg 100644
       );
     }
 
-    console.log(">>> [DIFF] Creating chat message with DIFF artifact");
-
-    // Create a chat message with the DIFF artifact
-    const chatMessage = await db.chatMessage.create({
-      data: {
-        taskId,
-        message: "Changes have been applied",
-        role: ChatRole.ASSISTANT,
-        contextTags: JSON.stringify([]),
-        status: ChatStatus.SENT,
-        artifacts: {
-          create: [
-            {
-              type: "DIFF",
-              content: { diffs } as any,
-            },
-          ],
-        },
-      },
-      include: {
-        artifacts: true,
-      },
-    });
-
-    console.log(">>> [DIFF] Chat message with DIFF artifact created:", chatMessage.id);
+    console.log(">>> [DIFF] Chat message with DIFF artifact created:", result.message?.id);
 
     return NextResponse.json(
       {
         success: true,
-        message: chatMessage,
+        message: result.message,
       },
       { status: 200 },
     );

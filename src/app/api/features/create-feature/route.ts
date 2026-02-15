@@ -14,10 +14,11 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspaceSlug, transcript, deepResearch } = body as {
+    const { workspaceSlug, transcript, deepResearch, autoAccept } = body as {
       workspaceSlug: string;
       transcript: string | ModelMessage[];
       deepResearch?: boolean;
+      autoAccept?: boolean;
     };
 
     if (!workspaceSlug || !transcript) {
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
             type: StakworkRunType.ARCHITECTURE,
             workspaceId: feature.workspaceId,
             featureId: feature.id,
+            autoAccept: autoAccept ?? false,
           },
           userOrResponse.id
         );

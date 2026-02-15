@@ -130,6 +130,7 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 // Feature with relations (matches GET /api/features list query)
+// Note: stakworkRuns count is added manually since Prisma types don't support conditional counts
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
   select: {
     id: true;
@@ -157,6 +158,7 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
     _count: {
       select: {
         userStories: true;
+        stakworkRuns: true;
       };
     };
   };
@@ -215,8 +217,13 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             order: true;
             featureId: true;
             phaseId: true;
+            workspaceId: true;
             bountyCode: true;
+            autoMerge: true;
             dependsOnTaskIds: true;
+            deploymentStatus: true;
+            deployedToStagingAt: true;
+            deployedToProductionAt: true;
             createdAt: true;
             updatedAt: true;
             assignee: {
@@ -225,6 +232,13 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
                 name: true;
                 email: true;
                 image: true;
+              };
+            };
+            repository: {
+              select: {
+                id: true;
+                name: true;
+                repositoryUrl: true;
               };
             };
             phase: {
@@ -428,8 +442,13 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        workspaceId: true;
         bountyCode: true;
+        autoMerge: true;
         dependsOnTaskIds: true;
+        deploymentStatus: true;
+        deployedToStagingAt: true;
+        deployedToProductionAt: true;
         createdAt: true;
         updatedAt: true;
         assignee: {
@@ -438,6 +457,13 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
             name: true;
             email: true;
             image: true;
+          };
+        };
+        repository: {
+          select: {
+            id: true;
+            name: true;
+            repositoryUrl: true;
           };
         };
         phase: {
@@ -490,8 +516,13 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    workspaceId: true;
     bountyCode: true;
+    autoMerge: true;
     dependsOnTaskIds: true;
+    deploymentStatus: true;
+    deployedToStagingAt: true;
+    deployedToProductionAt: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -500,6 +531,13 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
         name: true;
         email: true;
         image: true;
+      };
+    };
+    repository: {
+      select: {
+        id: true;
+        name: true;
+        repositoryUrl: true;
       };
     };
     phase: {
@@ -591,6 +629,7 @@ export interface CreateRoadmapTaskRequest {
   priority?: import("@prisma/client").Priority;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
   dependsOnTaskIds?: string[];
 }
 
@@ -603,9 +642,11 @@ export interface UpdateRoadmapTaskRequest {
   order?: number;
   phaseId?: string | null;
   assigneeId?: string | null;
+  repositoryId?: string | null;
   dependsOnTaskIds?: string[];
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
 }
 
 export interface ReorderRoadmapTasksRequest {
