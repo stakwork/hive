@@ -16,17 +16,33 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
   let testUserId: string;
 
   beforeEach(async () => {
+    // Clear mocks first
+    vi.clearAllMocks();
+    
     // Clean up any existing test data
     await db.account.deleteMany({ where: { provider: "sphinx" } });
-    vi.clearAllMocks();
+    
+    // Create test user for each test
+    const user = await createTestUser();
+    testUserId = user.id;
+    
+    // Mock successful signature verification for all tests by default
+    vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
+  });
+
+  afterEach(async () => {
+    // Clean up test user after each test
+    if (testUserId) {
+      await db.account.deleteMany({ where: { userId: testUserId } });
+      await db.user.delete({ where: { id: testUserId } }).catch(() => {
+        // User may not exist for some tests, ignore errors
+      });
+    }
   });
 
   describe("Public Endpoint Tests", () => {
     it("should work without session (public endpoint)", async () => {
-      // Create user with linked Sphinx pubkey
-      const user = await createTestUser();
-      testUserId = user.id;
-
+      // testUserId is already set by parent beforeEach
       const encryptedPubkey = encryptionService.encryptField(
         "lightningPubkey",
         testPubkey
@@ -36,9 +52,6 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         where: { id: testUserId },
         data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
       });
-
-      // Mock successful signature verification
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -126,10 +139,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should verify signature with correct parameters", async () => {
-      // Create user with linked Sphinx pubkey
-      const user = await createTestUser();
-      testUserId = user.id;
-
+      // testUserId is already set by parent beforeEach
       const encryptedPubkey = encryptionService.encryptField(
         "lightningPubkey",
         testPubkey
@@ -177,13 +187,8 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
   });
 
   describe("User Lookup Tests", () => {
-    beforeEach(async () => {
-      const user = await createTestUser();
-      testUserId = user.id;
-
-      // Mock successful signature verification
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
-    });
+    // testUserId is already set by parent beforeEach
+    // Mock is already set by parent beforeEach
 
     it("should return 401 when user not found for pubkey", async () => {
       const result = await invokeRoute(POST, {
@@ -340,9 +345,8 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
   describe("JWT Generation Tests", () => {
     beforeEach(async () => {
-      const user = await createTestUser();
-      testUserId = user.id;
-
+      // testUserId is already set by parent beforeEach
+      // Mock is already set by parent beforeEach
       const encryptedPubkey = encryptionService.encryptField(
         "lightningPubkey",
         testPubkey
@@ -352,9 +356,6 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         where: { id: testUserId },
         data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
       });
-
-      // Mock successful signature verification
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
     });
 
     it("should return valid JWT token", async () => {
@@ -458,9 +459,8 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
   });
 
   describe("Error Handling Tests", () => {
-    beforeEach(() => {
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
-    });
+    // testUserId is already set by parent beforeEach
+    // Mock is already set by parent beforeEach
 
     it("should handle database errors gracefully", async () => {
       // Mock database error by using invalid user ID format
@@ -479,9 +479,6 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should handle encryption service errors gracefully", async () => {
-      const user = await createTestUser();
-      testUserId = user.id;
-
       // Set malformed encrypted data
       await db.user.update({
         where: { id: testUserId },
@@ -505,9 +502,8 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
   describe("Security Tests", () => {
     beforeEach(async () => {
-      const user = await createTestUser();
-      testUserId = user.id;
-
+      // testUserId is already set by parent beforeEach
+      // Mock is already set by parent beforeEach
       const encryptedPubkey = encryptionService.encryptField(
         "lightningPubkey",
         testPubkey
