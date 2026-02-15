@@ -489,6 +489,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
   //   tasks (workspace_id, pod_id)
   //   workspaces (owner_id)
   //   janitor_configs (workspace_id, pr_monitor_enabled, etc.)
+  // Use DISTINCT ON to get only one artifact per unique PR URL
+  // This prevents duplicate artifacts for the same PR from consuming the limit
   const artifacts = await db.$queryRaw<
     Array<{
       id: string;
@@ -504,7 +506,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pr_use_rebase_for_updates: boolean;
     }>
   >`
-    SELECT 
+    SELECT DISTINCT ON (a.content->>'url')
       a.id,
       a.content,
       t.id as task_id,
@@ -546,7 +548,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
         OR a.content->'progress'->>'lastCheckedAt' IS NULL
         OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
       )
-    ORDER BY a.created_at DESC
+    ORDER BY a.content->>'url', a.created_at DESC
     LIMIT ${limit}
   `;
 
@@ -627,7 +629,7 @@ ${result.problemDetails || ""}`;
  * @param maxPRs - Maximum number of PRs to check in one run (for rate limiting)
  * @returns Summary of the monitoring run
  */
-export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
+export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   checked: number;
   conflicts: number;
   ciFailures: number;
