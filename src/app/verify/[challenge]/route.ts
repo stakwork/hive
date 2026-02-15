@@ -1,25 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
 
-interface VerifyRequestBody {
-  token: string;
-  pubkey: string;
-  alias?: string;
-  photoUrl?: string;
-  routeHint?: string;
-}
-
 /**
- * POST /api/auth/sphinx/verify/[challenge]
- * 
- * Verifies a Lightning signature against a challenge and marks it as used.
- * Called by the Sphinx app after user signs the challenge.
- * 
- * @param request - NextRequest with body containing token, pubkey, and optional profile data
+ * POST /verify/[challenge]?token=...
+ *
+ * Verification endpoint called by the Sphinx app after user signs the challenge.
+ * This endpoint must match the format expected by the Sphinx iOS/Android app:
+ * - URL: https://{host}/verify/{challenge}?token={token}
+ * - Body: JSON with pubkey, alias, photo_url, route_hint, price_to_meet (snake_case)
+ *
+ * @param request - NextRequest with token as query param and body containing user info
  * @param params - Route params containing the challenge k1 value
- * @returns JSON with success status and error message if applicable
+ * @returns JSON with success status
  */
 export async function POST(
   request: NextRequest,
@@ -36,31 +31,50 @@ export async function POST(
       );
     }
 
-    // Parse request body
-    let body: VerifyRequestBody;
+    // Token comes from query parameter (as Sphinx app sends it)
+    const token = request.nextUrl.searchParams.get("token");
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: "Missing token parameter" },
+        { status: 400 }
+      );
+    }
+
+    // Parse request body - Sphinx app sends snake_case field names
+    let body: {
+      pubkey?: string;
+      alias?: string;
+      photo_url?: string;
+      route_hint?: string;
+      price_to_meet?: number;
+      verification_signature?: string;
+    };
     try {
       body = await request.json();
     } catch (parseError) {
-      logger.error("Failed to parse request body", "SPHINX_AUTH", { error: parseError });
+      logger.error("Failed to parse request body", "SPHINX_AUTH", {
+        error: parseError,
+      });
       return NextResponse.json(
         { success: false, error: "Invalid request body" },
         { status: 400 }
       );
     }
 
-    const { token, pubkey, alias, photoUrl, routeHint } = body;
+    const { pubkey, alias, photo_url, route_hint } = body;
 
-    // Validate required fields
-    if (!token || typeof token !== "string") {
+    // Validate required pubkey field
+    if (!pubkey || typeof pubkey !== "string") {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid token" },
+        { success: false, error: "Missing or invalid pubkey" },
         { status: 400 }
       );
     }
 
-    if (!pubkey || typeof pubkey !== "string") {
+    // Validate pubkey format (66 hex characters for compressed pubkey)
+    if (!/^[0-9a-f]{66}$/i.test(pubkey)) {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid pubkey" },
+        { success: false, error: "Invalid pubkey format" },
         { status: 400 }
       );
     }
@@ -72,7 +86,10 @@ export async function POST(
         where: { k1: challenge },
       });
     } catch (dbError) {
-      logger.error("Database error fetching challenge", "SPHINX_AUTH", { error: dbError, challenge });
+      logger.error("Database error fetching challenge", "SPHINX_AUTH", {
+        error: dbError,
+        challenge,
+      });
       return NextResponse.json(
         { success: false, error: "Database error" },
         { status: 500 }
@@ -103,20 +120,13 @@ export async function POST(
       );
     }
 
-    // Verify the Lightning signature (timestamp is extracted from token internally)
-    let isValid: boolean;
-    try {
-      isValid = verifySphinxToken(token, pubkey);
-    } catch (verifyError) {
-      logger.error("Error verifying Sphinx token", "SPHINX_AUTH", { error: verifyError });
-      return NextResponse.json(
-        { success: false, error: "Signature verification failed" },
-        { status: 500 }
-      );
-    }
-
+    // Verify the Lightning signature token
+    const isValid = verifySphinxToken(token, pubkey);
     if (!isValid) {
-      logger.warn("Invalid Sphinx signature", "SPHINX_AUTH", { challenge, pubkey });
+      logger.warn("Invalid Sphinx signature", "SPHINX_AUTH", {
+        challenge,
+        pubkey,
+      });
       return NextResponse.json(
         { success: false, error: "Invalid signature" },
         { status: 401 }
@@ -133,7 +143,10 @@ export async function POST(
         },
       });
     } catch (dbError) {
-      logger.error("Failed to update challenge", "SPHINX_AUTH", { error: dbError, challenge });
+      logger.error("Failed to update challenge", "SPHINX_AUTH", {
+        error: dbError,
+        challenge,
+      });
       return NextResponse.json(
         { success: false, error: "Failed to mark challenge as used" },
         { status: 500 }
@@ -146,13 +159,18 @@ export async function POST(
       alias,
     });
 
+    // Return success response matching the format Sphinx app expects
     return NextResponse.json({
       success: true,
+      status: "ok",
+      pubkey,
+      alias: alias || "",
+      photo_url: photo_url || "",
     });
   } catch (error) {
     logger.error("Error in Sphinx verify endpoint", "SPHINX_AUTH", { error });
     return NextResponse.json(
-      { success: false, error: "An unexpected error occurred" },
+      { success: false, error: "Authentication failed" },
       { status: 500 }
     );
   }

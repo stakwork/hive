@@ -133,7 +133,6 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
       expect(sphinxVerify.verifySphinxToken).toHaveBeenCalledWith(
         "invalid-token",
-        testTimestamp,
         testPubkey
       );
     });
@@ -162,7 +161,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         },
       });
 
-      expect(verifySpy).toHaveBeenCalledWith(testToken, testTimestamp, testPubkey);
+      expect(verifySpy).toHaveBeenCalledWith(testToken, testPubkey);
     });
 
     it("should return 401 when signature verification throws error", async () => {

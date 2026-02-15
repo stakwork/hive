@@ -1,41 +1,49 @@
 import { sha256 } from "@noble/hashes/sha256";
 import { Signature } from "@noble/secp256k1";
 import { timingSafeEqual } from "crypto";
+import { logger } from "@/lib/logger";
+
+// Maximum age for token timestamp (5 minutes)
+const MAX_TOKEN_AGE_SECONDS = 300;
 
 /**
  * Parse a base64-encoded Lightning token into timestamp and signature components.
  *
  * @param base64Token - Base64-encoded token string
- * @returns Object with timestampBytes (Buffer) and signature (Buffer)
- * @throws Error if token format is invalid
+ * @returns Object with timestamp, timestampBytes (Buffer) and signature (Buffer), or null if invalid
  */
 function parseTokenString(base64Token: string): {
+  timestamp: number;
   timestampBytes: Buffer;
   signature: Buffer;
-} {
+} | null {
   try {
-    // Decode base64 token
-    const tokenBuffer = Buffer.from(base64Token, "base64");
+    // Decode base64 token (handle URL-safe base64)
+    const normalizedToken = base64Token
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const tokenBuffer = Buffer.from(normalizedToken, "base64");
 
     // Validate token length (4 bytes timestamp + 65 bytes signature = 69 bytes)
     if (tokenBuffer.length !== 69) {
-      throw new Error(
-        `Invalid token length: expected 69 bytes, got ${tokenBuffer.length}`
-      );
+      logger.warn("Invalid token length", "SPHINX_AUTH", {
+        expected: 69,
+        actual: tokenBuffer.length,
+      });
+      return null;
     }
 
-    // Extract timestamp bytes (first 4 bytes)
+    // Extract timestamp bytes (first 4 bytes) and parse as big-endian uint32
     const timestampBytes = tokenBuffer.subarray(0, 4);
+    const timestamp = timestampBytes.readUInt32BE(0);
 
     // Extract signature (remaining 65 bytes)
     const signature = tokenBuffer.subarray(4);
 
-    return { timestampBytes, signature };
+    return { timestamp, timestampBytes, signature };
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to parse token: ${error.message}`);
-    }
-    throw new Error("Failed to parse token");
+    logger.error("Failed to parse token", "SPHINX_AUTH", { error });
+    return null;
   }
 }
 
@@ -44,33 +52,64 @@ function parseTokenString(base64Token: string): {
  *
  * This function implements the Lightning Network signature verification protocol:
  * 1. Parse the token to extract timestamp and signature
- * 2. Construct the message with "Lightning Signed Message:" prefix
- * 3. Double SHA-256 hash the message
- * 4. Recover the public key from the signature
- * 5. Compare recovered key with claimed key using timing-safe comparison
+ * 2. Optionally validate the timestamp is recent (within 5 minutes)
+ * 3. Construct the message with "Lightning Signed Message:" prefix
+ * 4. Double SHA-256 hash the message
+ * 5. Recover the public key from the signature
+ * 6. Compare recovered key with claimed key using timing-safe comparison
  *
- * @param base64Token - Base64-encoded token (69 bytes: 4 timestamp + 65 signature)
- * @param timestamp - Expected timestamp value (for validation)
+ * @param token - Base64-encoded token (69 bytes: 4 timestamp + 65 signature)
  * @param claimedPubkey - The public key claimed by the client (66-char hex string)
+ * @param checkTimestamp - Whether to validate the timestamp is recent (default: true)
  * @returns true if signature is valid and matches claimed pubkey, false otherwise
  *
  * @example
  * ```typescript
  * const isValid = verifySphinxToken(
  *   "AAABjYPQ1ZE...", // base64 token
- *   1707876123,       // timestamp
  *   "02a1b2c3..."     // claimed pubkey (66 hex chars)
  * );
  * ```
  */
 export function verifySphinxToken(
-  base64Token: string,
-  timestamp: number,
-  claimedPubkey: string
+  token: string,
+  claimedPubkey: string,
+  checkTimestamp: boolean = true
 ): boolean {
   try {
     // Parse token into timestamp and signature components
-    const { timestampBytes, signature } = parseTokenString(base64Token);
+    const parsed = parseTokenString(token);
+    if (!parsed) {
+      return false;
+    }
+
+    const { timestamp, timestampBytes, signature } = parsed;
+
+    // Validate timestamp if requested
+    if (checkTimestamp) {
+      const now = Math.floor(Date.now() / 1000);
+
+      // Check if timestamp is in the future
+      if (timestamp > now) {
+        logger.warn("Token timestamp is in the future", "SPHINX_AUTH", {
+          timestamp,
+          now,
+          diff: timestamp - now,
+        });
+        return false;
+      }
+
+      // Check if timestamp is too old
+      if (timestamp < now - MAX_TOKEN_AGE_SECONDS) {
+        logger.warn("Token timestamp is too old", "SPHINX_AUTH", {
+          timestamp,
+          now,
+          diff: now - timestamp,
+          maxAge: MAX_TOKEN_AGE_SECONDS,
+        });
+        return false;
+      }
+    }
 
     // Construct message: "Lightning Signed Message:" prefix + timestamp bytes
     const prefix = Buffer.from("Lightning Signed Message:");
@@ -122,11 +161,7 @@ export function verifySphinxToken(
     return timingSafeEqual(claimedBuffer, recoveredBuffer);
   } catch (error) {
     // Log error but return false for invalid signatures
-    // Don't expose internal error details to prevent information leakage
-    if (error instanceof Error) {
-      // In production, you might want to log this for debugging
-      console.error("Sphinx token verification failed:", error.message);
-    }
+    logger.error("Sphinx token verification failed", "SPHINX_AUTH", { error });
     return false;
   }
 }
