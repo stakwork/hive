@@ -76,6 +76,7 @@ export async function resetDatabase() {
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
+    await db.deployment.deleteMany();
     await db.task.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
@@ -105,6 +106,7 @@ async function aggressiveReset() {
       "attachments",
       "artifacts",
       "chat_messages",
+      "deployments",
       "tasks",
       "janitor_recommendations",
       "janitor_runs",

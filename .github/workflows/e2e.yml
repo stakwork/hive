@@ -52,7 +52,7 @@ jobs:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
         run: npx prisma migrate deploy
 
-      - name: Start application in development mode
+      - name: Start development server
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
