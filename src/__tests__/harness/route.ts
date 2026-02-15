@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { vi } from "vitest";
-import { getServerSession } from "next-auth/next";
+import { getServerSession as getServerSessionNext } from "next-auth/next";
+import { getServerSession as getServerSessionMain } from "next-auth";
 
 export interface InvokeRouteOptions {
   method?: string;
@@ -56,9 +57,10 @@ export async function invokeRoute(
 ): Promise<InvokeRouteResult> {
   const request = createRequest(options);
 
-  vi.mocked(getServerSession).mockResolvedValue(
-    options.session === undefined ? null : options.session,
-  );
+  // Mock both next-auth imports since routes use both
+  const mockSession = options.session === undefined ? null : options.session;
+  vi.mocked(getServerSessionNext).mockResolvedValue(mockSession);
+  vi.mocked(getServerSessionMain).mockResolvedValue(mockSession);
 
   const context = options.params
     ? {

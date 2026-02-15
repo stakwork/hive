@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import {
   ChevronsUpDown,
   LogOut,
   Settings,
   Building2,
+  Zap,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,8 +24,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { SphinxLinkModal } from "@/components/SphinxLinkModal";
 //import { useRouter } from "next/navigation";
 //import type { WorkspaceWithRole } from "@/types/workspace";
 
@@ -37,6 +40,8 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const { data: session } = useSession();
+  const [showSphinxModal, setShowSphinxModal] = useState(false);
   //const { workspace, switchWorkspace } = useWorkspace();
   const { workspace } = useWorkspace();
   //const router = useRouter();
@@ -124,6 +129,15 @@ export function NavUser({
                 Account Settings
               </a>
             </DropdownMenuItem>
+            
+            {/* Add Link Sphinx option - only show if not linked */}
+            {!session?.user?.lightningPubkey && (
+              <DropdownMenuItem onClick={() => setShowSphinxModal(true)}>
+                <Zap className="h-4 w-4" />
+                Link Sphinx
+              </DropdownMenuItem>
+            )}
+            
             <DropdownMenuItem
               onClick={() => signOut({ callbackUrl: "/", redirect: true })}
               data-testid="user-menu-logout"
@@ -134,6 +148,12 @@ export function NavUser({
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
+      
+      {/* Render modal */}
+      <SphinxLinkModal 
+        open={showSphinxModal} 
+        onOpenChange={setShowSphinxModal} 
+      />
     </SidebarMenu>
   );
 }
