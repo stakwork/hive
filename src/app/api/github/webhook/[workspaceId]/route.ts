@@ -673,30 +673,121 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           return NextResponse.json({ success: true }, { status: 202 });
         }
 
-        // Query tasks by commit SHA using raw SQL
+        // Get GitHub API client to fetch commit history
+        const { getUserAppTokens } = await import("@/lib/githubApp");
+        const { Octokit } = await import("@octokit/rest");
+        
+        // Get the repository owner from the webhook payload
+        const repoOwner = payload.repository.owner.login;
+        const repoName = payload.repository.name;
+        
+        // Get last successful deployment of same environment to find commit range
+        // Find the last successful deployment to compare against
+        // For production deployments, look for the last deployment of ANY environment
+        // to ensure we upgrade all tasks that were deployed to staging
+        // For staging deployments, only look for the last staging deployment
+        const lastDeployment = await db.deployment.findFirst({
+          where: {
+            repositoryId: repository.id,
+            environment: environment === "production" ? undefined : "STAGING",
+            status: "SUCCESS",
+          },
+          orderBy: {
+            completedAt: "desc",
+          },
+          select: {
+            commitSha: true,
+            environment: true,
+          },
+        });
+
+        let commitsInDeployment: string[] = [commitSha];
+        
+        // Fetch commit history from GitHub to get all commits in this deployment
+        try {
+          // Get any user's token for this workspace to access the repo
+          const workspaceUser = await db.workspaceMember.findFirst({
+            where: { workspaceId: repository.workspaceId },
+            select: { userId: true },
+          });
+
+          if (workspaceUser) {
+            const tokens = await getUserAppTokens(workspaceUser.userId, repoOwner);
+            if (tokens?.accessToken) {
+              const octokit = new Octokit({ auth: tokens.accessToken });
+              
+              if (lastDeployment?.commitSha) {
+                // Compare commits between last deployment and current deployment
+                try {
+                  const comparison = await octokit.repos.compareCommits({
+                    owner: repoOwner,
+                    repo: repoName,
+                    base: lastDeployment.commitSha,
+                    head: commitSha,
+                  });
+                  
+                  // Extract all commit SHAs from the comparison
+                  commitsInDeployment = comparison.data.commits.map(c => c.sha);
+                  commitsInDeployment.push(commitSha); // Include head commit
+                  
+                  console.log("[GithubWebhook] Found commits in deployment range", {
+                    delivery,
+                    fromSha: lastDeployment.commitSha.substring(0, 7),
+                    toSha: commitSha.substring(0, 7),
+                    commitCount: commitsInDeployment.length,
+                  });
+                } catch (compareError) {
+                  console.warn("[GithubWebhook] Failed to compare commits, using single SHA", {
+                    delivery,
+                    error: compareError,
+                  });
+                }
+              } else {
+                console.log("[GithubWebhook] No previous deployment found, processing single commit", {
+                  delivery,
+                  environment,
+                  commitSha: commitSha.substring(0, 7),
+                });
+              }
+            }
+          }
+        } catch (githubError) {
+          console.warn("[GithubWebhook] Failed to fetch commit history from GitHub", {
+            delivery,
+            error: githubError,
+          });
+        }
+
+        // Query tasks by ALL commit SHAs in the deployment range
         const tasks = await db.$queryRaw<Array<{
           task_id: string;
           workspace_id: string;
           repository_id: string | null;
           artifact_id: string;
           pr_url: string;
+          merge_commit_sha: string;
+          current_deployment_status: string | null;
         }>>`
-          SELECT t.id as task_id, t.workspace_id, t.repository_id,
-                 a.id as artifact_id, a.content->>'url' as pr_url
+          SELECT DISTINCT t.id as task_id, t.workspace_id, t.repository_id,
+                 a.id as artifact_id, a.content->>'url' as pr_url,
+                 a.content->>'merge_commit_sha' as merge_commit_sha,
+                 t.deployment_status as current_deployment_status
           FROM artifacts a
           JOIN chat_messages m ON a.message_id = m.id
           JOIN tasks t ON m.task_id = t.id
           WHERE a.type = 'PULL_REQUEST'
-            AND a.content->>'merge_commit_sha' = ${commitSha}
+            AND a.content->>'merge_commit_sha' = ANY(${commitsInDeployment})
             AND t.deleted = false
             AND t.archived = false
             AND t.workspace_id = ${repository.workspaceId}
         `;
 
-        console.log("[GithubWebhook] Tasks found for commit SHA", {
+        console.log("[GithubWebhook] Tasks found for deployment", {
           delivery,
-          commitSha,
+          commitSha: commitSha.substring(0, 7),
+          commitsInRange: commitsInDeployment.length,
           taskCount: tasks.length,
+          environment,
         });
 
         if (tasks.length === 0) {
@@ -748,49 +839,106 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         // Update task deployment status only for SUCCESS
         if (mappedStatus === "SUCCESS") {
-          const taskIds = tasks.map(t => t.task_id);
-          const updateData: {
-            deploymentStatus: string;
-            deployedToStagingAt?: Date;
-            deployedToProductionAt?: Date;
-          } = {
-            deploymentStatus: environment,
-          };
-
+          console.log("[GithubWebhook] Tasks before filtering", {
+            delivery,
+            environment,
+            tasks: tasks.map(t => ({
+              id: t.task_id,
+              currentStatus: t.current_deployment_status,
+            })),
+          });
+          
+          // Filter tasks based on current status to prevent downgrades
+          let tasksToUpdate = tasks;
+          
           if (environment === "staging") {
-            updateData.deployedToStagingAt = now;
-          } else if (environment === "production") {
-            updateData.deployedToProductionAt = now;
+            // Staging deployment: Only update tasks that are NOT already in production
+            tasksToUpdate = tasks.filter(t => t.current_deployment_status !== "production");
+            
+            const skippedTasks = tasks.filter(t => t.current_deployment_status === "production");
+            if (skippedTasks.length > 0) {
+              console.log("[GithubWebhook] Skipping production tasks for staging deployment", {
+                delivery,
+                skippedCount: skippedTasks.length,
+                skippedTaskIds: skippedTasks.map(t => t.task_id),
+              });
+            }
           }
+          // For production deployments, update all tasks (including upgrades from staging)
+          
+          console.log("[GithubWebhook] Tasks after filtering", {
+            delivery,
+            environment,
+            tasksToUpdate: tasksToUpdate.map(t => ({
+              id: t.task_id,
+              currentStatus: t.current_deployment_status,
+            })),
+          });
 
-          try {
-            await db.task.updateMany({
-              where: {
-                id: { in: taskIds },
-              },
-              data: updateData,
-            });
-
-            console.log("[GithubWebhook] Task deployment status updated", {
-              delivery,
-              taskCount: taskIds.length,
-              environment,
+          if (tasksToUpdate.length > 0) {
+            const taskIds = tasksToUpdate.map(t => t.task_id);
+            const updateData: {
+              deploymentStatus: string;
+              deployedToStagingAt?: Date;
+              deployedToProductionAt?: Date;
+            } = {
               deploymentStatus: environment,
-            });
-          } catch (updateError) {
-            console.error("[GithubWebhook] Failed to update task deployment status", {
+            };
+
+            if (environment === "staging") {
+              updateData.deployedToStagingAt = now;
+            } else if (environment === "production") {
+              updateData.deployedToProductionAt = now;
+            }
+
+            try {
+              const updateResult = await db.task.updateMany({
+                where: {
+                  id: { in: taskIds },
+                },
+                data: updateData,
+              });
+
+              // Verify the update by querying the tasks again
+              const verifyTasks = await db.task.findMany({
+                where: { id: { in: taskIds } },
+                select: { id: true, deploymentStatus: true },
+              });
+              
+              console.log("[GithubWebhook] Task deployment status updated", {
+                delivery,
+                taskCount: taskIds.length,
+                updatedCount: updateResult.count,
+                taskIds: taskIds,
+                environment,
+                deploymentStatus: environment,
+                updateData,
+                upgradedFromStaging: environment === "production" 
+                  ? tasksToUpdate.filter(t => t.current_deployment_status === "staging").length 
+                  : 0,
+                verifyTasks: verifyTasks.map(t => ({ id: t.id, status: t.deploymentStatus })),
+              });
+            } catch (updateError) {
+              console.error("[GithubWebhook] Failed to update task deployment status", {
+                delivery,
+                taskCount: taskIds.length,
+                error: updateError,
+              });
+            }
+          } else {
+            console.log("[GithubWebhook] No tasks to update after filtering", {
               delivery,
-              taskCount: taskIds.length,
-              error: updateError,
+              environment,
+              totalTasks: tasks.length,
             });
           }
 
-          // Broadcast Pusher events for successful deployments
-          if (workspace?.slug) {
+          // Broadcast Pusher events only for tasks that were actually updated
+          if (workspace?.slug && tasksToUpdate.length > 0) {
             // Broadcast to workspace channel for task list updates
             try {
               const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
-              for (const task of tasks) {
+              for (const task of tasksToUpdate) {
                 await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.DEPLOYMENT_STATUS_CHANGE, {
                   taskId: task.task_id,
                   deploymentStatus: environment,
@@ -814,7 +962,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             }
 
             // Broadcast to individual task channels
-            for (const task of tasks) {
+            for (const task of tasksToUpdate) {
               try {
                 const taskChannelName = getTaskChannelName(task.task_id);
                 await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.DEPLOYMENT_STATUS_CHANGE, {
