@@ -94,8 +94,8 @@ describe("ConversationHistorySheet", () => {
     expect(screen.getByText(/I need help setting up OAuth/)).toBeInTheDocument();
     expect(screen.getByText(/What are the best practices/)).toBeInTheDocument();
 
-    // Check relative timestamps (approximate matches)
-    expect(screen.getByText(/hours ago/)).toBeInTheDocument();
+    // Check relative timestamps - verify "Yesterday" is displayed for the second conversation
+    expect(screen.getByText("Yesterday")).toBeInTheDocument();
   });
 
   it("calls onLoadConversation with correct ID on click", async () => {
