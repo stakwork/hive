@@ -37,7 +37,8 @@ export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
   if (calls.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <p>No call recordings found</p>
+        <p className="font-medium">No valid call recordings found</p>
+        <p className="text-sm mt-2">Some recordings may have incomplete data and were filtered out</p>
       </div>
     );
   }
