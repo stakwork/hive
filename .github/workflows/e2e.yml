@@ -53,6 +53,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run Playwright tests
+        # Playwright's webServer will start dev server with these env vars (see playwright.config.ts)
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
