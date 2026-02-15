@@ -94,9 +94,11 @@ export async function POST(request: NextRequest) {
         if (!user.lightningPubkey) continue;
 
         try {
+          // Parse the JSON string first
+          const encryptedData = JSON.parse(user.lightningPubkey);
           const decryptedPubkey = encryptionService.decryptField(
             "lightningPubkey",
-            user.lightningPubkey
+            encryptedData
           );
 
           if (decryptedPubkey === pubkey) {

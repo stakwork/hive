@@ -317,7 +317,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should handle invalid encrypted pubkey gracefully", async () => {
-      // Set invalid encrypted data
+      // Set invalid encrypted data (not valid JSON)
       await db.user.update({
         where: { id: testUserId },
         data: { lightningPubkey: "invalid-encrypted-data" },

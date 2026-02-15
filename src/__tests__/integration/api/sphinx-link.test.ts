@@ -220,9 +220,10 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
       expect(updatedUser?.lightningPubkey).not.toBe(testPubkey); // Should be encrypted
 
       // Verify decryption works
+      const encryptedData = JSON.parse(updatedUser?.lightningPubkey as string);
       const decrypted = encryptionService.decryptField(
         "lightningPubkey",
-        updatedUser?.lightningPubkey as string
+        encryptedData
       );
       expect(decrypted).toBe(testPubkey);
     });
