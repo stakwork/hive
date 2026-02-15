@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
+import { SphinxLinkSettings } from "@/components/settings/SphinxLinkSettings";
 import { Github } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 
@@ -57,6 +58,8 @@ export default async function UserSettingsPage() {
           </div>
           
           <ThemeSettings />
+
+          <SphinxLinkSettings />
 
           <Card>
             <CardHeader>
