@@ -521,10 +521,12 @@ export async function processStakworkRunWebhook(
   }
 
   // Step 1: Atomic update to prevent race conditions
+  // Include COMPLETED in the status filter so the result webhook can still
+  // write data even if the status-only webhook (/api/stakwork/webhook) arrived first.
   const updateResult = await db.stakworkRun.updateMany({
     where: {
       id: run.id,
-      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
     },
     data: {
       status,
