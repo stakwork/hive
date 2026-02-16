@@ -357,7 +357,7 @@ export async function createDiagramStakworkRun(input: {
   layout: string;
   userId: string;
 }) {
-  // Validate workspace access
+  // Validate workspace access and fetch swarm credentials
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
     select: {
@@ -367,6 +367,15 @@ export async function createDiagramStakworkRun(input: {
       members: {
         where: { userId: input.userId },
         select: { role: true },
+      },
+      swarm: {
+        select: {
+          swarmUrl: true,
+          swarmApiKey: true,
+          swarmSecretAlias: true,
+          poolName: true,
+          id: true,
+        },
       },
     },
   });
@@ -381,6 +390,15 @@ export async function createDiagramStakworkRun(input: {
   if (!isOwner && !isMember) {
     throw new Error("Access denied");
   }
+
+  // Decrypt swarm API key
+  const decryptedSwarmApiKey =
+    workspace.swarm?.swarmApiKey
+      ? encryptionService.decryptField(
+          "swarmApiKey",
+          workspace.swarm.swarmApiKey
+        )
+      : null;
 
   const baseUrl = getBaseUrl();
 
@@ -411,11 +429,22 @@ export async function createDiagramStakworkRun(input: {
       throw new Error("STAKWORK_DIAGRAM_WORKFLOW_ID not configured");
     }
 
-    const vars = {
+    const vars: Record<string, unknown> = {
       runId: run.id,
+      type: StakworkRunType.DIAGRAM_GENERATION,
+      workspaceId: input.workspaceId,
+      featureId: input.featureId,
+      webhookUrl,
+
+      // Swarm data
+      swarmUrl: workspace.swarm?.swarmUrl || null,
+      swarmApiKey: decryptedSwarmApiKey,
+      swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
+      poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
+
+      // Diagram-specific data
       architectureText: input.architectureText,
       layout: input.layout,
-      webhookUrl,
     };
 
     const stakworkPayload = {
