@@ -79,31 +79,31 @@ jobs:
             exit 1
           fi
           
-          echo "Waiting for Neon branch to become ready..."
-          
-          for i in {1..20}; do
-            STATUS_RESPONSE=$(curl -s \
+          echo "Waiting for Neon compute endpoint..."
+
+          for i in {1..30}; do
+            ENDPOINT_RESPONSE=$(curl -s \
               -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID")
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/endpoints")
           
-            STATE=$(echo "$STATUS_RESPONSE" | jq -r '.branch.current_state')
-            DB_HOST=$(echo "$STATUS_RESPONSE" | jq -r '.endpoints[0].host')
+            DB_HOST=$(echo "$ENDPOINT_RESPONSE" | jq -r '.endpoints[0].host')
           
-            if [ "$STATE" = "ready" ] && [ "$DB_HOST" != "null" ]; then
-              echo "Neon branch ready."
+            if [ "$DB_HOST" != "null" ] && [ -n "$DB_HOST" ]; then
+              echo "Neon endpoint ready."
               break
             fi
           
-            echo "Still provisioning... ($i)"
+            echo "Still provisioning compute... ($i)"
             sleep 3
           done
           
           if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
-            echo "❌ Neon branch never became ready"
+            echo "❌ Neon endpoint never became ready"
             exit 1
           fi
           
           echo "db_host=$DB_HOST" >> "$GITHUB_OUTPUT"
+          
           
 
       ############################################################
