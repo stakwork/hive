@@ -217,7 +217,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
 
       expect(response.status).toBe(403);
       const data = await response.json();
-      expect(data.error).toContain('Workspace');
+      expect(data.error).toContain('workspace');
     });
   });
 
@@ -282,7 +282,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
 
       expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.error).toContain('Swarm URL');
+      expect(data.error).toContain('Swarm not configured');
     });
 
     it('should return 404 when repository is not configured', async () => {
@@ -315,7 +315,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
 
       expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.error).toContain('Repository');
+      expect(data.error).toContain('repositories');
     });
 
     it('should return 404 when user has no GitHub PAT', async () => {
