@@ -86,6 +86,11 @@ jobs:
           NEXTAUTH_SECRET: fake_secret
           JWT_SECRET: fake_secret
           POD_URL: http://localhost:3000
+          PGUSER: hive_user
+          PGPASSWORD: hive_password
+          PGDATABASE: hive_db
+          PGHOST: localhost
+          PGPORT: 5432
         run: npx playwright test
 
       - name: Upload Playwright Report
