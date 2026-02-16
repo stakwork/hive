@@ -25,9 +25,9 @@ jobs:
         id: slot
         run: |
           URLS=(
-            "preview-1.yourdomain.com"
-            "preview-2.yourdomain.com"
-            "preview-3.yourdomain.com"
+            "hive-preview-1.sphinx.chat"
+            "hive-preview-2.sphinx.chat"
+            "hive-preview-3.sphinx.chat"
           )
 
           INDEX=$((${{ github.event.pull_request.number }} % ${#URLS[@]}))
@@ -37,25 +37,50 @@ jobs:
       # 2️⃣ Create Neon Temporary Branch
       ############################################################
 
-      - name: Create Neon Branch
+      - name: Create Neon Branch (Fork from staging)
         id: neon
         run: |
-          BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
+          set -e
 
-          RESPONSE=$(curl -s -X POST "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+          BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
+          EXPIRY=$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ')
+
+          ########################################
+          # 1️⃣ Get staging branch ID
+          ########################################
+
+          STAGING_RESPONSE=$(curl -s \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+
+          STAGING_ID=$(echo "$STAGING_RESPONSE" | jq -r '.branches[] | select(.name=="staging") | .id')
+
+          if [ -z "$STAGING_ID" ] || [ "$STAGING_ID" = "null" ]; then
+            echo "❌ Could not find staging branch in Neon project"
+            exit 1
+          fi
+
+          ########################################
+          # 2️⃣ Create PR branch from staging
+          ########################################
+
+          RESPONSE=$(curl -s -X POST \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"branch\": {
-                \"name\": \"$BRANCH_NAME\",
-                \"expires_at\": \"$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ')\"
-              }
-            }")
+            -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$STAGING_ID\",\"expires_at\":\"$EXPIRY\"}}")
 
           echo "$RESPONSE"
 
-          DB_HOST=$(echo $RESPONSE | jq -r '.branch.endpoints[0].host')
+          DB_HOST=$(echo "$RESPONSE" | jq -r '.branch.endpoints[0].host')
+
+          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+            echo "❌ Failed to create Neon branch"
+            exit 1
+          fi
+
           echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
+
 
       ############################################################
       # 3️⃣ Create GitHub Deployment
