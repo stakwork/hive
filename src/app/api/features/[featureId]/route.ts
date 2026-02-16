@@ -14,6 +14,17 @@ export async function GET(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { featureId } = await params;
+    
+    // Get sort parameter from query string, default to updatedAt
+    const { searchParams } = new URL(request.url);
+    const sortBy = searchParams.get("sortBy") || "updatedAt";
+    
+    // Validate sortBy parameter
+    const validSortFields = ["createdAt", "updatedAt", "order"];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "updatedAt";
+    
+    // Determine sort order based on field
+    const sortOrder = sortField === "order" ? "asc" : "desc";
 
     const feature = await db.feature.findUnique({
       where: {
@@ -94,7 +105,7 @@ export async function GET(
                 deleted: false,
               },
               orderBy: {
-                order: "asc",
+                [sortField]: sortOrder,
               },
               select: {
                 id: true,
@@ -140,7 +151,7 @@ export async function GET(
             deleted: false,
           },
           orderBy: {
-            order: "asc",
+            [sortField]: sortOrder,
           },
           select: {
             id: true,

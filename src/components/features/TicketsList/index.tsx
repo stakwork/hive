@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network, Play, GitMerge } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
@@ -77,6 +78,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
 
   // View toggle
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
+  
+  // Sort state
+  const [sortBy, setSortBy] = useState<"updatedAt" | "createdAt" | "order">("updatedAt");
 
   // AI generation state
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
@@ -109,8 +113,21 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
   // Get the default phase (Phase 1)
   const defaultPhase = feature.phases?.[0];
 
-  // Get all tickets from the default phase
-  const tickets = defaultPhase?.tasks || [];
+  // Get all tickets from the default phase and sort them
+  const tickets = useMemo(() => {
+    const rawTickets = defaultPhase?.tasks || [];
+    const sorted = [...rawTickets];
+    
+    if (sortBy === "updatedAt") {
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } else if (sortBy === "createdAt") {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (sortBy === "order") {
+      sorted.sort((a, b) => a.order - b.order);
+    }
+    
+    return sorted;
+  }, [defaultPhase?.tasks, sortBy]);
 
   // Filter for unassigned tasks (Start button visibility)
   const unassignedTasks = tickets.filter((task) => !task.assignee);
@@ -704,9 +721,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
         </div>
       )}
 
-      {/* View Toggle */}
+      {/* View Toggle and Sort Filter */}
       {tickets.length > 0 && (
-        <div className="flex justify-start">
+        <div className="flex justify-between items-center">
           <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
             <TabsList>
               <TabsTrigger value="table" className="gap-2">
@@ -717,6 +734,20 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
               </TabsTrigger>
             </TabsList>
           </Tabs>
+          
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Sort by:</Label>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as "updatedAt" | "createdAt" | "order")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updatedAt">Last Updated</SelectItem>
+                <SelectItem value="createdAt">Created Date</SelectItem>
+                <SelectItem value="order">Manual Order</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
