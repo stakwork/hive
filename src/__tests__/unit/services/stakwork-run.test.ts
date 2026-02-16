@@ -1155,7 +1155,7 @@ describe("Stakwork Run Service", () => {
       expect(db.stakworkRun.updateMany).toHaveBeenCalledWith({
         where: {
           id: "run-1",
-          status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+          status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
         },
         data: {
           status: WorkflowStatus.COMPLETED,
