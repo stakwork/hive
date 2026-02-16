@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -15,14 +16,20 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
-import { useEffect, useState } from "react";
-import { Search, X, List, LayoutGrid } from "lucide-react";
+import { Search, X, List, LayoutGrid, ArrowUpDown } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { KanbanView } from "@/components/ui/kanban-view";
 import { TASK_KANBAN_COLUMNS } from "@/types/roadmap";
 import { TaskStatus } from "@prisma/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface TasksListProps {
   workspaceId: string;
@@ -55,6 +62,16 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   // Filter state
   const [filters, setFilters] = useState<TaskFiltersType>({});
+
+  // Sort state with localStorage persistence
+  type SortOption = "updatedDesc" | "updatedAsc" | "createdDesc" | "createdAsc";
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tasks-sort-preference");
+      return (saved as SortOption) || "updatedDesc";
+    }
+    return "updatedDesc";
+  });
 
   // Use larger page limit for Kanban view to load more items at once
   const pageLimit = viewType === "kanban" ? 100 : 10;
@@ -104,6 +121,31 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     }
   };
 
+  const handleSortChange = (value: SortOption) => {
+    setSortBy(value);
+    localStorage.setItem("tasks-sort-preference", value);
+  };
+
+  // Sort tasks based on selected option
+  const sortTasks = (tasksToSort: typeof tasks) => {
+    return [...tasksToSort].sort((a, b) => {
+      switch (sortBy) {
+        case "updatedDesc":
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        case "updatedAsc":
+          return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        case "createdDesc":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case "createdAsc":
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        default:
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      }
+    });
+  };
+
+  const sortedTasks = sortTasks(tasks);
+
   // Refresh task list when global notification count changes
   useEffect(() => {
     refetch();
@@ -151,7 +193,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
         </CardHeader>
 
         <CardContent>
-          {/* Filters and Search Bar */}
+          {/* Filters, Search Bar, and Sort */}
           <div className="flex items-center gap-2 mb-4">
             <TaskFilters
               filters={filters}
@@ -159,35 +201,55 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               onClearFilters={handleClearFilters}
             />
             <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={handleClearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={handleClearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
+            <Select value={sortBy} onValueChange={handleSortChange}>
+              <SelectTrigger className="w-[200px]" data-testid="sort-select">
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updatedDesc" data-testid="sort-updated-desc">
+                  Updated (Newest)
+                </SelectItem>
+                <SelectItem value="updatedAsc" data-testid="sort-updated-asc">
+                  Updated (Oldest)
+                </SelectItem>
+                <SelectItem value="createdDesc" data-testid="sort-created-desc">
+                  Created (Newest)
+                </SelectItem>
+                <SelectItem value="createdAsc" data-testid="sort-created-asc">
+                  Created (Oldest)
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {viewType === "list" ? (
             <>
               <TabsContent value="active" className="mt-4 space-y-3">
-                {tasks.length === 0 ? (
+                {sortedTasks.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     No active tasks
                   </div>
                 ) : (
                   <>
-                    {tasks.map((task) => (
+                    {sortedTasks.map((task) => (
                       <TaskCard
                         key={task.id}
                         task={task}
@@ -214,13 +276,13 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               </TabsContent>
 
               <TabsContent value="archived" className="mt-4 space-y-3">
-                {tasks.length === 0 ? (
+                {sortedTasks.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     No archived tasks
                   </div>
                 ) : (
                   <>
-                    {tasks.map((task) => (
+                    {sortedTasks.map((task) => (
                       <TaskCard
                         key={task.id}
                         task={task}
@@ -248,7 +310,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
           ) : (
             <div className="mt-4">
               <KanbanView
-                items={tasks}
+                items={sortedTasks}
                 columns={TASK_KANBAN_COLUMNS}
                 getItemStatus={(task) => task.status as TaskStatus}
                 getItemId={(task) => task.id}
@@ -261,9 +323,11 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                   />
                 )}
                 sortItems={(a, b) => {
+                  // Priority sorting for action artifacts, then respect user's sort preference
                   if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
                   if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
-                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                  // Already sorted by sortTasks function
+                  return 0;
                 }}
                 loading={loading}
               />
