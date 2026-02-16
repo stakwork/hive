@@ -6,11 +6,13 @@ import { Sidebar } from '@/components/Sidebar';
 import * as useWorkspaceModule from '@/hooks/useWorkspace';
 import * as usePoolStatusModule from '@/hooks/usePoolStatus';
 import * as useFeatureFlagModule from '@/hooks/useFeatureFlag';
+import * as runtimeModule from '@/lib/runtime';
 
 // Mock the hooks and components
 vi.mock('@/hooks/useWorkspace');
 vi.mock('@/hooks/usePoolStatus');
 vi.mock('@/hooks/useFeatureFlag');
+vi.mock('@/lib/runtime');
 vi.mock('@/components/NavUser', () => ({
   NavUser: () => <div data-testid="nav-user">NavUser</div>,
 }));
@@ -337,6 +339,352 @@ describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component ren
       await waitFor(() => {
         expect(screen.queryByText('Report a Bug')).not.toBeInTheDocument();
       });
+    });
+  });
+});
+
+describe.skip('Sidebar - Stak Toolkit Section (DISABLED - complex component rendering)', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    // Mock useFeatureFlag to return false by default
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    
+    // Mock usePoolStatus to return null by default
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  describe('Visibility', () => {
+    it('should show Stak Toolkit section in stakwork workspace', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Check for Stak Toolkit parent section
+      expect(screen.getByText('Stak Toolkit')).toBeInTheDocument();
+    });
+
+    it('should show Stak Toolkit section in development mode', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'test-workspace',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(true);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Check for Stak Toolkit parent section
+      expect(screen.getByText('Stak Toolkit')).toBeInTheDocument();
+    });
+
+    it('should hide Stak Toolkit section in non-stakwork workspace without dev mode', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'test-workspace',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Check that Stak Toolkit parent section is not present
+      expect(screen.queryByText('Stak Toolkit')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Navigation Items', () => {
+    beforeEach(() => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    });
+
+    it('should render three child items: Prompts, Workflows, Projects', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar user={mockUser} />);
+
+      // Click to expand Stak Toolkit section
+      const stakToolkitButton = screen.getByText('Stak Toolkit');
+      await user.click(stakToolkitButton);
+
+      // Verify all three child items are present
+      expect(screen.getByText('Prompts')).toBeInTheDocument();
+      expect(screen.getByText('Workflows')).toBeInTheDocument();
+      expect(screen.getByText('Projects')).toBeInTheDocument();
+    });
+
+    it('should render navigation items with correct hrefs', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar user={mockUser} />);
+
+      // Click to expand Stak Toolkit section
+      const stakToolkitButton = screen.getByText('Stak Toolkit');
+      await user.click(stakToolkitButton);
+
+      // Find links and verify hrefs
+      const promptsLink = screen.getByText('Prompts').closest('a');
+      const workflowsLink = screen.getByText('Workflows').closest('a');
+      const projectsLink = screen.getByText('Projects').closest('a');
+
+      expect(promptsLink).toHaveAttribute('href', '/w/stakwork/prompts');
+      expect(workflowsLink).toHaveAttribute('href', '/w/stakwork/workflows');
+      expect(projectsLink).toHaveAttribute('href', '/w/stakwork/projects');
+    });
+
+    it('should render items in correct order: Prompts, Workflows, Projects', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar user={mockUser} />);
+
+      // Click to expand Stak Toolkit section
+      const stakToolkitButton = screen.getByText('Stak Toolkit');
+      await user.click(stakToolkitButton);
+
+      // Get all navigation items and verify order
+      const items = screen.getAllByRole('link');
+      const stakToolkitItems = items.filter(item => 
+        item.textContent === 'Prompts' || 
+        item.textContent === 'Workflows' || 
+        item.textContent === 'Projects'
+      );
+
+      expect(stakToolkitItems).toHaveLength(3);
+      expect(stakToolkitItems[0]).toHaveTextContent('Prompts');
+      expect(stakToolkitItems[1]).toHaveTextContent('Workflows');
+      expect(stakToolkitItems[2]).toHaveTextContent('Projects');
+    });
+  });
+
+  describe('Section Positioning', () => {
+    it('should position Stak Toolkit section above Build section', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Get all section buttons (parent navigation items)
+      const buttons = screen.getAllByRole('button');
+      const sectionButtons = buttons.filter(btn => 
+        btn.textContent === 'Stak Toolkit' || 
+        btn.textContent === 'Build'
+      );
+
+      // Find indices
+      const stakToolkitIndex = sectionButtons.findIndex(btn => btn.textContent === 'Stak Toolkit');
+      const buildIndex = sectionButtons.findIndex(btn => btn.textContent === 'Build');
+
+      // Verify Stak Toolkit comes before Build
+      expect(stakToolkitIndex).toBeGreaterThanOrEqual(0);
+      expect(buildIndex).toBeGreaterThanOrEqual(0);
+      expect(stakToolkitIndex).toBeLessThan(buildIndex);
+    });
+  });
+
+  describe('Expand/Collapse Behavior', () => {
+    beforeEach(() => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    });
+
+    it('should start collapsed by default', () => {
+      render(<Sidebar user={mockUser} />);
+
+      // Stak Toolkit parent should be visible
+      expect(screen.getByText('Stak Toolkit')).toBeInTheDocument();
+
+      // Children should not be visible initially
+      expect(screen.queryByText('Prompts')).not.toBeInTheDocument();
+      expect(screen.queryByText('Workflows')).not.toBeInTheDocument();
+      expect(screen.queryByText('Projects')).not.toBeInTheDocument();
+    });
+
+    it('should expand section when clicked', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar user={mockUser} />);
+
+      // Click to expand
+      const stakToolkitButton = screen.getByText('Stak Toolkit');
+      await user.click(stakToolkitButton);
+
+      // Children should now be visible
+      await waitFor(() => {
+        expect(screen.getByText('Prompts')).toBeInTheDocument();
+        expect(screen.getByText('Workflows')).toBeInTheDocument();
+        expect(screen.getByText('Projects')).toBeInTheDocument();
+      });
+    });
+
+    it('should collapse section when clicked again', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar user={mockUser} />);
+
+      // Click to expand
+      const stakToolkitButton = screen.getByText('Stak Toolkit');
+      await user.click(stakToolkitButton);
+
+      // Wait for expansion
+      await waitFor(() => {
+        expect(screen.getByText('Prompts')).toBeInTheDocument();
+      });
+
+      // Click again to collapse
+      await user.click(stakToolkitButton);
+
+      // Children should be hidden
+      await waitFor(() => {
+        expect(screen.queryByText('Prompts')).not.toBeInTheDocument();
+        expect(screen.queryByText('Workflows')).not.toBeInTheDocument();
+        expect(screen.queryByText('Projects')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Integration with Existing Navigation', () => {
+    it('should not affect other navigation sections', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Verify other navigation sections still exist
+      expect(screen.getByText('Graph')).toBeInTheDocument();
+      expect(screen.getByText('Capacity')).toBeInTheDocument();
+      expect(screen.getByText('Build')).toBeInTheDocument();
+      expect(screen.getByText('Context')).toBeInTheDocument();
+    });
+
+    it('should maintain workspace switcher and user nav', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Stakwork',
+        slug: 'stakwork',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        slug: 'stakwork',
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+      render(<Sidebar user={mockUser} />);
+
+      // Verify workspace switcher and nav user are still present
+      expect(screen.getByTestId('workspace-switcher')).toBeInTheDocument();
+      expect(screen.getByTestId('nav-user')).toBeInTheDocument();
     });
   });
 });

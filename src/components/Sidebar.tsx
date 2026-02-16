@@ -12,6 +12,7 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
+  FileText,
   Map,
   Menu,
   PenLine,
@@ -20,6 +21,7 @@ import {
   Settings,
   ShieldCheck,
   TestTube2,
+  Workflow,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
@@ -32,6 +34,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
+import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
@@ -321,10 +324,32 @@ export function Sidebar({ user }: SidebarProps) {
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
   );
 
+  // Create Stak Toolkit items if in stakwork workspace or dev mode
+  const devMode = isDevelopmentMode();
+  const stakToolkitItems: NavigationItem[] = (workspaceSlug === "stakwork" || devMode) ? [
+    {
+      icon: Workflow,
+      label: "Stak Toolkit",
+      href: "/stak-toolkit",
+      children: [
+        { icon: FileText, label: "Prompts", href: "/prompts" },
+        { icon: Workflow, label: "Workflows", href: "/workflows" },
+        { icon: Workflow, label: "Projects", href: "/projects" },
+      ],
+    },
+  ] : [];
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
-  const navigationItems = baseNavigationItems.filter(
+  // Insert Stak Toolkit items before Build section
+  const allNavigationItems = [
+    ...baseNavigationItems.slice(0, 2), // Graph and Capacity
+    ...stakToolkitItems, // Stak Toolkit (conditionally)
+    ...baseNavigationItems.slice(2), // Build, Protect, Context
+  ];
+
+  const navigationItems = allNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),
   );
 
