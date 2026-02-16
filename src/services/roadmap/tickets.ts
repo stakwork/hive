@@ -38,6 +38,9 @@ export async function getTicket(
       phaseId: true,
       bountyCode: true,
       dependsOnTaskIds: true,
+      deploymentStatus: true,
+      deployedToStagingAt: true,
+      deployedToProductionAt: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -194,6 +197,7 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
+      autoMerge: data.autoMerge ?? true,
       createdById: userId,
       updatedById: userId,
     },
@@ -206,13 +210,27 @@ export async function createTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      workspaceId: true,
       bountyCode: true,
       dependsOnTaskIds: true,
+      runBuild: true,
+      runTestSuite: true,
+      autoMerge: true,
+      deploymentStatus: true,
+      deployedToStagingAt: true,
+      deployedToProductionAt: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
       },
       phase: {
         select: {
@@ -292,6 +310,26 @@ export async function updateTicket(
 
   if (data.runTestSuite !== undefined) {
     updateData.runTestSuite = data.runTestSuite;
+  }
+
+  if (data.autoMerge !== undefined) {
+    updateData.autoMerge = data.autoMerge;
+  }
+
+  if (data.repositoryId !== undefined) {
+    if (data.repositoryId !== null) {
+      const repository = await db.repository.findFirst({
+        where: {
+          id: data.repositoryId,
+          workspaceId: task.feature?.workspace.id,
+        },
+      });
+
+      if (!repository) {
+        throw new Error("Repository not found or does not belong to this workspace");
+      }
+    }
+    updateData.repositoryId = data.repositoryId;
   }
 
   if (data.phaseId !== undefined) {
@@ -413,13 +451,27 @@ export async function updateTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      workspaceId: true,
       bountyCode: true,
       dependsOnTaskIds: true,
+      runBuild: true,
+      runTestSuite: true,
+      autoMerge: true,
+      deploymentStatus: true,
+      deployedToStagingAt: true,
+      deployedToProductionAt: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
       },
       phase: {
         select: {
@@ -565,13 +617,25 @@ export async function reorderTickets(
       order: true,
       featureId: true,
       phaseId: true,
+      workspaceId: true,
       bountyCode: true,
+      autoMerge: true,
       dependsOnTaskIds: true,
+      deploymentStatus: true,
+      deployedToStagingAt: true,
+      deployedToProductionAt: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
       },
       phase: {
         select: {

@@ -11,7 +11,7 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
 import { extractEnvVarsFromPM2Config, SERVICE_CONFIG_ENV_VARS } from "@/utils/devContainerUtils";
-import { SwarmStatus } from "@prisma/client";
+import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -35,6 +35,7 @@ const stakgraphSettingsSchema = z.object({
         codeIngestionEnabled: z.boolean().optional(),
         docsEnabled: z.boolean().optional(),
         mocksEnabled: z.boolean().optional(),
+        embeddingsEnabled: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -440,6 +441,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const settings = validationResult.data;
 
+    // Track new repositories being created (needed for pending repair trigger)
+    let reposToCreate: Array<{
+      id?: string;
+      repositoryUrl: string;
+      branch: string;
+      name: string;
+      codeIngestionEnabled?: boolean;
+      docsEnabled?: boolean;
+      mocksEnabled?: boolean;
+      embeddingsEnabled?: boolean;
+    }> = [];
+
     // Only process repositories if provided
     if (settings.repositories && settings.repositories.length > 0) {
       const existingRepos = await db.repository.findMany({
@@ -450,7 +463,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const existingRepoIds = existingRepos.map((r) => r.id);
       const incomingRepoIds = incomingRepos.filter((r) => r.id).map((r) => r.id!);
 
-      const reposToCreate = incomingRepos.filter((r) => !r.id);
+      reposToCreate = incomingRepos.filter((r) => !r.id);
       if (reposToCreate.length > 0) {
         await db.repository.createMany({
           data: reposToCreate.map((repo) => ({
@@ -461,6 +474,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             codeIngestionEnabled: repo.codeIngestionEnabled ?? true,
             docsEnabled: repo.docsEnabled ?? true,
             mocksEnabled: repo.mocksEnabled ?? true,
+            embeddingsEnabled: repo.embeddingsEnabled ?? true,
           })),
         });
       }
@@ -476,6 +490,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             codeIngestionEnabled: repo.codeIngestionEnabled,
             docsEnabled: repo.docsEnabled,
             mocksEnabled: repo.mocksEnabled,
+            embeddingsEnabled: repo.embeddingsEnabled,
           },
         });
       }
@@ -507,9 +522,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
 
-    // Get repo name for pm2 generation
+    // Get all repo names for pm2 generation (needed for multi-repo cwd resolution)
     const primaryRepo = await getPrimaryRepository(workspace.id);
-    const repoName = extractRepoName(primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl);
+    const allRepos = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: { repositoryUrl: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const repoNames = allRepos.map((r) => extractRepoName(r.repositoryUrl));
+    // Fallback to incoming repos if no repos in DB yet
+    if (repoNames.length === 0 && settings.repositories) {
+      repoNames.push(...settings.repositories.map((r) => extractRepoName(r.repositoryUrl)));
+    }
 
     // Get global env vars for PM2 config generation
     const globalEnvVars = Array.isArray(settings.environmentVariables)
@@ -522,7 +546,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       (existingSwarm?.containerFiles as unknown as Record<string, string>) || {},
       settings.services as SwarmServiceConfig[] | undefined,
       settings.containerFiles,
-      repoName,
+      repoNames,
       globalEnvVars,
     );
 
@@ -668,6 +692,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!syncResult2.success) {
         console.error("Failed to sync settings to Pool Manager:", syncResult2.error);
       }
+    }
+
+    // Set pending repair trigger if new repositories were added
+    if (reposToCreate.length > 0) {
+      const repoNames = reposToCreate.map((r) => r.name).join(", ");
+      const primaryNewRepo = reposToCreate[0];
+
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          pendingRepairTrigger: {
+            repoUrl: primaryNewRepo.repositoryUrl,
+            repoName: repoNames,
+            requestedAt: new Date().toISOString(),
+          },
+          podState: PodState.NOT_STARTED,
+        },
+      });
+
+      console.log(`[Stakgraph] Set pending repair trigger for ${slug}: ${repoNames}`);
     }
 
     const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };

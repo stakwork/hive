@@ -54,12 +54,14 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
     status: msg.status,
     timestamp: msg.createdAt.toISOString(),
     contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
-    artifacts: msg.artifacts.map((artifact) => ({
-      id: artifact.id,
-      type: artifact.type,
-      content: artifact.content,
-      icon: artifact.icon,
-    })),
+    artifacts: msg.artifacts
+      .filter((artifact) => artifact.type === "LONGFORM")
+      .map((artifact) => ({
+        id: artifact.id,
+        type: artifact.type,
+        content: artifact.content,
+        icon: artifact.icon,
+      })),
     attachments:
       msg.attachments?.map((attachment) => ({
         id: attachment.id,
@@ -155,6 +157,13 @@ export async function POST(request: NextRequest) {
         agentPassword: true,
         featureId: true,
         phaseId: true,
+        repository: {
+          select: {
+            name: true,
+            repositoryUrl: true,
+            branch: true,
+          },
+        },
         workspace: {
           select: {
             ownerId: true,
@@ -299,10 +308,10 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    // Extract repository URL, branch, and name from workspace repositories
-    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
-    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
-    const repoName = task.workspace.repositories?.[0]?.name || null;
+    // Extract repository URL, branch, and name — prefer task-linked repo, fallback to workspace first repo
+    const repoUrl = task.repository?.repositoryUrl || task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.repository?.branch || task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.repository?.name || task.workspace.repositories?.[0]?.name || null;
     const taskBranch = task.branch || null;
 
     let stakworkData = null;

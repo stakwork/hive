@@ -280,6 +280,7 @@ describe("pusher.ts", () => {
         PROVENANCE_DATA: "provenance-data",
         PR_STATUS_CHANGE: "pr-status-change",
         BOUNTY_STATUS_CHANGE: "bounty-status-change",
+        DEPLOYMENT_STATUS_CHANGE: "deployment-status-change",
         WHITEBOARD_ELEMENTS_UPDATE: "whiteboard-elements-update",
         WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
         WHITEBOARD_USER_JOIN: "whiteboard-user-join",

@@ -267,7 +267,6 @@ export function useWhiteboardCollaboration({
 
           excalidrawAPI.updateScene({
             elements: mergedElements,
-
             appState: data.appState as any,
           });
 

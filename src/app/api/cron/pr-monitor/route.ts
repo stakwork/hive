@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
     console.log("[PRMonitorCron] Starting PR monitoring run");
 
     // Execute the PR monitoring
-    // Default to checking 10 PRs per run to stay within rate limits
-    const maxPRs = parseInt(process.env.PR_MONITOR_MAX_PRS || "10", 10);
+    // Default to checking 20 PRs per run to stay within rate limits
+    const maxPRs = parseInt(process.env.PR_MONITOR_MAX_PRS || "20", 10);
     console.log("[PRMonitorCron] Config", { maxPRs });
 
     const stats = await monitorOpenPRs(maxPRs);

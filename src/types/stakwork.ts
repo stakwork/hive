@@ -75,6 +75,7 @@ export const CreateStakworkRunSchema = z.object({
     content: z.string(),
   })).optional(),
   includeHistory: z.boolean().optional(),
+  autoAccept: z.boolean().optional(),
 });
 
 export const StakworkRunWebhookSchema = z.object({
@@ -129,6 +130,15 @@ export interface StakworkRunListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface StopStakworkRunResponse {
+  success: boolean;
+  run: {
+    id: string;
+    status: WorkflowStatus;
+    updatedAt: string;
+  };
 }
 
 // Helper type for determining data type

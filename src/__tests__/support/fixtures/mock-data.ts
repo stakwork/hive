@@ -180,6 +180,44 @@ export const mockData = {
     };
   },
 
+  invalidJarvisNode(missing: 'episode_title' | 'date_added_to_graph' | 'both') {
+    const base = {
+      ref_id: 'invalid-call-123',
+      node_type: 'Episode',
+    };
+    
+    if (missing === 'date_added_to_graph') {
+      return {
+        ...base,
+        properties: {
+          episode_title: 'Valid Title',
+          media_url: 'https://example.com/media.mp4',
+          source_link: 'https://example.com/source',
+        },
+      };
+    }
+    
+    if (missing === 'episode_title') {
+      return {
+        ...base,
+        date_added_to_graph: 1750694095.264704,
+        properties: {
+          media_url: 'https://example.com/media.mp4',
+          source_link: 'https://example.com/source',
+        },
+      };
+    }
+    
+    // missing === 'both'
+    return {
+      ...base,
+      properties: {
+        media_url: 'https://example.com/media.mp4',
+        source_link: 'https://example.com/source',
+      },
+    };
+  },
+
   jarvisSearchResponse(nodes: Array<Record<string, unknown>> = []) {
     return {
       nodes: nodes.length > 0 ? nodes : [mockData.jarvisNode()],

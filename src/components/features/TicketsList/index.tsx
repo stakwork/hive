@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
@@ -18,11 +19,13 @@ import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
-import { usePusherConnection, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { usePusherConnection, TaskTitleUpdateEvent, DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
@@ -71,9 +74,13 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     email: string | null;
     image: string | null;
   } | null>(null);
+  const [newTicketAutoMerge, setNewTicketAutoMerge] = useState(true);
 
   // View toggle
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
+  
+  // Sort state
+  const [sortBy, setSortBy] = useState<"updatedAt" | "createdAt" | "order">("updatedAt");
 
   // AI generation state
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
@@ -88,7 +95,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
   const { createTicket, loading: creatingTicket } = useRoadmapTaskMutations();
 
   // Deep research hooks
-  const { latestRun, refetch: refetchStakworkRun } = useStakworkGeneration({
+  const { latestRun, refetch: refetchStakworkRun, stopRun, isStopping } = useStakworkGeneration({
     featureId,
     type: "TASK_GENERATION",
     enabled: true,
@@ -106,8 +113,21 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
   // Get the default phase (Phase 1)
   const defaultPhase = feature.phases?.[0];
 
-  // Get all tickets from the default phase
-  const tickets = defaultPhase?.tasks || [];
+  // Get all tickets from the default phase and sort them
+  const tickets = useMemo(() => {
+    const rawTickets = defaultPhase?.tasks || [];
+    const sorted = [...rawTickets];
+    
+    if (sortBy === "updatedAt") {
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } else if (sortBy === "createdAt") {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (sortBy === "order") {
+      sorted.sort((a, b) => a.order - b.order);
+    }
+    
+    return sorted;
+  }, [defaultPhase?.tasks, sortBy]);
 
   // Filter for unassigned tasks (Start button visibility)
   const unassignedTasks = tickets.filter((task) => !task.assignee);
@@ -144,11 +164,74 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     [feature, onUpdate]
   );
 
+  // Handle real-time PR status changes
+  const handlePRStatusChange = useCallback(
+    (event: { taskId: string; state: string; artifactStatus?: string }) => {
+      if (!feature) return;
+
+      // Deep clone feature and update matching task
+      const updatedFeature = {
+        ...feature,
+        phases: feature.phases.map((phase) => ({
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== event.taskId) return task;
+
+            // Update task status if PR was merged
+            const updatedTask = { ...task };
+            if (event.artifactStatus === 'DONE') {
+              updatedTask.status = 'DONE';
+            }
+
+            return updatedTask;
+          }),
+        })),
+      };
+
+      onUpdate(updatedFeature);
+    },
+    [feature, onUpdate]
+  );
+
+  // Handle real-time deployment status changes
+  const handleDeploymentStatusChange = useCallback(
+    (event: DeploymentStatusChangeEvent) => {
+      if (!feature) return;
+
+      const updatedFeature = {
+        ...feature,
+        phases: feature.phases.map((phase) => ({
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== event.taskId) return task;
+
+            // Update deployment status fields
+            const updatedTask = { ...task };
+            updatedTask.deploymentStatus = event.deploymentStatus;
+            
+            if (event.environment === "staging") {
+              updatedTask.deployedToStagingAt = event.deployedAt ? new Date(event.deployedAt) : null;
+            } else if (event.environment === "production") {
+              updatedTask.deployedToProductionAt = event.deployedAt ? new Date(event.deployedAt) : null;
+            }
+
+            return updatedTask;
+          }),
+        })),
+      };
+
+      onUpdate(updatedFeature);
+    },
+    [feature, onUpdate]
+  );
+
   // Subscribe to workspace-level Pusher updates for real-time task changes
   usePusherConnection({
     workspaceSlug,
     enabled: !!workspaceSlug,
     onTaskTitleUpdate: handleRealtimeTaskUpdate,
+    onPRStatusChange: handlePRStatusChange,
+    onDeploymentStatusChange: handleDeploymentStatusChange,
   });
 
   // Auto-focus after ticket creation completes
@@ -188,6 +271,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       status: newTicketStatus,
       priority: newTicketPriority,
       assigneeId: newTicketAssigneeId,
+      autoMerge: newTicketAutoMerge,
     });
 
     if (ticket && feature.phases) {
@@ -227,6 +311,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       setNewTicketPriority("MEDIUM");
       setNewTicketAssigneeId(null);
       setNewTicketAssigneeData(null);
+      setNewTicketAutoMerge(true);
     }
   };
 
@@ -237,6 +322,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     setNewTicketPriority("MEDIUM");
     setNewTicketAssigneeId(null);
     setNewTicketAssigneeData(null);
+    setNewTicketAutoMerge(true);
     setIsCreatingTicket(false);
   };
 
@@ -346,6 +432,19 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
           }
         }
 
+        // Auto-mark pending TASK_GENERATION run as ACCEPTED
+        if (latestRun?.id && !latestRun.decision && latestRun.type === "TASK_GENERATION") {
+          try {
+            await fetch(`/api/stakwork/runs/${latestRun.id}/decision`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ decision: "ACCEPTED", featureId }),
+            });
+          } catch (error) {
+            console.error("Failed to mark TASK_GENERATION run as ACCEPTED:", error);
+          }
+        }
+
         // Call accept to clear state (no API call for quick source)
         await aiGeneration.accept();
       } else if (aiGeneration.source === "deep") {
@@ -438,36 +537,21 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     );
   }
 
-  // Show progress overlay while deep research is running
-  if (latestRun?.status === "IN_PROGRESS" && latestRun.projectId) {
-    return <DeepResearchProgress projectId={latestRun.projectId} />;
-  }
+  // Build generation preview content
+  const generationPreviewContent = generatedContent
+    ? (generatedContent.phases[0]?.tasks || [])
+        .map((task, idx) => {
+          let content = `**${idx + 1}. ${task.title}**`;
+          if (task.description) {
+            content += `\n${task.description}`;
+          }
+          content += `\n*Priority: ${task.priority}*`;
+          return content;
+        })
+        .join("\n\n")
+    : null;
 
-  // Show generation preview if we have generated task content (JSON format)
-  if (generatedContent) {
-    const generatedTasks = generatedContent.phases[0]?.tasks || [];
-    const previewContent = generatedTasks
-      .map((task, idx) => {
-        let content = `**${idx + 1}. ${task.title}**`;
-        if (task.description) {
-          content += `\n${task.description}`;
-        }
-        content += `\n*Priority: ${task.priority}*`;
-        return content;
-      })
-      .join("\n\n");
-
-    return (
-      <GenerationPreview
-        content={previewContent}
-        source={aiGeneration.source || "quick"}
-        onAccept={handleAcceptGenerated}
-        onReject={handleRejectGenerated}
-        onProvideFeedback={aiGeneration.source === "deep" ? handleProvideFeedback : undefined}
-        isLoading={aiGeneration.isLoading || acceptingTasks}
-      />
-    );
-  }
+  const isResearching = latestRun?.status === "IN_PROGRESS" && !!latestRun.projectId;
 
   return (
     <div className="space-y-2">
@@ -499,9 +583,11 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
             onQuickGenerate={() => {}}
             onDeepThink={handleDeepThink}
             onRetry={handleRetry}
+            onStop={stopRun}
             status={latestRun?.status}
             isLoading={aiGeneration.isLoading || initiatingDeepThink}
             isQuickGenerating={false}
+            isStopping={isStopping}
             disabled={false}
             showDeepThink={true}
           />
@@ -514,6 +600,26 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
           )}
         </div>
       </div>
+
+      {/* Deep Research Progress */}
+      {isResearching && (
+        <DeepResearchProgress
+          projectId={latestRun.projectId}
+          runId={latestRun.id}
+        />
+      )}
+
+      {/* Generation Preview */}
+      {!isResearching && generationPreviewContent && (
+        <GenerationPreview
+          content={generationPreviewContent}
+          source={aiGeneration.source || "quick"}
+          onAccept={handleAcceptGenerated}
+          onReject={handleRejectGenerated}
+          onProvideFeedback={aiGeneration.source === "deep" ? handleProvideFeedback : undefined}
+          isLoading={aiGeneration.isLoading || acceptingTasks}
+        />
+      )}
 
       {/* Inline Task Creation Form */}
       {isCreatingTicket && (
@@ -568,6 +674,29 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
                 showSpecialAssignees={true}
               />
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto-merge"
+                checked={newTicketAutoMerge}
+                onCheckedChange={(checked) => setNewTicketAutoMerge(checked === true)}
+              />
+              <label
+                htmlFor="auto-merge"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Auto-merge PR when CI passes
+              </label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-muted-foreground cursor-help">ⓘ</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">When enabled, the PR will automatically merge once all CI checks pass, and the task will be marked as done without manual intervention</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <div className="flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleCancelCreateTicket} disabled={creatingTicket}>
                 Cancel
@@ -592,9 +721,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
         </div>
       )}
 
-      {/* View Toggle */}
+      {/* View Toggle and Sort Filter */}
       {tickets.length > 0 && (
-        <div className="flex justify-start">
+        <div className="flex justify-between items-center">
           <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
             <TabsList>
               <TabsTrigger value="table" className="gap-2">
@@ -605,6 +734,20 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
               </TabsTrigger>
             </TabsList>
           </Tabs>
+          
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Sort by:</Label>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as "updatedAt" | "createdAt" | "order")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updatedAt">Last Updated</SelectItem>
+                <SelectItem value="createdAt">Created Date</SelectItem>
+                <SelectItem value="order">Manual Order</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 

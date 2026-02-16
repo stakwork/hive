@@ -5,6 +5,7 @@ declare module "next-auth" {
     user: {
       id: string;
       defaultWorkspaceSlug?: string;
+      lightningPubkey?: string;
       github?: {
         username?: string;
         publicRepos?: number;

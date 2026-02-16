@@ -3,7 +3,7 @@ import { generatePM2Apps } from "@/utils/devContainerUtils";
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 
 describe("PM2 Config Environment Variable Merging", () => {
-  const repoName = "test-repo";
+  const repoName = ["test-repo"];
 
   it("should merge global env vars into default service config", () => {
     const globalEnvVars = [
@@ -292,7 +292,7 @@ describe("PM2 Config Environment Variable Merging", () => {
     // API service - has overrides
     const api = pm2Apps[0];
     expect(api.name).toBe("api");
-    expect(api.cwd).toBe(`/workspaces/${repoName}/packages/api`);
+    expect(api.cwd).toBe(`/workspaces/${repoName[0]}/packages/api`);
     expect(api.env.NODE_ENV).toBe("development"); // Service override
     expect(api.env.LOG_LEVEL).toBe("info"); // Global
     expect(api.env.API_KEY).toBe("global-api-key"); // Global

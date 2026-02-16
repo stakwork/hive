@@ -9,9 +9,13 @@ const DEFAULT_MESSAGE = "Processing...";
 
 interface DeepResearchProgressProps {
   projectId: number | null;
+  runId: string;
 }
 
-export function DeepResearchProgress({ projectId }: DeepResearchProgressProps) {
+export function DeepResearchProgress({
+  projectId,
+  runId: _runId,
+}: DeepResearchProgressProps) {
   const { logs } = useProjectLogWebSocket(
     projectId ? String(projectId) : null
   );
@@ -48,7 +52,7 @@ export function DeepResearchProgress({ projectId }: DeepResearchProgressProps) {
   }, [logs, processedCount]);
 
   return (
-    <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300">
       <div className="flex flex-col items-center justify-center py-16 px-4">
         <div className="relative mb-4">
           <Brain className="h-8 w-8 text-purple-600 animate-pulse" />

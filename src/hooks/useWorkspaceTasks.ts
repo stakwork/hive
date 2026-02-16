@@ -2,6 +2,7 @@
 
 import {
   TaskTitleUpdateEvent,
+  PRStatusChangeEvent,
   usePusherConnection,
 } from "@/hooks/usePusherConnection";
 import { WorkflowStatus } from "@/lib/chat";
@@ -51,6 +52,10 @@ export interface TaskData {
   featureId?: string | null;
   systemAssigneeType?: "TASK_COORDINATOR" | "BOUNTY_HUNTER" | null;
   dependsOnTaskIds?: string[];
+  autoMerge?: boolean;
+  deploymentStatus?: string | null;
+  deployedToStagingAt?: string | null;
+  deployedToProductionAt?: string | null;
   createdAt: string;
   updatedAt: string;
   hasActionArtifact?: boolean;
@@ -280,11 +285,42 @@ export function useWorkspaceTasks(
     [showArchived, fetchTasks, includeNotifications, pagination?.hasMore],
   );
 
+  // Handle real-time PR status changes
+  const handlePRStatusChange = useCallback((event: PRStatusChangeEvent) => {
+    setTasks(prevTasks => {
+      return prevTasks.map(task => {
+        if (task.id !== event.taskId) return task;
+
+        // Update PR artifact if present
+        const updatedTask = { ...task };
+        
+        if (task.prArtifact?.content) {
+          updatedTask.prArtifact = {
+            ...task.prArtifact,
+            content: {
+              ...task.prArtifact.content,
+              status: event.artifactStatus || task.prArtifact.content.status,
+              state: event.state || task.prArtifact.content.state,
+            },
+          };
+        }
+
+        // Update task status to DONE if PR was merged (artifactStatus === 'DONE')
+        if (event.artifactStatus === 'DONE') {
+          updatedTask.status = 'DONE';
+        }
+
+        return updatedTask;
+      });
+    });
+  }, []);
+
   // Subscribe to workspace-level updates if workspaceSlug is provided
   usePusherConnection({
     workspaceSlug,
     enabled: !!workspaceSlug,
     onTaskTitleUpdate: handleTaskTitleUpdate,
+    onPRStatusChange: handlePRStatusChange,
   });
 
   const loadMore = useCallback(async () => {

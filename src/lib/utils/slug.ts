@@ -1,9 +1,14 @@
 /**
- * Extracts repo name from a GitHub repository URL
+ * Extracts repo name from a GitHub repository URL and sanitizes it for use as a workspace slug
+ * Converts unsupported characters (periods, etc.) to hyphens while preserving underscores
  */
 export function extractRepoNameFromUrl(url: string): string | null {
-  const match = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
-  return match ? match[2].toLowerCase() : null;
+  const match = url.match(/github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+  if (!match) return null;
+  
+  const repoName = match[2].toLowerCase();
+  // Replace unsupported characters with hyphens, preserving underscores and alphanumerics
+  return repoName.replace(/[^a-z0-9_-]/g, '-');
 }
 
 /**

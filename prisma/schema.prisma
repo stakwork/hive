@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -61,9 +61,10 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deleted       Boolean   @default(false)
-  deletedAt     DateTime? @map("deleted_at")
-  lastLoginAt   DateTime? @map("last_login_at")
-  poolApiKey    String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
+  deletedAt        DateTime? @map("deleted_at")
+  lastLoginAt      DateTime? @map("last_login_at")
+  poolApiKey       String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
+  lightningPubkey  String?   @unique @map("lightning_pubkey") // Lightning Network public key for Sphinx auth
 
   // Authentication relationships
   accounts   Account[]
@@ -111,7 +112,6 @@ model User {
   @@map("users")
 }
 
-
 model GitHubAuth {
   id                String    @id @default(cuid())
   userId            String    @unique @map("user_id")
@@ -142,20 +142,33 @@ model GitHubAuth {
   @@map("github_auth")
 }
 
+model SphinxChallenge {
+  id        String   @id @default(cuid())
+  k1        String   @unique // 64-character hex challenge
+  pubkey    String? // 66-character hex Lightning pubkey (set after verification)
+  used      Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([k1])
+  @@index([expiresAt])
+  @@map("sphinx_challenges")
+}
+
 // =============================================
 // SOURCE CONTROL INTEGRATION
 // =============================================
 
 model SourceControlOrg {
-  id                   String                @id @default(cuid())
-  type                 SourceControlOrgType  @default(ORG)
-  githubLogin          String                @unique // e.g. "anthropic", "evanfeenstra"
-  githubInstallationId Int                   @unique @map("github_installation_id")
-  name                 String?               // Display name
-  avatarUrl            String?               @map("avatar_url")
+  id                   String               @id @default(cuid())
+  type                 SourceControlOrgType @default(ORG)
+  githubLogin          String               @unique // e.g. "anthropic", "evanfeenstra"
+  githubInstallationId Int                  @unique @map("github_installation_id")
+  name                 String? // Display name
+  avatarUrl            String?              @map("avatar_url")
   description          String?
-  createdAt            DateTime              @default(now()) @map("created_at")
-  updatedAt            DateTime              @updatedAt @map("updated_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
 
   // Relationships
   tokens     SourceControlToken[]
@@ -167,15 +180,15 @@ model SourceControlOrg {
 }
 
 model SourceControlToken {
-  id                  String           @id @default(cuid())
-  userId              String           @map("user_id")
-  sourceControlOrgId  String           @map("source_control_org_id")
-  token               String           // Encrypted app access token
-  refreshToken        String?          @map("refresh_token") // Encrypted refresh token
-  expiresAt           DateTime?        @map("expires_at")
-  scopes              String[]         @default([])
-  createdAt           DateTime         @default(now()) @map("created_at")
-  updatedAt           DateTime         @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  userId             String    @map("user_id")
+  sourceControlOrgId String    @map("source_control_org_id")
+  token              String // Encrypted app access token
+  refreshToken       String?   @map("refresh_token") // Encrypted refresh token
+  expiresAt          DateTime? @map("expires_at")
+  scopes             String[]  @default([])
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   // Relationships
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -192,16 +205,16 @@ model SourceControlToken {
 // =============================================
 
 model Workspace {
-  id          String    @id @default(cuid())
-  name        String
-  description String?
-  mission     String?
-  slug        String    @unique
-  originalSlug String?  @map("original_slug") // Store original slug for recovery
-  deleted     Boolean   @default(false)
-  deletedAt   DateTime? @map("deleted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  mission      String?
+  slug         String    @unique
+  originalSlug String?   @map("original_slug") // Store original slug for recovery
+  deleted      Boolean   @default(false)
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Owner of the workspace
   ownerId String @map("owner_id")
@@ -219,19 +232,25 @@ model Workspace {
   repositories Repository[]
 
   // Tasks
-  tasks    Task[]
+  tasks Task[]
 
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
 
   // Vercel integration
-  vercelApiToken String? @map("vercel_api_token") // Encrypted Vercel API token
-  vercelTeamId   String? @map("vercel_team_id")   // Vercel team ID (optional)
-  vercelProjectId String? @map("vercel_project_id") // Vercel project ID for log webhook mapping
+  vercelApiToken      String? @map("vercel_api_token") // Encrypted Vercel API token
+  vercelTeamId        String? @map("vercel_team_id") // Vercel team ID (optional)
+  vercelProjectId     String? @map("vercel_project_id") // Vercel project ID for log webhook mapping
   vercelWebhookSecret String? @map("vercel_webhook_secret") // Encrypted webhook secret for log drain verification
 
+  // Sphinx integration
+  sphinxEnabled    Boolean @default(false) @map("sphinx_enabled")
+  sphinxChatPubkey String? @map("sphinx_chat_pubkey")
+  sphinxBotId      String? @map("sphinx_bot_id")
+  sphinxBotSecret  String? @map("sphinx_bot_secret") // Encrypted JSON
+
   // Janitor configuration
-  janitorConfig JanitorConfig?
+  janitorConfig          JanitorConfig?
   janitorRecommendations JanitorRecommendation[]
 
   // Roadmap features
@@ -341,11 +360,11 @@ model Swarm {
   services             Json      @default("[]")
 
   // ingestion status tracking
-  ingestRefId String? @map("ingest_ref_id")
+  ingestRefId             String? @map("ingest_ref_id")
   ingestRequestInProgress Boolean @default(false) @map("ingest_request_in_progress")
 
   // Generated container files
-  containerFiles Json? @map("container_files")
+  containerFiles      Json?   @map("container_files")
   containerFilesSetUp Boolean @default(false) @map("container_files_set_up")
 
   // Agent processing tracking
@@ -362,6 +381,9 @@ model Swarm {
   minimumVms Int     @default(2) @map("minimum_vms")
   webhookUrl String? @map("webhook_url")
 
+  // Deferred pod repair trigger (set when repo added, cleared when repair runs)
+  pendingRepairTrigger Json? @map("pending_repair_trigger")
+
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -369,7 +391,7 @@ model Swarm {
   // One-to-many relationship with environment variables
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   // Pods in this swarm/pool
-  pods Pod[]
+  pods                    Pod[]
 
   @@index([swarmId])
   @@map("swarms")
@@ -442,16 +464,18 @@ model Repository {
   e2eGlob         String? @default("") @map("e2e_glob")
 
   // Sync configuration
-  codeIngestionEnabled Boolean @default(true)  @map("code_ingestion_enabled")
-  docsEnabled          Boolean @default(true)  @map("docs_enabled")
-  mocksEnabled         Boolean @default(true)  @map("mocks_enabled")
+  codeIngestionEnabled Boolean @default(true) @map("code_ingestion_enabled")
+  docsEnabled          Boolean @default(true) @map("docs_enabled")
+  mocksEnabled         Boolean @default(true) @map("mocks_enabled")
+  embeddingsEnabled    Boolean @default(true) @map("embeddings_enabled")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Tasks can be linked to repositories
-  tasks Task[]
+  tasks       Task[]
+  deployments Deployment[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
   @@index([workspaceId])
@@ -516,6 +540,12 @@ model Task {
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
+  autoMerge    Boolean @default(false) @map("auto_merge")
+
+  // Deployment tracking
+  deploymentStatus       String?   @map("deployment_status")
+  deployedToStagingAt    DateTime? @map("deployed_to_staging_at")
+  deployedToProductionAt DateTime? @map("deployed_to_production_at")
 
   // Agent URLs and credentials (encrypted)
   agentUrl           String? @map("agent_url")
@@ -545,6 +575,7 @@ model Task {
 
   chatMessages ChatMessage[]
   screenshots  Screenshot[]
+  deployments  Deployment[]
 
   // Janitor type for tasks created from janitor recommendations
   janitorType JanitorType? @map("janitor_type")
@@ -564,6 +595,7 @@ model Task {
   @@index([systemAssigneeType])
   @@index([bountyCode])
   @@index([layerType])
+  @@index([deploymentStatus])
   @@map("tasks")
 }
 
@@ -607,8 +639,8 @@ model ChatMessage {
   replyId           String?    @map("reply_id")
 
   // User attribution for message sender
-  userId            String?    @map("user_id")
-  createdBy         User?      @relation("ChatMessageSender", fields: [userId], references: [id], onDelete: SetNull)
+  userId    String? @map("user_id")
+  createdBy User?   @relation("ChatMessageSender", fields: [userId], references: [id], onDelete: SetNull)
 
   artifacts   Artifact[]
   attachments Attachment[]
@@ -698,12 +730,12 @@ model JanitorConfig {
   workspaceId String @unique @map("workspace_id")
 
   // Individual janitor toggles
-  unitTestsEnabled           Boolean @default(false) @map("unit_tests_enabled")
-  integrationTestsEnabled    Boolean @default(false) @map("integration_tests_enabled")
-  e2eTestsEnabled            Boolean @default(false) @map("e2e_tests_enabled")
-  securityReviewEnabled      Boolean @default(false) @map("security_review_enabled")
-  mockGenerationEnabled      Boolean @default(false) @map("mock_generation_enabled")
-  generalRefactoringEnabled  Boolean @default(false) @map("general_refactoring_enabled")
+  unitTestsEnabled          Boolean @default(false) @map("unit_tests_enabled")
+  integrationTestsEnabled   Boolean @default(false) @map("integration_tests_enabled")
+  e2eTestsEnabled           Boolean @default(false) @map("e2e_tests_enabled")
+  securityReviewEnabled     Boolean @default(false) @map("security_review_enabled")
+  mockGenerationEnabled     Boolean @default(false) @map("mock_generation_enabled")
+  generalRefactoringEnabled Boolean @default(false) @map("general_refactoring_enabled")
 
   // Task Coordinator automation
   taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
@@ -711,12 +743,12 @@ model JanitorConfig {
   ticketSweepEnabled         Boolean @default(false) @map("ticket_sweep_enabled")
 
   // PR Monitor automation
-  prMonitorEnabled           Boolean @default(false) @map("pr_monitor_enabled")
-  prConflictFixEnabled       Boolean @default(false) @map("pr_conflict_fix_enabled")
-  prCiFailureFixEnabled      Boolean @default(false) @map("pr_ci_failure_fix_enabled")
-  prOutOfDateFixEnabled      Boolean @default(false) @map("pr_out_of_date_fix_enabled")
-  prUseMergeForUpdates       Boolean @default(true) @map("pr_use_merge_for_updates")
-  prUseRebaseForUpdates      Boolean @default(false) @map("pr_use_rebase_for_updates")
+  prMonitorEnabled      Boolean @default(false) @map("pr_monitor_enabled")
+  prConflictFixEnabled  Boolean @default(false) @map("pr_conflict_fix_enabled")
+  prCiFailureFixEnabled Boolean @default(false) @map("pr_ci_failure_fix_enabled")
+  prOutOfDateFixEnabled Boolean @default(false) @map("pr_out_of_date_fix_enabled")
+  prUseMergeForUpdates  Boolean @default(true) @map("pr_use_merge_for_updates")
+  prUseRebaseForUpdates Boolean @default(false) @map("pr_use_rebase_for_updates")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -970,36 +1002,76 @@ enum TaskLayerType {
   DOCUMENTATION
 }
 
+enum DeploymentEnvironment {
+  STAGING
+  PRODUCTION
+}
+
+enum DeploymentStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAILURE
+  ERROR
+}
+
+// =============================================
+// DEPLOYMENTS
+// =============================================
+
+model Deployment {
+  id                 String                @id @default(cuid())
+  taskId             String                @map("task_id")
+  task               Task                  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  repositoryId       String?               @map("repository_id")
+  repository         Repository?           @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  commitSha          String                @map("commit_sha")
+  prUrl              String?               @map("pr_url")
+  environment        DeploymentEnvironment
+  status             DeploymentStatus
+  deploymentUrl      String?               @map("deployment_url")
+  githubDeploymentId String?               @map("github_deployment_id")
+  startedAt          DateTime              @map("started_at")
+  completedAt        DateTime?             @map("completed_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  @@index([taskId])
+  @@index([commitSha])
+  @@index([repositoryId, environment])
+  @@index([githubDeploymentId])
+  @@map("deployments")
+}
+
 // =============================================
 // ROADMAP FEATURES
 // =============================================
 
 model Feature {
-  id          String           @id @default(cuid())
-  title       String
-  brief       String?
+  id           String    @id @default(cuid())
+  title        String
+  brief        String?
   requirements String?
   architecture String?
-  personas    String[]         @default([])
-  workspaceId String           @map("workspace_id")
-  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personas     String[]  @default([])
+  workspaceId  String    @map("workspace_id")
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Assignee/Lead
-  assigneeId  String?          @map("assignee_id")
-  assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   // Diagram fields
-  diagramUrl   String?         @map("diagram_url")
-  diagramS3Key String?         @map("diagram_s3_key")
+  diagramUrl   String? @map("diagram_url")
+  diagramS3Key String? @map("diagram_s3_key")
 
-  status      FeatureStatus    @default(BACKLOG)
-  priority    FeaturePriority  @default(LOW)
+  status   FeatureStatus   @default(BACKLOG)
+  priority FeaturePriority @default(LOW)
 
   // Audit fields
-  createdById String           @map("created_by_id")
-  createdBy   User             @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedById String           @map("updated_by_id")
-  updatedBy   User             @relation("FeatureUpdater", fields: [updatedById], references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("FeatureUpdater", fields: [updatedById], references: [id])
 
   // Relationships
   userStories  UserStory[]
@@ -1008,10 +1080,10 @@ model Feature {
   stakworkRuns StakworkRun[]
   whiteboard   Whiteboard?
 
-  deleted     Boolean          @default(false)
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -1038,22 +1110,22 @@ enum FeaturePriority {
 }
 
 model UserStory {
-  id          String   @id @default(cuid())
-  featureId   String   @map("feature_id")
-  feature     Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
 
-  title       String
-  order       Int      @default(0)
-  completed   Boolean  @default(false)
+  title     String
+  order     Int     @default(0)
+  completed Boolean @default(false)
 
   // Audit fields
-  createdById String   @map("created_by_id")
-  createdBy   User     @relation("UserStoryCreator", fields: [createdById], references: [id])
-  updatedById String   @map("updated_by_id")
-  updatedBy   User     @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("UserStoryCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("UserStoryUpdater", fields: [updatedById], references: [id])
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([featureId])
   @@index([order])
@@ -1089,23 +1161,24 @@ model Phase {
 // =============================================
 
 model StakworkRun {
-  id          String   @id @default(cuid())
-  webhookUrl  String   @map("webhook_url")
-  projectId   Int?     @map("project_id") // Stakwork project ID
+  id          String          @id @default(cuid())
+  webhookUrl  String          @map("webhook_url")
+  projectId   Int?            @map("project_id") // Stakwork project ID
   type        StakworkRunType
-  featureId   String?  @map("feature_id")
-  feature     Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
-  workspaceId String   @map("workspace_id")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  featureId   String?         @map("feature_id")
+  feature     Feature?        @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  workspaceId String          @map("workspace_id")
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  status      WorkflowStatus @default(PENDING)
-  result      String?        // Stores the actual result
-  dataType    String         @default("string") @map("data_type") // "string", "json", "number", etc.
-  feedback    String?        // User feedback on result
-  decision    StakworkRunDecision? // User decision on result
+  status     WorkflowStatus       @default(PENDING)
+  result     String? // Stores the actual result
+  dataType   String               @default("string") @map("data_type") // "string", "json", "number", etc.
+  feedback   String? // User feedback on result
+  decision   StakworkRunDecision? // User decision on result
+  autoAccept Boolean              @default(false) @map("auto_accept")
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([featureId])
@@ -1144,22 +1217,22 @@ model Screenshot {
   task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   // S3 Storage
-  s3Key       String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
-  s3Url       String?   @map("s3_url") // Cached presigned download URL
+  s3Key        String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
+  s3Url        String?   @map("s3_url") // Cached presigned download URL
   urlExpiresAt DateTime? @map("url_expires_at") // When cached URL expires
 
   // Metadata for context & comparison
-  actionIndex Int       @map("action_index") // Position in test sequence
-  pageUrl     String    @map("page_url") // URL where screenshot was taken
-  timestamp   BigInt    // Capture time (Unix timestamp in milliseconds)
-  hash        String    @unique // Content hash for deduplication (SHA-256 truncated to 12 chars)
+  actionIndex Int    @map("action_index") // Position in test sequence
+  pageUrl     String @map("page_url") // URL where screenshot was taken
+  timestamp   BigInt // Capture time (Unix timestamp in milliseconds)
+  hash        String @unique // Content hash for deduplication (SHA-256 truncated to 12 chars)
 
   // Image dimensions
-  width       Int?
-  height      Int?
+  width  Int?
+  height Int?
 
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([taskId])
@@ -1180,19 +1253,19 @@ model Whiteboard {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Optional link to feature
-  featureId   String?   @unique @map("feature_id")
-  feature     Feature?  @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  featureId String?  @unique @map("feature_id")
+  feature   Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   // Excalidraw data stored as JSON
-  elements    Json      @default("[]")
-  appState    Json      @default("{}") @map("app_state")
-  files       Json      @default("{}")
+  elements Json @default("[]")
+  appState Json @default("{}") @map("app_state")
+  files    Json @default("{}")
 
   // Collaboration versioning for conflict resolution
-  version     Int       @default(0)
+  version Int @default(0)
 
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -1204,21 +1277,20 @@ model Whiteboard {
 // =============================================
 
 model EnvironmentVariable {
-  id          String   @id @default(cuid())
-  swarmId     String   @map("swarm_id")
-  swarm       Swarm    @relation("SwarmEnvironmentVariables", fields: [swarmId], references: [id], onDelete: Cascade)
-  
+  id      String @id @default(cuid())
+  swarmId String @map("swarm_id")
+  swarm   Swarm  @relation("SwarmEnvironmentVariables", fields: [swarmId], references: [id], onDelete: Cascade)
+
   // Service scope (empty string for global, service name for service-specific)
-  serviceName String?  @map("service_name")
-  
-  name        String
-  value       String   // Encrypted value
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  serviceName String? @map("service_name")
+
+  name  String
+  value String // Encrypted value
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([swarmId, serviceName, name])
   @@index([swarmId])
   @@map("environment_variables")
 }
-

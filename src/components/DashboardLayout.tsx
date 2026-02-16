@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useFavicon } from "@/hooks/useFavicon";
+import { useNotificationFavicon } from "@/hooks/useNotificationFavicon";
 import { AlertTriangle } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
@@ -54,8 +54,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     fetchWorkspaceLogo();
   }, [workspace?.slug, workspace?.logoKey]);
 
-  // Update favicon when workspace logo changes
-  useFavicon({ workspaceLogoUrl, enabled: true });
+  // Update favicon with notification dot when tasks await input
+  useNotificationFavicon({ workspaceLogoUrl, enabled: true });
 
   // Priority 1: Show loading state while workspace is being resolved
   if (loading) {

@@ -249,6 +249,10 @@ export async function GET(request: NextRequest) {
           featureId: true,
           systemAssigneeType: true,
           dependsOnTaskIds: true,
+          autoMerge: true,
+          deploymentStatus: true,
+          deployedToStagingAt: true,
+          deployedToProductionAt: true,
           createdAt: true,
           updatedAt: true,
           feature: {
@@ -426,6 +430,7 @@ export async function POST(request: NextRequest) {
       model,
       runBuild,
       runTestSuite,
+      autoMerge,
     } = body;
 
     // Validate required fields
@@ -558,6 +563,7 @@ export async function POST(request: NextRequest) {
         model: taskModel, // AI model for agent mode
         runBuild: runBuild ?? true,
         runTestSuite: runTestSuite ?? true,
+        autoMerge: autoMerge ?? false, // Auto-merge PR when CI passes
         createdById: userId,
         updatedById: userId,
       },

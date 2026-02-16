@@ -410,5 +410,117 @@ describe("Calls API - Integration Tests", () => {
       expect(data.total).toBe(10);
       expect(data.hasMore).toBe(false);
     });
+
+    test("filters out calls with missing episode_title", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", name: "swarm38" },
+      });
+
+      const validCall = mockData.jarvisNode({ ref_id: "valid-1" });
+      const invalidNode = mockData.invalidJarvisNode('episode_title');
+      
+      callMockSetup.mockJarvisApiSuccess([validCall, invalidNode]);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.calls).toHaveLength(1);
+      expect(data.calls[0].ref_id).toBe("valid-1");
+    });
+
+    test("filters out calls with missing date_added_to_graph", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", name: "swarm38" },
+      });
+
+      const validCall = mockData.jarvisNode({ ref_id: "valid-1" });
+      const invalidNode = mockData.invalidJarvisNode('date_added_to_graph');
+      
+      callMockSetup.mockJarvisApiSuccess([validCall, invalidNode]);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.calls).toHaveLength(1);
+      expect(data.calls[0].ref_id).toBe("valid-1");
+    });
+
+    test("returns empty array when all calls are invalid", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", name: "swarm38" },
+      });
+
+      const invalidNodes = [
+        mockData.invalidJarvisNode('episode_title'),
+        mockData.invalidJarvisNode('date_added_to_graph'),
+        mockData.invalidJarvisNode('both'),
+      ];
+      
+      callMockSetup.mockJarvisApiSuccess(invalidNodes);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.calls).toHaveLength(0);
+      expect(data.total).toBe(0);
+      expect(data.hasMore).toBe(false);
+    });
+
+    test("provides default title for calls with missing episode_title", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", name: "swarm38" },
+      });
+
+      const callWithEmptyTitle = {
+        ...mockData.jarvisNode(),
+        ref_id: 'call-no-title',
+        date_added_to_graph: 1750694095.264704,
+        properties: {
+          media_url: 'https://example.com/media.mp4',
+          source_link: 'https://example.com/source',
+          episode_title: '', // Empty string should get default
+        },
+      };
+      
+      callMockSetup.mockJarvisApiSuccess([callWithEmptyTitle]);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.calls).toHaveLength(1);
+      expect(data.calls[0].episode_title).toBe("Untitled Call");
+    });
   });
 });

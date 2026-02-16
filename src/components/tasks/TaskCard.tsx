@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
+import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -249,6 +250,38 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             url={task.prArtifact.content.url}
             status={task.prArtifact.content.status}
           />
+        )}
+
+        {/* Deployment Status Badge - show when task has deployment status */}
+        {task.deploymentStatus && (
+          <DeploymentStatusBadge
+            environment={task.deploymentStatus as "staging" | "production" | "failed"}
+            deploymentUrl={null}
+            deployedAt={
+              task.deploymentStatus === "production"
+                ? task.deployedToProductionAt
+                : task.deploymentStatus === "staging"
+                ? task.deployedToStagingAt
+                : null
+            }
+          />
+        )}
+
+        {/* Auto-merge Badge - only show for open PRs with autoMerge enabled */}
+        {task.autoMerge === true && task.prArtifact?.content?.status === 'IN_PROGRESS' && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="gap-1 h-5 bg-purple-500/10 text-purple-700 border-purple-500/20">
+                  <GitMerge className="h-3 w-3" />
+                  Auto-merge
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Will merge automatically when CI passes</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
     </motion.div>

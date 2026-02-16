@@ -26,6 +26,15 @@ const MAX_REPAIR_ATTEMPTS = parseInt(
 const encryptionService = EncryptionService.getInstance();
 
 /**
+ * Pending repair trigger stored in Swarm.pendingRepairTrigger
+ */
+interface PendingRepairTrigger {
+  repoUrl: string;
+  repoName: string;
+  requestedAt: string;
+}
+
+/**
  * Get workspaces eligible for pod repair check:
  * - Has containerFiles set (services agent ran)
  * - Has pool configuration
@@ -49,6 +58,7 @@ export async function getEligibleWorkspaces() {
           poolApiKey: true,
           poolState: true,
           podState: true,
+          pendingRepairTrigger: true,
         },
       },
     },
@@ -126,10 +136,10 @@ export function getFailedProcesses(jlist: JlistProcess[]): string[] {
 }
 
 /**
- * Check if there's an active repair workflow for this workspace
- * Returns true if there's an IN_PROGRESS run with a running Stakwork project
+ * Checks if a pod repair workflow is currently in progress for a workspace.
+ * @description Used to prevent duplicate repair triggers.
  */
-async function isRepairInProgress(workspaceId: string): Promise<boolean> {
+export async function isRepairInProgress(workspaceId: string): Promise<boolean> {
   const inProgressRun = await db.stakworkRun.findFirst({
     where: {
       workspaceId,
@@ -293,8 +303,9 @@ async function getRepairHistory(workspaceId: string) {
 
 /**
  * Create a pod repair StakworkRun and trigger the workflow
+ * @description Triggers pod repair workflow. Can be called from cron or manually when adding repositories.
  */
-async function triggerPodRepair(
+export async function triggerPodRepair(
   workspaceId: string,
   workspaceSlug: string,
   podId: string,
@@ -419,6 +430,80 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         continue;
       }
 
+      // ============================================================
+      // Check for pending repair trigger BEFORE any skip logic
+      // ============================================================
+      if (workspace.swarm.pendingRepairTrigger) {
+        const pending = workspace.swarm.pendingRepairTrigger as unknown as PendingRepairTrigger;
+        
+        console.log(`[PodRepairCron] Checking pending repair trigger for ${workspace.slug}: ${pending.repoName}`);
+        
+        try {
+          // Get pods from Pool Manager
+          const poolService = poolManagerService();
+          const poolData = await poolService.getPoolWorkspaces(
+            workspace.swarm.id,
+            workspace.swarm.poolApiKey
+          );
+          
+          // Find ready pod with new repo
+          const readyPod = poolData.workspaces.find(
+            (vm) =>
+              vm.usage_status === "unused" &&
+              vm.state.toLowerCase() === "running" &&
+              vm.repositories?.includes(pending.repoUrl)
+          );
+          
+          if (!readyPod) {
+            console.log(
+              `[PodRepairCron] Pending trigger for ${workspace.slug}: no ready pod with repo ${pending.repoUrl} yet, will retry next cycle`
+            );
+            continue;
+          }
+          
+          // Check if repair already in progress
+          if (await isRepairInProgress(workspace.id)) {
+            console.log(`[PodRepairCron] Pending trigger for ${workspace.slug}: repair already in progress`);
+            continue;
+          }
+          
+          // Trigger the deferred repair
+          console.log(
+            `[PodRepairCron] Processing pending repair trigger for ${workspace.slug} on pod ${readyPod.subdomain}`
+          );
+          
+          await triggerPodRepair(
+            workspace.id,
+            workspace.slug,
+            readyPod.subdomain,
+            readyPod.password || "",
+            [], // No specific failed services - this is a setup repair
+            `Repository added: ${pending.repoName}. If this new repo is connected or integrated with the existing repo(s), see if anything needs to be changed in the configs to properly connect the repos. If nothing needs to be changed then simply do not return any changed files!`
+          );
+          
+          // Clear the pending trigger
+          await db.swarm.update({
+            where: { id: workspace.swarm.id },
+            data: { pendingRepairTrigger: Prisma.DbNull },
+          });
+          
+          result.repairsTriggered++;
+          
+        } catch (error) {
+          console.error(`[PodRepairCron] Error processing pending trigger for ${workspace.slug}:`, error);
+          result.errors.push({
+            workspaceSlug: workspace.slug,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        
+        // Skip normal health check flow for this iteration
+        continue;
+      }
+      // ============================================================
+      // END: Pending repair trigger check
+      // ============================================================
+
       // Skip already-completed workspaces
       if (workspace.swarm.podState === PodState.COMPLETED) {
         console.log(
@@ -480,7 +565,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         }
 
         // 4. Health checks - jlist, staklink, frontend
-        const decryptedPoolApiKey = encryptionService.decryptField(
+        const _decryptedPoolApiKey = encryptionService.decryptField(
           "poolApiKey",
           workspace.swarm.poolApiKey
         );

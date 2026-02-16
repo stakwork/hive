@@ -118,11 +118,18 @@ export default function TaskChatPage() {
     workflowRefId: string;
   } | null>(null);
   const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
+  const [currentProjectContext, setCurrentProjectContext] = useState<{
+    projectId: string;
+    projectName: string;
+    workflowId: number;
+  } | null>(null);
+  const [projectDebuggerWebhook, setProjectDebuggerWebhook] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
+  const [isSubsequentCommit, setIsSubsequentCommit] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
@@ -342,6 +349,28 @@ export default function TaskChatPage() {
                 workflowName:
                   workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
                 workflowRefId: workflowArtifact.content.workflowRefId || "",
+              });
+              break;
+            }
+          }
+        }
+
+        // Restore project context for project_debugger mode
+        if (result.data.task?.mode === "project_debugger" && result.data.messages) {
+          // Find the WORKFLOW artifact with projectId and projectInfo
+          for (const msg of result.data.messages) {
+            const projectArtifact = msg.artifacts?.find(
+              (a: {
+                type: string;
+                content?: { projectId?: string; projectInfo?: any; workflowId?: number };
+              }) => a.type === "WORKFLOW" && a.content?.projectId,
+            );
+            if (projectArtifact?.content?.projectId) {
+              const projectInfo = projectArtifact.content.projectInfo;
+              setCurrentProjectContext({
+                projectId: projectArtifact.content.projectId,
+                projectName: projectInfo?.project?.name || `Project ${projectArtifact.content.projectId}`,
+                workflowId: projectArtifact.content.workflowId || projectInfo?.project?.workflow_id,
               });
               break;
             }
@@ -592,7 +621,106 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName) => {
+  // Handle project selection in project_debugger mode
+  const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const projectName = projectData.project?.name || `Project ${projectIdValue}`;
+      const workflowId = projectData.project?.workflow_id;
+
+      // Create new task with project info
+      const taskTitle = `Debug: ${projectName}`;
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: taskTitle,
+          description: `Debugging project ${projectIdValue}`,
+          status: "active",
+          workspaceSlug: slug,
+          mode: "project_debugger",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+      setTaskTitle(taskTitle);
+
+      // Update URL without reloading
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      window.history.replaceState({}, "", newUrl);
+
+      // Store project context
+      setCurrentProjectContext({
+        projectId: projectIdValue,
+        projectName: projectName,
+        workflowId: workflowId,
+      });
+
+      // Call project debugger API endpoint
+      const debuggerResponse = await fetch("/api/project-debugger", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          taskId: newTaskId,
+          message: `Analyzing project: ${projectName}`,
+          projectId: projectIdValue,
+        }),
+      });
+
+      if (!debuggerResponse.ok) {
+        throw new Error(`Failed to start project debugger: ${debuggerResponse.statusText}`);
+      }
+
+      const debuggerResult = await debuggerResponse.json();
+
+      // Store webhook from response
+      if (debuggerResult.webhook) {
+        setProjectDebuggerWebhook(debuggerResult.webhook);
+      }
+
+      // Set project ID for workflow monitoring
+      if (debuggerResult.project?.id) {
+        setProjectId(debuggerResult.project.id.toString());
+        setStakworkProjectId(debuggerResult.project.id);
+      }
+
+      // Create initial message from API response
+      const initialMessage: ChatMessage = createChatMessage({
+        id: debuggerResult.message?.id || generateUniqueId(),
+        message: debuggerResult.message?.message || `Analyzing project: ${projectName}`,
+        role: ChatRole.USER,
+        status: ChatStatus.SENT,
+        artifacts: debuggerResult.message?.artifacts || [],
+      });
+
+      setMessages([initialMessage]);
+      setStarted(true);
+      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+      setTaskMode("project_debugger");
+
+      // Clear webhook for fresh project conversation
+      setProjectDebuggerWebhook(debuggerResult.webhook || null);
+    } catch (error) {
+      console.error("Error in handleProjectSelect:", error);
+      toast.error("Error", { description: "Failed to load project. Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[]) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -616,6 +744,7 @@ export default function TaskChatPage() {
             workspaceSlug: slug,
             mode: taskMode, // Save the task mode
             model: model || selectedModel, // Save selected AI model
+            autoMerge: autoMerge || false, // Save auto-merge preference
           }),
         });
 
@@ -634,6 +763,56 @@ export default function TaskChatPage() {
           setTaskTitle(msg); // Use the initial message as title fallback
         }
 
+        // Upload images to S3 if provided
+        let attachments: Array<{path: string, filename: string, mimeType: string, size: number}> | undefined;
+        if (images && images.length > 0) {
+          try {
+            attachments = [];
+            for (const image of images) {
+              // Request presigned URL
+              const presignedResponse = await fetch("/api/upload/presigned-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  taskId: newTaskId,
+                  filename: image.name,
+                  contentType: image.type,
+                  size: image.size,
+                }),
+              });
+
+              if (!presignedResponse.ok) {
+                const error = await presignedResponse.json();
+                throw new Error(error.error || "Failed to get presigned URL");
+              }
+
+              const { presignedUrl, s3Path } = await presignedResponse.json();
+
+              // Upload to S3
+              const uploadResponse = await fetch(presignedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": image.type },
+                body: image,
+              });
+
+              if (!uploadResponse.ok) {
+                throw new Error("Failed to upload image to S3");
+              }
+
+              attachments.push({
+                path: s3Path,
+                filename: image.name,
+                mimeType: image.type,
+                size: image.size,
+              });
+            }
+          } catch (uploadError) {
+            console.error("Error uploading images:", uploadError);
+            toast.error("Failed to upload one or more images");
+            // Continue with task creation even if image upload fails
+          }
+        }
+
         const newUrl = `/w/${slug}/task/${newTaskId}`;
         // this updates the URL WITHOUT reloading the page
         window.history.replaceState({}, "", newUrl);
@@ -644,10 +823,11 @@ export default function TaskChatPage() {
           await sendMessage(msg, {
             taskId: newTaskId,
             onPodReady: () => setStarted(true),
+            attachments,
           });
         } else {
           setStarted(true);
-          await sendMessage(msg, { taskId: newTaskId });
+          await sendMessage(msg, { taskId: newTaskId, attachments });
         }
       } else {
         setStarted(true);
@@ -660,9 +840,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug/step attachment
-    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
+  const handleSend = async (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => {
+    // Allow sending if we have either text, attachments, or a pending debug/step attachment
+    if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // Handle workflow_editor mode - always use workflow editor endpoint
@@ -746,12 +926,76 @@ export default function TaskChatPage() {
       return;
     }
 
-    // For artifact-only messages, provide a default message
-    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    // Handle project_debugger mode - use project debugger endpoint with webhook continuation
+    if (taskMode === "project_debugger" && currentProjectContext && currentTaskId) {
+      const messageText = message.trim();
+      if (!messageText) return;
+
+      // Add user message to UI
+      const newMessage: ChatMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: messageText,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+      });
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+
+      try {
+        // Use project debugger webhook if available, otherwise try chatWebhook from FORM artifacts
+        const webhookToUse = projectDebuggerWebhook || chatWebhook;
+
+        const response = await fetch("/api/project-debugger", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            taskId: currentTaskId,
+            message: messageText,
+            projectId: currentProjectContext.projectId,
+            // Include webhook if available for continuation
+            ...(webhookToUse && { webhook: webhookToUse }),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to send project debugger request: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || "Failed to send project debugger request");
+        }
+
+        // Store webhook from response for subsequent messages
+        if (result.webhook) {
+          setProjectDebuggerWebhook(result.webhook);
+        }
+
+        // Update message status
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+        );
+      } catch (error) {
+        console.error("Error in project debugger:", error);
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
+        );
+        toast.error("Error", { description: "Failed to send project debugger request. Please try again." });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // For artifact-only or attachment-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : (attachments?.length ? "" : ""));
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
       ...(chatWebhook && { webhook: chatWebhook }),
+      ...(attachments && { attachments }),
     });
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
@@ -764,11 +1008,24 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
+        attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>;
         onPodReady?: () => void; // Called after pod is claimed, before stream starts
       },
     ) => {
       // Create artifacts array starting with any existing artifact
       const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
+
+      // Convert attachment metadata to Attachment objects for UI
+      const attachments = options?.attachments?.map(att => ({
+        id: generateUniqueId(),
+        messageId: '', // Will be set by backend
+        path: att.path,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
 
       const newMessage: ChatMessage = createChatMessage({
         id: generateUniqueId(),
@@ -777,6 +1034,7 @@ export default function TaskChatPage() {
         status: ChatStatus.SENDING,
         replyId: options?.replyId,
         artifacts,
+        attachments,
         createdBy: session?.user
           ? {
               id: session.user.id,
@@ -918,6 +1176,7 @@ export default function TaskChatPage() {
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
+          ...(options?.attachments && { attachments: options.attachments }),
         };
         const response = await fetch("/api/chat/message", {
           method: "POST",
@@ -1065,6 +1324,15 @@ export default function TaskChatPage() {
     setIsGeneratingCommitInfo(true);
 
     try {
+      // Check if there's an existing PR artifact (for subsequent commits)
+      const existingPRArtifact = messages
+        .slice()
+        .reverse()
+        .find((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
+      
+      const isSubsequent = !!existingPRArtifact;
+      setIsSubsequentCommit(isSubsequent);
+
       // First, generate commit message and branch name
       const branchResponse = await fetch("/api/agent/branch", {
         method: "POST",
@@ -1083,9 +1351,23 @@ export default function TaskChatPage() {
 
       const branchResult = await branchResponse.json();
 
+      // For subsequent commits, extract the branch name from the existing PR artifact
+      let branchNameToUse = branchResult.data.branch_name;
+      if (isSubsequent && existingPRArtifact) {
+        const prArtifact = existingPRArtifact.artifacts?.find((a) => a.type === "PULL_REQUEST");
+        if (prArtifact) {
+          const prContent = prArtifact.content as PullRequestContent;
+          // Extract branch name from PR URL (format: /owner/repo/pull/123)
+          // Or use a stored branch name if available in content
+          if ('branch' in prContent) {
+            branchNameToUse = (prContent as any).branch;
+          }
+        }
+      }
+
       // Set the generated values and show the modal
       setCommitMessage(branchResult.data.commit_message);
-      setBranchName(branchResult.data.branch_name);
+      setBranchName(branchNameToUse);
       setShowCommitModal(true);
     } catch (error) {
       console.error("Error generating commit information:", error);
@@ -1240,16 +1522,17 @@ export default function TaskChatPage() {
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
-    <AnimatePresence mode="wait">
-      {!started ? (
-        <motion.div
-          key="start"
-          initial={{ opacity: 0, y: 60 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -60 }}
-          transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
-        >
-          <TaskStartInput
+    <>
+      <AnimatePresence mode="wait">
+        {!started ? (
+          <motion.div
+            key="start"
+            initial={{ opacity: 0, y: 60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -60 }}
+            transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
+          >
+            <TaskStartInput
             onStart={handleStart}
             taskMode={taskMode}
             onModeChange={handleModeChange}
@@ -1260,6 +1543,7 @@ export default function TaskChatPage() {
             workflows={workflows}
             onWorkflowSelect={handleWorkflowSelect}
             onNewWorkflow={handleNewWorkflow}
+            onProjectSelect={handleProjectSelect}
             isLoadingWorkflows={isLoadingWorkflows}
             workflowsError={workflowsError}
             selectedModel={selectedModel}
@@ -1425,6 +1709,7 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    taskId={currentTaskId}
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
@@ -1458,6 +1743,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      taskId={currentTaskId}
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
@@ -1504,6 +1790,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                taskId={currentTaskId}
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
@@ -1517,29 +1804,31 @@ export default function TaskChatPage() {
           )}
         </motion.div>
       )}
-
-      {/* Commit Modal */}
-      <CommitModal
-        isOpen={showCommitModal}
-        onClose={() => setShowCommitModal(false)}
-        onConfirm={handleConfirmCommit}
-        initialCommitMessage={commitMessage}
-        initialBranchName={branchName}
-        isCommitting={isCommitting}
-      />
-
-      {/* Bounty Request Modal */}
-      {currentTaskId && taskTitle && effectiveWorkspaceId && (
-        <BountyRequestModal
-          isOpen={showBountyModal}
-          onClose={() => setShowBountyModal(false)}
-          sourceTaskId={currentTaskId}
-          sourceWorkspaceSlug={slug}
-          sourceWorkspaceId={effectiveWorkspaceId}
-          sourceTaskTitle={taskTitle}
-          sourceTaskDescription={taskDescription}
-        />
-      )}
     </AnimatePresence>
+
+    {/* Commit Modal */}
+    <CommitModal
+      isOpen={showCommitModal}
+      onClose={() => setShowCommitModal(false)}
+      onConfirm={handleConfirmCommit}
+      initialCommitMessage={commitMessage}
+      initialBranchName={branchName}
+      isCommitting={isCommitting}
+      isSubsequentCommit={isSubsequentCommit}
+    />
+
+    {/* Bounty Request Modal */}
+    {currentTaskId && taskTitle && effectiveWorkspaceId && (
+      <BountyRequestModal
+        isOpen={showBountyModal}
+        onClose={() => setShowBountyModal(false)}
+        sourceTaskId={currentTaskId}
+        sourceWorkspaceSlug={slug}
+        sourceWorkspaceId={effectiveWorkspaceId}
+        sourceTaskTitle={taskTitle}
+        sourceTaskDescription={taskDescription}
+      />
+    )}
+    </>
   );
 }

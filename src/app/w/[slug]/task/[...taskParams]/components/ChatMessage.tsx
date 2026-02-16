@@ -1,8 +1,8 @@
 "use client";
 
-import React, { memo, useState, useMemo } from "react";
+import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User } from "lucide-react";
+import { ChevronDown, ChevronRight, User, X, Image as ImageIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -10,6 +10,9 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { cn } from "@/lib/utils";
 
 /**
  * Parse message content to extract <logs> sections
@@ -53,12 +56,18 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Parse logs from message content
   const { content: messageContent, logs } = useMemo(
     () => (message.message ? parseLogsFromMessage(message.message) : { content: "", logs: [] }),
     [message.message]
   );
+
+  const handleImageError = useCallback((attachmentId: string) => {
+    setFailedImages(prev => new Set(prev).add(attachmentId));
+  }, []);
 
   return (
     <motion.div
@@ -109,6 +118,45 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             {message.workflowUrl && (
               <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
             )}
+          </div>
+        )}
+
+        {/* Image attachments */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
+            <div className="grid grid-cols-2 gap-2 max-w-md">
+              {message.attachments.map((attachment) => {
+                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
+                const hasFailed = failedImages.has(attachment.id);
+                
+                return (
+                  <div 
+                    key={attachment.id} 
+                    className={cn(
+                      "relative rounded-lg overflow-hidden border",
+                      !hasFailed && "cursor-pointer hover:opacity-90 transition-opacity"
+                    )}
+                    onClick={() => !hasFailed && setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
+                  >
+                    {hasFailed ? (
+                      <div className="w-full h-32 flex flex-col items-center justify-center bg-muted p-4 text-center">
+                        <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
+                        <p className="text-xs text-muted-foreground font-medium">{attachment.filename}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">Failed to load image</p>
+                      </div>
+                    ) : (
+                      <img
+                        src={imageUrl}
+                        alt={attachment.filename}
+                        className="w-full h-auto object-cover"
+                        loading="lazy"
+                        onError={() => handleImageError(attachment.id)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -205,6 +253,30 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           </div>
         ))}
+      {/* Image Enlargement Dialog */}
+      <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+          <VisuallyHidden>
+            <DialogTitle>Image Preview</DialogTitle>
+          </VisuallyHidden>
+          <div className="relative w-full h-full flex items-center justify-center bg-black/90">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {enlargedImage && (
+              <img
+                src={enlargedImage.url}
+                alt={enlargedImage.alt}
+                className="max-w-full max-h-[90vh] object-contain"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }, arePropsEqual);

@@ -14,7 +14,7 @@ import { Octokit } from "@octokit/rest";
 import { db } from "@/lib/db";
 import { Prisma, ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
@@ -27,6 +27,7 @@ const encryptionService = EncryptionService.getInstance();
 // Retry limits to prevent infinite loops
 const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10);
 const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
+const PR_FIX_STALE_TIMEOUT_MS = parseInt(process.env.PR_FIX_STALE_TIMEOUT_MS || "1800000", 10); // 30 minutes - timeout for stuck 'in_progress' state
 
 // Simple console logging helpers
 const log = {
@@ -405,7 +406,46 @@ export async function notifyPRStatusChange(
     timestamp: new Date(),
   });
 
-  log.info("Sent Pusher notification", { taskId, prNumber, state });
+  log.info("Sent Pusher notification to task channel", { taskId, prNumber, state });
+
+  // Also broadcast to workspace channel for UI-wide updates
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspace: { select: { slug: true } } },
+    });
+
+    if (task?.workspace?.slug) {
+      const workspaceChannelName = getWorkspaceChannelName(task.workspace.slug);
+      
+      // For monitoring updates, the PR is always in progress
+      // (merged/closed states are handled by webhook events, not the monitor)
+      const artifactStatus = "IN_PROGRESS";
+      
+      await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+        taskId,
+        prNumber,
+        state,
+        artifactStatus,
+        problemDetails,
+        timestamp: new Date(),
+      });
+
+      log.info("Sent Pusher notification to workspace channel", { 
+        taskId, 
+        prNumber, 
+        state, 
+        workspaceSlug: task.workspace.slug 
+      });
+    }
+  } catch (error) {
+    log.error("Failed to broadcast PR status to workspace channel", { 
+      taskId, 
+      prNumber, 
+      error 
+    });
+    // Don't throw - task channel notification already succeeded
+  }
 }
 
 /**
@@ -449,6 +489,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
   //   tasks (workspace_id, pod_id)
   //   workspaces (owner_id)
   //   janitor_configs (workspace_id, pr_monitor_enabled, etc.)
+  // Use DISTINCT ON to get only one artifact per unique PR URL
+  // This prevents duplicate artifacts for the same PR from consuming the limit
   const artifacts = await db.$queryRaw<
     Array<{
       id: string;
@@ -464,7 +506,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pr_use_rebase_for_updates: boolean;
     }>
   >`
-    SELECT 
+    SELECT DISTINCT ON (a.content->>'url')
       a.id,
       a.content,
       t.id as task_id,
@@ -491,7 +533,14 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
-      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') NOT IN ('in_progress', 'gave_up')
+      -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
+      -- This prevents PRs from getting stuck if a fix attempt never completes
+      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
+      AND (
+        COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
+        OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
+        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+      )
       -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
       -- All other states (checking, conflict, ci_failure) are re-checked every cron run
       AND (
@@ -499,7 +548,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
         OR a.content->'progress'->>'lastCheckedAt' IS NULL
         OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
       )
-    ORDER BY a.created_at DESC
+    ORDER BY a.content->>'url', a.created_at DESC
     LIMIT ${limit}
   `;
 
@@ -580,7 +629,7 @@ ${result.problemDetails || ""}`;
  * @param maxPRs - Maximum number of PRs to check in one run (for rate limiting)
  * @returns Summary of the monitoring run
  */
-export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
+export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   checked: number;
   conflicts: number;
   ciFailures: number;
@@ -699,6 +748,26 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
       const previousState = pr.progress?.state;
       const stateChanged = previousState !== result.state;
       const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
+
+      // Detect and reset stale 'in_progress' resolution status
+      // This happens when a fix attempt was triggered but never completed, and now the issue is resolved
+      const previousResolutionStatus = pr.progress?.resolution?.status;
+      const previousLastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+      const isStaleInProgress =
+        previousResolutionStatus === "in_progress" &&
+        previousLastAttemptAt &&
+        Date.now() - new Date(previousLastAttemptAt).getTime() > PR_FIX_STALE_TIMEOUT_MS;
+
+      if (isStaleInProgress) {
+        log.info("Detected stale in_progress resolution, resetting", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          previousState,
+          currentState: result.state,
+          lastAttemptAt: previousLastAttemptAt,
+          staleTimeoutMs: PR_FIX_STALE_TIMEOUT_MS,
+        });
+      }
 
       // Handle out_of_date: try auto-merge first (no agent needed)
       if (result.state === "out_of_date") {
@@ -868,14 +937,17 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         }
 
         // If was problematic and is now healthy, mark as resolved
-        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date") {
+        // Also clear stale in_progress resolutions
+        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date" || isStaleInProgress) {
           progress.resolution = {
             ...pr.progress?.resolution,
             status: "resolved",
             attempts: pr.progress?.resolution?.attempts || 0,
           };
-          await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
-          stats.notified++;
+          if (stateChanged) {
+            await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
+            stats.notified++;
+          }
         }
 
         await updatePRArtifactProgress(pr.artifactId, progress);
