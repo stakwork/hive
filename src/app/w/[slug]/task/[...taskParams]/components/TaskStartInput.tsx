@@ -509,30 +509,6 @@ export function TaskStartInput({
                     <span>Agent</span>
                   </div>
                 </SelectItem>
-                {(workspaceSlug === "stakwork" || devMode) && (
-                  <SelectItem value="workflow_editor">
-                    <div className="flex items-center gap-2">
-                      <Workflow className="h-3.5 w-3.5" />
-                      <span>Workflow</span>
-                    </div>
-                  </SelectItem>
-                )}
-                {(workspaceSlug === "stakwork" || devMode) && (
-                  <SelectItem value="project_debugger">
-                    <div className="flex items-center gap-2">
-                      <Workflow className="h-3.5 w-3.5" />
-                      <span>Project</span>
-                    </div>
-                  </SelectItem>
-                )}
-                {(workspaceSlug === "stakwork" || devMode) && (
-                  <SelectItem value="prompts">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5" />
-                      <span>Prompts</span>
-                    </div>
-                  </SelectItem>
-                )}
                 {devMode && (
                   <SelectItem value="test">
                     <div className="flex items-center gap-2">
@@ -750,30 +726,6 @@ export function TaskStartInput({
                   <span>Agent</span>
                 </div>
               </SelectItem>
-              {(workspaceSlug === "stakwork" || devMode) && (
-                <SelectItem value="workflow_editor">
-                  <div className="flex items-center gap-2">
-                    <Workflow className="h-3.5 w-3.5" />
-                    <span>Workflow</span>
-                  </div>
-                </SelectItem>
-              )}
-              {(workspaceSlug === "stakwork" || devMode) && (
-                <SelectItem value="project_debugger">
-                  <div className="flex items-center gap-2">
-                    <Workflow className="h-3.5 w-3.5" />
-                    <span>Project</span>
-                  </div>
-                </SelectItem>
-              )}
-              {(workspaceSlug === "stakwork" || devMode) && (
-                <SelectItem value="prompts">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>Prompts</span>
-                  </div>
-                </SelectItem>
-              )}
               {devMode && (
                 <SelectItem value="test">
                   <div className="flex items-center gap-2">
