@@ -44,7 +44,7 @@ interface ProvenanceData {
 
 /**
  * Extract concept IDs from step content (used during streaming)
- * Handles both plain tool names (learn_concept) and namespaced (workspace:learn_concept)
+ * Handles both plain tool names (learn_concept) and namespaced (workspace__learn_concept)
  */
 function extractConceptIdsFromStep(contents: unknown): string[] {
   if (!Array.isArray(contents)) return [];
@@ -53,7 +53,7 @@ function extractConceptIdsFromStep(contents: unknown): string[] {
   for (const content of contents) {
     if (content.type === "tool-call") {
       const toolName: string = content.toolName || "";
-      if (toolName === "learn_concept" || toolName.endsWith(":learn_concept")) {
+      if (toolName === "learn_concept" || toolName.endsWith("__learn_concept")) {
         const conceptId = content.input?.conceptId;
         if (conceptId) {
           conceptIds.push(conceptId);
@@ -173,14 +173,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Search clues from the primary workspace
-      const clueMsgs = await clueToolMsgs(
-        workspaceConfigs[0].swarmUrl,
-        workspaceConfigs[0].swarmApiKey,
-        lastMessageContent
-      );
+      // const clueMsgs = await clueToolMsgs(
+      //   workspaceConfigs[0].swarmUrl,
+      //   workspaceConfigs[0].swarmApiKey,
+      //   lastMessageContent
+      // );
 
       const rawMessages: ModelMessage[] = [
-        ...getMultiWorkspacePrefixMessages(workspaceConfigs, conceptsByWorkspace, clueMsgs),
+        ...getMultiWorkspacePrefixMessages(workspaceConfigs, conceptsByWorkspace, []),
         ...convertedMessages,
       ];
 
@@ -351,11 +351,11 @@ export async function POST(request: NextRequest) {
 
       const features = concepts.features as Record<string, unknown>[];
 
-      const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, lastMessageContent);
+      // const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, lastMessageContent);
 
       // Construct messages array with system prompt, pre-filled concepts, and conversation history
       const rawMessages: ModelMessage[] = [
-        ...getQuickAskPrefixMessages(features, repoUrls, clueMsgs),
+        ...getQuickAskPrefixMessages(features, repoUrls, []),
         ...convertedMessages,
       ];
 
@@ -529,7 +529,7 @@ async function processStep(contents: unknown, workspaceSlug: string, features: R
   for (const content of contents) {
     if (content.type === "tool-call") {
       const toolName: string = content.toolName || "";
-      if (toolName === "learn_concept" || toolName.endsWith(":learn_concept")) {
+      if (toolName === "learn_concept" || toolName.endsWith("__learn_concept")) {
         const conceptId = content.input.conceptId;
         const feature = features.find((f) => f.id === conceptId);
         if (feature) {

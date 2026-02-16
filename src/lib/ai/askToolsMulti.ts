@@ -26,7 +26,7 @@ export function askToolsMulti(
     const isMultiRepo = ws.repoUrls.length > 1;
 
     // list_concepts
-    allTools[`${prefix}:list_concepts`] = tool({
+    allTools[`${prefix}__list_concepts`] = tool({
       description: `[${ws.slug}] Fetch features/concepts from the ${ws.slug} codebase knowledge base.`,
       inputSchema: z.object({}),
       execute: async () => {
@@ -40,7 +40,7 @@ export function askToolsMulti(
     });
 
     // learn_concept
-    allTools[`${prefix}:learn_concept`] = tool({
+    allTools[`${prefix}__learn_concept`] = tool({
       description: `[${ws.slug}] Fetch detailed documentation for a feature in the ${ws.slug} codebase.`,
       inputSchema: z.object({
         conceptId: z.string().describe("The ID of the feature to retrieve"),
@@ -67,7 +67,7 @@ export function askToolsMulti(
     });
 
     // recent_commits
-    allTools[`${prefix}:recent_commits`] = tool({
+    allTools[`${prefix}__recent_commits`] = tool({
       description: isMultiRepo
         ? `[${ws.slug}] Query recent commits. Use 'repo' param (owner/repo) for multi-repo workspace.`
         : `[${ws.slug}] Query recent commits from the ${ws.slug} codebase.`,
@@ -92,7 +92,7 @@ export function askToolsMulti(
     });
 
     // recent_contributions
-    allTools[`${prefix}:recent_contributions`] = tool({
+    allTools[`${prefix}__recent_contributions`] = tool({
       description: isMultiRepo
         ? `[${ws.slug}] Query PRs by contributor. Use 'repo' param for multi-repo workspace.`
         : `[${ws.slug}] Query PRs by contributor in the ${ws.slug} codebase.`,
@@ -131,7 +131,7 @@ export function askToolsMulti(
     });
 
     // repo_agent (deep code analysis)
-    allTools[`${prefix}:repo_agent`] = tool({
+    allTools[`${prefix}__repo_agent`] = tool({
       description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Use as LAST RESORT.`,
       inputSchema: z.object({
         prompt: z.string().describe("The question for the repo agent"),
@@ -153,7 +153,7 @@ export function askToolsMulti(
     });
 
     // search_logs (via MCP)
-    allTools[`${prefix}:search_logs`] = tool({
+    allTools[`${prefix}__search_logs`] = tool({
       description: `[${ws.slug}] Search application logs for ${ws.slug} using Quickwit. Supports Lucene query syntax.`,
       inputSchema: z.object({
         query: z.string().describe("Lucene query string"),

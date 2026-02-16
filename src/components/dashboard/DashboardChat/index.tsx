@@ -41,6 +41,7 @@ export function DashboardChat() {
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
   const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
+  const [extraWorkspaceSlugs, setExtraWorkspaceSlugs] = useState<string[]>([]);
   const [_isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -214,7 +215,9 @@ export function DashboardChat() {
                 },
               ];
             }),
-          workspaceSlug: slug,
+          ...(extraWorkspaceSlugs.length === 0
+            ? { workspaceSlug: slug }
+            : { workspaceSlugs: [slug, ...extraWorkspaceSlugs] }),
         }),
       });
 
@@ -335,6 +338,7 @@ export function DashboardChat() {
     setFollowUpQuestions([]);
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
+    setExtraWorkspaceSlugs([]);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -635,6 +639,10 @@ export function DashboardChat() {
           onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
           showShareButton={messages.length > 0}
           onShare={handleShare}
+          extraWorkspaceSlugs={extraWorkspaceSlugs}
+          onAddWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => [...prev, ws])}
+          onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}
+          currentWorkspaceSlug={slug}
         />
       </div>
 

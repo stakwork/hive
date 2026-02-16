@@ -67,12 +67,12 @@ ${workspaceList}
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
-- \`{workspace}:list_concepts\` - List features/concepts from that codebase
-- \`{workspace}:learn_concept\` - Fetch detailed documentation for a feature by ID
-- \`{workspace}:recent_commits\` - Query recent commits
-- \`{workspace}:recent_contributions\` - Query PRs by a contributor
-- \`{workspace}:search_logs\` - Search application logs (Lucene query syntax)
-- \`{workspace}:repo_agent\` - Deep code analysis (use as LAST RESORT)
+- \`{workspace}__list_concepts\` - List features/concepts from that codebase
+- \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID
+- \`{workspace}__recent_commits\` - Query recent commits
+- \`{workspace}__recent_contributions\` - Query PRs by a contributor
+- \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
+- \`{workspace}__repo_agent\` - Deep code analysis (use as LAST RESORT)
 
 If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.
 
@@ -97,7 +97,7 @@ export function getMultiWorkspacePrefixMessages(
         {
           type: "tool-call",
           toolCallId: `list-${ws.slug}`,
-          toolName: `${ws.slug}:list_concepts`,
+          toolName: `${ws.slug}__list_concepts`,
           input: {},
         },
       ],
@@ -108,7 +108,7 @@ export function getMultiWorkspacePrefixMessages(
         {
           type: "tool-result",
           toolCallId: `list-${ws.slug}`,
-          toolName: `${ws.slug}:list_concepts`,
+          toolName: `${ws.slug}__list_concepts`,
           output: {
             type: "json",
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
