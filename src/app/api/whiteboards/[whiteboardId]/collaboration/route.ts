@@ -35,14 +35,26 @@ export async function POST(
     const channelName = getWhiteboardChannelName(whiteboardId);
 
     switch (body.type) {
-      case "elements":
-        await pusherServer.trigger(channelName, PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE, {
+      case "elements": {
+        const payload = {
           senderId: body.senderId,
           elements: body.elements,
           appState: body.appState || {},
           version: 0,
-        });
+        };
+
+        // Check payload size before sending to avoid Pusher 413 errors (10KB limit)
+        const payloadSize = new TextEncoder().encode(JSON.stringify(payload)).length;
+        if (payloadSize > 10240) {
+          // Payload too large for real-time broadcast - skip silently.
+          // The debounced DB save will persist the data, and other clients
+          // will receive updates on their next fetch or smaller delta updates.
+          return NextResponse.json({ success: true, skipped: true, reason: "payload_too_large" });
+        }
+
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE, payload);
         break;
+      }
 
       case "cursor":
         if (body.cursor) {
