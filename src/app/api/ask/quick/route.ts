@@ -9,7 +9,7 @@ import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } fro
 import { streamText, ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getAllRepositories } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
@@ -122,11 +122,11 @@ export async function POST(request: NextRequest) {
       baseSwarmUrl = `http://localhost:3355`;
     }
 
-    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
-    const repoUrl = primaryRepo?.repositoryUrl;
-    if (!repoUrl) {
-      throw notFoundError("Repository URL not configured for this swarm");
+    const repos = await getAllRepositories(swarm.workspaceId);
+    if (repos.length === 0) {
+      throw notFoundError("No repositories configured for this workspace");
     }
+    const repoUrls = repos.map((r) => r.repositoryUrl);
 
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceAccess.workspace?.id },
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
     const model = await getModel(provider, apiKey, workspaceSlug);
-    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat, apiKey);
+    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrls, pat, apiKey);
 
     const concepts = await listConcepts(baseSwarmUrl, decryptedSwarmApiKey);
 
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
 
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const rawMessages: ModelMessage[] = [
-      ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
+      ...getQuickAskPrefixMessages(features, repoUrls, clueMsgs),
       // Conversation history (normalized to proper ModelMessage format)
       ...convertedMessages,
     ];

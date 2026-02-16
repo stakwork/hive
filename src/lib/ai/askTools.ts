@@ -85,8 +85,25 @@ export async function repoAgent(
   throw new Error("Repo agent execution timed out. Please try again.");
 }
 
-export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
-  const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
+function resolveRepo(
+  repoMap: { url: string; owner: string; repo: string }[],
+  repoParam?: string
+): { owner: string; repo: string } {
+  if (repoParam) {
+    const [owner, repo] = repoParam.split("/");
+    return { owner, repo };
+  }
+  return { owner: repoMap[0].owner, repo: repoMap[0].repo };
+}
+
+export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string) {
+  // Build a map of repo URLs to their parsed owner/repo for multi-repo support
+  const repoMap = repoUrls.map((url) => ({
+    url,
+    ...parseOwnerRepo(url),
+  }));
+  const isMultiRepo = repoUrls.length > 1;
+
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
   return {
     list_concepts: tool({
@@ -127,15 +144,21 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       },
     }),
     recent_commits: tool({
-      description: "Query a repo for recent commits. The output is a list of recent commits.",
-      inputSchema: z.object({ limit: z.number().optional().default(10) }),
-      execute: async ({ limit }: { limit?: number }) => {
+      description: isMultiRepo
+        ? "Query a repo for recent commits. The output is a list of recent commits. Use the 'repo' parameter to specify which repository (owner/repo format, e.g., 'facebook/react')."
+        : "Query a repo for recent commits. The output is a list of recent commits.",
+      inputSchema: isMultiRepo
+        ? z.object({
+            repo: z.string().describe("Repository in owner/repo format (e.g., 'facebook/react')"),
+            limit: z.number().optional().default(10),
+          })
+        : z.object({ limit: z.number().optional().default(10) }),
+      execute: async (params: { repo?: string; limit?: number }) => {
         try {
-          const analyzer = new RepoAnalyzer({
-            githubToken: pat,
-          });
-          const coms = await analyzer.getRecentCommitsWithFiles(repoOwner, repoName, {
-            limit: limit || 10,
+          const { owner, repo } = resolveRepo(repoMap, params.repo);
+          const analyzer = new RepoAnalyzer({ githubToken: pat });
+          const coms = await analyzer.getRecentCommitsWithFiles(owner, repo, {
+            limit: params.limit || 10,
           });
           return coms;
         } catch (e) {
@@ -145,15 +168,21 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       },
     }),
     recent_contributions: tool({
-      description:
-        "Query a repo for recent PRs by a specific contributor. Input is the contributor's GitHub login. The output is a list of their most recent contributions, including PR titles, issue titles, commit messages, and code review comments.",
-      inputSchema: z.object({ user: z.string(), limit: z.number().optional().default(5) }),
-      execute: async ({ user, limit }: { user: string; limit?: number }) => {
+      description: isMultiRepo
+        ? "Query a repo for recent PRs by a specific contributor. Input is the contributor's GitHub login. Use the 'repo' parameter to specify which repository (owner/repo format). The output is a list of their most recent contributions, including PR titles, issue titles, commit messages, and code review comments."
+        : "Query a repo for recent PRs by a specific contributor. Input is the contributor's GitHub login. The output is a list of their most recent contributions, including PR titles, issue titles, commit messages, and code review comments.",
+      inputSchema: isMultiRepo
+        ? z.object({
+            user: z.string(),
+            repo: z.string().describe("Repository in owner/repo format (e.g., 'facebook/react')"),
+            limit: z.number().optional().default(5),
+          })
+        : z.object({ user: z.string(), limit: z.number().optional().default(5) }),
+      execute: async (params: { user: string; repo?: string; limit?: number }) => {
         try {
-          const analyzer = new RepoAnalyzer({
-            githubToken: pat,
-          });
-          const output = await analyzer.getContributorPRs(repoOwner, repoName, user, limit || 5);
+          const { owner, repo } = resolveRepo(repoMap, params.repo);
+          const analyzer = new RepoAnalyzer({ githubToken: pat });
+          const output = await analyzer.getContributorPRs(owner, repo, params.user, params.limit || 5);
           return output;
         } catch (e) {
           console.error("Error retrieving recent contributions:", e);
@@ -170,8 +199,9 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
         try {
-          const rr =  await repoAgent(swarmUrl, swarmApiKey, {
-            repo_url: repoUrl,
+          // Pass comma-separated repo URLs for multi-repo support
+          const rr = await repoAgent(swarmUrl, swarmApiKey, {
+            repo_url: repoUrls.join(","),
             prompt: prompt2,
             pat,
           });

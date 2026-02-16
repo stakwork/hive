@@ -1,9 +1,12 @@
 import { ModelMessage } from "ai";
 
 // System prompt for the quick ask learning assistant
-export function getQuickAskSystemPrompt(repoUrl: string): string {
+export function getQuickAskSystemPrompt(repoUrls: string[]): string {
+  const repoDescription =
+    repoUrls.length === 1 ? `the repository ${repoUrls[0]}` : `the repositories: ${repoUrls.join(", ")}`;
+
   return `
-You are a source code learning assistant for the repository ${repoUrl}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
+You are a source code learning assistant for ${repoDescription}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
 
@@ -12,9 +15,9 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrl: string, clueMsgs: ModelMessage[] | null): ModelMessage[] {
+export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null): ModelMessage[] {
   return [
-    { role: "system", content: getQuickAskSystemPrompt(repoUrl) },
+    { role: "system", content: getQuickAskSystemPrompt(repoUrls) },
     {
       role: "assistant",
       content: [
