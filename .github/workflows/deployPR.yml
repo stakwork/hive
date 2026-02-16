@@ -34,10 +34,10 @@ jobs:
           echo "preview_url=${URLS[$INDEX]}" >> $GITHUB_OUTPUT
 
       ############################################################
-      # 2️⃣ Create Neon Temporary Branch
+      # 2️⃣ Create / Reuse Neon Branch + Endpoint
       ############################################################
 
-      - name: Create Neon Branch (Fork from staging)
+      - name: Prepare Neon Preview Database
         id: neon
         run: |
           set -e
@@ -49,84 +49,116 @@ jobs:
           # 1️⃣ Get staging branch ID
           ########################################
 
-          STAGING_RESPONSE=$(curl -s \
+          STAGING_ID=$(curl -s \
             -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
-
-          STAGING_ID=$(echo "$STAGING_RESPONSE" | jq -r '.branches[] | select(.name=="staging") | .id')
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            | jq -r '.branches[] | select(.name=="staging") | .id')
 
           if [ -z "$STAGING_ID" ] || [ "$STAGING_ID" = "null" ]; then
-            echo "❌ Could not find staging branch in Neon project"
+            echo "❌ Could not find staging branch"
             exit 1
           fi
 
           ########################################
-          # 2️⃣ Create PR branch from staging
+          # 2️⃣ Create or Reuse PR Branch
           ########################################
 
-          RESPONSE=$(curl -s -X POST \
+          BRANCH_ID=$(curl -s \
+            -H "Authorization: Bearer $NEON_API_KEY" \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            -H "Authorization: Bearer $NEON_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$STAGING_ID\",\"expires_at\":\"$EXPIRY\"}}")
-          
-          echo "$RESPONSE"
-          
-          BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+            | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+
+          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+            echo "Creating branch $BRANCH_NAME"
+
+            RESPONSE=$(curl -s -X POST \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$STAGING_ID\",\"expires_at\":\"$EXPIRY\"}}")
+
+            BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+          else
+            echo "Branch already exists: $BRANCH_ID"
+          fi
+
+          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+            echo "❌ Failed to obtain branch ID"
+            exit 1
+          fi
 
           ########################################
-          # 3️⃣ Create compute endpoint
+          # 3️⃣ Wait for Branch Ready
           ########################################
-          
-          ENDPOINT_RESPONSE=$(curl -s -X POST \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/endpoints" \
-            -H "Authorization: Bearer $NEON_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{"endpoint":{"type":"read_write"}}')
-          
-          echo "$ENDPOINT_RESPONSE"
-          
-          ENDPOINT_ID=$(echo "$ENDPOINT_RESPONSE" | jq -r '.endpoint.id')
-          
-          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
-            echo "❌ Failed to create compute endpoint"
-            exit 1
-          fi
-          
-          
-          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
-            echo "❌ Failed to create branch"
-            exit 1
-          fi
-          
-          echo "Waiting for Neon compute endpoint..."
-          
-          for i in {1..30}; do
-            STATUS_RESPONSE=$(curl -s \
+
+          for i in {1..20}; do
+            STATE=$(curl -s \
               -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
-          
-            STATE=$(echo "$STATUS_RESPONSE" | jq -r '.endpoint.current_state')
-            DB_HOST=$(echo "$STATUS_RESPONSE" | jq -r '.endpoint.host')
-          
-            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
-              echo "Neon endpoint ready."
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" \
+              | jq -r '.branch.current_state')
+
+            if [ "$STATE" = "ready" ]; then
               break
             fi
-          
-            echo "Still provisioning compute... ($i)"
+
+            echo "Waiting for branch... ($i)"
             sleep 3
           done
-          
-          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
-            echo "❌ Neon endpoint never became ready"
+
+          ########################################
+          # 4️⃣ Create or Reuse Endpoint
+          ########################################
+
+          ENDPOINT_ID=$(curl -s \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
+            | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            echo "Creating compute endpoint"
+
+            RESPONSE=$(curl -s -X POST \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
+
+            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+          else
+            echo "Endpoint already exists: $ENDPOINT_ID"
+          fi
+
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            echo "❌ Failed to create endpoint"
             exit 1
           fi
-          
-          echo "db_host=$DB_HOST" >> "$GITHUB_OUTPUT"
 
-          
-          
+          ########################################
+          # 5️⃣ Wait for Endpoint Ready
+          ########################################
+
+          for i in {1..30}; do
+            STATUS=$(curl -s \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+
+            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
+              break
+            fi
+
+            echo "Waiting for endpoint... ($i)"
+            sleep 3
+          done
+
+          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+            echo "❌ Endpoint never became ready"
+            exit 1
+          fi
+
+          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
 
       ############################################################
       # 3️⃣ Create GitHub Deployment
@@ -157,19 +189,10 @@ jobs:
           node-version: "22"
 
       - run: npm install --global vercel@latest
-
       - run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
-      # 5️⃣ Inject Neon DB into Build
-      ############################################################
-
-      - name: Create .env for Preview
-        run: |
-          echo "DATABASE_URL=postgres://${{ secrets.NEON_DB_USER }}:${{ secrets.NEON_DB_PASS }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require" >> .env
-
-      ############################################################
-      # 6️⃣ Build + Deploy
+      # 5️⃣ Build + Deploy
       ############################################################
 
       - name: Build
@@ -178,16 +201,19 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
+          DATABASE_URL="postgres://${{ secrets.NEON_DB_USER }}:${{ secrets.NEON_DB_PASS }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+
           DEPLOYMENT_URL=$(vercel deploy \
             --prebuilt \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --env DATABASE_URL=$DATABASE_URL \
             --alias ${{ steps.slot.outputs.preview_url }}
           )
+
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
 
       ############################################################
-      # 7️⃣ Mark Deployment Success
+      # 6️⃣ Mark Deployment Status
       ############################################################
 
       - name: Mark Success
