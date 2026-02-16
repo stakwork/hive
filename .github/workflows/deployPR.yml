@@ -73,6 +73,26 @@ jobs:
           echo "$RESPONSE"
           
           BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+
+          ########################################
+          # 3️⃣ Create compute endpoint
+          ########################################
+          
+          ENDPOINT_RESPONSE=$(curl -s -X POST \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/endpoints" \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"endpoint":{"type":"read_write"}}')
+          
+          echo "$ENDPOINT_RESPONSE"
+          
+          ENDPOINT_ID=$(echo "$ENDPOINT_RESPONSE" | jq -r '.endpoint.id')
+          
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            echo "❌ Failed to create compute endpoint"
+            exit 1
+          fi
+          
           
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
             echo "❌ Failed to create branch"
@@ -80,15 +100,16 @@ jobs:
           fi
           
           echo "Waiting for Neon compute endpoint..."
-
+          
           for i in {1..30}; do
-            ENDPOINT_RESPONSE=$(curl -s \
+            STATUS_RESPONSE=$(curl -s \
               -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/endpoints")
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
           
-            DB_HOST=$(echo "$ENDPOINT_RESPONSE" | jq -r '.endpoints[0].host')
+            STATE=$(echo "$STATUS_RESPONSE" | jq -r '.endpoint.current_state')
+            DB_HOST=$(echo "$STATUS_RESPONSE" | jq -r '.endpoint.host')
           
-            if [ "$DB_HOST" != "null" ] && [ -n "$DB_HOST" ]; then
+            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
               echo "Neon endpoint ready."
               break
             fi
@@ -103,6 +124,7 @@ jobs:
           fi
           
           echo "db_host=$DB_HOST" >> "$GITHUB_OUTPUT"
+
           
           
 
