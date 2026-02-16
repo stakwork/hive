@@ -58,7 +58,7 @@ describe("askTools", () => {
 
   describe("factory function", () => {
     it("returns object with all 7 tools", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       expect(tools).toHaveProperty("list_concepts");
       expect(tools).toHaveProperty("learn_concept");
@@ -70,7 +70,7 @@ describe("askTools", () => {
     });
 
     it("parses repository URL correctly", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const { owner, repo } = parseOwnerRepo(mockRepoUrl);
 
       expect(owner).toBe("test-owner");
@@ -84,7 +84,7 @@ describe("askTools", () => {
         execute: vi.fn(),
       });
 
-      askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       expect(mockGetProviderTool).toHaveBeenCalledWith("anthropic", mockApiKey, "webSearch");
     });
@@ -102,7 +102,7 @@ describe("askTools", () => {
         json: async () => mockFeatures,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.list_concepts.execute({});
 
       expect(result).toEqual(mockFeatures);
@@ -121,14 +121,14 @@ describe("askTools", () => {
     it("returns error message on failure", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.list_concepts.execute({});
 
       expect(result).toBe("Could not retrieve features");
     });
 
     it("has correct tool structure", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       expect(tools.list_concepts.description).toBeDefined();
       expect(tools.list_concepts.execute).toBeDefined();
       expect(typeof tools.list_concepts.execute).toBe("function");
@@ -150,7 +150,7 @@ describe("askTools", () => {
         json: async () => mockFeatureData,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.learn_concept.execute({ conceptId: "feature-1" });
 
       expect(result).toEqual(mockFeatureData);
@@ -172,7 +172,7 @@ describe("askTools", () => {
         status: 404,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.learn_concept.execute({ conceptId: "nonexistent" });
 
       expect(result).toEqual({ error: "Feature not found" });
@@ -181,7 +181,7 @@ describe("askTools", () => {
     it("returns error message on fetch failure", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.learn_concept.execute({ conceptId: "feature-1" });
 
       expect(result).toBe("Could not retrieve feature documentation");
@@ -193,7 +193,7 @@ describe("askTools", () => {
         json: async () => ({}),
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       await tools.learn_concept.execute({ conceptId: "feature/with/slashes" });
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -212,7 +212,7 @@ describe("askTools", () => {
 
       mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits as any);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({});
 
       expect(result).toEqual(mockCommits);
@@ -228,7 +228,7 @@ describe("askTools", () => {
 
       mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits as any);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({ limit: 5 });
 
       expect(result).toEqual(mockCommits);
@@ -242,7 +242,7 @@ describe("askTools", () => {
     it("returns error message on failure", async () => {
       mockGetRecentCommitsWithFiles.mockRejectedValue(new Error("GitHub API error"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({});
 
       expect(result).toBe("Could not retrieve recent commits");
@@ -252,7 +252,7 @@ describe("askTools", () => {
       const mockCommits: any[] = [];
       mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       
       // Test with explicit limit
       await tools.recent_commits.execute({ limit: 20 });
@@ -281,7 +281,7 @@ describe("askTools", () => {
 
       mockGetContributorPRs.mockResolvedValue(mockContributions as any);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser" });
 
       expect(result).toEqual(mockContributions);
@@ -298,7 +298,7 @@ describe("askTools", () => {
 
       mockGetContributorPRs.mockResolvedValue(mockContributions as any);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser", limit: 10 });
 
       expect(result).toEqual(mockContributions);
@@ -313,7 +313,7 @@ describe("askTools", () => {
     it("returns error message on failure", async () => {
       mockGetContributorPRs.mockRejectedValue(new Error("GitHub API error"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser" });
 
       expect(result).toBe("Could not retrieve repository map");
@@ -323,7 +323,7 @@ describe("askTools", () => {
       const mockContributions: any[] = [];
       mockGetContributorPRs.mockResolvedValue(mockContributions);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       
       // Test with explicit limit
       await tools.recent_contributions.execute({ user: "testuser", limit: 15 });
@@ -365,7 +365,7 @@ describe("askTools", () => {
         }),
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const executePromise = tools.repo_agent.execute({ prompt: "Analyze this code" });
       
       // Fast-forward through the setTimeout delay
@@ -405,7 +405,7 @@ describe("askTools", () => {
         }),
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const executePromise = tools.repo_agent.execute({ prompt: "Test prompt" });
       
       await vi.advanceTimersByTimeAsync(5000);
@@ -421,7 +421,7 @@ describe("askTools", () => {
     it("returns error message on failure", async () => {
       mockFetch.mockRejectedValue(new Error("Agent execution failed"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.repo_agent.execute({ prompt: "Analyze this code" });
 
       expect(result).toBe("Could not execute repo agent");
@@ -452,7 +452,7 @@ describe("askTools", () => {
         close: mockClose,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.search_logs.execute({ query: "*", max_hits: 10 });
 
       expect(result).toEqual(mockLogs);
@@ -475,7 +475,7 @@ describe("askTools", () => {
     it("handles search_logs MCP connection failure", async () => {
       mockCreateMCPClient.mockRejectedValue(new Error("MCP connection failed"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.search_logs.execute({ query: "level:ERROR" });
 
       expect(result).toBe("Could not search logs");
@@ -495,7 +495,7 @@ describe("askTools", () => {
         close: mockClose,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       await tools.search_logs.execute({ query: "*" });
 
       expect(mockClose).toHaveBeenCalled();
@@ -515,7 +515,7 @@ describe("askTools", () => {
         close: mockClose,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.search_logs.execute({ query: "*" });
 
       expect(result).toBe("Could not search logs");
@@ -536,7 +536,7 @@ describe("askTools", () => {
         close: mockClose,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       await tools.search_logs.execute({ query: "*" });
 
       expect(mockExecute).toHaveBeenCalledWith(
@@ -554,7 +554,7 @@ describe("askTools", () => {
         close: mockClose,
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.search_logs.execute({ query: "*" });
 
       expect(result).toBe("search_logs tool not found on MCP server");
@@ -572,7 +572,7 @@ describe("askTools", () => {
 
       mockGetProviderTool.mockReturnValue(mockWebSearchTool);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       expect(tools.web_search).toEqual(mockWebSearchTool);
     });
@@ -582,7 +582,7 @@ describe("askTools", () => {
     it("handles errors gracefully without throwing", async () => {
       mockFetch.mockRejectedValue(new Error("Critical failure"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       
       // Should not throw, should return error message
       await expect(tools.list_concepts.execute({})).resolves.toBe("Could not retrieve features");
@@ -594,7 +594,7 @@ describe("askTools", () => {
       mockGetRecentCommitsWithFiles.mockRejectedValue(new Error("Fail"));
       mockGetContributorPRs.mockRejectedValue(new Error("Fail"));
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       // All tools should return error messages, not throw
       await expect(tools.list_concepts.execute({})).resolves.toBe("Could not retrieve features");
@@ -620,7 +620,7 @@ describe("askTools", () => {
         json: async () => [],
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.list_concepts.execute({});
 
       expect(result).toEqual([]);
@@ -632,7 +632,7 @@ describe("askTools", () => {
         json: async () => ({ id: "special!@#$%^&*()" }),
       });
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       await tools.learn_concept.execute({ conceptId: "special!@#$%^&*()" });
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -644,7 +644,7 @@ describe("askTools", () => {
     it("handles empty commit list", async () => {
       mockGetRecentCommitsWithFiles.mockResolvedValue([]);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({});
 
       expect(result).toEqual([]);
@@ -653,7 +653,7 @@ describe("askTools", () => {
     it("handles empty contributions list", async () => {
       mockGetContributorPRs.mockResolvedValue([]);
 
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser" });
 
       expect(result).toEqual([]);

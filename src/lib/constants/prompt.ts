@@ -1,9 +1,13 @@
 import { ModelMessage } from "ai";
+import { WorkspaceConfig } from "@/lib/ai/types";
 
 // System prompt for the quick ask learning assistant
-export function getQuickAskSystemPrompt(repoUrl: string): string {
+export function getQuickAskSystemPrompt(repoUrls: string[]): string {
+  const repoDescription =
+    repoUrls.length === 1 ? `the repository ${repoUrls[0]}` : `the repositories: ${repoUrls.join(", ")}`;
+
   return `
-You are a source code learning assistant for the repository ${repoUrl}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
+You are a source code learning assistant for ${repoDescription}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
 
@@ -12,9 +16,9 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrl: string, clueMsgs: ModelMessage[] | null): ModelMessage[] {
+export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null): ModelMessage[] {
   return [
-    { role: "system", content: getQuickAskSystemPrompt(repoUrl) },
+    { role: "system", content: getQuickAskSystemPrompt(repoUrls) },
     {
       role: "assistant",
       content: [
@@ -40,6 +44,84 @@ export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], r
         },
       ],
     },
+    ...(clueMsgs || []),
+  ];
+}
+
+// Multi-workspace system prompt
+export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): string {
+  const workspaceList = workspaces
+    .map((ws) => {
+      const repos = ws.repoUrls.join(", ");
+      return `- **${ws.slug}**: ${repos}`;
+    })
+    .join("\n");
+
+  return `
+You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand — a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
+
+Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But if the user prompt is not technical, then you should answer in clear, plain language.
+
+## Available Workspaces & Repositories
+${workspaceList}
+
+## Tool Naming Convention
+Tools are prefixed with workspace slugs. For each workspace you have:
+- \`{workspace}__list_concepts\` - List features/concepts from that codebase
+- \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID
+- \`{workspace}__recent_commits\` - Query recent commits
+- \`{workspace}__recent_contributions\` - Query PRs by a contributor
+- \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
+- \`{workspace}__repo_agent\` - Deep code analysis (use as LAST RESORT)
+
+If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.
+
+If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
+
+When you are done print "[END_OF_ANSWER]"`;
+}
+
+export function getMultiWorkspacePrefixMessages(
+  workspaces: WorkspaceConfig[],
+  conceptsByWorkspace: Record<string, Record<string, unknown>[]>,
+  clueMsgs: ModelMessage[] | null
+): ModelMessage[] {
+  // Build pre-filled tool calls for each workspace's concepts
+  const toolCalls: ModelMessage[] = [];
+
+  for (const ws of workspaces) {
+    const concepts = conceptsByWorkspace[ws.slug] || [];
+    toolCalls.push({
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: `list-${ws.slug}`,
+          toolName: `${ws.slug}__list_concepts`,
+          input: {},
+        },
+      ],
+    });
+    toolCalls.push({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: `list-${ws.slug}`,
+          toolName: `${ws.slug}__list_concepts`,
+          output: {
+            type: "json",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value: concepts as any,
+          },
+        },
+      ],
+    });
+  }
+
+  return [
+    { role: "system", content: getMultiWorkspaceSystemPrompt(workspaces) },
+    ...toolCalls,
     ...(clueMsgs || []),
   ];
 }
