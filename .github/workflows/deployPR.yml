@@ -207,7 +207,8 @@ jobs:
             --prebuilt \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --env DATABASE_URL=$DATABASE_URL \
-            --alias ${{ steps.slot.outputs.preview_url }}
+            --name ${{ steps.slot.outputs.preview_url }} \
+            --confirm
           )
 
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
