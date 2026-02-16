@@ -43,7 +43,7 @@ jobs:
           set -e
 
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
-          EXPIRY=$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ')
+          EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "1 day")
 
           ########################################
           # 1️⃣ Get staging branch ID
