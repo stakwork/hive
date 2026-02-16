@@ -69,18 +69,42 @@ jobs:
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
             -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$STAGING_ID\",\"expires_at\":\"$EXPIRY\"}}")
-
+          
           echo "$RESPONSE"
-
-          DB_HOST=$(echo "$RESPONSE" | jq -r '.branch.endpoints[0].host')
-
-          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
-            echo "❌ Failed to create Neon branch"
+          
+          BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+          
+          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+            echo "❌ Failed to create branch"
             exit 1
           fi
-
-          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
-
+          
+          echo "Waiting for Neon branch to become ready..."
+          
+          for i in {1..20}; do
+            STATUS_RESPONSE=$(curl -s \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID")
+          
+            STATE=$(echo "$STATUS_RESPONSE" | jq -r '.branch.current_state')
+            DB_HOST=$(echo "$STATUS_RESPONSE" | jq -r '.endpoints[0].host')
+          
+            if [ "$STATE" = "ready" ] && [ "$DB_HOST" != "null" ]; then
+              echo "Neon branch ready."
+              break
+            fi
+          
+            echo "Still provisioning... ($i)"
+            sleep 3
+          done
+          
+          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+            echo "❌ Neon branch never became ready"
+            exit 1
+          fi
+          
+          echo "db_host=$DB_HOST" >> "$GITHUB_OUTPUT"
+          
 
       ############################################################
       # 3️⃣ Create GitHub Deployment
