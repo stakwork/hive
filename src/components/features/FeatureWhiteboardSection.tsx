@@ -1,5 +1,7 @@
 "use client";
 
+import type { LayoutAlgorithm, ParsedDiagram } from "@/services/excalidraw-layout";
+import { extractParsedDiagram, relayoutDiagram } from "@/services/excalidraw-layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,8 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -20,7 +24,7 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
-import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Unlink, Wifi, WifiOff } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -46,11 +50,13 @@ interface WhiteboardData {
 interface FeatureWhiteboardSectionProps {
   featureId: string;
   workspaceId: string;
+  hasArchitecture?: boolean;
 }
 
 export function FeatureWhiteboardSection({
   featureId,
   workspaceId,
+  hasArchitecture = false,
 }: FeatureWhiteboardSectionProps) {
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [availableWhiteboards, setAvailableWhiteboards] = useState<WhiteboardItem[]>([]);
@@ -58,6 +64,7 @@ export function FeatureWhiteboardSection({
   const [creating, setCreating] = useState(false);
   const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [layout, setLayout] = useState<LayoutAlgorithm>("layered");
   const [saved, setSaved] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
@@ -66,6 +73,8 @@ export function FeatureWhiteboardSection({
   const isInitialLoadRef = useRef(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
+  const parsedDiagramRef = useRef<ParsedDiagram | null>(null);
+  const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // Collaboration hook
   const {
@@ -80,6 +89,16 @@ export function FeatureWhiteboardSection({
     excalidrawAPI,
   });
 
+  // Async diagram generation via Stakwork
+  const { latestRun: diagramRun } = useStakworkGeneration({
+    featureId,
+    type: "DIAGRAM_GENERATION" as import("@prisma/client").StakworkRunType,
+    enabled: hasArchitecture,
+  });
+
+  const generating =
+    diagramRun?.status === "PENDING" || diagramRun?.status === "IN_PROGRESS";
+
   const loadWhiteboard = useCallback(async () => {
     try {
       const res = await fetch(`/api/whiteboards?featureId=${featureId}`);
@@ -87,6 +106,9 @@ export function FeatureWhiteboardSection({
       if (data.success && data.data) {
         setWhiteboard(data.data);
         versionRef.current = data.data.version || 0;
+        if (Array.isArray(data.data.elements) && data.data.elements.length > 0) {
+          parsedDiagramRef.current = extractParsedDiagram(data.data.elements);
+        }
       } else {
         setWhiteboard(null);
       }
@@ -270,6 +292,13 @@ export function FeatureWhiteboardSection({
     [broadcastCursor]
   );
 
+  // Reload whiteboard when async diagram generation completes
+  useEffect(() => {
+    if (diagramRun?.status === "COMPLETED") {
+      loadWhiteboard();
+    }
+  }, [diagramRun?.status, diagramRun?.id, loadWhiteboard]);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -297,6 +326,83 @@ export function FeatureWhiteboardSection({
     };
   }, [isFullscreen]);
 
+  const handleGenerate = async (overrideLayout?: LayoutAlgorithm) => {
+    try {
+      const res = await fetch(`/api/features/${featureId}/whiteboard/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout: overrideLayout ?? layout }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.error("Error starting whiteboard generation:", data.message);
+      }
+    } catch (error) {
+      console.error("Error starting whiteboard generation:", error);
+    }
+  };
+
+  // Helper to update Excalidraw scene and zoom to fit
+  const updateScene = useCallback(
+    (elements: unknown[], appState?: Record<string, unknown>) => {
+      if (excalidrawAPI && elements) {
+        isInitialLoadRef.current = true;
+        excalidrawAPI.updateScene({
+          elements: elements as readonly ExcalidrawElement[],
+          appState: appState as unknown as AppState,
+        });
+        setTimeout(() => {
+          excalidrawAPI.scrollToContent(undefined, {
+            fitToViewport: true,
+            viewportZoomFactor: 0.9,
+            animate: true,
+            duration: 300,
+          });
+        }, 100);
+      }
+    },
+    [excalidrawAPI]
+  );
+
+  // Update Excalidraw scene when whiteboard data changes (e.g. from async generation).
+  // Keyed on id+version to avoid re-running on every user edit of whiteboard state.
+  useEffect(() => {
+    if (whiteboard && excalidrawAPI && !isInitialLoadRef.current) {
+      updateScene(whiteboard.elements as unknown[], whiteboard.appState as Record<string, unknown>);
+    }
+    // eslint-disable-next-line
+  }, [whiteboard?.id, whiteboard?.version, excalidrawAPI, updateScene]);
+
+  // Client-side re-layout (instant via ELK in browser, falls back to API if no parsed diagram)
+  const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
+    setLayout(newLayout);
+    const diagram = parsedDiagramRef.current;
+    const api = excalidrawAPIRef.current;
+
+    if (!diagram || !api) {
+      return;
+    }
+
+    try {
+      const data = await relayoutDiagram(diagram, newLayout);
+      isInitialLoadRef.current = true;
+      api.updateScene({
+        elements: data.elements as unknown as readonly ExcalidrawElement[],
+        appState: data.appState as unknown as AppState,
+      });
+      setTimeout(() => {
+        api.scrollToContent(undefined, {
+          fitToViewport: true,
+          viewportZoomFactor: 0.9,
+          animate: true,
+          duration: 300,
+        });
+      }, 100);
+    } catch (err) {
+      console.error("Error re-laying out diagram:", err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -323,8 +429,29 @@ export function FeatureWhiteboardSection({
                 Create a new whiteboard or link an existing one
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button onClick={handleCreate} disabled={creating}>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center items-center">
+              {hasArchitecture && (
+                <>
+                  <Select value={layout} onValueChange={(v) => handleLayoutChange(v as LayoutAlgorithm)}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="layered">Hierarchical</SelectItem>
+                      <SelectItem value="force">Force</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={() => handleGenerate()} disabled={generating}>
+                    {generating ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    Generate
+                  </Button>
+                </>
+              )}
+              <Button onClick={handleCreate} disabled={creating} variant={hasArchitecture ? "outline" : "default"}>
                 {creating ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
@@ -358,6 +485,32 @@ export function FeatureWhiteboardSection({
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Whiteboard</Label>
         <div className="flex items-center gap-2">
+          {hasArchitecture && (
+            <>
+              <Select value={layout} onValueChange={(v) => handleLayoutChange(v as LayoutAlgorithm)}>
+                <SelectTrigger className="w-[130px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="layered">Hierarchical</SelectItem>
+                  <SelectItem value="force">Force</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleGenerate()}
+                disabled={generating}
+              >
+                {generating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                Regenerate
+              </Button>
+            </>
+          )}
           {/* Collaborators */}
           <CollaboratorAvatars collaborators={collaborators} />
 
@@ -370,20 +523,16 @@ export function FeatureWhiteboardSection({
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
-            {saving && (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Saving...</span>
-              </>
-            )}
-            {saved && !saving && (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>Saved</span>
-              </>
-            )}
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`w-2.5 h-2.5 rounded-full transition-colors ${saving ? "bg-amber-500 animate-pulse" : saved ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                {saving ? "Saving..." : saved ? "Saved" : "No unsaved changes"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             variant="outline"
             size="sm"
@@ -427,19 +576,29 @@ export function FeatureWhiteboardSection({
         }
       >
         {isFullscreen && (
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleFullscreen}
-            className="absolute top-4 right-4 z-50"
-            title="Exit fullscreen"
-          >
-            <Minimize2 className="w-4 h-4" />
-          </Button>
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+              title="Zoom to fit"
+              disabled={!excalidrawAPI}
+            >
+              <Scan className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggleFullscreen}
+              title="Exit fullscreen"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </Button>
+          </div>
         )}
         <Card className={isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"}>
           <Excalidraw
-            excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
+            excalidrawAPI={(api: ExcalidrawImperativeAPI) => { setExcalidrawAPI(api); excalidrawAPIRef.current = api; }}
             initialData={{
               elements: (whiteboard.elements || []) as readonly ExcalidrawElement[],
               appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
