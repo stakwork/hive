@@ -1,33 +1,32 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, Bot, Mic, Rocket } from "lucide-react";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import type { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { AITextareaSection } from "@/components/features/AITextareaSection";
+import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
+import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
+import { PersonasSection } from "@/components/features/PersonasSection";
+import { TicketsList } from "@/components/features/TicketsList";
+import { UserStoriesSection } from "@/components/features/UserStoriesSection";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
-import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
-import { ActionMenu } from "@/components/ui/action-menu";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
-import { UserStoriesSection } from "@/components/features/UserStoriesSection";
-import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
-import { AITextareaSection } from "@/components/features/AITextareaSection";
-import { PersonasSection } from "@/components/features/PersonasSection";
-import { TicketsList } from "@/components/features/TicketsList";
-import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useDetailResource } from "@/hooks/useDetailResource";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
-import { getPusherClient } from "@/lib/pusher";
-import { PUSHER_EVENTS } from "@/lib/pusher";
+import type { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { ArrowLeft, Bot, Check, Loader2, Mic, Rocket, Trash2 } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export default function FeatureDetailPage() {
@@ -36,10 +35,10 @@ export default function FeatureDetailPage() {
   const searchParams = useSearchParams();
   const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
   const featureId = params.featureId as string;
-  
+
   // Get the page parameter to preserve pagination when navigating back
   const returnPage = searchParams.get("page") || "1";
-  
+
   // Helper function to get the back navigation path
   const getBackPath = () => {
     const basePath = `/w/${workspaceSlug}/plan`;
@@ -105,7 +104,7 @@ export default function FeatureDetailPage() {
         const data = await response.json();
         // Check if tasks already exist in the feature
         const hasTasks = feature?.phases?.some(phase => phase.tasks && phase.tasks.length > 0) ?? false;
-        
+
         // Group runs by type and keep only the most recent run per type
         // Runs are already ordered by createdAt desc from the API
         const latestPerType = new Map<StakworkRunType, { type: StakworkRunType; decision: string | null }>();
@@ -114,7 +113,7 @@ export default function FeatureDetailPage() {
             latestPerType.set(run.type, run);
           }
         });
-        
+
         // Filter for latest runs that need attention (decision is null)
         const pendingTypes = new Set<StakworkRunType>(
           Array.from(latestPerType.values())
@@ -226,12 +225,12 @@ export default function FeatureDetailPage() {
       fieldForTranscriptRef.current = focusedField;
       wasListeningRef.current = true;
     }
-    
+
     // When listening stops, apply the transcript to the field
     if (!isListening && wasListeningRef.current) {
       wasListeningRef.current = false;
       const targetField = fieldForTranscriptRef.current;
-      
+
       if (transcript && targetField) {
         if (targetField === "newStory") {
           // For user stories input, append to the current value (no auto-save needed)
@@ -239,13 +238,13 @@ export default function FeatureDetailPage() {
           const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
           setNewStoryTitle(newValue);
         } else if (feature) {
-          const currentValue = 
+          const currentValue =
             targetField === "brief" ? (feature.brief || "") :
-            targetField === "requirements" ? (feature.requirements || "") :
-            targetField === "architecture" ? (feature.architecture || "") : "";
-          
+              targetField === "requirements" ? (feature.requirements || "") :
+                targetField === "architecture" ? (feature.architecture || "") : "";
+
           const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
-          
+
           // Update local state and trigger auto-save
           if (targetField === "brief") {
             updateFeature({ brief: newValue });
@@ -259,7 +258,7 @@ export default function FeatureDetailPage() {
           }
         }
       }
-      
+
       resetTranscript();
       fieldForTranscriptRef.current = null;
     }
@@ -459,7 +458,7 @@ export default function FeatureDetailPage() {
 
     try {
       setAutoLaunchStep("tasks");
-      
+
       const response = await fetch("/api/stakwork/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -951,6 +950,7 @@ export default function FeatureDetailPage() {
               {/* Whiteboard Section */}
               <FeatureWhiteboardSection
                 featureId={featureId}
+                hasArchitecture={!!feature?.architecture?.trim()}
                 workspaceId={workspaceId}
               />
 

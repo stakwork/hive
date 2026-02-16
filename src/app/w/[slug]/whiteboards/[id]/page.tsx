@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -10,7 +11,7 @@ import { getInitialAppState } from "@/lib/excalidraw-config";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { ArrowLeft, Check, CheckCircle2, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -298,20 +299,16 @@ export default function WhiteboardDetailPage() {
             </div>
 
             {/* Save status */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {saving && (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Saving...</span>
-                </>
-              )}
-              {saved && !saving && (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span>Saved</span>
-                </>
-              )}
-            </div>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={`w-2.5 h-2.5 rounded-full transition-colors ${saving ? "bg-amber-500 animate-pulse" : saved ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  {saving ? "Saving..." : saved ? "Saved" : "No unsaved changes"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
               variant="outline"
               size="icon"
@@ -345,15 +342,25 @@ export default function WhiteboardDetailPage() {
         }
       >
         {isFullscreen && (
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleFullscreen}
-            className="absolute top-4 right-4 z-50"
-            title="Exit fullscreen"
-          >
-            <Minimize2 className="w-4 h-4" />
-          </Button>
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+              title="Zoom to fit"
+              disabled={!excalidrawAPI}
+            >
+              <Scan className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggleFullscreen}
+              title="Exit fullscreen"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </Button>
+          </div>
         )}
         <Excalidraw
           excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}

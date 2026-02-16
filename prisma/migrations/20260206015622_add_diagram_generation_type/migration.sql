@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StakworkRunType" ADD VALUE 'DIAGRAM_GENERATION';
