@@ -17,6 +17,8 @@ permissions:
 jobs:
   Deploy-Preview:
     runs-on: ubuntu-latest
+    # Only run when PR is from the same repo (not a fork) so VERCEL_* secrets are available
+    if: github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - uses: actions/checkout@v4
