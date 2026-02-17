@@ -23,6 +23,21 @@ jobs:
       - uses: actions/checkout@v4
 
       ############################################################
+      # 1️⃣ Select Rotating Preview Slot
+      ############################################################
+      
+      - name: Select Preview Slot
+        id: slot
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+      
+          SLOT=$(( PR_NUMBER % 3 + 1 ))
+      
+          echo "slot=$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_branch=preview-$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_url=hive-preview-$SLOT.sphinx.chat" >> $GITHUB_OUTPUT
+
+      ############################################################
       # 2️⃣ Force Preview Branch To PR Commit
       ############################################################
       
@@ -42,23 +57,6 @@ jobs:
       
           # Force update remote branch to PR commit directly
           git push origin $PR_SHA:refs/heads/$PREVIEW_BRANCH --force
-
-
-      ############################################################
-      # 1️⃣ Select Rotating Preview Slot
-      ############################################################
-      
-      - name: Select Preview Slot
-        id: slot
-        run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-      
-          SLOT=$(( PR_NUMBER % 3 + 1 ))
-      
-          echo "slot=$SLOT" >> $GITHUB_OUTPUT
-          echo "preview_branch=preview-$SLOT" >> $GITHUB_OUTPUT
-          echo "preview_url=hive-preview-$SLOT.sphinx.chat" >> $GITHUB_OUTPUT
-
 
       ############################################################
       # 2️⃣ Create / Reuse Neon Branch + Endpoint
