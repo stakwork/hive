@@ -233,13 +233,8 @@ jobs:
 
       - name: Build
         run: |
-          DATABASE_URL="postgres://${{ secrets.NEON_DB_USER }}:${{ secrets.NEON_DB_PASS }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
-      
-          vercel build \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --env DATABASE_URL=$DATABASE_URL
-
-
+          export DATABASE_URL="postgres://${{ secrets.NEON_DB_USER }}:${{ secrets.NEON_DB_PASS }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+          vercel build --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy
         id: deploy
