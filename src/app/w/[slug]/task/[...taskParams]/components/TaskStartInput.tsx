@@ -31,6 +31,8 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
+import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
+import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import { PromptsPanel } from "@/components/prompts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -56,7 +58,7 @@ interface TaskStartInputProps {
   workspaceSlug?: string;
   // Workflow editor props
   workflows?: WorkflowNode[];
-  onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode) => void;
+  onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode, versionId?: string) => void;
   onNewWorkflow?: () => void;
   isLoadingWorkflows?: boolean;
   workflowsError?: string | null;
@@ -88,6 +90,7 @@ export function TaskStartInput({
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [autoMerge, setAutoMerge] = useState(true);
@@ -153,6 +156,18 @@ export function TaskStartInput({
   // Only show "not found" if workflows have been successfully loaded (array is not empty)
   // and the user has interacted with the input field
   const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows && workflows.length > 0 && hasInteractedWithWorkflowInput;
+
+  // Fetch workflow versions when a workflow is matched
+  const workflowIdForVersions = matchedWorkflow && !isNewWorkflow ? matchedWorkflow.properties.workflow_id : null;
+  const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
+    workspaceSlug || null,
+    workflowIdForVersions
+  );
+
+  // Reset selected version when workflow changes
+  useEffect(() => {
+    setSelectedVersionId(null);
+  }, [workflowIdForVersions]);
 
   useEffect(() => {
     if (transcript) {
@@ -312,7 +327,9 @@ export function TaskStartInput({
       if (isNewWorkflow && onNewWorkflow) {
         onNewWorkflow();
       } else if (matchedWorkflow && onWorkflowSelect) {
-        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+        // Use selected version or first version if available
+        const versionToUse = selectedVersionId || (versions.length > 0 ? versions[0].workflow_version_id : undefined);
+        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow, versionToUse);
       }
     }
   };
@@ -347,7 +364,9 @@ export function TaskStartInput({
       if (isNewWorkflow && onNewWorkflow) {
         onNewWorkflow();
       } else if (matchedWorkflow && onWorkflowSelect) {
-        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+        // Use selected version or first version if available
+        const versionToUse = selectedVersionId || (versions.length > 0 ? versions[0].workflow_version_id : undefined);
+        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow, versionToUse);
       }
     } else if (isProjectMode) {
       if (matchedProject && onProjectSelect) {
@@ -637,6 +656,16 @@ export function TaskStartInput({
                       </div>
                     )}
                   </div>
+                  {/* Workflow version selector */}
+                  {matchedWorkflow && !isNewWorkflow && versions.length > 0 && (
+                    <WorkflowVersionSelector
+                      workflowName={workflowName || `Workflow ${matchedWorkflow.properties.workflow_id}`}
+                      versions={versions}
+                      selectedVersionId={selectedVersionId}
+                      onVersionSelect={setSelectedVersionId}
+                      isLoading={isLoadingVersions}
+                    />
+                  )}
                 </motion.div>
               ) : isProjectMode ? (
                 <motion.div

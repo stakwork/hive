@@ -396,16 +396,56 @@ export default function TaskChatPage() {
   }, [taskIdFromUrl, loadTaskMessages]);
 
   // Handle workflow selection in workflow_editor mode
-  const handleWorkflowSelect = async (workflowId: number, workflowData: WorkflowNode) => {
+  const handleWorkflowSelect = async (workflowId: number, workflowData: WorkflowNode, workflowVersionId?: string) => {
     if (isLoading) return;
     setIsLoading(true);
 
     try {
       // Use workflow_name directly from properties
       const workflowName = workflowData.properties.workflow_name;
+      let workflowJson = workflowData.properties.workflow_json;
+      let versionRefId = workflowData.ref_id;
+
+      // If a version ID is provided, fetch the specific version
+      if (workflowVersionId) {
+        try {
+          const versionResponse = await fetch(`/api/graph/search/attributes`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              workspaceSlug: slug,
+              node_type: ["Workflow_version"],
+              search_filters: [
+                {
+                  attribute: "workflow_version_id",
+                  value: workflowVersionId,
+                  comparator: "=",
+                },
+              ],
+              include_properties: true,
+            }),
+          });
+
+          if (versionResponse.ok) {
+            const versionData = await versionResponse.json();
+            if (versionData.success && versionData.data.length > 0) {
+              const versionNode = versionData.data[0];
+              workflowJson = versionNode.properties.workflow_json;
+              versionRefId = versionNode.ref_id;
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching workflow version:", error);
+          // Fall back to the workflow data if version fetch fails
+        }
+      }
 
       // Create new task with workflow info
-      const taskTitle = workflowName || `Workflow ${workflowId}`;
+      const taskTitle = workflowName 
+        ? `${workflowName}${workflowVersionId ? ` (v${workflowVersionId.substring(0, 8)})` : ''}`
+        : `Workflow ${workflowId}`;
       const response = await fetch("/api/tasks", {
         method: "POST",
         headers: {
@@ -413,7 +453,7 @@ export default function TaskChatPage() {
         },
         body: JSON.stringify({
           title: taskTitle,
-          description: `Editing workflow ${workflowId}`,
+          description: `Editing workflow ${workflowId}${workflowVersionId ? ` version ${workflowVersionId.substring(0, 8)}` : ''}`,
           status: "active",
           workspaceSlug: slug,
           mode: taskMode,
@@ -448,10 +488,11 @@ export default function TaskChatPage() {
             {
               type: ArtifactType.WORKFLOW,
               content: {
-                workflowJson: workflowData.properties.workflow_json,
+                workflowJson: workflowJson,
                 workflowId: workflowId,
                 workflowName: workflowName,
-                workflowRefId: workflowData.ref_id,
+                workflowRefId: versionRefId,
+                workflowVersionId: workflowVersionId,
               },
             },
           ],
