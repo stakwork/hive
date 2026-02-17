@@ -24,9 +24,11 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
-import { Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
+import { CircleStop, Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
@@ -90,14 +92,20 @@ export function FeatureWhiteboardSection({
   });
 
   // Async diagram generation via Stakwork
-  const { latestRun: diagramRun } = useStakworkGeneration({
+  const { latestRun: diagramRun, stopRun, isStopping } = useStakworkGeneration({
     featureId,
     type: "DIAGRAM_GENERATION" as import("@prisma/client").StakworkRunType,
     enabled: hasArchitecture,
   });
 
-  const generating =
-    diagramRun?.status === "PENDING" || diagramRun?.status === "IN_PROGRESS";
+  const isErrorState =
+    diagramRun?.status && ["FAILED", "ERROR", "HALTED"].includes(diagramRun.status);
+  const isLoadingState =
+    diagramRun?.status && ["PENDING", "IN_PROGRESS"].includes(diagramRun.status);
+
+  const [generateHovered, setGenerateHovered] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
+  const prevDiagramStatusRef = useRef<string | null>(null);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -299,6 +307,22 @@ export function FeatureWhiteboardSection({
     }
   }, [diagramRun?.status, diagramRun?.id, loadWhiteboard]);
 
+  // Toast notifications on status transitions
+  useEffect(() => {
+    const currentStatus = diagramRun?.status ?? null;
+    const prev = prevDiagramStatusRef.current;
+    prevDiagramStatusRef.current = currentStatus;
+
+    // Only fire on actual transitions (not initial load)
+    if (prev === null || prev === currentStatus) return;
+
+    if (currentStatus === "COMPLETED") {
+      toast.success("Whiteboard generated");
+    } else if (currentStatus && ["FAILED", "ERROR", "HALTED"].includes(currentStatus)) {
+      toast.error("Whiteboard generation failed");
+    }
+  }, [diagramRun?.status]);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -441,13 +465,57 @@ export function FeatureWhiteboardSection({
                       <SelectItem value="force">Force</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button onClick={() => handleGenerate()} disabled={generating}>
-                    {generating ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Button
+                    onClick={() => {
+                      if (isStopping) return;
+                      if (isLoadingState) {
+                        setShowStopDialog(true);
+                        return;
+                      }
+                      handleGenerate();
+                    }}
+                    onMouseEnter={() => setGenerateHovered(true)}
+                    onMouseLeave={() => setGenerateHovered(false)}
+                    disabled={isStopping || (!!isLoadingState && !stopRun)}
+                    className={
+                      isStopping
+                        ? "border-red-600/50 bg-red-50 dark:bg-red-950/30"
+                        : isLoadingState && generateHovered
+                          ? "border-foreground/30"
+                          : isErrorState
+                            ? "border-yellow-600/50 bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50"
+                            : ""
+                    }
+                  >
+                    {isStopping ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin text-red-500" />
+                        Stopping...
+                      </>
+                    ) : isLoadingState ? (
+                      <span className="relative inline-flex items-center">
+                        <span className={`inline-flex items-center ${generateHovered ? "invisible" : ""}`}>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Generating...
+                        </span>
+                        {generateHovered && (
+                          <span className="absolute inset-0 inline-flex items-center">
+                            <CircleStop className="w-4 h-4 mr-2 text-muted-foreground" />
+                            Stop
+                          </span>
+                        )}
+                      </span>
+                    ) : isErrorState ? (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2 text-yellow-700 dark:text-yellow-500" />
+                        <span className="text-yellow-700 dark:text-yellow-500">Retry</span>
+                      </>
                     ) : (
-                      <Sparkles className="w-4 h-4 mr-2" />
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate
+                      </>
                     )}
-                    Generate
                   </Button>
                 </>
               )}
@@ -474,8 +542,31 @@ export function FeatureWhiteboardSection({
                 </Select>
               )}
             </div>
+            {hasArchitecture && isLoadingState && (
+              <p className="text-xs text-muted-foreground animate-pulse">
+                Generating diagram...
+              </p>
+            )}
+            {hasArchitecture && isErrorState && (
+              <p className="text-xs text-destructive">
+                Generation failed. Try again.
+              </p>
+            )}
           </div>
         </Card>
+        <ConfirmDialog
+          open={showStopDialog}
+          onOpenChange={setShowStopDialog}
+          title="Stop Whiteboard Generation?"
+          description="This will stop the generation in progress. You can start a new generation immediately."
+          confirmText="Stop Generation"
+          cancelText="Cancel"
+          variant="destructive"
+          onConfirm={async () => {
+            await stopRun();
+            setShowStopDialog(false);
+          }}
+        />
       </div>
     );
   }
@@ -499,15 +590,56 @@ export function FeatureWhiteboardSection({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleGenerate()}
-                disabled={generating}
+                onClick={() => {
+                  if (isStopping) return;
+                  if (isLoadingState) {
+                    setShowStopDialog(true);
+                    return;
+                  }
+                  handleGenerate();
+                }}
+                onMouseEnter={() => setGenerateHovered(true)}
+                onMouseLeave={() => setGenerateHovered(false)}
+                disabled={isStopping || (!!isLoadingState && !stopRun)}
+                className={
+                  isStopping
+                    ? "border-red-600/50 bg-red-50 dark:bg-red-950/30"
+                    : isLoadingState && generateHovered
+                      ? "border-foreground/30"
+                      : isErrorState
+                        ? "border-yellow-600/50 bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50"
+                        : ""
+                }
               >
-                {generating ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {isStopping ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-red-500" />
+                    Stopping...
+                  </>
+                ) : isLoadingState ? (
+                  <span className="relative inline-flex items-center">
+                    <span className={`inline-flex items-center ${generateHovered ? "invisible" : ""}`}>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </span>
+                    {generateHovered && (
+                      <span className="absolute inset-0 inline-flex items-center">
+                        <CircleStop className="w-4 h-4 mr-2 text-muted-foreground" />
+                        Stop
+                      </span>
+                    )}
+                  </span>
+                ) : isErrorState ? (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2 text-yellow-700 dark:text-yellow-500" />
+                    <span className="text-yellow-700 dark:text-yellow-500">Retry</span>
+                  </>
                 ) : (
-                  <Sparkles className="w-4 h-4 mr-2" />
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Regenerate
+                  </>
                 )}
-                Regenerate
               </Button>
             </>
           )}
@@ -611,6 +743,19 @@ export function FeatureWhiteboardSection({
           />
         </Card>
       </div>
+      <ConfirmDialog
+        open={showStopDialog}
+        onOpenChange={setShowStopDialog}
+        title="Stop Whiteboard Generation?"
+        description="This will stop the generation in progress. You can start a new generation immediately."
+        confirmText="Stop Generation"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={async () => {
+          await stopRun();
+          setShowStopDialog(false);
+        }}
+      />
     </div>
   );
 }
