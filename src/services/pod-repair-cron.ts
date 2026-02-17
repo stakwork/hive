@@ -175,10 +175,16 @@ export async function isRepairInProgress(workspaceId: string): Promise<boolean> 
  * Count previous repair attempts for a workspace
  */
 async function getRepairAttemptCount(workspaceId: string): Promise<number> {
+  const swarm = await db.swarm.findUnique({
+    where: { workspaceId },
+    select: { podCompletedAt: true },
+  });
+
   return await db.stakworkRun.count({
     where: {
       workspaceId,
       type: StakworkRunType.POD_REPAIR,
+      ...(swarm?.podCompletedAt && { createdAt: { gt: swarm.podCompletedAt } }),
     },
   });
 }
@@ -189,7 +195,10 @@ async function getRepairAttemptCount(workspaceId: string): Promise<number> {
 async function updatePodState(swarmId: string, podState: PodState): Promise<void> {
   await db.swarm.update({
     where: { id: swarmId },
-    data: { podState },
+    data: {
+      podState,
+      ...(podState === PodState.COMPLETED && { podCompletedAt: new Date() }),
+    },
   });
 }
 
