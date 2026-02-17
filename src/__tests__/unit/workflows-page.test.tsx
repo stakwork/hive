@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import WorkflowsPage from "@/app/w/[slug]/workflows/page";
 import * as workspaceHook from "@/hooks/useWorkspace";
 import * as workflowNodesHook from "@/hooks/useWorkflowNodes";
+import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { useRouter } from "next/navigation";
 
 // Mock the hooks
@@ -18,23 +19,32 @@ const mockUseWorkspace = vi.mocked(workspaceHook.useWorkspace);
 const mockUseWorkflowNodes = vi.mocked(workflowNodesHook.useWorkflowNodes);
 const mockUseRouter = vi.mocked(useRouter);
 
-const mockWorkflows = [
+const mockWorkflows: WorkflowNode[] = [
   {
+    node_type: "Workflow",
+    ref_id: "workflow-1",
     properties: {
       workflow_id: 1,
       workflow_name: "Test Workflow 1",
+      workflow_json: "{}",
     },
   },
   {
+    node_type: "Workflow",
+    ref_id: "workflow-2",
     properties: {
       workflow_id: 2,
       workflow_name: "Test Workflow 2",
+      workflow_json: "{}",
     },
   },
   {
+    node_type: "Workflow",
+    ref_id: "workflow-3",
     properties: {
       workflow_id: 3,
-      workflow_name: null, // Test fallback name
+      // workflow_name is undefined to test fallback name
+      workflow_json: "{}",
     },
   },
 ];
@@ -307,6 +317,183 @@ describe("WorkflowsPage", () => {
       expect(gridContainer?.className).toMatch(/grid-cols-1/);
       expect(gridContainer?.className).toMatch(/md:grid-cols-2/);
       expect(gridContainer?.className).toMatch(/lg:grid-cols-3/);
+    });
+  });
+
+  describe("Search Functionality", () => {
+    it("should render search input with correct placeholder", () => {
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      expect(searchInput).toBeInTheDocument();
+      expect(searchInput).toHaveAttribute("type", "text");
+    });
+
+    it("should display Search icon in search input", () => {
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = render(<WorkflowsPage />);
+
+      // Check for Search icon (lucide-react icons use SVG)
+      const searchIcon = container.querySelector('svg');
+      expect(searchIcon).toBeInTheDocument();
+    });
+
+    it("should filter workflows by name (case-insensitive)", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "test workflow 1");
+
+      // Should show matching workflow
+      expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+      
+      // Should hide non-matching workflows
+      expect(screen.queryByText("Test Workflow 2")).not.toBeInTheDocument();
+    });
+
+    it("should filter workflows by ID", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "2");
+
+      // Should show workflow with ID 2
+      expect(screen.getByText("Test Workflow 2")).toBeInTheDocument();
+      expect(screen.getByText("ID: 2")).toBeInTheDocument();
+      
+      // Should hide other workflows
+      expect(screen.queryByText("Test Workflow 1")).not.toBeInTheDocument();
+    });
+
+    it("should show all workflows when search is empty", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      
+      // Type and then clear
+      await user.type(searchInput, "test");
+      await user.clear(searchInput);
+
+      // All workflows should be visible
+      expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+      expect(screen.getByText("Test Workflow 2")).toBeInTheDocument();
+      expect(screen.getByText("Workflow 3")).toBeInTheDocument(); // Fallback name
+    });
+
+    it("should display no results message when search doesn't match", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "nonexistent");
+
+      // Should show no results message with search query
+      expect(screen.getByText('No workflows match "nonexistent"')).toBeInTheDocument();
+      
+      // Should not show any workflows
+      expect(screen.queryByText("Test Workflow 1")).not.toBeInTheDocument();
+      expect(screen.queryByText("Test Workflow 2")).not.toBeInTheDocument();
+    });
+
+    it("should perform case-insensitive matching", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "TEST WORKFLOW");
+
+      // Should match workflows regardless of case
+      expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+      expect(screen.getByText("Test Workflow 2")).toBeInTheDocument();
+    });
+
+    it("should handle partial name matches", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "workflow");
+
+      // Should match all workflows containing "workflow"
+      expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+      expect(screen.getByText("Test Workflow 2")).toBeInTheDocument();
+    });
+
+    it("should distinguish between empty data and filtered results", async () => {
+      const user = userEvent.setup();
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<WorkflowsPage />);
+
+      const searchInput = screen.getByPlaceholderText("Search by workflow name or ID...");
+      await user.type(searchInput, "xyz");
+
+      // Should show search-specific message, not generic empty message
+      expect(screen.getByText('No workflows match "xyz"')).toBeInTheDocument();
+      expect(screen.queryByText("No workflows found")).not.toBeInTheDocument();
     });
   });
 });
