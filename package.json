@@ -86,6 +86,7 @@
     "@types/crypto-js": "^4.2.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/three": "^0.180.0",
+    "@vercel/blob": "^2.2.0",
     "@vercel/functions": "^3.1.4",
     "@xyflow/react": "^12.8.6",
     "ai": "^5.0.50",
