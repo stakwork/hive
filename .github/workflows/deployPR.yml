@@ -54,6 +54,14 @@ jobs:
           git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
 
       ############################################################
+      # 2b️⃣ Checkout preview branch so Vercel deploys as preview-1/2/3
+      ############################################################
+      - name: Checkout Preview Branch
+        run: |
+          git fetch origin
+          git checkout "${{ steps.slot.outputs.preview_branch }}"
+
+      ############################################################
       # 3️⃣ Prepare Neon Preview Database
       ############################################################
       - name: Prepare Neon Preview Database
@@ -173,7 +181,7 @@ jobs:
           node-version: "22"
 
       - run: npm install --global vercel@latest
-      - run: vercel pull --yes --environment=preview --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
+      - run: vercel pull --yes --environment=preview --git-branch=${{ steps.slot.outputs.preview_branch }} --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
       # 6️⃣ Build with Prisma
