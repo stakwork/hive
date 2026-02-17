@@ -106,6 +106,7 @@ export function FeatureWhiteboardSection({
   const [generateHovered, setGenerateHovered] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
   const prevDiagramStatusRef = useRef<string | null>(null);
+  const savePausedRef = useRef(false);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -274,6 +275,11 @@ export function FeatureWhiteboardSection({
         return;
       }
 
+      // Don't save while diagram generation is running or reloading
+      if (savePausedRef.current) {
+        return;
+      }
+
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
 
@@ -299,13 +305,6 @@ export function FeatureWhiteboardSection({
     },
     [broadcastCursor]
   );
-
-  // Reload whiteboard when async diagram generation completes
-  useEffect(() => {
-    if (diagramRun?.status === "COMPLETED") {
-      loadWhiteboard();
-    }
-  }, [diagramRun?.status, diagramRun?.id, loadWhiteboard]);
 
   // Toast notifications on status transitions
   useEffect(() => {
@@ -351,6 +350,13 @@ export function FeatureWhiteboardSection({
   }, [isFullscreen]);
 
   const handleGenerate = async (overrideLayout?: LayoutAlgorithm) => {
+    // Pause auto-save so it doesn't overwrite the new diagram from Stakwork
+    savePausedRef.current = true;
+    // Cancel any pending debounced save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     try {
       const res = await fetch(`/api/features/${featureId}/whiteboard/generate`, {
         method: "POST",
@@ -360,9 +366,11 @@ export function FeatureWhiteboardSection({
       const data = await res.json();
       if (!data.success) {
         console.error("Error starting whiteboard generation:", data.message);
+        savePausedRef.current = false;
       }
     } catch (error) {
       console.error("Error starting whiteboard generation:", error);
+      savePausedRef.current = false;
     }
   };
 
@@ -396,6 +404,42 @@ export function FeatureWhiteboardSection({
     }
     // eslint-disable-next-line
   }, [whiteboard?.id, whiteboard?.version, excalidrawAPI, updateScene]);
+
+  // Reload whiteboard when async diagram generation completes
+  useEffect(() => {
+    if (diagramRun?.status === "COMPLETED") {
+      // Cancel any pending debounced save so it doesn't overwrite the new diagram
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+
+      // Fetch fresh whiteboard data and push it into Excalidraw
+      (async () => {
+        try {
+          const res = await fetch(`/api/whiteboards?featureId=${featureId}`);
+          const data = await res.json();
+          if (data.success && data.data) {
+            setWhiteboard(data.data);
+            versionRef.current = data.data.version || 0;
+            if (Array.isArray(data.data.elements) && data.data.elements.length > 0) {
+              parsedDiagramRef.current = extractParsedDiagram(data.data.elements);
+            }
+            // Directly update the Excalidraw scene with the new elements
+            updateScene(
+              data.data.elements as unknown[],
+              data.data.appState as Record<string, unknown>
+            );
+          }
+          // Re-enable auto-save now that the new scene is loaded
+          savePausedRef.current = false;
+        } catch (error) {
+          console.error("Error reloading whiteboard after generation:", error);
+          savePausedRef.current = false;
+        }
+      })();
+    }
+  }, [diagramRun?.status, diagramRun?.id, featureId, updateScene]);
 
   // Client-side re-layout (instant via ELK in browser, falls back to API if no parsed diagram)
   const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
@@ -728,7 +772,14 @@ export function FeatureWhiteboardSection({
             </Button>
           </div>
         )}
-        <Card className={isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"}>
+        <Card className={`${isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"} relative`}>
+          {isLoadingState && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px]">
+              <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+              <p className="text-sm font-medium text-foreground">Generating diagram...</p>
+              <p className="text-xs text-muted-foreground mt-1">Edits are paused until generation completes</p>
+            </div>
+          )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => { setExcalidrawAPI(api); excalidrawAPIRef.current = api; }}
             initialData={{
