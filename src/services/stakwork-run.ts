@@ -25,6 +25,7 @@ import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
+import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -464,30 +465,46 @@ export async function createDiagramStakworkRun(input: {
  * multiple levels before giving up.
  */
 function extractDiagramData(parsed: unknown): ParsedDiagram {
+  logger.debug("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
   if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
+    const topKeys = Object.keys(obj);
+    logger.debug("[diagram] extractDiagramData top-level keys", "stakwork-run", { keys: topKeys });
 
     // Top-level components (backward compat)
     if (Array.isArray(obj.components)) {
+      logger.info("[diagram] Found components at top level", "stakwork-run", { count: obj.components.length });
       return { components: obj.components, connections: (obj.connections as ParsedDiagram["connections"]) ?? [] };
     }
 
     // Nested under request_params.result (current Stakwork format)
     const rp = obj.request_params as Record<string, unknown> | undefined;
-    if (rp && typeof rp === "object" && rp.result && typeof rp.result === "object") {
-      const inner = rp.result as Record<string, unknown>;
-      if (Array.isArray(inner.components)) {
-        return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
+    if (rp && typeof rp === "object") {
+      logger.debug("[diagram] Found request_params", "stakwork-run", { keys: Object.keys(rp) });
+      if (rp.result && typeof rp.result === "object") {
+        const inner = rp.result as Record<string, unknown>;
+        logger.debug("[diagram] Found request_params.result", "stakwork-run", { keys: Object.keys(inner) });
+        if (Array.isArray(inner.components)) {
+          logger.info("[diagram] Found components at request_params.result", "stakwork-run", { count: inner.components.length });
+          return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
+        }
       }
     }
 
     // Nested under .result (fallback)
     if (obj.result && typeof obj.result === "object") {
       const inner = obj.result as Record<string, unknown>;
+      logger.debug("[diagram] Found .result", "stakwork-run", { keys: Object.keys(inner) });
       if (Array.isArray(inner.components)) {
+        logger.info("[diagram] Found components at .result", "stakwork-run", { count: inner.components.length });
         return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
       }
     }
+
+    // Log the actual structure to help debug
+    logger.error("[diagram] Could not find components array", "stakwork-run", { structure: JSON.stringify(parsed).slice(0, 500) });
+  } else {
+    logger.error("[diagram] Parsed result is not an object", "stakwork-run", { type: typeof parsed, value: String(parsed).slice(0, 200) });
   }
 
   throw new Error("Diagram data not found: expected components array in result");
@@ -508,6 +525,16 @@ export async function processStakworkRunWebhook(
 ) {
   const { result, project_status, project_id } = webhookData;
   const { workspace_id, feature_id, type } = queryParams;
+
+  logger.info("[webhook] processStakworkRunWebhook called", "stakwork-run", {
+    type,
+    workspace_id,
+    feature_id,
+    project_id,
+    project_status,
+    hasResult: result !== undefined && result !== null,
+    resultType: typeof result,
+  });
 
   // Find the run by webhookUrl or projectId
   let run = await db.stakworkRun.findFirst({
@@ -533,8 +560,11 @@ export async function processStakworkRunWebhook(
   });
 
   if (!run) {
+    logger.error("[webhook] StakworkRun not found", "stakwork-run", { project_id, workspace_id, type, feature_id });
     throw new Error("StakworkRun not found");
   }
+
+  logger.info("[webhook] Found run", "stakwork-run", { runId: run.id, runStatus: run.status, runType: run.type });
 
   // Map Stakwork status to our internal status
   const status = project_status
@@ -572,12 +602,21 @@ export async function processStakworkRunWebhook(
     },
   });
 
+  logger.info("[webhook] Atomic update result", "stakwork-run", { count: updateResult.count, runId: run.id, newStatus: status, dataType });
+
   if (updateResult.count === 0) {
-    console.warn(`Run ${run.id} was already updated by another request`);
+    logger.warn("[webhook] Run was already updated by another request", "stakwork-run", { runId: run.id });
     return { runId: run.id, status: run.status };
   }
 
   // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert whiteboard
+  logger.debug("[diagram] Post-process check", "stakwork-run", {
+    type,
+    status,
+    hasResult: !!serializedResult,
+    resultLength: serializedResult?.length,
+    feature_id,
+  });
   if (
     type === "DIAGRAM_GENERATION" &&
     status === WorkflowStatus.COMPLETED &&
@@ -585,17 +624,32 @@ export async function processStakworkRunWebhook(
     feature_id
   ) {
     try {
+      logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id });
+      logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
+
       const { relayoutDiagram } = await import("@/services/excalidraw-layout");
       const parsedResult = JSON.parse(serializedResult);
+      logger.debug("[diagram] Parsed result", "stakwork-run", { type: typeof parsedResult, isArray: Array.isArray(parsedResult) });
+
       const diagramData = extractDiagramData(parsedResult);
+      logger.info("[diagram] Extracted diagram", "stakwork-run", {
+        componentCount: diagramData.components.length,
+        connectionCount: diagramData.connections.length,
+        componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
+      });
+
       if (diagramData.components.length === 0) {
         throw new Error("Diagram has no components to layout");
       }
+
       const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
       const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
         ? (queryParams.layout as typeof validLayouts[number])
         : "layered";
+      logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
+
       const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
+      logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
 
       // Upsert whiteboard for this feature (atomic to avoid race conditions)
       const feature = await db.feature.findUnique({
@@ -618,8 +672,9 @@ export async function processStakworkRunWebhook(
           files: {},
         },
       });
+      logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
     } catch (postProcessError) {
-      console.error("Error post-processing diagram generation:", postProcessError);
+      logger.error("[diagram] Error post-processing diagram generation", "stakwork-run", { error: String(postProcessError) });
       // Don't throw — the result is already saved in the run
     }
   }
