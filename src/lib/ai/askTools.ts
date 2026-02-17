@@ -192,7 +192,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
     }),
     repo_agent: tool({
       description:
-        "Execute an AI agent to analyze the repository and answer the user's question about the codebase. Use this for deep code analysis, ONLY IF THE ANSWER IS NOT AVAILABLE FROM THE learn_concept TOOL. This tool should be a LAST RESORT.",
+        "Execute an AI agent to analyze the repository and answer the user's question about the codebase. Use this for deep code analysis, ONLY IF THE ANSWER IS NOT AVAILABLE FROM THE learn_concept TOOL. Use this tool if the user's query is about specific code functionality.",
       inputSchema: z.object({
         prompt: z.string().describe("The question or prompt for the repo agent to analyze"),
       }),
