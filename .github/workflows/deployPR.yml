@@ -40,9 +40,8 @@ jobs:
       
           git fetch origin
       
-          git checkout -B $PREVIEW_BRANCH ${{ github.event.pull_request.head.sha }}
-      
-          git push origin $PREVIEW_BRANCH --force
+          # Force update remote branch to PR commit directly
+          git push origin $PR_SHA:refs/heads/$PREVIEW_BRANCH --force
 
 
       ############################################################
