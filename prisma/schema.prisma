@@ -258,6 +258,7 @@ model Workspace {
 
   // AI generation runs
   stakworkRuns StakworkRun[]
+  agentLogs    AgentLog[]
 
   // Temporary storage for repository URL during setup
   repositoryDraft String? @map("repository_draft")
@@ -577,6 +578,7 @@ model Task {
   chatMessages ChatMessage[]
   screenshots  Screenshot[]
   deployments  Deployment[]
+  agentLogs    AgentLog[]
 
   // Janitor type for tasks created from janitor recommendations
   janitorType JanitorType? @map("janitor_type")
@@ -1181,6 +1183,8 @@ model StakworkRun {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  agentLogs AgentLog[]
+
   @@index([workspaceId])
   @@index([featureId])
   @@index([type])
@@ -1294,4 +1298,32 @@ model EnvironmentVariable {
   @@unique([swarmId, serviceName, name])
   @@index([swarmId])
   @@map("environment_variables")
+}
+
+// =============================================
+// AGENT LOG TRACES
+// =============================================
+
+model AgentLog {
+  id      String @id @default(cuid())
+  blobUrl String @map("blob_url") // Vercel Blob URL to JSONL/JSON trace file
+  agent   String // Agent name/identifier (e.g. "researcher", "architect", "coder")
+
+  // Polymorphic association — at least one should be set
+  stakworkRunId String?      @map("stakwork_run_id")
+  stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id], onDelete: SetNull)
+  taskId        String?      @map("task_id")
+  task          Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  // Always scoped to a workspace
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([stakworkRunId])
+  @@index([taskId])
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@map("agent_logs")
 }
