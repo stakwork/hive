@@ -48,22 +48,21 @@ jobs:
           # Force push branch to origin
           git push origin $PREVIEW_BRANCH --force
 
-
       ############################################################
       # 1️⃣ Select Rotating Preview Slot
       ############################################################
-
+      
       - name: Select Preview Slot
         id: slot
         run: |
-          URLS=(
-            "hive-preview-1.sphinx.chat"
-            "hive-preview-2.sphinx.chat"
-            "hive-preview-3.sphinx.chat"
-          )
+          PR_NUMBER=${{ github.event.pull_request.number }}
+      
+          SLOT=$(( PR_NUMBER % 3 + 1 ))
+      
+          echo "slot=$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_branch=preview-$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_url=hive-preview-$SLOT.sphinx.chat" >> $GITHUB_OUTPUT
 
-          INDEX=$((${{ github.event.pull_request.number }} % ${#URLS[@]}))
-          echo "preview_url=${URLS[$INDEX]}" >> $GITHUB_OUTPUT
 
       ############################################################
       # 2️⃣ Create / Reuse Neon Branch + Endpoint
