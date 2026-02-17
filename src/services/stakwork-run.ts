@@ -465,44 +465,67 @@ export async function createDiagramStakworkRun(input: {
  * multiple levels before giving up.
  */
 function extractDiagramData(parsed: unknown): ParsedDiagram {
-  logger.debug("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
+  logger.info("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
   if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
     const topKeys = Object.keys(obj);
-    logger.debug("[diagram] extractDiagramData top-level keys", "stakwork-run", { keys: topKeys });
+    logger.info("[diagram] extractDiagramData top-level keys", "stakwork-run", { keys: topKeys });
+
+    // Helper to check for non-empty components at a given level
+    const tryExtract = (source: Record<string, unknown>, label: string): ParsedDiagram | null => {
+      if (Array.isArray(source.components) && source.components.length > 0) {
+        logger.info(`[diagram] Found components at ${label}`, "stakwork-run", { count: source.components.length });
+        return { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
+      }
+      if (Array.isArray(source.components)) {
+        logger.info(`[diagram] Found empty components at ${label}, searching deeper`, "stakwork-run");
+      }
+      return null;
+    };
 
     // Top-level components (backward compat)
-    if (Array.isArray(obj.components)) {
-      logger.info("[diagram] Found components at top level", "stakwork-run", { count: obj.components.length });
-      return { components: obj.components, connections: (obj.connections as ParsedDiagram["connections"]) ?? [] };
-    }
+    const topLevel = tryExtract(obj, "top-level");
+    if (topLevel) return topLevel;
 
     // Nested under request_params.result (current Stakwork format)
     const rp = obj.request_params as Record<string, unknown> | undefined;
     if (rp && typeof rp === "object") {
-      logger.debug("[diagram] Found request_params", "stakwork-run", { keys: Object.keys(rp) });
+      logger.info("[diagram] Found request_params", "stakwork-run", { keys: Object.keys(rp) });
       if (rp.result && typeof rp.result === "object") {
         const inner = rp.result as Record<string, unknown>;
-        logger.debug("[diagram] Found request_params.result", "stakwork-run", { keys: Object.keys(inner) });
-        if (Array.isArray(inner.components)) {
-          logger.info("[diagram] Found components at request_params.result", "stakwork-run", { count: inner.components.length });
-          return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
-        }
+        logger.info("[diagram] Found request_params.result", "stakwork-run", { keys: Object.keys(inner) });
+        const nested = tryExtract(inner, "request_params.result");
+        if (nested) return nested;
       }
+      // Also try extracting directly from request_params (without .result nesting)
+      const rpDirect = tryExtract(rp, "request_params");
+      if (rpDirect) return rpDirect;
     }
 
     // Nested under .result (fallback)
     if (obj.result && typeof obj.result === "object") {
       const inner = obj.result as Record<string, unknown>;
-      logger.debug("[diagram] Found .result", "stakwork-run", { keys: Object.keys(inner) });
-      if (Array.isArray(inner.components)) {
-        logger.info("[diagram] Found components at .result", "stakwork-run", { count: inner.components.length });
-        return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
+      logger.info("[diagram] Found .result", "stakwork-run", { keys: Object.keys(inner) });
+      const resultLevel = tryExtract(inner, ".result");
+      if (resultLevel) return resultLevel;
+    }
+
+    // If result is a string, try parsing it as JSON (double-stringified)
+    if (typeof obj.result === "string") {
+      try {
+        const innerParsed = JSON.parse(obj.result);
+        if (innerParsed && typeof innerParsed === "object") {
+          logger.info("[diagram] Parsed string .result as JSON", "stakwork-run", { keys: Object.keys(innerParsed) });
+          const stringResult = tryExtract(innerParsed as Record<string, unknown>, ".result (parsed string)");
+          if (stringResult) return stringResult;
+        }
+      } catch {
+        // Not valid JSON, ignore
       }
     }
 
     // Log the actual structure to help debug
-    logger.error("[diagram] Could not find components array", "stakwork-run", { structure: JSON.stringify(parsed).slice(0, 500) });
+    logger.error("[diagram] Could not find non-empty components array", "stakwork-run", { structure: JSON.stringify(parsed).slice(0, 1000) });
   } else {
     logger.error("[diagram] Parsed result is not an object", "stakwork-run", { type: typeof parsed, value: String(parsed).slice(0, 200) });
   }

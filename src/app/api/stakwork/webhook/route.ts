@@ -77,17 +77,26 @@ export async function POST(request: NextRequest) {
       });
 
       // Broadcast via Pusher
-      try {
-        const channelName = getWorkspaceChannelName(run.workspace.slug);
-        await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
-          runId: finalRunId,
-          type: updatedRun.type,
-          status: workflowStatus,
-          featureId: updatedRun.featureId,
-          timestamp: new Date(),
-        });
-      } catch (error) {
-        console.error("Error broadcasting to Pusher:", error);
+      // Skip broadcasting COMPLETED for DIAGRAM_GENERATION — the result webhook
+      // (/api/webhook/stakwork/response) broadcasts after the whiteboard is saved,
+      // so broadcasting here would cause the frontend to fetch stale data.
+      const skipBroadcast =
+        updatedRun.type === "DIAGRAM_GENERATION" &&
+        workflowStatus === WorkflowStatus.COMPLETED;
+
+      if (!skipBroadcast) {
+        try {
+          const channelName = getWorkspaceChannelName(run.workspace.slug);
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+            runId: finalRunId,
+            type: updatedRun.type,
+            status: workflowStatus,
+            featureId: updatedRun.featureId,
+            timestamp: new Date(),
+          });
+        } catch (error) {
+          console.error("Error broadcasting to Pusher:", error);
+        }
       }
 
       return NextResponse.json(
