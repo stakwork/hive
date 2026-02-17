@@ -101,6 +101,24 @@ export async function PATCH(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Block element saves while diagram generation is active
+    if (body.elements !== undefined && whiteboard.featureId) {
+      const activeGeneration = await db.stakworkRun.findFirst({
+        where: {
+          featureId: whiteboard.featureId,
+          type: "DIAGRAM_GENERATION",
+          status: { in: ["PENDING", "IN_PROGRESS"] },
+        },
+        select: { id: true },
+      });
+      if (activeGeneration) {
+        return NextResponse.json(
+          { error: "Diagram generation in progress", generating: true },
+          { status: 409 }
+        );
+      }
+    }
+
     // Handle featureId linking/unlinking (null to unlink)
     const updateData: Record<string, unknown> = {};
     if (body.name !== undefined) updateData.name = body.name;

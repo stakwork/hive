@@ -92,7 +92,7 @@ export function FeatureWhiteboardSection({
   });
 
   // Async diagram generation via Stakwork
-  const { latestRun: diagramRun, stopRun, isStopping } = useStakworkGeneration({
+  const { latestRun: diagramRun, stopRun, isStopping, refetch: refetchDiagramRun } = useStakworkGeneration({
     featureId,
     type: "DIAGRAM_GENERATION" as import("@prisma/client").StakworkRunType,
     enabled: hasArchitecture,
@@ -106,7 +106,7 @@ export function FeatureWhiteboardSection({
   const [generateHovered, setGenerateHovered] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
   const prevDiagramStatusRef = useRef<string | null>(null);
-  const savePausedRef = useRef(false);
+
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -247,6 +247,10 @@ export function FeatureWhiteboardSection({
           body: JSON.stringify(data),
         });
 
+        if (res.status === 409) {
+          // Generation in progress — skip silently
+          return;
+        }
         if (!res.ok) {
           throw new Error("Failed to save");
         }
@@ -272,11 +276,6 @@ export function FeatureWhiteboardSection({
       // Skip on initial load
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
-        return;
-      }
-
-      // Don't save while diagram generation is running or reloading
-      if (savePausedRef.current) {
         return;
       }
 
@@ -350,8 +349,6 @@ export function FeatureWhiteboardSection({
   }, [isFullscreen]);
 
   const handleGenerate = async (overrideLayout?: LayoutAlgorithm) => {
-    // Pause auto-save so it doesn't overwrite the new diagram from Stakwork
-    savePausedRef.current = true;
     // Cancel any pending debounced save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -366,11 +363,12 @@ export function FeatureWhiteboardSection({
       const data = await res.json();
       if (!data.success) {
         console.error("Error starting whiteboard generation:", data.message);
-        savePausedRef.current = false;
+        return;
       }
+      // Immediately fetch the new run so the UI shows loading state
+      await refetchDiagramRun();
     } catch (error) {
       console.error("Error starting whiteboard generation:", error);
-      savePausedRef.current = false;
     }
   };
 
@@ -431,11 +429,8 @@ export function FeatureWhiteboardSection({
               data.data.appState as Record<string, unknown>
             );
           }
-          // Re-enable auto-save now that the new scene is loaded
-          savePausedRef.current = false;
         } catch (error) {
           console.error("Error reloading whiteboard after generation:", error);
-          savePausedRef.current = false;
         }
       })();
     }
