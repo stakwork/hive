@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Dependencies
+        run: |
+          npm install --global prisma@6
+          npm ci
+
       ############################################################
       # 1️⃣ Select Rotating Preview Slot
       ############################################################
