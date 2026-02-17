@@ -1296,6 +1296,141 @@ describe("Stakwork Run Service", () => {
 
       expect(result.runId).toBe("run-1");
     });
+
+    test("should extract diagram data from nested request_params.result structure", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "API Gateway", type: "gateway" },
+        { id: "c2", name: "User Service", type: "service" },
+      ];
+      const diagramConnections = [
+        { from: "c1", to: "c2", label: "REST" },
+      ];
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-1",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Mock the dynamic import of excalidraw-layout
+      vi.resetModules();
+      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
+        elements: [{ id: "el-1", type: "rectangle" }],
+        appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+      });
+      vi.doMock("@/services/excalidraw-layout", () => ({
+        relayoutDiagram: mockRelayoutDiagram,
+      }));
+
+      // Nested Stakwork format: request_params.result wraps the actual data
+      const nestedResult = {
+        request_params: {
+          result: {
+            components: diagramComponents,
+            connections: diagramConnections,
+          },
+        },
+      };
+
+      const result = await processStakworkRunWebhook(
+        {
+          result: nestedResult,
+          project_status: "completed",
+          project_id: 12345,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+        }
+      );
+
+      expect(result.runId).toBe("run-1");
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+
+      // Verify relayoutDiagram was called with the extracted flat diagram data
+      expect(mockRelayoutDiagram).toHaveBeenCalledWith(
+        { components: diagramComponents, connections: diagramConnections },
+        "layered"
+      );
+
+      // Verify whiteboard was upserted
+      expect(db.whiteboard.upsert).toHaveBeenCalledWith({
+        where: { featureId: "feature-1" },
+        update: {
+          elements: expect.any(Array),
+          appState: expect.any(Object),
+        },
+        create: expect.objectContaining({
+          name: "Test Feature - Architecture",
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+          elements: expect.any(Array),
+        }),
+      });
+    });
+
+    test("should handle top-level components/connections for backward compat", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "Database", type: "database" },
+      ];
+      const diagramConnections: never[] = [];
+
+      const mockRun = {
+        id: "run-2",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-2",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Feature 2" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      vi.resetModules();
+      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
+        elements: [{ id: "el-1", type: "rectangle" }],
+        appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+      });
+      vi.doMock("@/services/excalidraw-layout", () => ({
+        relayoutDiagram: mockRelayoutDiagram,
+      }));
+
+      // Top-level format (backward compat)
+      const flatResult = {
+        components: diagramComponents,
+        connections: diagramConnections,
+      };
+
+      await processStakworkRunWebhook(
+        {
+          result: flatResult,
+          project_status: "completed",
+          project_id: 12346,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-2",
+        }
+      );
+
+      expect(mockRelayoutDiagram).toHaveBeenCalledWith(
+        { components: diagramComponents, connections: diagramConnections },
+        "layered"
+      );
+    });
   });
 
   describe("getStakworkRuns", () => {
