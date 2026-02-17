@@ -234,20 +234,26 @@ jobs:
       - name: Build
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
 
+
       - name: Deploy
         id: deploy
         run: |
           DATABASE_URL="postgres://${{ secrets.NEON_DB_USER }}:${{ secrets.NEON_DB_PASS }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
-
+      
           DEPLOYMENT_URL=$(vercel deploy \
             --prebuilt \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --env DATABASE_URL=$DATABASE_URL \
-            --name ${{ steps.slot.outputs.preview_url }} \
             --confirm
           )
-
-          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+      
+          echo "Deployment URL: $DEPLOYMENT_URL"
+      
+          # Attach alias
+          vercel alias set $DEPLOYMENT_URL ${{ steps.slot.outputs.preview_url }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+      
+          echo "deployment_url=https://${{ steps.slot.outputs.preview_url }}" >> $GITHUB_OUTPUT
 
       ############################################################
       # 6️⃣ Mark Deployment Status
