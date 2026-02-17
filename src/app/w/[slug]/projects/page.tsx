@@ -73,7 +73,7 @@ export default function ProjectsPage() {
   const handleOpenProject = () => {
     if (validationState === "valid" && projectId.trim()) {
       localStorage.setItem("task_mode", "project_debugger");
-      router.push(`/w/${slug}/task/new`);
+      router.push(`/w/${slug}/task/new?projectId=${projectId}&projectName=${encodeURIComponent(projectName)}`);
     }
   };
 

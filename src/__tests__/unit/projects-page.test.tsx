@@ -297,7 +297,7 @@ describe("ProjectsPage", () => {
     await user.click(openButton);
 
     expect(localStorage.setItem).toHaveBeenCalledWith("task_mode", "project_debugger");
-    expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/new");
+    expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/new?projectId=123&projectName=Test%20Project");
   });
 
   it("should clear validation state when input is emptied", async () => {
