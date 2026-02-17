@@ -23,30 +23,27 @@ jobs:
       - uses: actions/checkout@v4
 
       ############################################################
-      # 1️⃣ Force Preview Branch To PR Commit
+      # 2️⃣ Force Preview Branch To PR Commit
       ############################################################
-
+      
       - name: Force Update Preview Branch
-        env:
-          PREVIEW_BRANCH: preview-${{ github.event.pull_request.number % 3 + 1 }}
         run: |
           set -e
-
-          echo "Using $PREVIEW_BRANCH"
+      
+          PREVIEW_BRANCH=${{ steps.slot.outputs.preview_branch }}
+      
+          echo "Using branch: $PREVIEW_BRANCH"
           echo "PR SHA: ${{ github.event.pull_request.head.sha }}"
-
-          # Configure git
+      
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
-          # Fetch all branches
+      
           git fetch origin
-
-          # Create or reset local branch to PR commit
+      
           git checkout -B $PREVIEW_BRANCH ${{ github.event.pull_request.head.sha }}
-
-          # Force push branch to origin
+      
           git push origin $PREVIEW_BRANCH --force
+
 
       ############################################################
       # 1️⃣ Select Rotating Preview Slot
