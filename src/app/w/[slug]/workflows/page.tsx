@@ -1,18 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useRouter } from "next/navigation";
-import { Workflow, Plus, Loader2 } from "lucide-react";
+import { Workflow, Plus, Loader2, Search } from "lucide-react";
 
 export default function WorkflowsPage() {
   const { slug } = useWorkspace();
   const router = useRouter();
   const { workflows, isLoading, error } = useWorkflowNodes(slug, true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleNewWorkflow = () => {
     localStorage.setItem("task_mode", "workflow_editor");
@@ -23,6 +25,15 @@ export default function WorkflowsPage() {
     localStorage.setItem("task_mode", "workflow_editor");
     router.push(`/w/${slug}/task/new`);
   };
+
+  // Filter workflows based on search query
+  const filteredWorkflows = workflows.filter((workflow) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const workflowName = (workflow.properties.workflow_name || "").toLowerCase();
+    const workflowId = workflow.properties.workflow_id.toString();
+    return workflowName.includes(query) || workflowId === searchQuery;
+  });
 
   return (
     <div className="space-y-6">
@@ -38,6 +49,19 @@ export default function WorkflowsPage() {
         }
       />
 
+      <Card className="p-6 max-w-2xl">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by workflow name or ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </Card>
+
       {isLoading && (
         <div className="flex items-center justify-center py-12" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -50,15 +74,19 @@ export default function WorkflowsPage() {
         </Card>
       )}
 
-      {!isLoading && !error && workflows.length === 0 && (
+      {!isLoading && !error && filteredWorkflows.length === 0 && (
         <Card className="p-12 text-center">
-          <p className="text-muted-foreground">No workflows found</p>
+          <p className="text-muted-foreground">
+            {workflows.length === 0
+              ? "No workflows found"
+              : `No workflows match "${searchQuery}"`}
+          </p>
         </Card>
       )}
 
-      {!isLoading && !error && workflows.length > 0 && (
+      {!isLoading && !error && filteredWorkflows.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {workflows.map((workflow) => (
+          {filteredWorkflows.map((workflow) => (
             <Card
               key={workflow.properties.workflow_id}
               className="p-6 cursor-pointer hover:border-primary transition-colors"
