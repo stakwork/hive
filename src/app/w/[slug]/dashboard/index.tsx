@@ -2,10 +2,10 @@
 
 import { DashboardChat } from "@/components/dashboard/DashboardChat";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
-import { NeedsInputDropdownWidget } from "@/components/dashboard/needs-input-dropdown-widget";
-import { PRMetricsWidget } from "@/components/dashboard/pr-metrics-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
+import { NeedsInputDropdownWidget } from "@/components/dashboard/needs-input-dropdown-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
+import { PRMetricsWidget } from "@/components/dashboard/pr-metrics-widget";
 import { TestCoverageStats } from "@/components/dashboard/TestCoverageStats";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
@@ -103,7 +103,7 @@ function DashboardInner() {
 
       {/* Dashboard Chat - only show when onboarding is complete */}
       {!isOnboarding && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: 'calc(100% - 340px)' }}>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-100" style={{ width: 'calc(100% - 340px)' }}>
           <DashboardChat />
         </div>
       )}
