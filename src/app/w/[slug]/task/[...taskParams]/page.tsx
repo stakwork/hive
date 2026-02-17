@@ -16,7 +16,7 @@ import {
   PullRequestContent,
   BountyContent,
 } from "@/lib/chat";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import {
   usePusherConnection,
   WorkflowStatusUpdate,
@@ -49,6 +49,8 @@ function generateUniqueId() {
 
 export default function TaskChatPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { id: workspaceId, workspace } = useWorkspace();
   const { data: session } = useSession();
   const isMobile = useIsMobile();
@@ -395,6 +397,146 @@ export default function TaskChatPage() {
     }
   }, [taskIdFromUrl, loadTaskMessages]);
 
+  // Handle project selection in project_debugger mode
+  const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const projectName = projectData.project?.name || `Project ${projectIdValue}`;
+      const workflowId = projectData.project?.workflow_id;
+
+      // Create new task with project info
+      const taskTitle = `Debug: ${projectName}`;
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: taskTitle,
+          description: `Debugging project ${projectIdValue}`,
+          status: "active",
+          workspaceSlug: slug,
+          mode: "project_debugger",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+      setTaskTitle(taskTitle);
+
+      // Update URL without reloading
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      window.history.replaceState({}, "", newUrl);
+
+      // Store project context
+      setCurrentProjectContext({
+        projectId: projectIdValue,
+        projectName: projectName,
+        workflowId: workflowId,
+      });
+
+      // Call project debugger API endpoint
+      const debuggerResponse = await fetch("/api/project-debugger", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          taskId: newTaskId,
+          message: `Analyzing project: ${projectName}`,
+          projectId: projectIdValue,
+        }),
+      });
+
+      if (!debuggerResponse.ok) {
+        throw new Error(`Failed to start project debugger: ${debuggerResponse.statusText}`);
+      }
+
+      const debuggerResult = await debuggerResponse.json();
+
+      // Store webhook from response
+      if (debuggerResult.webhook) {
+        setProjectDebuggerWebhook(debuggerResult.webhook);
+      }
+
+      // Set project ID for workflow monitoring
+      if (debuggerResult.project?.id) {
+        setProjectId(debuggerResult.project.id.toString());
+        setStakworkProjectId(debuggerResult.project.id);
+      }
+
+      // Create initial message from API response
+      const initialMessage: ChatMessage = createChatMessage({
+        id: debuggerResult.message?.id || generateUniqueId(),
+        message: debuggerResult.message?.message || `Analyzing project: ${projectName}`,
+        role: ChatRole.USER,
+        status: ChatStatus.SENT,
+        artifacts: debuggerResult.message?.artifacts || [],
+      });
+
+      setMessages([initialMessage]);
+      setStarted(true);
+      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+      setTaskMode("project_debugger");
+
+      // Clear webhook for fresh project conversation
+      setProjectDebuggerWebhook(debuggerResult.webhook || null);
+    } catch (error) {
+      console.error("Error in handleProjectSelect:", error);
+      toast.error("Error", { description: "Failed to load project. Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Auto-trigger project selection from URL params
+  useEffect(() => {
+    const projectIdParam = searchParams.get('projectId');
+    const projectNameParam = searchParams.get('projectName');
+
+    // Only auto-trigger if:
+    // 1. We have projectId and projectName in URL params
+    // 2. Task mode is project_debugger
+    // 3. Task hasn't started yet
+    // 4. We have a slug
+    if (projectIdParam && projectNameParam && taskMode === 'project_debugger' && !started && slug) {
+      const autoTriggerProjectSelection = async () => {
+        try {
+          console.log('Auto-triggering project selection:', projectIdParam, projectNameParam);
+          
+          // Fetch full project data
+          const response = await fetch(`/api/stakwork/projects/${projectIdParam}`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch project data: ${response.statusText}`);
+          }
+          
+          const projectData = await response.json();
+          
+          // Call handleProjectSelect with the fetched data
+          await handleProjectSelect(projectIdParam, projectData);
+          
+          // Clear URL params to prevent re-triggering on refresh
+          router.replace(`/w/${slug}/task/${currentTaskId || 'new'}`);
+        } catch (error) {
+          console.error('Error auto-triggering project selection:', error);
+          toast.error('Error', { 
+            description: 'Failed to load project automatically. Please try again.' 
+          });
+        }
+      };
+
+      autoTriggerProjectSelection();
+    }
+  }, [searchParams, taskMode, started, slug, currentTaskId, router, handleProjectSelect]);
+
   // Handle workflow selection in workflow_editor mode
   const handleWorkflowSelect = async (workflowId: number, workflowData: WorkflowNode, workflowVersionId?: string) => {
     if (isLoading) return;
@@ -657,105 +799,6 @@ export default function TaskChatPage() {
     } catch (error) {
       console.error("Error in handleNewWorkflow:", error);
       toast.error("Error", { description: "Failed to create new workflow. Please try again." });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle project selection in project_debugger mode
-  const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
-    if (isLoading) return;
-    setIsLoading(true);
-
-    try {
-      const projectName = projectData.project?.name || `Project ${projectIdValue}`;
-      const workflowId = projectData.project?.workflow_id;
-
-      // Create new task with project info
-      const taskTitle = `Debug: ${projectName}`;
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: taskTitle,
-          description: `Debugging project ${projectIdValue}`,
-          status: "active",
-          workspaceSlug: slug,
-          mode: "project_debugger",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      const newTaskId = result.data.id;
-      setCurrentTaskId(newTaskId);
-      setTaskTitle(taskTitle);
-
-      // Update URL without reloading
-      const newUrl = `/w/${slug}/task/${newTaskId}`;
-      window.history.replaceState({}, "", newUrl);
-
-      // Store project context
-      setCurrentProjectContext({
-        projectId: projectIdValue,
-        projectName: projectName,
-        workflowId: workflowId,
-      });
-
-      // Call project debugger API endpoint
-      const debuggerResponse = await fetch("/api/project-debugger", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          taskId: newTaskId,
-          message: `Analyzing project: ${projectName}`,
-          projectId: projectIdValue,
-        }),
-      });
-
-      if (!debuggerResponse.ok) {
-        throw new Error(`Failed to start project debugger: ${debuggerResponse.statusText}`);
-      }
-
-      const debuggerResult = await debuggerResponse.json();
-
-      // Store webhook from response
-      if (debuggerResult.webhook) {
-        setProjectDebuggerWebhook(debuggerResult.webhook);
-      }
-
-      // Set project ID for workflow monitoring
-      if (debuggerResult.project?.id) {
-        setProjectId(debuggerResult.project.id.toString());
-        setStakworkProjectId(debuggerResult.project.id);
-      }
-
-      // Create initial message from API response
-      const initialMessage: ChatMessage = createChatMessage({
-        id: debuggerResult.message?.id || generateUniqueId(),
-        message: debuggerResult.message?.message || `Analyzing project: ${projectName}`,
-        role: ChatRole.USER,
-        status: ChatStatus.SENT,
-        artifacts: debuggerResult.message?.artifacts || [],
-      });
-
-      setMessages([initialMessage]);
-      setStarted(true);
-      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
-      setTaskMode("project_debugger");
-
-      // Clear webhook for fresh project conversation
-      setProjectDebuggerWebhook(debuggerResult.webhook || null);
-    } catch (error) {
-      console.error("Error in handleProjectSelect:", error);
-      toast.error("Error", { description: "Failed to load project. Please try again." });
     } finally {
       setIsLoading(false);
     }
