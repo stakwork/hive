@@ -61,20 +61,24 @@ describe("TaskStartInput - Workflow Mode Error Handling", () => {
 
   const mockWorkflows: WorkflowNode[] = [
     {
-      id: "1",
+      node_type: "Workflow",
+      ref_id: "workflow-ref-1",
       properties: {
         workflow_id: 12345,
         workflow_name: "Test Workflow 1",
+        workflow_json: JSON.stringify({ nodes: [], edges: [] }),
       },
     },
     {
-      id: "2",
+      node_type: "Workflow",
+      ref_id: "workflow-ref-2",
       properties: {
         workflow_id: 67890,
         workflow_name: "Test Workflow 2",
+        workflow_json: JSON.stringify({ nodes: [], edges: [] }),
       },
     },
-  ] as WorkflowNode[];
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
