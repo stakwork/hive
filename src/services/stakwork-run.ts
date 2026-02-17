@@ -24,6 +24,7 @@ import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
+import type { ParsedDiagram } from "@/services/excalidraw-layout";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -458,6 +459,41 @@ export async function createDiagramStakworkRun(input: {
 }
 
 /**
+ * Extract diagram data (components + connections) from a Stakwork webhook result.
+ * Stakwork may nest the diagram under `request_params.result`, so we check
+ * multiple levels before giving up.
+ */
+function extractDiagramData(parsed: unknown): ParsedDiagram {
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+
+    // Top-level components (backward compat)
+    if (Array.isArray(obj.components)) {
+      return { components: obj.components, connections: (obj.connections as ParsedDiagram["connections"]) ?? [] };
+    }
+
+    // Nested under request_params.result (current Stakwork format)
+    const rp = obj.request_params as Record<string, unknown> | undefined;
+    if (rp && typeof rp === "object" && rp.result && typeof rp.result === "object") {
+      const inner = rp.result as Record<string, unknown>;
+      if (Array.isArray(inner.components)) {
+        return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
+      }
+    }
+
+    // Nested under .result (fallback)
+    if (obj.result && typeof obj.result === "object") {
+      const inner = obj.result as Record<string, unknown>;
+      if (Array.isArray(inner.components)) {
+        return { components: inner.components, connections: (inner.connections as ParsedDiagram["connections"]) ?? [] };
+      }
+    }
+  }
+
+  throw new Error("Diagram data not found: expected components array in result");
+}
+
+/**
  * Process webhook from Stakwork for AI generation runs
  * Uses atomic updateMany to prevent race conditions
  */
@@ -550,41 +586,38 @@ export async function processStakworkRunWebhook(
   ) {
     try {
       const { relayoutDiagram } = await import("@/services/excalidraw-layout");
-      const parsedDiagram = JSON.parse(serializedResult);
-      const layoutAlgo = queryParams.layout || "layered";
-      const layoutData = await relayoutDiagram(parsedDiagram, layoutAlgo as "layered" | "force" | "stress" | "mrtree");
+      const parsedResult = JSON.parse(serializedResult);
+      const diagramData = extractDiagramData(parsedResult);
+      if (diagramData.components.length === 0) {
+        throw new Error("Diagram has no components to layout");
+      }
+      const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
+      const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
+        ? (queryParams.layout as typeof validLayouts[number])
+        : "layered";
+      const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
 
-      // Upsert whiteboard for this feature
-      const existingWhiteboard = await db.whiteboard.findUnique({
-        where: { featureId: feature_id },
+      // Upsert whiteboard for this feature (atomic to avoid race conditions)
+      const feature = await db.feature.findUnique({
+        where: { id: feature_id },
+        select: { title: true },
       });
 
-      if (existingWhiteboard) {
-        await db.whiteboard.update({
-          where: { id: existingWhiteboard.id },
-          data: {
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
-          },
-        });
-      } else {
-        // Get feature title for whiteboard name
-        const feature = await db.feature.findUnique({
-          where: { id: feature_id },
-          select: { title: true },
-        });
-
-        await db.whiteboard.create({
-          data: {
-            name: `${feature?.title || "Feature"} - Architecture`,
-            workspaceId: workspace_id,
-            featureId: feature_id,
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
-            files: {},
-          },
-        });
-      }
+      await db.whiteboard.upsert({
+        where: { featureId: feature_id },
+        update: {
+          elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+          appState: layoutData.appState as Prisma.InputJsonValue,
+        },
+        create: {
+          name: `${feature?.title || "Feature"} - Architecture`,
+          workspaceId: workspace_id,
+          featureId: feature_id,
+          elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+          appState: layoutData.appState as Prisma.InputJsonValue,
+          files: {},
+        },
+      });
     } catch (postProcessError) {
       console.error("Error post-processing diagram generation:", postProcessError);
       // Don't throw — the result is already saved in the run
