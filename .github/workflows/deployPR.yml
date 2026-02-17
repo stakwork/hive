@@ -136,11 +136,16 @@ jobs:
             echo "❌ Endpoint never became ready or missing credentials"
             exit 1
           fi
-
-          # Set outputs
+      
+          # URL-encode for DATABASE_URL (Neon passwords can contain @, #, %, etc.)
+          DB_USER_ENC=$(printf '%s' "$DB_USER" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
+          DB_PASS_ENC=$(printf '%s' "$DB_PASS" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
+      
           echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
           echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
           echo "db_pass=$DB_PASS" >> $GITHUB_OUTPUT
+          echo "db_user_enc=$DB_USER_ENC" >> $GITHUB_OUTPUT
+          echo "db_pass_enc=$DB_PASS_ENC" >> $GITHUB_OUTPUT
 
       ############################################################
       # 4️⃣ Debug Neon Credentials (Optional)
@@ -164,16 +169,13 @@ jobs:
       ############################################################
       # 6️⃣ Build with Prisma
       ############################################################
+
       - name: Build
         run: |
-          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user }}:${{ steps.neon.outputs.db_pass }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
-          echo "DATABASE_URL=$DATABASE_URL"
-          
-          # Run Prisma
+          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user_enc }}:${{ steps.neon.outputs.db_pass_enc }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+          echo "DATABASE_URL is set (masked)"
           npx prisma generate
           npx prisma migrate deploy
-
-          # Build app
           vercel build --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
@@ -182,7 +184,7 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
-          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user }}:${{ steps.neon.outputs.db_pass }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user_enc }}:${{ steps.neon.outputs.db_pass_enc }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
 
           DEPLOYMENT_URL=$(vercel deploy \
             --prebuilt \
