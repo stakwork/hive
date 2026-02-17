@@ -297,9 +297,9 @@ describe("useWorkflowVersions", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ slug, id }) => useWorkflowVersions(slug, id),
+      ({ slug, id }: { slug: string | null; id: number | null }) => useWorkflowVersions(slug, id),
       {
-        initialProps: { slug: "test-workspace", id: 123 },
+        initialProps: { slug: "test-workspace" as string | null, id: 123 as number | null },
       }
     );
 
