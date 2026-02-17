@@ -45,18 +45,29 @@ jobs:
         run: |
           set -e
       
-          PREVIEW_BRANCH=${{ steps.slot.outputs.preview_branch }}
+          PREVIEW_BRANCH="${{ steps.slot.outputs.preview_branch }}"
+          PR_SHA="${{ github.sha }}"
       
-          echo "Using branch: $PREVIEW_BRANCH"
-          echo "PR SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "Branch: $PREVIEW_BRANCH"
+          echo "SHA: $PR_SHA"
+      
+          if [ -z "$PREVIEW_BRANCH" ]; then
+            echo "❌ PREVIEW_BRANCH is empty"
+            exit 1
+          fi
+      
+          if [ -z "$PR_SHA" ]; then
+            echo "❌ PR_SHA is empty"
+            exit 1
+          fi
       
           git config user.name "github-actions"
           git config user.email "actions@github.com"
       
           git fetch origin
       
-          # Force update remote branch to PR commit directly
-          git push origin $PR_SHA:refs/heads/$PREVIEW_BRANCH --force
+          git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
+
 
       ############################################################
       # 2️⃣ Create / Reuse Neon Branch + Endpoint
