@@ -115,46 +115,53 @@ jobs:
             ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
           fi
 
-          # Wait until endpoint is ready and fetch credentials
+          # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
             STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
               "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
             DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
-            DB_USER=$(echo "$STATUS" | jq -r '.endpoint.credentials.username')
-            DB_PASS=$(echo "$STATUS" | jq -r '.endpoint.credentials.password')
-
-            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ -n "$DB_USER" ] && [ -n "$DB_PASS" ]; then
+            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
               break
             fi
-
             echo "Waiting for endpoint... ($i)"
             sleep 3
           done
 
-          if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
-            echo "❌ Endpoint never became ready or missing credentials"
+          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+            echo "❌ Endpoint never became ready"
             exit 1
           fi
-      
-          # URL-encode for DATABASE_URL (Neon passwords can contain @, #, %, etc.)
-          DB_USER_ENC=$(printf '%s' "$DB_USER" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
-          DB_PASS_ENC=$(printf '%s' "$DB_PASS" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
-      
-          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
-          echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
-          echo "db_pass=$DB_PASS" >> $GITHUB_OUTPUT
-          echo "db_user_enc=$DB_USER_ENC" >> $GITHUB_OUTPUT
-          echo "db_pass_enc=$DB_PASS_ENC" >> $GITHUB_OUTPUT
+
+          # Get a role name for this branch (Neon GET endpoint does not return credentials)
+          ROLES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles")
+          ROLE_NAME=$(echo "$ROLES_JSON" | jq -r '.roles[0].name // empty')
+          if [ -z "$ROLE_NAME" ]; then
+            echo "❌ No roles found for branch $BRANCH_ID"
+            exit 1
+          fi
+
+          # Retrieve full connection URI (includes encoded credentials)
+          URI_RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME")
+          CONNECTION_URI=$(echo "$URI_RESPONSE" | jq -r '.uri // empty')
+          if [ -z "$CONNECTION_URI" ]; then
+            echo "❌ Failed to get connection URI: $URI_RESPONSE"
+            exit 1
+          fi
+
+          # Pass URI to next steps (delimiter format for special chars in password)
+          echo "connection_uri<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONNECTION_URI" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       ############################################################
-      # 4️⃣ Debug Neon Credentials (Optional)
+      # 4️⃣ Debug Neon (Optional)
       ############################################################
-      - name: Debug DB credentials
+      - name: Debug Neon
         run: |
-          echo "DB_HOST: ${{ steps.neon.outputs.db_host }}"
-          echo "DB_USER: ${{ steps.neon.outputs.db_user }}"
-          echo "DB_PASS: ${{ steps.neon.outputs.db_pass }}"
+          echo "Connection URI is set (masked for security)"
 
       ############################################################
       # 5️⃣ Setup Node + Vercel
@@ -172,7 +179,7 @@ jobs:
 
       - name: Build
         run: |
-          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user_enc }}:${{ steps.neon.outputs.db_pass_enc }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
           npx prisma migrate deploy
@@ -184,12 +191,12 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
-          export DATABASE_URL="postgres://${{ steps.neon.outputs.db_user_enc }}:${{ steps.neon.outputs.db_pass_enc }}@${{ steps.neon.outputs.db_host }}/neondb?sslmode=require"
+          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
 
           DEPLOYMENT_URL=$(vercel deploy \
             --prebuilt \
             --token=${{ secrets.VERCEL_TOKEN }} \
-            --env DATABASE_URL=$DATABASE_URL \
+            --env "DATABASE_URL=$DATABASE_URL" \
             --confirm
           )
 
