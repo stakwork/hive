@@ -65,6 +65,7 @@ export const select = {
   poolMemory: true,
   poolState: true,
   podState: true,
+  podCompletedAt: true,
   services: true,
   swarmSecretAlias: true,
   swarmId: true,
