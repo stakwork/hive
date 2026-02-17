@@ -219,7 +219,7 @@ export function ChatInput({
       />
 
       {/* Input controls row */}
-      <div className="flex justify-center items-center gap-2 w-full">
+      <div className="flex justify-center items-center gap-2 w-full max-w-[70vw] sm:max-w-[550px] md:max-w-[620px] lg:max-w-[720px] mx-auto">
         {/* Add workspace button */}
         <Popover open={isWorkspacePickerOpen} onOpenChange={setIsWorkspacePickerOpen}>
           <Tooltip>
@@ -228,7 +228,7 @@ export function ChatInput({
                 <button
                   type="button"
                   disabled={disabled || isAtLimit}
-                  className={`h-10 w-10 rounded-full border-2 border-border/20 hover:border-primary/50 bg-background/5 transition-all flex items-center justify-center ${
+                  className={`shrink-0 h-10 w-10 rounded-full border-2 border-border/20 hover:border-primary/50 bg-background/5 transition-all flex items-center justify-center ${
                     disabled || isAtLimit ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
                   }`}
                 >
@@ -263,7 +263,7 @@ export function ChatInput({
         </Popover>
 
         {/* Image upload button */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <input
             ref={fileInputRef}
             type="file"
@@ -302,7 +302,7 @@ export function ChatInput({
           </button>
         </div>
 
-        <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px] leading-none">
+        <div className="relative flex-1 min-w-0 leading-none">
           <textarea
             ref={inputRef}
             placeholder="Ask me about your codebase..."
@@ -318,7 +318,7 @@ export function ChatInput({
             type="submit"
             size="icon"
             disabled={!input.trim() || disabled}
-            className="absolute right-1.5 bottom-1.5 h-8 w-8 rounded-full"
+            className="absolute right-1.5 bottom-2.5 h-8 w-8 rounded-full"
           >
             <Send className="w-4 h-4" />
           </Button>
@@ -330,7 +330,7 @@ export function ChatInput({
             disabled={isCreatingFeature || disabled}
             variant="outline"
             size="icon"
-            className="rounded-full h-10 w-10"
+            className="shrink-0 rounded-full h-10 w-10"
             title="Create Feature"
           >
             <Lightbulb className="w-4 h-4" />
@@ -343,7 +343,7 @@ export function ChatInput({
             disabled={disabled}
             variant="outline"
             size="icon"
-            className="rounded-full h-10 w-10"
+            className="shrink-0 rounded-full h-10 w-10"
             title={isProvenanceSidebarOpen ? "Hide sources" : "Show sources"}
           >
             <Eye className={`w-4 h-4 ${isProvenanceSidebarOpen ? "text-primary" : ""}`} />
@@ -356,7 +356,7 @@ export function ChatInput({
             disabled={disabled}
             variant="outline"
             size="icon"
-            className="rounded-full h-10 w-10"
+            className="shrink-0 rounded-full h-10 w-10"
             title="Share conversation"
           >
             <Share2 className="w-4 h-4" />
