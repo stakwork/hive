@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Universe } from "./Universe";
 interface ApiResponse {
   success: boolean;
+  message?: string;
   data?: {
     nodes?: Node[];
     edges?: Link[];
