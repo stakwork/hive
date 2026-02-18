@@ -12,6 +12,22 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+// Mock config module to control USE_MOCKS
+vi.mock("@/config/env", async () => {
+  const actual = await vi.importActual("@/config/env");
+  return {
+    ...actual,
+    config: new Proxy((actual as any).config, {
+      get(target, prop) {
+        if (prop === "USE_MOCKS") {
+          return process.env.USE_MOCKS === "true";
+        }
+        return target[prop];
+      },
+    }),
+  };
+});
+
 // Mock external dependencies
 vi.mock("@/services/swarm/api/swarm", () => ({
   swarmApiRequest: vi.fn(),
@@ -223,6 +239,11 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
   describe("Happy Path", () => {
     test("successfully retrieves jarvis nodes with valid swarm config", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const mockResponse = {
         nodes: [
           {
@@ -274,9 +295,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
           apiKey: expect.any(String),
         })
       );
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("handles complex graph structures with multiple nodes and edges", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const complexGraph = {
         nodes: Array.from({ length: 10 }, (_, i) => ({
           ref_id: `node-${i}`,
@@ -312,9 +342,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       expect(
         data.data.edges.every((edge: any) => edge.source && edge.target)
       ).toBe(true);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("passes custom endpoint parameter to Jarvis API", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       vi.mocked(swarmApiRequest).mockResolvedValue({
         ok: true,
         status: 200,
@@ -339,9 +378,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
           method: "GET",
         })
       );
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("filters nodes by node_type parameter", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const mockResponse = {
         nodes: [
           {
@@ -382,11 +430,19 @@ describe("GET /api/swarm/jarvis/nodes", () => {
           method: "GET",
         })
       );
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
   });
 
   describe("Media URL Presigning", () => {
     test("generates presigned URLs for nodes with media_url properties", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
       const mockPresignedUrl =
         "https://presigned.s3.amazonaws.com/media.mp4?signature=xyz";
       const mockS3Service = {
@@ -430,9 +486,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
         3600
       );
       expect(data.data.nodes[0].properties.media_url).toBe(mockPresignedUrl);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("handles multiple nodes with media_url properties", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const mockPresignedUrls = [
         "https://presigned.s3.amazonaws.com/media1.mp4?sig=1",
         "https://presigned.s3.amazonaws.com/media2.mp4?sig=2",
@@ -484,9 +549,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       expect(mockS3Service.generatePresignedDownloadUrlForBucket).toHaveBeenCalledTimes(2);
       expect(data.data.nodes[0].properties.media_url).toBe(mockPresignedUrls[0]);
       expect(data.data.nodes[1].properties.media_url).toBe(mockPresignedUrls[1]);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("preserves original URL when presigning fails", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const originalUrl =
         "https://sphinx-livekit-recordings.s3.amazonaws.com/test-key.mp4";
       
@@ -522,9 +596,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.nodes[0].properties.media_url).toBe(originalUrl);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("does not process nodes without media_url properties", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const mockS3Service = {
         generatePresignedDownloadUrlForBucket: vi.fn(),
       };
@@ -554,6 +637,10 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
       expect(response.status).toBe(200);
       expect(mockS3Service.generatePresignedDownloadUrlForBucket).not.toHaveBeenCalled();
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
   });
 
@@ -576,16 +663,6 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       // Delete the swarm (endpoint will fall back to mock API)
       await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
 
-      // Mock the internal fetch call to the mock endpoint
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          nodes: [{ ref_id: "mock-node", name: "Mock Node" }],
-          edges: [],
-        }),
-      });
-      global.fetch = mockFetch as any;
-
       const response = await createAuthenticatedGetRequest(
         testUser.id,
         testWorkspace.id
@@ -593,14 +670,13 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.nodes[0].ref_id).toBe("mock-node");
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/mock/jarvis/graph"),
-        expect.any(Object)
-      );
+      // Response structure is { success, data: { nodes, edges } }
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toBeDefined();
+      expect(data.data.nodes.length).toBeGreaterThan(0);
     });
 
-    test("handles Jarvis API errors gracefully", async () => {
+    test("falls back to mock data when Jarvis API returns errors", async () => {
       vi.mocked(swarmApiRequest).mockResolvedValue({
         ok: false,
         status: 500,
@@ -612,12 +688,19 @@ describe("GET /api/swarm/jarvis/nodes", () => {
         testWorkspace.id
       );
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.success).toBe(false);
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toBeDefined();
+      expect(data.data.nodes.length).toBeGreaterThan(0);
     });
 
     test("handles network errors when calling Jarvis API", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       vi.mocked(swarmApiRequest).mockRejectedValue(new Error("Network error"));
 
       const response = await createAuthenticatedGetRequest(
@@ -629,12 +712,141 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const data = await response.json();
       expect(data.success).toBe(false);
       expect(data.message).toContain("Failed to get nodes");
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
+  });
+
+  describe("Mock Fallback Behavior", () => {
+    test("returns mock data when USE_MOCKS=true (skips swarm lookup)", async () => {
+      // Set USE_MOCKS to true
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "true";
+
+      // Need to reload the modules to pick up env change
+      vi.resetModules();
+
+      // Re-import after resetting modules
+      const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
+      const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${testWorkspace.id}`;
+
+      // Mock NextAuth session
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+      const request = new NextRequest(url, {
+        method: "GET",
+      });
+
+      // Don't mock swarmApiRequest - it should never be called
+      const swarmApiSpy = vi.mocked(swarmApiRequest);
+      swarmApiSpy.mockClear();
+
+      const response = await GET(request as any);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toBeDefined();
+      expect(data.data.nodes.length).toBeGreaterThan(0);
+
+      // Verify swarm API was never called
+      expect(swarmApiSpy).not.toHaveBeenCalled();
+
+      // Cleanup
+      if (originalUseMocks !== undefined) {
+        process.env.USE_MOCKS = originalUseMocks;
+      } else {
+        delete process.env.USE_MOCKS;
+      }
+      vi.resetModules();
+    });
+
+    test("falls back to mock data when swarmApiRequest returns ok: false", async () => {
+      // Ensure USE_MOCKS is false so swarm API is attempted
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+
+      // Clear and mock swarm API failure
+      vi.mocked(swarmApiRequest).mockClear();
+      vi.mocked(swarmApiRequest).mockResolvedValue({
+        ok: false,
+        status: 503,
+        data: undefined,
+      });
+
+      const response = await createAuthenticatedGetRequest(
+        testUser.id,
+        testWorkspace.id
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toBeDefined();
+      expect(data.data.nodes.length).toBeGreaterThan(0);
+
+      // The test verifies that when swarm API returns ok: false,
+      // the endpoint falls back to mock data (status 200, success true, nodes present)
+      // This proves the fallback logic works correctly
+
+      // Cleanup
+      if (originalUseMocks !== undefined) {
+        process.env.USE_MOCKS = originalUseMocks;
+      } else {
+        delete process.env.USE_MOCKS;
+      }
+    });
+
+    test.each([
+      [500, "Internal Server Error"],
+      [503, "Service Unavailable"],
+      [404, "Not Found"],
+    ])(
+      "falls back to mock data when swarm API returns status %i",
+      async (status, description) => {
+        // Ensure USE_MOCKS is false so swarm API is attempted
+        const originalUseMocks = process.env.USE_MOCKS;
+        process.env.USE_MOCKS = "false";
+
+        vi.mocked(swarmApiRequest).mockResolvedValue({
+          ok: false,
+          status,
+          data: { error: description },
+        });
+
+        const response = await createAuthenticatedGetRequest(
+          testUser.id,
+          testWorkspace.id
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toBeDefined();
+
+        // Cleanup
+        if (originalUseMocks !== undefined) {
+          process.env.USE_MOCKS = originalUseMocks;
+        } else {
+          delete process.env.USE_MOCKS;
+        }
+      }
+    );
   });
 
   describe("Edge Cases", () => {
     test("handles empty nodes and edges arrays", async () => {
-      vi.mocked(swarmApiRequest).mockResolvedValue({
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
+      vi.mocked(swarmApiRequest).mockResolvedValueOnce({
         ok: true,
         status: 200,
         data: { nodes: [], edges: [] },
@@ -649,9 +861,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const data = await response.json();
       expect(data.data.nodes).toEqual([]);
       expect(data.data.edges).toEqual([]);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("handles nodes with missing properties", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const mockResponse = {
         nodes: [
           {
@@ -663,7 +884,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
         edges: [],
       };
 
-      vi.mocked(swarmApiRequest).mockResolvedValue({
+      vi.mocked(swarmApiRequest).mockResolvedValueOnce({
         ok: true,
         status: 200,
         data: mockResponse,
@@ -677,9 +898,18 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.nodes[0]).not.toHaveProperty("properties");
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
 
     test("handles very large graph structures", async () => {
+      // Temporarily disable USE_MOCKS for this test
+      const originalUseMocks = process.env.USE_MOCKS;
+      process.env.USE_MOCKS = "false";
+      vi.resetModules();
+
       const largeGraph = {
         nodes: Array.from({ length: 1000 }, (_, i) => ({
           ref_id: `node-${i}`,
@@ -693,7 +923,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
         })),
       };
 
-      vi.mocked(swarmApiRequest).mockResolvedValue({
+      vi.mocked(swarmApiRequest).mockResolvedValueOnce({
         ok: true,
         status: 200,
         data: largeGraph,
@@ -708,6 +938,10 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const data = await response.json();
       expect(data.data.nodes).toHaveLength(1000);
       expect(data.data.edges).toHaveLength(2000);
+
+      // Restore
+      process.env.USE_MOCKS = originalUseMocks;
+      vi.resetModules();
     });
   });
 });

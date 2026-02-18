@@ -7,6 +7,7 @@ import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { mockData } from "./example";
+import { config } from "@/config/env";
 
 export const runtime = "nodejs";
 
@@ -75,6 +76,60 @@ async function processNodesMediaUrls(
 
   return processedNodes;
 }
+
+// Helper function to call mock endpoint (reusable for all fallback scenarios)
+async function callMockEndpoint(request: NextRequest, workspaceId: string) {
+  // Get workspace slug from workspace ID
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { slug: true },
+  });
+  
+  if (!workspace) {
+    return NextResponse.json(
+      { success: false, message: "Workspace not found" },
+      { status: 404 }
+    );
+  }
+  
+  try {
+    // In test environment, import and call the mock route handler directly
+    // In production, use fetch to call the mock endpoint
+    if (process.env.NODE_ENV === 'test') {
+      const { GET: MockGET } = await import("@/app/api/mock/jarvis/graph/route");
+      const mockUrl = new URL(`/api/mock/jarvis/graph?workspaceSlug=${workspace.slug}`, request.nextUrl.origin);
+      const mockRequest = new NextRequest(mockUrl, {
+        headers: request.headers,
+      });
+      return await MockGET(mockRequest);
+    } else {
+      // Call the mock endpoint via HTTP
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
+      mockUrl.searchParams.set("workspaceSlug", workspace.slug);
+      
+      const mockResponse = await fetch(mockUrl.toString(), {
+        headers: {
+          Cookie: request.headers.get("cookie") || "",
+        },
+      });
+      
+      if (!mockResponse.ok) {
+        const errorData = await mockResponse.json();
+        return NextResponse.json(errorData, { status: mockResponse.status });
+      }
+      
+      const mockData = await mockResponse.json();
+      return NextResponse.json(mockData, { status: 200 });
+    }
+  } catch (error) {
+    console.error("[Jarvis Nodes] Error calling mock endpoint:", error);
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch mock data" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -93,6 +148,12 @@ export async function GET(request: NextRequest) {
     // console.log("[Jarvis Nodes] Endpoint param:", endpoint);
     // console.log("[Jarvis Nodes] Node type param:", nodeType);
 
+    // Priority check: Use mocks if USE_MOCKS=true (skip swarm lookup entirely)
+    if (config.USE_MOCKS) {
+      console.log("[Jarvis Nodes] USE_MOCKS=true, calling mock endpoint");
+      return await callMockEndpoint(request, workspaceId!);
+    }
+
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
@@ -101,44 +162,7 @@ export async function GET(request: NextRequest) {
     // Return mock data if swarm is not configured (for development/testing)
     if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {
       console.log("[Jarvis Nodes] Swarm not configured, calling mock endpoint");
-
-      // Get workspace slug from workspace ID
-      let workspaceSlug = "";
-      if (workspaceId) {
-        const workspace = await db.workspace.findUnique({
-          where: { id: workspaceId },
-          select: { slug: true },
-        });
-        if (workspace) {
-          workspaceSlug = workspace.slug;
-        }
-      }
-
-      if (!workspaceSlug) {
-        return NextResponse.json(
-          { success: false, message: "Workspace not found" },
-          { status: 404 },
-        );
-      }
-
-      // Call the mock endpoint
-      const baseUrl = request.nextUrl.origin;
-      const mockUrl = new URL(`/api/mock/jarvis/graph`, baseUrl);
-      mockUrl.searchParams.set("workspaceSlug", workspaceSlug);
-
-      const mockResponse = await fetch(mockUrl.toString(), {
-        headers: {
-          Cookie: request.headers.get("cookie") || "",
-        },
-      });
-
-      if (!mockResponse.ok) {
-        const errorData = await mockResponse.json();
-        return NextResponse.json(errorData, { status: mockResponse.status });
-      }
-
-      const mockData = await mockResponse.json();
-      return NextResponse.json(mockData, { status: 200 });
+      return await callMockEndpoint(request, workspaceId!);
     }
 
     const vanityAddress = getSwarmVanityAddress(swarm.name);
@@ -164,6 +188,14 @@ export async function GET(request: NextRequest) {
       method: "GET",
       apiKey,
     });
+
+    // Fallback to mock data if swarm API failed
+    if (!apiResult.ok) {
+      console.warn(
+        `[Jarvis Nodes] Swarm API failed (status ${apiResult.status}), falling back to mock data`
+      );
+      return await callMockEndpoint(request, workspaceId!);
+    }
 
     // Process the response data to presign any media_url fields in nodes
     let processedData = apiResult.data;
