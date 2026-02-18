@@ -4,7 +4,7 @@ import React from "react";
 import { AITextareaSection } from "@/components/features/AITextareaSection";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
-import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
+
 import { PersonasSection } from "@/components/features/PersonasSection";
 import { TicketsList } from "@/components/features/TicketsList";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
@@ -638,7 +638,7 @@ export default function FeatureDetailPage() {
       channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_DECISION, handleStakworkRunDecision);
       pusher.unsubscribe(channelName);
     };
-  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks, updateOriginalData, fetchPendingRuns]);
+  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks, updateOriginalData, fetchPendingRuns, setFeature]);
 
   if (loading) {
     return (
@@ -975,13 +975,6 @@ export default function FeatureDetailPage() {
                 onDecisionMade={fetchPendingRuns}
                 isListening={isListening && focusedField === "architecture"}
                 transcript={focusedField === "architecture" ? transcript : ""}
-              />
-
-              {/* Whiteboard Section */}
-              <FeatureWhiteboardSection
-                featureId={featureId}
-                hasArchitecture={!!feature?.architecture?.trim()}
-                workspaceId={workspaceId}
               />
 
               {/* Navigation buttons */}
