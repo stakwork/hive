@@ -197,7 +197,10 @@ const GraphComponentInner = ({
       const response = await fetch(requestUrl, { signal: abortController.signal });
       const data: ApiResponse = await response.json();
 
-      if (!data.success) throw new Error("Failed to fetch filtered data");
+      if (!data.success) {
+        console.error("[Graph] API returned error:", data);
+        throw new Error(`Failed to fetch graph data: ${data.message || 'Unknown error'}`);
+      }
 
       if (data.data?.nodes && data.data.nodes.length > 0) {
         const nodesWithPosition = data.data.nodes.map((node: Node) => ({
