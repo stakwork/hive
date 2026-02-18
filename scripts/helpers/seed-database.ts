@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
+import { seedAgentLogs } from "./seed-agent-logs";
 
 dotenvConfig({ path: ".env.local" });
 
@@ -1097,6 +1098,7 @@ async function main() {
   await seedFeaturesWithStakworkRuns(users);
   await seedAutoMergeTestScenarios(users);
   await seedDeploymentTracking();
+  await seedAgentLogs();
 
   console.log("Seed completed.");
 }
