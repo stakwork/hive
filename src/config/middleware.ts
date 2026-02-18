@@ -44,6 +44,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/webhook/pool-manager", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
+  { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
