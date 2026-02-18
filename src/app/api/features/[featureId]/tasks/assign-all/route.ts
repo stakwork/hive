@@ -76,13 +76,15 @@ export async function POST(
       );
     }
 
-    // Step 5: Query all unassigned tasks in first phase
+    // Step 5: Query all unassigned TODO tasks in first phase
+    // Only assign tasks that are in TODO status (not IN_PROGRESS or DONE)
     const unassignedTasks = await db.task.findMany({
       where: {
         phaseId: firstPhase.id,
         assigneeId: null,
         systemAssigneeType: null,
         deleted: false,
+        status: "TODO",
       },
       select: {
         id: true,
