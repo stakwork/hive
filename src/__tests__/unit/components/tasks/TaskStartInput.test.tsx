@@ -45,6 +45,27 @@ vi.mock("@/hooks/useControlKeyHold", () => ({
   useControlKeyHold: vi.fn(),
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    workspace: {
+      id: "test-workspace-id",
+      slug: "test-workspace",
+      name: "Test Workspace",
+      repositories: [
+        {
+          id: "repo-1",
+          name: "Test Repository 1",
+          repositoryUrl: "https://github.com/test/repo1",
+        },
+      ],
+    },
+    slug: "test-workspace",
+    role: "OWNER",
+    isLoading: false,
+    switchWorkspace: vi.fn(),
+  }),
+}));
+
 vi.mock("@/lib/runtime", () => ({
   isDevelopmentMode: () => true,
 }));
