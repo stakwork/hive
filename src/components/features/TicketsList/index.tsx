@@ -129,11 +129,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     return sorted;
   }, [defaultPhase?.tasks, sortBy]);
 
-  // Filter for unassigned tasks (Start button visibility)
-  const unassignedTasks = tickets.filter((task) => !task.assignee);
-
-  // Check if all tasks are completed (hide Start button if so)
-  const allTasksCompleted = tickets.length > 0 && tickets.every((task) => task.status === "DONE");
+  // Filter for unassigned TODO tasks (Start button visibility)
+  // Only show Start button if there are tasks that can actually be started (unassigned AND TODO)
+  const startableTasks = tickets.filter((task) => !task.assignee && task.status === "TODO");
 
   // Handle real-time task updates from Pusher
   const handleRealtimeTaskUpdate = useCallback(
@@ -562,8 +560,8 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
-          {/* Start Button - Bulk assign all unassigned tasks (hidden if all tasks completed) */}
-          {!isCreatingTicket && unassignedTasks.length > 0 && !allTasksCompleted && (
+          {/* Start Button - Bulk assign unassigned TODO tasks */}
+          {!isCreatingTicket && startableTasks.length > 0 && (
             <Button
               onClick={handleBulkAssignTasks}
               size="sm"
