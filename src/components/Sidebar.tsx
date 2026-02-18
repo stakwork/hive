@@ -124,6 +124,7 @@ const baseNavigationItems: NavigationItem[] = [
     children: [
       { icon: BookOpen, label: "Learn", href: "/learn" },
       { icon: Phone, label: "Calls", href: "/calls" },
+      { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
     ],
   },
 ];
