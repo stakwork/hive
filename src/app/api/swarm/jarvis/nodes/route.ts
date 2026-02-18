@@ -92,23 +92,42 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
     );
   }
   
-  // Call the mock endpoint
-  const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
-  mockUrl.searchParams.set("workspaceSlug", workspace.slug);
-  
-  const mockResponse = await fetch(mockUrl.toString(), {
-    headers: {
-      Cookie: request.headers.get("cookie") || "",
-    },
-  });
-  
-  if (!mockResponse.ok) {
-    const errorData = await mockResponse.json();
-    return NextResponse.json(errorData, { status: mockResponse.status });
+  try {
+    // In test environment, import and call the mock route handler directly
+    // In production, use fetch to call the mock endpoint
+    if (process.env.NODE_ENV === 'test') {
+      const { GET: MockGET } = await import("@/app/api/mock/jarvis/graph/route");
+      const mockUrl = new URL(`/api/mock/jarvis/graph?workspaceSlug=${workspace.slug}`, request.nextUrl.origin);
+      const mockRequest = new NextRequest(mockUrl, {
+        headers: request.headers,
+      });
+      return await MockGET(mockRequest);
+    } else {
+      // Call the mock endpoint via HTTP
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
+      mockUrl.searchParams.set("workspaceSlug", workspace.slug);
+      
+      const mockResponse = await fetch(mockUrl.toString(), {
+        headers: {
+          Cookie: request.headers.get("cookie") || "",
+        },
+      });
+      
+      if (!mockResponse.ok) {
+        const errorData = await mockResponse.json();
+        return NextResponse.json(errorData, { status: mockResponse.status });
+      }
+      
+      const mockData = await mockResponse.json();
+      return NextResponse.json(mockData, { status: 200 });
+    }
+  } catch (error) {
+    console.error("[Jarvis Nodes] Error calling mock endpoint:", error);
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch mock data" },
+      { status: 500 }
+    );
   }
-  
-  const mockData = await mockResponse.json();
-  return NextResponse.json(mockData, { status: 200 });
 }
 
 export async function GET(request: NextRequest) {

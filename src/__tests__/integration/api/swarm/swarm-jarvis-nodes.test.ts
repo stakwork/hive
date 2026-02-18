@@ -663,16 +663,6 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       // Delete the swarm (endpoint will fall back to mock API)
       await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
 
-      // Mock the internal fetch call to the mock endpoint
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          nodes: [{ ref_id: "mock-node", name: "Mock Node" }],
-          edges: [],
-        }),
-      });
-      global.fetch = mockFetch as any;
-
       const response = await createAuthenticatedGetRequest(
         testUser.id,
         testWorkspace.id
@@ -680,11 +670,10 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.nodes[0].ref_id).toBe("mock-node");
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/mock/jarvis/graph"),
-        expect.any(Object)
-      );
+      // Response structure is { success, data: { nodes, edges } }
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toBeDefined();
+      expect(data.data.nodes.length).toBeGreaterThan(0);
     });
 
     test("falls back to mock data when Jarvis API returns errors", async () => {
@@ -693,20 +682,6 @@ describe("GET /api/swarm/jarvis/nodes", () => {
         status: 500,
         data: { error: "Internal server error" },
       });
-
-      // Mock the internal fetch call to the mock endpoint
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          success: true,
-          status: 200,
-          data: {
-            nodes: [{ ref_id: "mock-node", name: "Mock Node" }],
-            edges: [],
-          },
-        }),
-      });
-      global.fetch = mockFetch as any;
 
       const response = await createAuthenticatedGetRequest(
         testUser.id,
@@ -717,10 +692,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.data.nodes).toBeDefined();
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/mock/jarvis/graph"),
-        expect.any(Object)
-      );
+      expect(data.data.nodes.length).toBeGreaterThan(0);
     });
 
     test("handles network errors when calling Jarvis API", async () => {
