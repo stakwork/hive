@@ -2,6 +2,7 @@
 
 import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
+import { PodRepairSection } from "@/components/pod-repair";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -132,101 +133,107 @@ export default function StakgraphPage() {
       </div>
       <PageHeader title="Pool Status" description="Configure your pool settings for development environment" />
 
-      <Card className="max-w-2xl">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Pool Settings</CardTitle>
-          <div className="flex gap-2">
-            {!formData.webhookEnsured && formData.repositories?.[0]?.repositoryUrl ? (
-              <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
-                <Webhook className="mr-2 h-4 w-4" />
-                Add Github Webhooks
-              </Button>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {errors.general && (
-              <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
-                <p className="text-sm text-destructive">{errors.general}</p>
-              </div>
-            )}
-
-            {saved && (
-              <div className="p-3 rounded-md bg-green-50 border border-green-200">
-                <p className="text-sm text-green-700">Configuration saved successfully!</p>
-              </div>
-            )}
-
-            <div className="space-y-6">
-              <ProjectInfoForm
-                data={{
-                  name: formData.name,
-                  description: formData.description,
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleProjectInfoChange}
-              />
-
-              <RepositoryForm
-                data={{
-                  repositories: formData.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleRepositoryChange}
-              />
-
-              <SwarmForm
-                data={{
-                  swarmUrl: formData.swarmUrl,
-                  swarmApiKey: formData.swarmApiKey || "",
-                  swarmSecretAlias: formData.swarmSecretAlias,
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleSwarmChange}
-              />
-
-              <EnvironmentForm
-                data={{
-                  poolName: formData.poolName,
-                  poolCpu: formData.poolCpu || "2",
-                  poolMemory: formData.poolMemory || "8Gi",
-                  environmentVariables: formData.environmentVariables,
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleEnvironmentChange}
-                onEnvVarsChange={handleEnvVarsChange}
-              />
-
-              <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
-
-              <FileTabs
-                fileContents={formData.containerFiles}
-                originalContents={formData.containerFiles}
-                onChange={handleFileChange}
-              />
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <Card className="w-full lg:max-w-2xl">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Pool Settings</CardTitle>
+            <div className="flex gap-2">
+              {!formData.webhookEnsured && formData.repositories?.[0]?.repositoryUrl ? (
+                <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
+                  <Webhook className="mr-2 h-4 w-4" />
+                  Add Github Webhooks
+                </Button>
+              ) : null}
             </div>
-
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save
-                </>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {errors.general && (
+                <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
+                  <p className="text-sm text-destructive">{errors.general}</p>
+                </div>
               )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+
+              {saved && (
+                <div className="p-3 rounded-md bg-green-50 border border-green-200">
+                  <p className="text-sm text-green-700">Configuration saved successfully!</p>
+                </div>
+              )}
+
+              <div className="space-y-6">
+                <ProjectInfoForm
+                  data={{
+                    name: formData.name,
+                    description: formData.description,
+                  }}
+                  errors={errors}
+                  loading={loading}
+                  onChange={handleProjectInfoChange}
+                />
+
+                <RepositoryForm
+                  data={{
+                    repositories: formData.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
+                  }}
+                  errors={errors}
+                  loading={loading}
+                  onChange={handleRepositoryChange}
+                />
+
+                <SwarmForm
+                  data={{
+                    swarmUrl: formData.swarmUrl,
+                    swarmApiKey: formData.swarmApiKey || "",
+                    swarmSecretAlias: formData.swarmSecretAlias,
+                  }}
+                  errors={errors}
+                  loading={loading}
+                  onChange={handleSwarmChange}
+                />
+
+                <EnvironmentForm
+                  data={{
+                    poolName: formData.poolName,
+                    poolCpu: formData.poolCpu || "2",
+                    poolMemory: formData.poolMemory || "8Gi",
+                    environmentVariables: formData.environmentVariables,
+                  }}
+                  errors={errors}
+                  loading={loading}
+                  onChange={handleEnvironmentChange}
+                  onEnvVarsChange={handleEnvVarsChange}
+                />
+
+                <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
+
+                <FileTabs
+                  fileContents={formData.containerFiles}
+                  originalContents={formData.containerFiles}
+                  onChange={handleFileChange}
+                />
+              </div>
+
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <div className="w-full lg:w-[420px] lg:shrink-0 lg:sticky lg:top-6">
+          <PodRepairSection />
+        </div>
+      </div>
     </div>
   );
 }

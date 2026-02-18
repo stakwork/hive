@@ -210,7 +210,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       message: "Pool settings retrieved successfully",
       data: {
         name: swarm.name || "",
-        description: "",
+        description: swarm.description || "",
         repositories: repositories.length > 0 ? repositories : [],
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
@@ -565,6 +565,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       services: syncResult.services,
       environmentVariables: settings.environmentVariables,
       containerFiles: syncResult.containerFiles,
+      description: settings.description,
     });
 
     const swarm = (await db.swarm.findUnique({
@@ -737,7 +738,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: {
         id: typedSwarm.id,
         name: typedSwarm.name || "",
-        description: settings.description || "",
+        description: typedSwarm.description || "",
         repositories: updatedRepositories,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
