@@ -8,7 +8,7 @@ if (typeof global.TextEncoder === "undefined") {
   global.TextEncoder = TextEncoder;
 }
 if (typeof global.TextDecoder === "undefined") {
-  global.TextDecoder = TextDecoder;
+  global.TextDecoder = TextDecoder as typeof global.TextDecoder;
 }
 
 // Mock NextAuth globally for all tests
@@ -28,6 +28,23 @@ global.ResizeObserver = class ResizeObserver {
   unobserve() {}
   disconnect() {}
 };
+
+// Mock window.matchMedia for theme hooks (only in browser/jsdom environments)
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
 
 beforeAll(() => {
   // Global test hooks can be added here when needed.
