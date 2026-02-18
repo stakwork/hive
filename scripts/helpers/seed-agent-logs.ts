@@ -55,7 +55,14 @@ export async function seedAgentLogs() {
   threeMonthsAgo.setMonth(now.getMonth() - 3);
 
   const logsToCreate = 60; // Create 60 logs for good pagination testing
-  const logs = [];
+  const logs: Array<{
+    workspaceId: string;
+    blobUrl: string;
+    agent: string;
+    stakworkRunId: string | null;
+    taskId: string | null;
+    createdAt: Date;
+  }> = [];
 
   console.log("📝 Generating log content and uploading to blob storage...");
 
