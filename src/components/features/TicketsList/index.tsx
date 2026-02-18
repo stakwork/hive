@@ -59,7 +59,7 @@ interface GeneratedContent {
 
 export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: TicketsListProps) {
   const router = useRouter();
-  const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
+  const { slug: workspaceSlug, id: workspaceId, workspace } = useWorkspace();
 
   // Task creation state
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
@@ -74,6 +74,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     email: string | null;
     image: string | null;
   } | null>(null);
+  const [newTicketRepositoryId, setNewTicketRepositoryId] = useState<string | null>(
+    null
+  );
   const [newTicketAutoMerge, setNewTicketAutoMerge] = useState(true);
 
   // View toggle
@@ -235,6 +238,13 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     onDeploymentStatusChange: handleDeploymentStatusChange,
   });
 
+  // Initialize repository when form opens
+  useEffect(() => {
+    if (isCreatingTicket && !newTicketRepositoryId && workspace?.repositories?.[0]?.id) {
+      setNewTicketRepositoryId(workspace.repositories[0].id);
+    }
+  }, [isCreatingTicket, newTicketRepositoryId, workspace?.repositories]);
+
   // Auto-focus after ticket creation completes
   useEffect(() => {
     if (!creatingTicket && !newTicketTitle && isCreatingTicket) {
@@ -272,6 +282,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       status: newTicketStatus,
       priority: newTicketPriority,
       assigneeId: newTicketAssigneeId,
+      repositoryId: newTicketRepositoryId,
       autoMerge: newTicketAutoMerge,
     });
 
@@ -312,6 +323,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       setNewTicketPriority("MEDIUM");
       setNewTicketAssigneeId(null);
       setNewTicketAssigneeData(null);
+      setNewTicketRepositoryId(workspace?.repositories?.[0]?.id || null);
       setNewTicketAutoMerge(true);
     }
   };
@@ -323,6 +335,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     setNewTicketPriority("MEDIUM");
     setNewTicketAssigneeId(null);
     setNewTicketAssigneeData(null);
+    setNewTicketRepositoryId(workspace?.repositories?.[0]?.id || null);
     setNewTicketAutoMerge(true);
     setIsCreatingTicket(false);
   };
@@ -674,6 +687,26 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
                 }}
                 showSpecialAssignees={true}
               />
+              {workspace?.repositories && workspace.repositories.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap">Repository:</Label>
+                  <Select
+                    value={newTicketRepositoryId || undefined}
+                    onValueChange={(value) => setNewTicketRepositoryId(value)}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select repository" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workspace.repositories.map((repo) => (
+                        <SelectItem key={repo.id} value={repo.id}>
+                          {repo.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
