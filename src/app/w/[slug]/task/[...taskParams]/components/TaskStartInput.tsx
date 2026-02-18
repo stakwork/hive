@@ -47,9 +47,10 @@ interface PendingImage {
 }
 
 import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface TaskStartInputProps {
-  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[]) => void;
+  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -87,6 +88,7 @@ export function TaskStartInput({
   onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
+  const { workspace } = useWorkspace();
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
@@ -100,6 +102,12 @@ export function TaskStartInput({
   const [projectNotFound, setProjectNotFound] = useState(false);
   const [matchedProject, setMatchedProject] = useState<any>(null);
   const [isValidatingProject, setIsValidatingProject] = useState(false);
+  
+  // Repository state for multi-repo workspaces
+  const repositories = workspace?.repositories || [];
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
+    repositories[0]?.id || null
+  );
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +125,9 @@ export function TaskStartInput({
   
   // Image upload is disabled in agent mode and workflow mode
   const isImageUploadEnabled = taskMode !== "agent" && !isWorkflowMode;
+  
+  // Show repository dropdown when there are multiple repositories
+  const showRepositoryDropdown = repositories.length > 1;
   
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -350,8 +361,14 @@ export function TaskStartInput({
       // Cleanup preview URLs
       pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
       
-      // Call onStart with all parameters: text, model, autoMerge, images
-      onStart(value.trim(), selectedModel, autoMerge, imageFiles.length > 0 ? imageFiles : undefined);
+      // Call onStart with all parameters: text, model, autoMerge, images, repositoryId
+      onStart(
+        value.trim(),
+        selectedModel,
+        autoMerge,
+        imageFiles.length > 0 ? imageFiles : undefined,
+        selectedRepositoryId || undefined
+      );
       
       // Clear state
       setValue("");
@@ -737,54 +754,77 @@ export function TaskStartInput({
             <div className="absolute bottom-6 left-8 z-10 flex gap-2">
               <Select value={taskMode} onValueChange={onModeChange}>
                 <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
-              <div className="flex items-center gap-2">
-                <ModeIcon className="h-4 w-4" />
-                <span>{modeConfig.label}</span>
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="live">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>Async</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="agent">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-3.5 w-3.5" />
-                  <span>Agent</span>
-                </div>
-              </SelectItem>
-              {devMode && (
-                <SelectItem value="test">
                   <div className="flex items-center gap-2">
-                    <Beaker className="h-3.5 w-3.5" />
-                    <span>Test</span>
+                    <ModeIcon className="h-4 w-4" />
+                    <span>{modeConfig.label}</span>
                   </div>
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          {taskMode === "agent" && onModelChange && (
-            <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
-              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  <span>{selectedModel}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {VALID_MODELS.map((model) => (
-                  <SelectItem key={model} value={model}>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="live">
                     <div className="flex items-center gap-2">
-                      <span>{model}</span>
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Async</span>
                     </div>
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+                  <SelectItem value="agent">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-3.5 w-3.5" />
+                      <span>Agent</span>
+                    </div>
+                  </SelectItem>
+                  {devMode && (
+                    <SelectItem value="test">
+                      <div className="flex items-center gap-2">
+                        <Beaker className="h-3.5 w-3.5" />
+                        <span>Test</span>
+                      </div>
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {taskMode === "agent" && onModelChange && (
+                <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
+                  <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      <span>{selectedModel}</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VALID_MODELS.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        <div className="flex items-center gap-2">
+                          <span>{model}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {showRepositoryDropdown && (
+                <Select 
+                  value={selectedRepositoryId || undefined} 
+                  onValueChange={(value) => setSelectedRepositoryId(value)}
+                >
+                  <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate">
+                        {repositories.find(r => r.id === selectedRepositoryId)?.name || "Select repository"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repositories.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{repo.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
         <div className="absolute bottom-6 right-8 z-10 flex gap-2">
           {/* Image upload button */}
           {isImageUploadEnabled && !isWorkflowMode && (
