@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo } from "react";
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,7 @@ import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { KanbanView } from "@/components/ui/kanban-view";
+import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import {
   Pagination,
   PaginationContent,
@@ -34,6 +35,7 @@ import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 import { formatRelativeOrDate } from "@/lib/date-utils";
+import { usePusherConnection, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 
 // Priority configuration for filtering
 const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
@@ -85,6 +87,12 @@ function FeatureRow({
                 <p>Awaiting your feedback</p>
               </TooltipContent>
             </Tooltip>
+          )}
+          {feature.deploymentStatus && (
+            <DeploymentStatusBadge
+              environment={feature.deploymentStatus}
+              deploymentUrl={feature.deploymentUrl}
+            />
           )}
         </div>
       </TableCell>
@@ -412,6 +420,20 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       featureInputRef.current?.focus();
     }
   }, [creating, newFeatureTitle, isCreating]);
+
+  // Pusher integration for real-time deployment updates
+  const handleDeploymentStatusChange = useCallback((event: DeploymentStatusChangeEvent) => {
+    // Refetch features to get updated deployment status
+    // Since we don't have task-to-feature mapping in the list view,
+    // we refetch all features when any deployment changes
+    fetchFeatures(page);
+  }, [page]);
+
+  usePusherConnection({
+    workspaceSlug,
+    enabled: true,
+    onDeploymentStatusChange: handleDeploymentStatusChange,
+  });
 
   // Save filter and sort preferences to localStorage
   useEffect(() => {

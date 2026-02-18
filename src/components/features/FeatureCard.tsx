@@ -9,6 +9,7 @@ import type { FeatureWithDetails } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
 import { PriorityBadge } from "@/components/ui/priority-selector";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 
 interface FeatureCardProps {
   feature: FeatureWithDetails;
@@ -45,6 +46,12 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
                 <p>Awaiting your feedback</p>
               </TooltipContent>
             </Tooltip>
+          )}
+          {feature.deploymentStatus && (
+            <DeploymentStatusBadge
+              environment={feature.deploymentStatus}
+              deploymentUrl={feature.deploymentUrl}
+            />
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

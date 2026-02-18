@@ -149,6 +149,22 @@ export async function listFeatures({
             createdAt: true,
           },
         },
+        // Fetch tasks for deployment status calculation (excluding archived/deleted)
+        phases: {
+          select: {
+            tasks: {
+              where: {
+                deleted: false,
+                archived: false,
+              },
+              select: {
+                id: true,
+                deploymentStatus: true,
+                deployedToProductionAt: true,
+              },
+            },
+          },
+        },
       },
       orderBy: orderByClause,
       skip,
@@ -167,6 +183,7 @@ export async function listFeatures({
   ]);
 
   // Compute correct pending count per feature (only latest run per type)
+  // and calculate deployment status
   const features = rawFeatures.map(feature => {
     const latestPerType = new Map();
     // Handle case where stakworkRuns might be undefined
@@ -179,6 +196,28 @@ export async function listFeatures({
     }
     const pendingCount = Array.from(latestPerType.values())
       .filter(run => run.decision === null).length;
+    
+    // Calculate deployment status by aggregating all tasks across phases
+    const allTasks = feature.phases?.flatMap(phase => phase.tasks) || [];
+    let deploymentStatus: "staging" | "production" | null = null;
+    let deploymentUrl: string | null = null;
+
+    if (allTasks.length > 0) {
+      const allProduction = allTasks.every(
+        task => task.deploymentStatus === "production"
+      );
+      const allStagingOrProduction = allTasks.every(
+        task => task.deploymentStatus === "staging" || task.deploymentStatus === "production"
+      );
+
+      if (allProduction) {
+        deploymentStatus = "production";
+        // Find first production deployment URL (would need to query separately if needed)
+        deploymentUrl = null; // Can be enhanced later to fetch actual URL
+      } else if (allStagingOrProduction) {
+        deploymentStatus = "staging";
+      }
+    }
     
     return {
       id: feature.id,
@@ -193,6 +232,8 @@ export async function listFeatures({
         userStories: feature._count.userStories,
         stakworkRuns: pendingCount,
       },
+      deploymentStatus,
+      deploymentUrl,
     };
   });
 
