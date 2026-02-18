@@ -108,35 +108,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Serialize logs to JSONL if array, otherwise store as-is
-    let logContent: string;
-    if (Array.isArray(logs)) {
-      logContent = logs.map((entry) => JSON.stringify(entry)).join("\n");
-    } else if (typeof logs === "string") {
-      logContent = logs;
-    } else {
-      logContent = JSON.stringify(logs);
-    }
+    const logContent = typeof logs === "string" ? logs : JSON.stringify(logs);
 
     // Upload to Vercel Blob
-    const timestamp = Date.now();
-    const blobPath = `agent-logs/${workspace_id}/${stakwork_run_id || task_id}/${agent}_${timestamp}.jsonl`;
+    const blobPath = `agent-logs/${workspace_id}/${stakwork_run_id || task_id}/${agent}.json`;
 
     const blob = await put(blobPath, logContent, {
       access: "public",
-      contentType: "application/x-ndjson",
+      contentType: "application/json",
+      addRandomSuffix: false,
     });
 
-    // Create the AgentLog record
-    const agentLog = await db.agentLog.create({
-      data: {
-        blobUrl: blob.url,
+    // Upsert the AgentLog record (overwrite if same agent + run/task)
+    const existing = await db.agentLog.findFirst({
+      where: {
         agent,
+        workspaceId: workspace_id,
         stakworkRunId: stakwork_run_id || null,
         taskId: task_id || null,
-        workspaceId: workspace_id,
       },
+      select: { id: true },
     });
+
+    const agentLog = existing
+      ? await db.agentLog.update({
+          where: { id: existing.id },
+          data: { blobUrl: blob.url },
+        })
+      : await db.agentLog.create({
+          data: {
+            blobUrl: blob.url,
+            agent,
+            stakworkRunId: stakwork_run_id || null,
+            taskId: task_id || null,
+            workspaceId: workspace_id,
+          },
+        });
 
     return NextResponse.json(
       {
