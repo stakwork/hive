@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
   ArrowUp,
+  ArrowLeft,
   Mic,
   MicOff,
   Bot,
@@ -89,6 +90,7 @@ export function TaskStartInput({
   onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { workspace } = useWorkspace();
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
@@ -507,8 +509,27 @@ export function TaskStartInput({
 
   const title = isWorkflowMode ? "Workflow Editor" : isProjectMode ? "Project Debugger" : isPromptsMode ? "Manage Prompts" : "Build Something";
 
+  const handleBackClick = () => {
+    if (workspaceSlug) {
+      router.push(`/w/${workspaceSlug}/task`);
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
+    <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background relative">
+      {/* Back button */}
+      <div className="absolute top-6 left-6 z-20">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleBackClick}
+          data-testid="back-button"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      </div>
+
       <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
         <AnimatePresence mode="wait">
           <motion.span
