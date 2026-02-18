@@ -102,7 +102,6 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Build",
     href: "/build",
     children: [
-      { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Plan", href: "/plan" },
       { icon: PenLine, label: "Whiteboards", href: "/whiteboards" },
     ],
