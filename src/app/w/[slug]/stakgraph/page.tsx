@@ -1,15 +1,17 @@
 "use client";
 
-import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
+import { EnvironmentForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { PodRepairSection } from "@/components/pod-repair";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Settings, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -25,7 +27,6 @@ export default function StakgraphPage() {
     saved,
     loadSettings,
     saveSettings,
-    handleProjectInfoChange,
     handleRepositoryChange,
     handleSwarmChange,
     handleEnvironmentChange,
@@ -34,7 +35,6 @@ export default function StakgraphPage() {
     handleFileChange,
   } = useStakgraphStore();
 
-  // Load existing settings on component mount
   useEffect(() => {
     if (slug) {
       loadSettings(slug);
@@ -56,7 +56,7 @@ export default function StakgraphPage() {
         toast.error("Error", { description: "Workspace not ready" });
         return;
       }
-      
+
       const primaryRepo = formData.repositories?.[0];
       if (!primaryRepo?.repositoryUrl) {
         toast.error("Error", { description: "No repository configured" });
@@ -76,7 +76,9 @@ export default function StakgraphPage() {
 
       if (!res.ok) {
         if (data.error === "INSUFFICIENT_PERMISSIONS") {
-          toast.error("Permission Required", { description: data.message || "Admin access required to manage webhooks on this repository" });
+          toast.error("Permission Required", {
+            description: data.message || "Admin access required to manage webhooks on this repository",
+          });
         } else {
           toast.error("Error", { description: data.message || "Failed to add webhooks" });
         }
@@ -91,21 +93,10 @@ export default function StakgraphPage() {
     }
   };
 
-  // const allFieldsFilled =
-  //   formData.name &&
-  //     formData.repositoryUrl &&
-  //     formData.swarmUrl &&
-  //     formData.swarmSecretAlias &&
-  //     formData.poolName
-  //     ? true
-  //     : false;
-
-  // console.log("allFieldsFilled", allFieldsFilled);
-
   if (initialLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Stakgraph Configuration" description="Configure your settings for Stakgraph integration" />
+        <PageHeader title="Pool Status" description="Configure your pool settings for development environment" />
         <Card className="max-w-2xl">
           <CardContent className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
@@ -137,95 +128,111 @@ export default function StakgraphPage() {
         <Card className="w-full lg:max-w-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Pool Settings</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" title="Infrastructure settings">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm">Infrastructure</h4>
+                    <SwarmForm
+                      data={{
+                        swarmUrl: formData.swarmUrl,
+                        swarmApiKey: formData.swarmApiKey || "",
+                        swarmSecretAlias: formData.swarmSecretAlias,
+                      }}
+                      errors={errors}
+                      loading={loading}
+                      onChange={handleSwarmChange}
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
               {!formData.webhookEnsured && formData.repositories?.[0]?.repositoryUrl ? (
-                <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
+                <Button type="button" variant="default" size="sm" onClick={handleEnsureWebhooks}>
                   <Webhook className="mr-2 h-4 w-4" />
-                  Add Github Webhooks
+                  Add Webhooks
                 </Button>
               ) : null}
             </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit}>
               {errors.general && (
-                <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
+                <div className="mb-4 p-3 rounded-md bg-destructive/10 border border-destructive/20">
                   <p className="text-sm text-destructive">{errors.general}</p>
                 </div>
               )}
 
               {saved && (
-                <div className="p-3 rounded-md bg-green-50 border border-green-200">
+                <div className="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
                   <p className="text-sm text-green-700">Configuration saved successfully!</p>
                 </div>
               )}
 
-              <div className="space-y-6">
-                <ProjectInfoForm
-                  data={{
-                    name: formData.name,
-                    description: formData.description,
-                  }}
-                  errors={errors}
-                  loading={loading}
-                  onChange={handleProjectInfoChange}
-                />
+              <Tabs defaultValue="repositories">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="repositories">Repositories</TabsTrigger>
+                  <TabsTrigger value="environment">Environment</TabsTrigger>
+                  <TabsTrigger value="services">Services</TabsTrigger>
+                </TabsList>
 
-                <RepositoryForm
-                  data={{
-                    repositories: formData.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
-                  }}
-                  errors={errors}
-                  loading={loading}
-                  onChange={handleRepositoryChange}
-                />
+                <TabsContent value="repositories">
+                  <RepositoryForm
+                    data={{
+                      repositories: formData.repositories || [
+                        { repositoryUrl: "", branch: "main", name: "" },
+                      ],
+                    }}
+                    errors={errors}
+                    loading={loading}
+                    onChange={handleRepositoryChange}
+                  />
+                </TabsContent>
 
-                <SwarmForm
-                  data={{
-                    swarmUrl: formData.swarmUrl,
-                    swarmApiKey: formData.swarmApiKey || "",
-                    swarmSecretAlias: formData.swarmSecretAlias,
-                  }}
-                  errors={errors}
-                  loading={loading}
-                  onChange={handleSwarmChange}
-                />
+                <TabsContent value="environment">
+                  <EnvironmentForm
+                    data={{
+                      poolName: formData.poolName,
+                      poolCpu: formData.poolCpu || "2",
+                      poolMemory: formData.poolMemory || "8Gi",
+                      environmentVariables: formData.environmentVariables,
+                    }}
+                    errors={errors}
+                    loading={loading}
+                    onChange={handleEnvironmentChange}
+                    onEnvVarsChange={handleEnvVarsChange}
+                  />
+                </TabsContent>
 
-                <EnvironmentForm
-                  data={{
-                    poolName: formData.poolName,
-                    poolCpu: formData.poolCpu || "2",
-                    poolMemory: formData.poolMemory || "8Gi",
-                    environmentVariables: formData.environmentVariables,
-                  }}
-                  errors={errors}
-                  loading={loading}
-                  onChange={handleEnvironmentChange}
-                  onEnvVarsChange={handleEnvVarsChange}
-                />
+                <TabsContent value="services" className="space-y-6">
+                  <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
+                  <FileTabs
+                    fileContents={formData.containerFiles}
+                    originalContents={formData.containerFiles}
+                    onChange={handleFileChange}
+                  />
+                </TabsContent>
+              </Tabs>
 
-                <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
-
-                <FileTabs
-                  fileContents={formData.containerFiles}
-                  originalContents={formData.containerFiles}
-                  onChange={handleFileChange}
-                />
+              <div className="sticky bottom-0 pt-4 mt-4 border-t bg-card">
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </>
+                  )}
+                </Button>
               </div>
-
-              <Button type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                  </>
-                )}
-              </Button>
             </form>
           </CardContent>
         </Card>
