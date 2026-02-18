@@ -1,0 +1,300 @@
+name: Deploy PR Preview
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+  NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  deployments: write
+  pull-requests: write
+
+jobs:
+  Deploy-Preview:
+    runs-on: ubuntu-latest
+    # Only run when PR is from the same repo (not a fork) so VERCEL_* secrets are available
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          npm install --global prisma@6
+          npm ci
+
+      ###########################################################
+      # 1️⃣ Select Rotating Preview Slot
+      ###########################################################
+      - name: Select Preview Slot
+        id: slot
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          SLOT=$(( PR_NUMBER % 3 + 1 ))
+          echo "slot=$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_branch=preview-$SLOT" >> $GITHUB_OUTPUT
+          echo "preview_url=hive-preview-$SLOT.sphinx.chat" >> $GITHUB_OUTPUT
+
+      ############################################################
+      # 2️⃣ Force Preview Branch To PR Commit
+      ############################################################
+      - name: Force Update Preview Branch
+        run: |
+          PREVIEW_BRANCH="${{ steps.slot.outputs.preview_branch }}"
+          PR_SHA="${{ github.sha }}"
+
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git fetch origin
+          git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
+
+      ############################################################
+      # 2b️⃣ Checkout preview branch so Vercel deploys as preview-1/2/3
+      ############################################################
+      - name: Checkout Preview Branch
+        run: |
+          git fetch origin
+          git checkout "${{ steps.slot.outputs.preview_branch }}"
+
+      ############################################################
+      # 3️⃣ Prepare Neon Preview Database
+      ############################################################
+      - name: Prepare Neon Preview Database
+        id: neon
+        run: |
+          set -e
+
+          BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
+          EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "1 day")
+
+          # Get preview-base branch ID
+          PARENT_BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            | jq -r '.branches[] | select(.name=="preview-base") | .id')
+
+          if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
+            echo "❌ Could not find preview-base branch"
+            exit 1
+          fi
+
+          # Create or reuse PR branch
+          BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+
+          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+            RESPONSE=$(curl -s -X POST \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
+            BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+          fi
+
+          if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+            echo "❌ Failed to obtain branch ID"
+            exit 1
+          fi
+
+          # Wait until branch is ready
+          for i in {1..20}; do
+            STATE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" \
+              | jq -r '.branch.current_state')
+            if [ "$STATE" = "ready" ]; then break; fi
+            echo "Waiting for branch... ($i)"
+            sleep 3
+          done
+
+          # Create or reuse endpoint
+          ENDPOINT_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
+            | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            RESPONSE=$(curl -s -X POST \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
+            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+          fi
+
+          # Wait until endpoint is ready (GET endpoint does not return credentials)
+          for i in {1..30}; do
+            STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+            if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
+              break
+            fi
+            echo "Waiting for endpoint... ($i)"
+            sleep 3
+          done
+
+          if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+            echo "❌ Endpoint never became ready"
+            exit 1
+          fi
+
+          # Get a role name for this branch (Neon GET endpoint does not return credentials)
+          ROLES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles")
+          ROLE_NAME=$(echo "$ROLES_JSON" | jq -r '.roles[0].name // empty')
+          if [ -z "$ROLE_NAME" ]; then
+            echo "❌ No roles found for branch $BRANCH_ID"
+            exit 1
+          fi
+
+          # Retrieve full connection URI (includes encoded credentials)
+          URI_RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME")
+          CONNECTION_URI=$(echo "$URI_RESPONSE" | jq -r '.uri // empty')
+          if [ -z "$CONNECTION_URI" ]; then
+            echo "❌ Failed to get connection URI: $URI_RESPONSE"
+            exit 1
+          fi
+
+          # Pass URI to next steps (delimiter format for special chars in password)
+          echo "connection_uri<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONNECTION_URI" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "expires_at=$EXPIRY" >> $GITHUB_OUTPUT
+
+      ############################################################
+      # 4️⃣ Debug Neon (Optional)
+      ############################################################
+      - name: Debug Neon
+        run: |
+          echo "Connection URI is set (masked for security)"
+
+      ############################################################
+      # 5️⃣ Setup Node + Vercel
+      ############################################################
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm install --global vercel@latest
+      - run: vercel pull --yes --environment=preview --git-branch=${{ steps.slot.outputs.preview_branch }} --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      ############################################################
+      # 6️⃣ Build with Prisma
+      ############################################################
+
+      - name: Build
+        run: |
+          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+          echo "DATABASE_URL is set (masked)"
+          npx prisma generate
+          npx prisma migrate deploy
+          vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      ############################################################
+      # 7️⃣ Deploy to Vercel
+      ############################################################
+      - name: Deploy
+        id: deploy
+        run: |
+          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+
+          DEPLOYMENT_URL=$(vercel deploy \
+            --prebuilt \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --env "DATABASE_URL=$DATABASE_URL" \
+            --yes
+          )
+
+          echo "Deployment URL: $DEPLOYMENT_URL"
+
+          # Attach alias (--scope ensures we use Stakwork org, not token default)
+          vercel alias set $DEPLOYMENT_URL ${{ steps.slot.outputs.preview_url }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+
+          echo "deployment_url=https://${{ steps.slot.outputs.preview_url }}" >> $GITHUB_OUTPUT
+
+      ############################################################
+      # 8️⃣ Mark GitHub Deployment Status
+      ############################################################
+      - name: Create GitHub Deployment
+        id: deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: `preview-${{ github.event.pull_request.number }}`,
+              auto_merge: false,
+              required_contexts: [],
+              description: 'PR preview deployment'
+            });
+            return deployment.data.id;
+
+      - name: Mark Success
+        if: success() && steps.deployment.outputs.result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.result }},
+              state: 'success',
+              environment_url: '${{ steps.deploy.outputs.deployment_url }}'
+            });
+
+      - name: Comment PR with preview URL
+        if: success() && steps.deploy.outputs.deployment_url
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- hive-preview-deploy -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComments = comments.filter(
+              (c) => c.user.type === 'Bot' && c.body && c.body.includes(marker)
+            );
+            for (const comment of botComments) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id,
+              });
+            }
+            const url = '${{ steps.deploy.outputs.deployment_url }}';
+            const expiresAt = '${{ steps.neon.outputs.expires_at }}';
+            const expiresReadable = expiresAt ? new Date(expiresAt).toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }) + ' UTC' : 'N/A';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `**Test environment is now live.**\n\nView it at: ${url}\n\nDatabase expires at: ${expiresReadable}\n\n${marker}`
+            });
+
+      - name: Mark Failure
+        if: failure() && steps.deployment.outputs.result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.result }},
+              state: 'failure'
+            });
+
