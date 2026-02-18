@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network, Play, FolderGit2 } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -688,24 +688,29 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
                 showSpecialAssignees={true}
               />
               {workspace?.repositories && workspace.repositories.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <FolderGit2 className="h-4 w-4 text-muted-foreground" />
-                  <Select
-                    value={newTicketRepositoryId || undefined}
-                    onValueChange={(value) => setNewTicketRepositoryId(value)}
-                  >
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="Select repository" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workspace.repositories.map((repo) => (
-                        <SelectItem key={repo.id} value={repo.id}>
-                          {repo.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select 
+                  value={newTicketRepositoryId || undefined}
+                  onValueChange={(value) => setNewTicketRepositoryId(value)}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4" />
+                      <span className="truncate">
+                        {workspace.repositories.find(r => r.id === newTicketRepositoryId)?.name || "Select repository"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspace.repositories.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.id}>
+                        <div className="flex items-center gap-2">
+                          <GitBranch className="h-3.5 w-3.5" />
+                          <span>{repo.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
             <div className="flex items-center gap-2">
