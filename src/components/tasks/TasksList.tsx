@@ -17,6 +17,7 @@ import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
 import { Search, X, List, LayoutGrid, ArrowUpDown } from "lucide-react";
+import { toast } from "sonner";
 import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -146,6 +147,21 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const sortedTasks = sortTasks(tasks);
 
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete task");
+      }
+      toast.success("Task deleted");
+      refetch();
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to delete task");
+    }
+  };
+
   // Refresh task list when global notification count changes
   useEffect(() => {
     refetch();
@@ -256,6 +272,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                         workspaceSlug={workspaceSlug}
                         isArchived={false}
                         onUndoArchive={refetch}
+                        onDelete={() => handleDeleteTask(task.id)}
                       />
                     ))}
 
@@ -288,6 +305,8 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                         task={task}
                         workspaceSlug={workspaceSlug}
                         isArchived={true}
+                        onUndoArchive={refetch}
+                        onDelete={() => handleDeleteTask(task.id)}
                       />
                     ))}
 
@@ -320,6 +339,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                     workspaceSlug={workspaceSlug}
                     isArchived={activeTab === "archived"}
                     onUndoArchive={refetch}
+                    onDelete={() => handleDeleteTask(task.id)}
                   />
                 )}
                 sortItems={(a, b) => {

@@ -230,3 +230,91 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ taskId: string }> }
+) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const { taskId } = await params;
+
+    const task = await db.task.findFirst({
+      where: {
+        id: taskId,
+        deleted: false,
+      },
+      include: {
+        workspace: {
+          select: {
+            id: true,
+            slug: true,
+            ownerId: true,
+            members: {
+              where: { userId: userOrResponse.id },
+              select: { role: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return NextResponse.json(
+        { error: "Task not found" },
+        { status: 404 }
+      );
+    }
+
+    const isOwner = task.workspace.ownerId === userOrResponse.id;
+    const isMember = task.workspace.members.length > 0;
+    if (!isOwner && !isMember) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    await db.task.update({
+      where: { id: taskId },
+      data: {
+        deleted: true,
+        deletedAt: new Date(),
+        updatedById: userOrResponse.id,
+      },
+    });
+
+    if (task.featureId) {
+      try {
+        const featureId = task.featureId;
+        await updateFeatureStatusFromTasks(featureId);
+      } catch (error) {
+        console.error("Failed to sync feature status after task delete:", error);
+      }
+    }
+
+    try {
+      if (task.workspace?.slug) {
+        const workspaceChannelName = getWorkspaceChannelName(task.workspace.slug);
+        await pusherServer.trigger(
+          workspaceChannelName,
+          PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+          { taskId, deleted: true, timestamp: new Date() }
+        );
+      }
+    } catch (error) {
+      console.error("Error broadcasting task delete to Pusher:", error);
+    }
+
+    return NextResponse.json(
+      { success: true, message: "Task deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting task:", error);
+    return NextResponse.json(
+      { error: "Failed to delete task" },
+      { status: 500 }
+    );
+  }
+}

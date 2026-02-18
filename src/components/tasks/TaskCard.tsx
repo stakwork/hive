@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,9 +22,10 @@ interface TaskCardProps {
   hideWorkflowStatus?: boolean;
   isArchived?: boolean;
   onUndoArchive?: () => void;
+  onDelete?: () => void | Promise<void>;
 }
 
-export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
+export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive, onDelete }: TaskCardProps) {
   const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -118,7 +120,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
       </div>
 
-      {/* Archive button - absolute positioned top-right (hidden for TODO tasks) */}
+      {/* Actions: Archive button + dropdown (hidden for TODO tasks) */}
       <AnimatePresence>
         {isHovered && task.status !== "TODO" && (
           <motion.div
@@ -126,7 +128,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-3 right-3"
+            className="absolute top-3 right-3 flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
           >
             <TooltipProvider>
               <Tooltip>
@@ -146,6 +149,23 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {onDelete && (
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Task",
+                      description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
+                      onConfirm: onDelete,
+                    },
+                  },
+                ]}
+                triggerClassName="h-8 w-8 p-0 hover:bg-background/80"
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
