@@ -72,7 +72,7 @@ export async function POST(
     const pod = poolData.workspaces.find(
       (vm) =>
         vm.usage_status !== "used" && vm.state.toLowerCase() === "running"
-    );
+    ) || poolData.workspaces[0];
 
     if (!pod) {
       return NextResponse.json(
