@@ -569,13 +569,13 @@ export function DashboardChat() {
       {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="flex flex-col min-h-0">
           {/* Clear all button - above scrollable area */}
-          <div className="flex justify-end px-4 pb-1">
+          <div className="flex justify-end px-2 pb-0.5">
             <button
               onClick={handleClearAll}
-              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-50 hover:opacity-100 transition-opacity"
+              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-70 hover:opacity-100 transition-opacity"
               aria-label="Clear all messages"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" strokeWidth={2.5} />
             </button>
           </div>
           <div className="flex gap-4 flex-1 min-h-0">
