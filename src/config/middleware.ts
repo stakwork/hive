@@ -23,8 +23,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)
+  { path: "/api/auth/sphinx/token", strategy: "exact", access: "webhook" }, // Sphinx app token exchange (has own auth, bypasses landing page)
   { path: "/api/auth", strategy: "prefix", access: "public" },
-  { path: "/api/auth/sphinx", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
