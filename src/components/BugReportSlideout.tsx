@@ -303,7 +303,7 @@ export function BugReportSlideout({
                 onChange={(e) => setDescription(e.target.value)}
                 rows={6}
                 required
-                className="resize-none"
+                className="resize-none max-h-[300px] overflow-y-auto"
                 data-testid="bug-description-textarea"
               />
               <p className="text-xs text-muted-foreground">
