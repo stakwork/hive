@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play, FolderGit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -689,7 +689,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
               />
               {workspace?.repositories && workspace.repositories.length > 1 && (
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm text-muted-foreground whitespace-nowrap">Repository:</Label>
+                  <FolderGit2 className="h-4 w-4 text-muted-foreground" />
                   <Select
                     value={newTicketRepositoryId || undefined}
                     onValueChange={(value) => setNewTicketRepositoryId(value)}
