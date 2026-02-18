@@ -198,7 +198,7 @@ export async function listFeatures({
       .filter(run => run.decision === null).length;
     
     // Calculate deployment status by aggregating all tasks across phases
-    const allTasks = feature.phases.flatMap(phase => phase.tasks);
+    const allTasks = feature.phases?.flatMap(phase => phase.tasks) || [];
     let deploymentStatus: "staging" | "production" | null = null;
     let deploymentUrl: string | null = null;
 
