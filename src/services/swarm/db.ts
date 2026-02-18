@@ -45,6 +45,7 @@ interface SaveOrUpdateSwarmParams {
   podState?: PodState;
   ingestRequestInProgress?: boolean;
   autoLearnEnabled?: boolean;
+  description?: string;
 }
 
 export const select = {
@@ -80,6 +81,7 @@ export const select = {
   minimumVms: true,
   webhookUrl: true,
   pendingRepairTrigger: true,
+  description: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -119,6 +121,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
   if (params.autoLearnEnabled !== undefined) data.autoLearnEnabled = params.autoLearnEnabled;
+  if (params.description !== undefined) data.description = params.description;
   data.updatedAt = new Date();
 
   if (swarm) {
