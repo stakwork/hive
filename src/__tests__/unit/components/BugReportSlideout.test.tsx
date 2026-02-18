@@ -840,4 +840,36 @@ describe('BugReportSlideout', () => {
       expect(formWrapper?.querySelector('form')).toBeInTheDocument();
     });
   });
+
+  describe('Textarea Overflow Handling', () => {
+    it('should apply max-height constraint to textarea', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+      const textarea = screen.getByTestId('bug-description-textarea');
+      
+      expect(textarea).toHaveClass('max-h-[300px]');
+      expect(textarea).toHaveClass('overflow-y-auto');
+      expect(textarea).toHaveClass('resize-none');
+    });
+
+    it('should display scrollbar when text exceeds max height', async () => {
+      const user = userEvent.setup();
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+      const textarea = screen.getByTestId('bug-description-textarea');
+      
+      // Paste 50 lines of text
+      const longText = Array(50).fill('This is a long line of text').join('\n');
+      await user.click(textarea);
+      await user.paste(longText);
+      
+      expect(textarea).toHaveValue(longText);
+      expect(textarea).toHaveClass('overflow-y-auto');
+    });
+
+    it('should maintain minimum height with rows attribute', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+      const textarea = screen.getByTestId('bug-description-textarea');
+      
+      expect(textarea).toHaveAttribute('rows', '6');
+    });
+  });
 });
