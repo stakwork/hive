@@ -73,13 +73,13 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "1 day")
 
-          # Get staging branch ID
-          STAGING_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+          # Get preview-base branch ID
+          PARENT_BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r '.branches[] | select(.name=="staging") | .id')
+            | jq -r '.branches[] | select(.name=="preview-base") | .id')
 
-          if [ -z "$STAGING_ID" ] || [ "$STAGING_ID" = "null" ]; then
-            echo "❌ Could not find staging branch"
+          if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
+            echo "❌ Could not find preview-base branch"
             exit 1
           fi
 
@@ -93,7 +93,7 @@ jobs:
               "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
               -H "Authorization: Bearer $NEON_API_KEY" \
               -H "Content-Type: application/json" \
-              -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$STAGING_ID\",\"expires_at\":\"$EXPIRY\"}}")
+              -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
             BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
           fi
 
@@ -166,6 +166,8 @@ jobs:
           echo "connection_uri<<EOF" >> $GITHUB_OUTPUT
           echo "$CONNECTION_URI" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "expires_at=$EXPIRY" >> $GITHUB_OUTPUT
 
       ############################################################
       # 4️⃣ Debug Neon (Optional)
@@ -259,11 +261,13 @@ jobs:
         with:
           script: |
             const url = '${{ steps.deploy.outputs.deployment_url }}';
+            const expiresAt = '${{ steps.neon.outputs.expires_at }}';
+            const expiresReadable = expiresAt ? new Date(expiresAt).toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }) + ' UTC' : 'N/A';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `**Test environment is now live.**\n\nView it at: ${url}`
+              body: `**Test environment is now live.**\n\nView it at: ${url}\n\nDatabase expires at: ${expiresReadable}`
             });
 
       - name: Mark Failure
