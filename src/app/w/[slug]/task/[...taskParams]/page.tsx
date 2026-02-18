@@ -1568,6 +1568,12 @@ export default function TaskChatPage() {
       if (a.type === "DIFF") {
         return a === latestDiffArtifact; // Only keep the latest diff
       }
+      // Filter out WORKFLOW artifacts in agent mode
+      // Agent mode shows only BROWSER/IDE/CODE/DIFF artifacts
+      // WORKFLOW artifacts only relevant for workflow_editor and project_debugger modes
+      if (a.type === "WORKFLOW" && taskMode === "agent") {
+        return false;
+      }
       return true; // Keep all other artifact types
     });
 
