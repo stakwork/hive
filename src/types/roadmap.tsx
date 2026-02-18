@@ -629,6 +629,7 @@ export interface CreateRoadmapTaskRequest {
   description?: string;
   phaseId?: string | null;
   assigneeId?: string | null;
+  repositoryId?: string | null;
   status?: import("@prisma/client").TaskStatus;
   priority?: import("@prisma/client").Priority;
   runBuild?: boolean;
