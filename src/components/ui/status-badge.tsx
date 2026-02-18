@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 import {

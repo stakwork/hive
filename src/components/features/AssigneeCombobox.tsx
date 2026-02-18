@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Check, User as UserIcon, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusBadge, getAllStatusOptions, getStatusConfig } from "@/components/ui/status-badge";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";

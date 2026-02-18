@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { AITextareaSection } from "@/components/features/AITextareaSection";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -23,7 +24,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
-import type { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import type { StakworkRunDecision, StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { ArrowLeft, Bot, Check, Loader2, Mic, Rocket, Trash2 } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -602,13 +603,42 @@ export default function FeatureDetailPage() {
       }
     };
 
+    const handleStakworkRunDecision = async (data: {
+      runId: string;
+      type: StakworkRunType;
+      featureId: string;
+      decision: StakworkRunDecision;
+      timestamp: Date;
+    }) => {
+      // Only process events for this feature
+      if (data.featureId !== featureId) return;
+
+      // Only process accepted decisions
+      if (data.decision !== "ACCEPTED") return;
+
+      // Refetch feature data to display newly auto-accepted content
+      try {
+        const response = await fetch(`/api/features/${featureId}`);
+        const result = await response.json();
+        if (result.success) {
+          setFeature(result.data);
+          updateOriginalData(result.data);
+          fetchPendingRuns();
+        }
+      } catch (error) {
+        console.error("Failed to refetch feature after auto-accept:", error);
+      }
+    };
+
     channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+    channel.bind(PUSHER_EVENTS.STAKWORK_RUN_DECISION, handleStakworkRunDecision);
 
     return () => {
       channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+      channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_DECISION, handleStakworkRunDecision);
       pusher.unsubscribe(channelName);
     };
-  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks]);
+  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks, updateOriginalData, fetchPendingRuns]);
 
   if (loading) {
     return (
