@@ -26,6 +26,7 @@ import {
   Image as ImageIcon,
   X,
   Sparkles,
+  GitBranch,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -808,6 +809,7 @@ export function TaskStartInput({
                 >
                   <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4" />
                       <span className="truncate">
                         {repositories.find(r => r.id === selectedRepositoryId)?.name || "Select repository"}
                       </span>
@@ -817,6 +819,7 @@ export function TaskStartInput({
                     {repositories.map((repo) => (
                       <SelectItem key={repo.id} value={repo.id}>
                         <div className="flex items-center gap-2">
+                          <GitBranch className="h-3.5 w-3.5" />
                           <span>{repo.name}</span>
                         </div>
                       </SelectItem>
