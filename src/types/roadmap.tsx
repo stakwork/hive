@@ -162,7 +162,11 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
       };
     };
   };
-}>;
+}> & {
+  // Computed deployment status fields
+  deploymentStatus?: "staging" | "production" | null;
+  deploymentUrl?: string | null;
+};
 
 // Feature detail with full information (matches GET /api/features/[id] query)
 export type FeatureDetail = Prisma.FeatureGetPayload<{
