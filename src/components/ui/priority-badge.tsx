@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, ArrowUp, Minus, ArrowDown } from "lucide-react";
 import type { Priority } from "@prisma/client";

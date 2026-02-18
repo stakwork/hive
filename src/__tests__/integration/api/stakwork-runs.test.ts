@@ -1425,4 +1425,230 @@ describe("Stakwork Runs API Integration Tests", () => {
       expect(pendingTypes).not.toContain("ARCHITECTURE");
     });
   });
+
+  describe("Auto-Accept Flow Integration", () => {
+    test("architecture auto-accept updates feature data and broadcasts decision event", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+      
+      // Create initial run
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Generated architecture content",
+          dataType: "text",
+          webhookUrl: "https://example.com/webhook",
+        },
+      });
+
+      // Simulate auto-accept by updating decision
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        { decision: "ACCEPTED", featureId: feature.id },
+        user
+      );
+
+      const response = await UpdateDecision(request, { params: { runId: run.id } });
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Verify Pusher broadcast was triggered
+      const { pusherServer } = await import("@/lib/pusher");
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "stakwork-run-decision",
+        expect.objectContaining({
+          runId: run.id,
+          type: StakworkRunType.ARCHITECTURE,
+          featureId: feature.id,
+          decision: StakworkRunDecision.ACCEPTED,
+        })
+      );
+
+      // Verify feature was updated with architecture
+      const updatedFeature = await db.feature.findUnique({
+        where: { id: feature.id },
+      });
+      expect(updatedFeature?.architecture).toBe("Generated architecture content");
+    });
+
+    test("task generation auto-accept updates feature with tasks and broadcasts decision event", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // Create phase first
+      const phase = await db.phase.create({
+        data: {
+          name: "Phase 1",
+          featureId: feature.id,
+        },
+      });
+
+      // Create task generation run
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: JSON.stringify({
+            phases: [
+              {
+                tasks: [
+                  { title: "Task 1", description: "Description 1", status: "TODO" },
+                  { title: "Task 2", description: "Description 2", status: "TODO" },
+                ],
+              },
+            ],
+          }),
+          dataType: "json",
+          webhookUrl: "https://example.com/webhook",
+        },
+      });
+
+      // Simulate auto-accept
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        { decision: "ACCEPTED", featureId: feature.id },
+        user
+      );
+
+      const response = await UpdateDecision(request, { params: { runId: run.id } });
+      expect(response.status).toBe(200);
+
+      // Verify Pusher broadcast
+      const { pusherServer } = await import("@/lib/pusher");
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "stakwork-run-decision",
+        expect.objectContaining({
+          runId: run.id,
+          type: StakworkRunType.TASK_GENERATION,
+          featureId: feature.id,
+          decision: StakworkRunDecision.ACCEPTED,
+        })
+      );
+
+      // Verify tasks were created
+      const tasks = await db.task.findMany({
+        where: { featureId: feature.id },
+      });
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].title).toBe("Task 1");
+      expect(tasks[1].title).toBe("Task 2");
+    });
+
+    test("full auto-launch sequence: architecture then tasks with auto-accept", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      // Create phase
+      await db.phase.create({
+        data: {
+          name: "Phase 1",
+          featureId: feature.id,
+        },
+      });
+
+      // Step 1: Create architecture run
+      const archRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: "Auto-generated architecture",
+          dataType: "text",
+          webhookUrl: "https://example.com/webhook",
+        },
+      });
+
+      // Step 2: Auto-accept architecture
+      const archRequest = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${archRun.id}/decision`,
+        { decision: "ACCEPTED", featureId: feature.id },
+        user
+      );
+
+      const archResponse = await UpdateDecision(archRequest, { params: { runId: archRun.id } });
+      expect(archResponse.status).toBe(200);
+
+      // Verify architecture was applied
+      let updatedFeature = await db.feature.findUnique({
+        where: { id: feature.id },
+      });
+      expect(updatedFeature?.architecture).toBe("Auto-generated architecture");
+
+      // Step 3: Create task generation run
+      const taskRun = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          status: "COMPLETED",
+          decision: null,
+          result: JSON.stringify({
+            phases: [
+              {
+                tasks: [
+                  { title: "Auto Task 1", description: "Auto Description 1", status: "TODO" },
+                  { title: "Auto Task 2", description: "Auto Description 2", status: "TODO" },
+                ],
+              },
+            ],
+          }),
+          dataType: "json",
+          webhookUrl: "https://example.com/webhook",
+        },
+      });
+
+      // Step 4: Auto-accept tasks
+      const taskRequest = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${taskRun.id}/decision`,
+        { decision: "ACCEPTED", featureId: feature.id },
+        user
+      );
+
+      const taskResponse = await UpdateDecision(taskRequest, { params: { runId: taskRun.id } });
+      expect(taskResponse.status).toBe(200);
+
+      // Verify tasks were created
+      const tasks = await db.task.findMany({
+        where: { featureId: feature.id },
+      });
+      expect(tasks).toHaveLength(2);
+
+      // Verify both Pusher events were triggered
+      const { pusherServer } = await import("@/lib/pusher");
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "stakwork-run-decision",
+        expect.objectContaining({
+          type: StakworkRunType.ARCHITECTURE,
+          decision: StakworkRunDecision.ACCEPTED,
+        })
+      );
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "stakwork-run-decision",
+        expect.objectContaining({
+          type: StakworkRunType.TASK_GENERATION,
+          decision: StakworkRunDecision.ACCEPTED,
+        })
+      );
+
+      // Final verification: feature has both architecture and tasks
+      updatedFeature = await db.feature.findUnique({
+        where: { id: feature.id },
+        include: { phases: { include: { tasks: true } } },
+      });
+      expect(updatedFeature?.architecture).toBe("Auto-generated architecture");
+      expect(updatedFeature?.phases[0].tasks).toHaveLength(2);
+    });
+  });
 });
