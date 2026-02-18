@@ -29,13 +29,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      agent,
-      workspace_id,
-      stakwork_run_id,
-      task_id,
-      logs,
-    } = body;
+    const { agent, workspace_id, logs } = body;
+    // Stakwork sends project IDs as integers
+    const stakwork_run_id = body.stakwork_run_id
+      ? Number(body.stakwork_run_id)
+      : undefined;
+    const task_id = body.task_id ? String(body.task_id) : undefined;
 
     // Validate required fields
     if (!agent || typeof agent !== "string") {
@@ -80,10 +79,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If stakwork_run_id provided, verify it exists and belongs to this workspace
+    // If stakwork_run_id provided, resolve it to our internal cuid
+    let resolvedStakworkRunId: string | null = null;
     if (stakwork_run_id) {
       const run = await db.stakworkRun.findFirst({
-        where: { id: stakwork_run_id, workspaceId: workspace_id },
+        where: { projectId: stakwork_run_id, workspaceId: workspace_id },
         select: { id: true },
       });
       if (!run) {
@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+      resolvedStakworkRunId = run.id;
     }
 
     // If task_id provided, verify it exists and belongs to this workspace
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
     const logContent = typeof logs === "string" ? logs : JSON.stringify(logs);
 
     // Upload to Vercel Blob
-    const blobPath = `agent-logs/${workspace_id}/${stakwork_run_id || task_id}/${agent}.json`;
+    const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id}/${agent}.json`;
 
     const blob = await put(blobPath, logContent, {
       access: "public",
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
       where: {
         agent,
         workspaceId: workspace_id,
-        stakworkRunId: stakwork_run_id || null,
+        stakworkRunId: resolvedStakworkRunId,
         taskId: task_id || null,
       },
       select: { id: true },
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
           data: {
             blobUrl: blob.url,
             agent,
-            stakworkRunId: stakwork_run_id || null,
+            stakworkRunId: resolvedStakworkRunId,
             taskId: task_id || null,
             workspaceId: workspace_id,
           },
