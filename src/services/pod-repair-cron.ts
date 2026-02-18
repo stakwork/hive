@@ -59,6 +59,7 @@ export async function getEligibleWorkspaces() {
           poolState: true,
           podState: true,
           pendingRepairTrigger: true,
+          description: true,
         },
       },
     },
@@ -320,7 +321,8 @@ export async function triggerPodRepair(
   podId: string,
   podPassword: string,
   failedServices: string[],
-  message?: string
+  message?: string,
+  description?: string
 ): Promise<{ runId: string; projectId: number | null }> {
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_REPAIR&workspace_id=${workspaceId}`;
@@ -367,6 +369,7 @@ export async function triggerPodRepair(
               history,
               failedServices,
               message: message || null,
+              description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
             },
           },
@@ -487,7 +490,8 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             readyPod.subdomain,
             readyPod.password || "",
             [], // No specific failed services - this is a setup repair
-            `Repository added: ${pending.repoName}. If this new repo is connected or integrated with the existing repo(s), see if anything needs to be changed in the configs to properly connect the repos. If nothing needs to be changed then simply do not return any changed files!`
+            `Repository added: ${pending.repoName}. If this new repo is connected or integrated with the existing repo(s), see if anything needs to be changed in the configs to properly connect the repos. If nothing needs to be changed then simply do not return any changed files!`,
+            workspace.swarm?.description || undefined
           );
           
           // Clear the pending trigger
@@ -664,7 +668,8 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             pod.subdomain,
             pod.password || "",
             servicesToRepair,
-            frontendError || undefined
+            frontendError || undefined,
+            workspace.swarm?.description || undefined
           );
           result.repairsTriggered++;
           continue;
@@ -695,7 +700,8 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             pod.subdomain,
             pod.password || "",
             [PROCESS_NAMES.FRONTEND],
-            validationResult.message
+            validationResult.message,
+            workspace.swarm?.description || undefined
           );
           result.validationsFailedWithRepair++;
           result.repairsTriggered++;

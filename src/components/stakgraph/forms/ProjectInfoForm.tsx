@@ -31,20 +31,6 @@ export default function ProjectInfoForm({
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Input
-          id="description"
-          placeholder="Short description of the project"
-          value={data.description}
-          onChange={(e) => handleInputChange("description", e.target.value)}
-          className={errors.description ? "border-destructive" : ""}
-          disabled={loading}
-        />
-        {errors.description && (
-          <p className="text-sm text-destructive">{errors.description}</p>
-        )}
-      </div>
     </div>
   );
 }

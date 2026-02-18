@@ -348,6 +348,8 @@ model Swarm {
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
+  description  String?
+
   // Stakgraph configuration fields
   poolState            PoolState @default(NOT_STARTED) @map("pool_state")
   podState             PodState  @default(NOT_STARTED) @map("pod_state")
