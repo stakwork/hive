@@ -9,14 +9,11 @@ import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/as
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { WorkspaceConfig } from "@/lib/ai/types";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
-import { getAllRepositories } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
-
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 /**
  * Provenance data types
@@ -112,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, primarySlug);
+    const model = getModel(provider, apiKey, primarySlug);
 
     // Normalize incoming messages to ModelMessage[] format
     const convertedMessages: ModelMessage[] = messages
@@ -175,7 +172,7 @@ export async function POST(request: NextRequest) {
     const modelMessages = await sanitizeAndCompleteToolCalls(rawMessages, primarySwarmUrl, primarySwarmApiKey);
 
     console.log("🤖 Creating streamText with:", {
-      model: model?.modelId,
+      model: (model as any)?.modelId,
       toolsCount: Object.keys(tools).length,
       messagesCount: modelMessages.length,
       workspaces: slugs,
@@ -203,8 +200,7 @@ export async function POST(request: NextRequest) {
           const followUpSchema = z.object({
             questions: z
               .array(z.string())
-              .length(3)
-              .describe("3 short, specific follow-up questions (max 10 words each)"),
+              .describe("Exactly 3 short, specific follow-up questions (max 10 words each)"),
           });
 
           const conversationSummary = messages
@@ -225,14 +221,14 @@ export async function POST(request: NextRequest) {
             .filter(Boolean)
             .join("\n\n");
 
-          const followUpModel = await getModel("anthropic", apiKey, primarySlug);
+          const followUpModel = getModel("anthropic", apiKey, primarySlug);
 
           const followUpResult = await generateObject({
             model: followUpModel,
             schema: followUpSchema,
             prompt: `Based on this conversation, generate 3 short follow-up questions:\n\n${conversationSummary}`,
             system:
-              "You are a helpful code learning assistant. Your job is to generate 3 short follow-up questions based on the conversation. Questions should be specific, contextual, and help the user dig deeper or explore related topics. Don't ask very general questions! Try to guess what the user might ask next as part of the conversation, and output that! Avoid repeating questions that have already been asked. Keep each question under 10 words.",
+              "Generate 3 questions that the USER would naturally ask next as a follow-up in this conversation. Write them from the user's perspective, as if the user is typing them. They should be specific to the codebase and conversation context. NEVER generate clarifying questions directed at the user (like 'What kind of X are you interested in?'). Instead predict the user's next question (like 'How does the auth middleware work?' or 'Where are the API routes defined?'). Keep each under 10 words. Don't repeat questions already asked.",
             temperature: 0.3,
           });
 
