@@ -11,7 +11,6 @@ import { WorkspaceConfig } from "@/lib/ai/types";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
-import { getAllRepositories } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
