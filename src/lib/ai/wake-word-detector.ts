@@ -48,7 +48,7 @@ export async function detectRequestType(chunk: string, workspaceSlug?: string): 
     // Use LLM to classify intent
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, workspaceSlug, "haiku"); // Use haiku for speed
+    const model = getModel(provider, apiKey, workspaceSlug, "haiku"); // Use haiku for speed
 
     const prompt = INTENT_CLASSIFICATION_PROMPT.replace("{transcript}", chunk);
 

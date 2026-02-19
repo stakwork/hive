@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, primarySlug);
+    const model = getModel(provider, apiKey, primarySlug);
 
     // Normalize incoming messages to ModelMessage[] format
     const convertedMessages: ModelMessage[] = messages
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     const modelMessages = await sanitizeAndCompleteToolCalls(rawMessages, primarySwarmUrl, primarySwarmApiKey);
 
     console.log("🤖 Creating streamText with:", {
-      model: model?.modelId,
+      model: (model as any)?.modelId,
       toolsCount: Object.keys(tools).length,
       messagesCount: modelMessages.length,
       workspaces: slugs,
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
             .filter(Boolean)
             .join("\n\n");
 
-          const followUpModel = await getModel("anthropic", apiKey, primarySlug);
+          const followUpModel = getModel("anthropic", apiKey, primarySlug);
 
           const followUpResult = await generateObject({
             model: followUpModel,

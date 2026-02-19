@@ -83,7 +83,7 @@ export async function extractFeatureFromTranscript(
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, workspaceSlug); // Use default model for quality
+    const model = getModel(provider, apiKey, workspaceSlug); // Use default model for quality
 
     const result = await generateObject({
       model,

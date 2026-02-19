@@ -85,7 +85,7 @@ export async function POST(
       );
     }
 
-    const model = await getModel(provider, apiKey);
+    const model = getModel(provider, apiKey);
     const featureContext = buildFeatureContext(feature);
     const config = GENERATION_CONFIG_MAP[type as GenerationType];
 

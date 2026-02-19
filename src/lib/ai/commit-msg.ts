@@ -76,7 +76,7 @@ Generate a commit message that describes the changes made and a branch name that
 
   const provider: Provider = "anthropic";
   const apiKey = getApiKeyForProvider(provider);
-  const model = await getModel(provider, apiKey);
+  const model = getModel(provider, apiKey);
   const schema = z.object({
     commit_message: z.string(),
     branch_name: z.string(),
