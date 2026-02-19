@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Workflow, ArrowUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,10 @@ import { ArtifactType } from "@prisma/client";
 
 export default function WorkflowsPage() {
   const { slug } = useWorkspace();
-  const { workflows, isLoading: isLoadingWorkflows } = useWorkflowNodes(slug, true);
-  
+  const { workflows } = useWorkflowNodes(slug, true);
+
   // Workflow ID input state
   const [workflowIdValue, setWorkflowIdValue] = useState("");
-  const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,28 +29,40 @@ export default function WorkflowsPage() {
     return workflows.find((w) => w.properties.workflow_id === searchId) || null;
   }, [workflowIdValue, workflows]);
 
-  const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
-  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows && workflows.length > 0 && hasInteractedWithWorkflowInput;
+  const [debouncedWorkflowId, setDebouncedWorkflowId] = useState<number | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch workflow versions when a workflow is matched
-  const workflowIdForVersions = matchedWorkflow ? matchedWorkflow.properties.workflow_id : null;
+  const parsedWorkflowId = useMemo(() => {
+    const trimmed = workflowIdValue.trim();
+    if (!trimmed) return null;
+    const id = parseInt(trimmed, 10);
+    return isNaN(id) ? null : id;
+  }, [workflowIdValue]);
+
+  // Debounce the workflow ID for API calls
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedWorkflowId(parsedWorkflowId);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [parsedWorkflowId]);
+
+  // Fetch workflow versions when a valid workflow ID is entered (debounced)
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
-    workflowIdForVersions
+    debouncedWorkflowId
   );
 
-  // Reset selected version when workflow changes
+  // Reset selected version when workflow ID changes
   useEffect(() => {
     setSelectedVersionId(null);
-  }, [workflowIdForVersions]);
+  }, [debouncedWorkflowId]);
 
   const handleWorkflowInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setWorkflowIdValue(e.target.value);
-    setHasInteractedWithWorkflowInput(true);
-  };
-
-  const handleWorkflowInputBlur = () => {
-    setHasInteractedWithWorkflowInput(true);
   };
 
   const handleVersionSelect = useCallback((versionId: string) => {
@@ -59,35 +70,25 @@ export default function WorkflowsPage() {
   }, []);
 
   const handleSubmit = async () => {
-    if (!matchedWorkflow || !selectedVersionId || !slug) return;
+    if (!parsedWorkflowId || !selectedVersionId || !slug) return;
 
     setIsSubmitting(true);
 
     try {
-      const workflowId = matchedWorkflow.properties.workflow_id;
-      const workflowName = matchedWorkflow.properties.workflow_name || `Workflow ${workflowId}`;
+      const workflowId = parsedWorkflowId;
+      const workflowName = matchedWorkflow?.properties.workflow_name || `Workflow ${workflowId}`;
 
-      // Fetch the specific workflow version
-      const versionResponse = await fetch(
-        `/api/workspaces/${slug}/workflows/${workflowId}/versions`
-      );
-      
-      if (!versionResponse.ok) {
-        throw new Error("Failed to fetch workflow versions");
-      }
-
-      const versionsData = await versionResponse.json();
-      const selectedVersion = versionsData.find(
-        (v: any) => v.workflow_version_id === selectedVersionId
+      const selectedVersion = versions.find(
+        (v) => String(v.workflow_version_id) === String(selectedVersionId)
       );
 
       if (!selectedVersion) {
         throw new Error("Selected version not found");
       }
 
-      const workflowJson = selectedVersion.workflow_json || matchedWorkflow.properties.workflow_json;
+      const workflowJson = selectedVersion.workflow_json || matchedWorkflow?.properties.workflow_json;
       const workflowRefId = selectedVersion.ref_id;
-      const taskTitle = `${workflowName}${selectedVersionId ? ` v${selectedVersionId.substring(0, 8)}` : ''}`;
+      const taskTitle = `${workflowName}${selectedVersionId ? ` v${String(selectedVersionId).substring(0, 8)}` : ''}`;
 
       // Create a new task
       const response = await fetch("/api/tasks", {
@@ -97,7 +98,7 @@ export default function WorkflowsPage() {
         },
         body: JSON.stringify({
           title: taskTitle,
-          description: `Editing workflow ${workflowId}${selectedVersionId ? ` version ${selectedVersionId.substring(0, 8)}` : ''}`,
+          description: `Editing workflow ${workflowId}${selectedVersionId ? ` version ${String(selectedVersionId).substring(0, 8)}` : ''}`,
           status: "active",
           workspaceSlug: slug,
           mode: "workflow_editor",
@@ -147,7 +148,7 @@ export default function WorkflowsPage() {
     }
   };
 
-  const canSubmit = matchedWorkflow && selectedVersionId && !isSubmitting;
+  const canSubmit = parsedWorkflowId !== null && selectedVersionId && !isSubmitting;
 
   return (
     <div className="space-y-6">
@@ -165,25 +166,20 @@ export default function WorkflowsPage() {
               placeholder="Enter workflow ID..."
               value={workflowIdValue}
               onChange={handleWorkflowInputChange}
-              onBlur={handleWorkflowInputBlur}
               className="text-lg h-12"
             />
           </div>
 
-          {workflowNotFound && (
-            <p className="text-sm text-destructive">
-              Workflow ID not found
-            </p>
-          )}
-
-          {matchedWorkflow && (
+          {parsedWorkflowId !== null && (
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Workflow: <span className="font-medium text-foreground">{matchedWorkflow.properties.workflow_name || `Workflow ${matchedWorkflow.properties.workflow_id}`}</span>
-              </p>
+              {matchedWorkflow && (
+                <p className="text-sm text-muted-foreground">
+                  Workflow: <span className="font-medium text-foreground">{matchedWorkflow.properties.workflow_name || `Workflow ${matchedWorkflow.properties.workflow_id}`}</span>
+                </p>
+              )}
 
               <WorkflowVersionSelector
-                workflowName={matchedWorkflow.properties.workflow_name || `Workflow ${matchedWorkflow.properties.workflow_id}`}
+                workflowName={matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`}
                 versions={versions}
                 selectedVersionId={selectedVersionId}
                 onVersionSelect={handleVersionSelect}
