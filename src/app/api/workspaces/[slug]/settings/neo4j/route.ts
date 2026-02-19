@@ -40,8 +40,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
+  const workspaceId = access.workspace?.id;
+  if (!workspaceId) {
+    return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+  }
+
   const swarm = await db.swarm.findUnique({
-    where: { workspaceId: access.workspace.id },
+    where: { workspaceId },
     select: {
       swarmUrl: true,
       environmentVariables: true,
@@ -83,6 +88,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
+  const workspaceId = access.workspace?.id;
+  if (!workspaceId) {
+    return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+  }
+
   const body = await request.json();
   const validated = putSchema.safeParse(body);
   if (!validated.success) {
@@ -93,7 +103,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const swarm = await db.swarm.findUnique({
-    where: { workspaceId: access.workspace.id },
+    where: { workspaceId },
     select: { swarmUrl: true, swarmPassword: true },
   });
 
@@ -180,7 +190,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   // Persist for UI display and auditability
   const swarmWithEnv = await db.swarm.findUnique({
-    where: { workspaceId: access.workspace.id },
+    where: { workspaceId },
     select: { environmentVariables: true },
   });
 
@@ -193,7 +203,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   ];
 
   await db.swarm.update({
-    where: { workspaceId: access.workspace.id },
+    where: { workspaceId },
     data: {
       environmentVariables: encryptEnvVars(nextEnvVars),
     },
