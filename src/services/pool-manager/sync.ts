@@ -184,10 +184,10 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
 
         // Merge existing env vars into new pm2Apps (existing takes precedence)
         for (const app of pm2Apps) {
-          const existingEnvVars = existingEnvVarsPerService.get(app.name);
+          const existingEnvVars = existingEnvVarsPerService.get(app.name as string);
           if (existingEnvVars) {
             // Apply existing env vars on top of new ones (existing wins)
-            app.env = { ...app.env, ...existingEnvVars };
+            app.env = { ...(app.env as Record<string, string>), ...existingEnvVars };
           }
         }
       } catch (error) {
