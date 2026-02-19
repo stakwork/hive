@@ -121,7 +121,9 @@ export function useWorkspaceTasks(
     priority?: string;
     hasPod?: boolean;
   },
-  showAllStatuses: boolean = false
+  showAllStatuses: boolean = false,
+  sortBy?: string,
+  sortOrder?: string
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -149,7 +151,9 @@ export function useWorkspaceTasks(
       const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
       const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
       const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}`;
+      const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
+      const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -177,7 +181,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses, sortBy, sortOrder]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -207,7 +211,9 @@ export function useWorkspaceTasks(
         const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
         const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
         const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}`;
+        const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
+        const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {

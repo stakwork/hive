@@ -76,6 +76,24 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   // Use larger page limit for Kanban view to load more items at once
   const pageLimit = viewType === "kanban" ? 100 : 10;
 
+  // Map sort options to API parameters
+  const getSortParams = (sortOption: SortOption) => {
+    switch (sortOption) {
+      case "updatedDesc":
+        return { sortBy: "updatedAt", sortOrder: "desc" };
+      case "updatedAsc":
+        return { sortBy: "updatedAt", sortOrder: "asc" };
+      case "createdDesc":
+        return { sortBy: "createdAt", sortOrder: "desc" };
+      case "createdAsc":
+        return { sortBy: "createdAt", sortOrder: "asc" };
+      default:
+        return { sortBy: "updatedAt", sortOrder: "desc" };
+    }
+  };
+
+  const { sortBy: apiSortBy, sortOrder: apiSortOrder } = getSortParams(sortBy);
+
   // showArchived is true when activeTab is "archived"
   // showAllStatuses is true when in Kanban view (to show TODO tasks)
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
@@ -86,7 +104,9 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     activeTab === "archived",
     debouncedSearchQuery,
     filters,
-    viewType === "kanban"
+    viewType === "kanban",
+    apiSortBy,
+    apiSortOrder
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -126,25 +146,8 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     localStorage.setItem("tasks-sort-preference", value);
   };
 
-  // Sort tasks based on selected option
-  const sortTasks = (tasksToSort: typeof tasks) => {
-    return [...tasksToSort].sort((a, b) => {
-      switch (sortBy) {
-        case "updatedDesc":
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-        case "updatedAsc":
-          return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-        case "createdDesc":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        case "createdAsc":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        default:
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      }
-    });
-  };
-
-  const sortedTasks = sortTasks(tasks);
+  // Tasks are now sorted by the backend API, no need for client-side sorting
+  const sortedTasks = tasks;
 
   // Refresh task list when global notification count changes
   useEffect(() => {

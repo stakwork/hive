@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
     const hasPod = searchParams.get("hasPod") || undefined;
     const priority = searchParams.get("priority") || undefined;
     const showAllStatuses = searchParams.get("showAllStatuses") === "true";
+    const sortBy = searchParams.get("sortBy") || "updatedAt";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
     const requestContext = {
       workspaceId,
       page,
@@ -323,7 +325,7 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: {
-          updatedAt: "desc",
+          [sortBy]: sortOrder,
         },
         skip,
         take: limit,
