@@ -17,6 +17,7 @@ interface UseRepositoryPermissionsResult {
   permissions: RepositoryPermissions | null;
   loading: boolean;
   error: string | null;
+  message: string | null;
   checkPermissions: (repositoryUrl: string, workspaceSlug?: string) => Promise<void>;
   reset: () => void;
 }
@@ -25,15 +26,18 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
   const [permissions, setPermissions] = useState<RepositoryPermissions | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const checkPermissions = useCallback(async (repositoryUrl: string, workspaceSlug?: string) => {
     if (!repositoryUrl) {
       setError('Repository URL is required');
+      setMessage(null);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setMessage(null);
     setPermissions(null);
 
     try {
@@ -53,11 +57,13 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
       if (response.ok && result.success) {
         setPermissions(result.data);
       } else {
-        setError(result.error || result.message || 'Failed to check repository permissions');
+        setError(result.error || 'Failed to check repository permissions');
+        setMessage(result.message || null);
       }
     } catch (err) {
       console.error('Error checking repository permissions:', err);
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      setMessage(null);
     } finally {
       setLoading(false);
     }
@@ -67,12 +73,14 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
     setPermissions(null);
     setLoading(false);
     setError(null);
+    setMessage(null);
   }, []);
 
   return {
     permissions,
     loading,
     error,
+    message,
     checkPermissions,
     reset,
   };

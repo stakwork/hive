@@ -15,6 +15,7 @@ import {
 import { Trash2, Plus, CheckCircle, XCircle, Loader2, AlertTriangle, Settings } from "lucide-react";
 import { RepositoryData, Repository, FormSectionProps } from "../types";
 import { useRepositoryPermissions } from "@/hooks/useRepositoryPermissions";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState, useEffect, useCallback } from "react";
 import { RepositorySettingsModal, type RepositorySyncSettings } from "./RepositorySettingsModal";
 import { toast } from "sonner";
@@ -40,10 +41,12 @@ export default function RepositoryForm({
   loading,
   onChange,
 }: FormSectionProps<RepositoryData>) {
+  const { slug: workspaceSlug } = useWorkspace();
   const {
     permissions,
     loading: permissionLoading,
     error: permissionError,
+    message: permissionMessage,
     checkPermissions,
   } = useRepositoryPermissions();
   const [permissionStatus, setPermissionStatus] = useState<RepositoryPermissionStatus>({});
@@ -165,7 +168,7 @@ export default function RepositoryForm({
       setPendingSettingsIndex(index);
     }
 
-    await checkPermissions(url);
+    await checkPermissions(url, workspaceSlug);
   };
 
   const handleSettingsSave = async (settings: RepositorySyncSettings) => {
@@ -240,6 +243,15 @@ export default function RepositoryForm({
         <Badge variant="secondary" className="ml-2">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
           Checking...
+        </Badge>
+      );
+    }
+
+    if (status.error === 'org_mismatch') {
+      return (
+        <Badge variant="destructive" className="ml-2">
+          <XCircle className="h-3 w-3 mr-1" />
+          Wrong Organization
         </Badge>
       );
     }
@@ -359,7 +371,10 @@ export default function RepositoryForm({
               {index === 0 && errors.repositoryUrl && (
                 <p className="text-sm text-destructive">{errors.repositoryUrl}</p>
               )}
-              {permissionStatus[index]?.error && (
+              {checkingIndex === index && permissionError === 'org_mismatch' && permissionMessage && (
+                <p className="text-xs text-destructive mt-1">{permissionMessage}</p>
+              )}
+              {permissionStatus[index]?.error && permissionStatus[index]?.error !== 'org_mismatch' && (
                 <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
                   <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>{permissionStatus[index].error}</span>
