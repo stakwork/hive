@@ -275,11 +275,13 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                   <div key={index} className="space-y-2">
                     <div className="flex items-start gap-2">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs text-muted-foreground font-medium">
-                            Repository {index + 1}
-                          </span>
-                        </div>
+                        {repositoryUrls.length > 1 && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-muted-foreground font-medium">
+                              Repository {index + 1}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <Input
                             id={`repository-url-${index}`}
@@ -291,7 +293,22 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                             className={errors[index] ? "border-red-500 focus:border-red-500" : ""}
                             disabled={isCreatingWorkspace}
                           />
-                          {repositoryUrls.length > 1 && (
+                          {/* Show Add button on first input when valid URL is entered and < max repos */}
+                          {index === 0 && validateGitHubUrl(url) && repositoryUrls.length < MAX_REPOSITORIES && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={handleAddRepository}
+                              disabled={isCreatingWorkspace}
+                              className="h-10 w-10 shrink-0"
+                              title="Add another repository"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {/* Show Remove button for additional repos */}
+                          {index > 0 && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -299,6 +316,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                               onClick={() => handleRemoveRepository(index)}
                               disabled={isCreatingWorkspace}
                               className="h-10 w-10 shrink-0"
+                              title="Remove repository"
                             >
                               <X className="h-4 w-4" />
                             </Button>
@@ -315,20 +333,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                   </div>
                 ))}
               </div>
-
-              {/* Add Another Repository Button */}
-              {repositoryUrls.length < MAX_REPOSITORIES && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleAddRepository}
-                  disabled={isCreatingWorkspace}
-                  className="w-full"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Another Repository
-                </Button>
-              )}
             </div>
 
             <div className="flex flex-col items-center gap-3">
