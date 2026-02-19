@@ -10,6 +10,7 @@ import {
   PoolMemoryTier,
 } from "@/types/pool-manager";
 import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
+import { getSwarmContainerConfig } from "@/services/swarm/db";
 
 const MAX_LAUNCH_FAILURE_ATTEMPTS = parseInt(
   process.env.POD_LAUNCH_FAILURE_MAX_ATTEMPTS || "5",
@@ -312,6 +313,9 @@ async function triggerLaunchFailureRepair(
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_LAUNCH_FAILURE&workspace_id=${workspaceId}`;
 
+  // Get container configuration
+  const containerConfig = await getSwarmContainerConfig(workspaceId);
+
   // Create StakworkRun record
   const run = await db.stakworkRun.create({
     data: {
@@ -352,6 +356,8 @@ async function triggerLaunchFailureRepair(
                 containers,
               }),
               failureType: "LAUNCH", // Distinguishes from runtime failures
+              containerFiles: containerConfig?.containerFiles || null,
+              services: containerConfig?.services || [],
             },
           },
         },

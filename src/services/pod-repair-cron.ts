@@ -17,6 +17,7 @@ import {
   checkFrontendAvailable,
   PROCESS_NAMES,
 } from "@/lib/pods";
+import { getSwarmContainerConfig } from "@/services/swarm/db";
 
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
@@ -330,6 +331,9 @@ export async function triggerPodRepair(
   // Get history of previous repair attempts
   const history = await getRepairHistory(workspaceId);
 
+  // Get container configuration
+  const containerConfig = await getSwarmContainerConfig(workspaceId);
+
   // Create StakworkRun record
   const run = await db.stakworkRun.create({
     data: {
@@ -371,6 +375,8 @@ export async function triggerPodRepair(
               message: message || null,
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
+              containerFiles: containerConfig?.containerFiles || null,
+              services: containerConfig?.services || [],
             },
           },
         },
