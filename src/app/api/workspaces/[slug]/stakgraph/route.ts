@@ -82,6 +82,7 @@ const stakgraphSettingsSchema = z.object({
         language: z.string().optional(),
         interpreter: z.string().optional(),
         cwd: z.string().optional(),
+        advanced: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
       }),
     )
     .optional(),

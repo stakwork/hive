@@ -17,6 +17,7 @@ export interface ServiceDataConfig {
     rebuild?: string;
     reset?: string;
   };
+  advanced?: Record<string, string | number | boolean>;
 }
 
 export interface StakgraphSettings {

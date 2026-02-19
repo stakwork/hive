@@ -116,10 +116,14 @@ export const generatePM2Apps = (
       name: service.name,
       script: service.scripts?.start || "",
       cwd,
+      // defaults (can be overridden by advanced)
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",
+      // advanced overrides
+      ...(service.advanced || {}),
+      // env and interpreter are always explicit, never from advanced
       env: {} as Record<string, string>,
       interpreter: service.interpreter?.toString(),
     };
@@ -182,26 +186,32 @@ export const generatePM2Apps = (
   });
 };
 
+// Known PM2 app keys that have dedicated rendering
+const KNOWN_PM2_KEYS = new Set(['name', 'script', 'cwd', 'instances', 'autorestart', 'watch', 'interpreter', 'max_memory_restart', 'env']);
+
 // Helper function to format PM2 apps as JavaScript string
 export const formatPM2Apps = (
-  apps: Array<{
-    name: string;
-    script: string;
-    cwd: string;
-    instances: number;
-    autorestart: boolean;
-    watch: boolean;
-    interpreter?: string;
-    max_memory_restart: string;
-    env: Record<string, string>;
-  }>,
+  apps: Array<Record<string, unknown>>,
 ) => {
   const formattedApps = apps.map((app) => {
-    const envEntries = Object.entries(app.env)
+    const env = (app.env || {}) as Record<string, string>;
+    const envEntries = Object.entries(env)
       .map(([key, value]) => `        ${key}: "${value}"`)
       .join(",\n");
 
     const interpreterLine = app.interpreter ? `      interpreter: "${app.interpreter}",\n` : "";
+
+    // Render any extra fields beyond the known set
+    const extraLines = Object.entries(app)
+      .filter(([key]) => !KNOWN_PM2_KEYS.has(key))
+      .map(([key, value]) => {
+        if (typeof value === 'string') {
+          return `      ${key}: "${value}",`;
+        }
+        return `      ${key}: ${value},`;
+      })
+      .join("\n");
+    const extraBlock = extraLines ? `${extraLines}\n` : "";
 
     return `    {
       name: "${app.name}",
@@ -210,7 +220,7 @@ export const formatPM2Apps = (
       instances: ${app.instances},
       autorestart: ${app.autorestart},
       watch: ${app.watch},
-${interpreterLine}      max_memory_restart: "${app.max_memory_restart}",
+${interpreterLine}${extraBlock}      max_memory_restart: "${app.max_memory_restart}",
       env: {
 ${envEntries}
       }
@@ -452,6 +462,32 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
             }
           }
 
+          // Extract advanced PM2 fields (anything not in the known set)
+          const knownAppKeys = new Set(['name', 'script', 'cwd', 'interpreter', 'env']);
+          const advanced: Record<string, string | number | boolean> = {};
+
+          // Strip out the env block to avoid matching keys inside it
+          const blockWithoutEnv = block.replace(/env:\s*\{[\s\S]*?\}/, '');
+
+          // Match key: value patterns at the app level
+          const fieldRegex = /(\w+):\s*(?:"([^"]+)"|'([^']+)'|(\d+(?:\.\d+)?)|(\btrue\b|\bfalse\b))/g;
+          let fieldMatch;
+          while ((fieldMatch = fieldRegex.exec(blockWithoutEnv)) !== null) {
+            const key = fieldMatch[1];
+            if (knownAppKeys.has(key)) continue;
+
+            if (fieldMatch[5] !== undefined) {
+              // boolean
+              advanced[key] = fieldMatch[5] === 'true';
+            } else if (fieldMatch[4] !== undefined) {
+              // number
+              advanced[key] = Number(fieldMatch[4]);
+            } else {
+              // string (double or single quoted)
+              advanced[key] = fieldMatch[2] || fieldMatch[3];
+            }
+          }
+
           const service: ServiceConfig = {
             name: nameMatch[1],
             port,
@@ -468,6 +504,10 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
               reset: resetCmd,
             },
           };
+
+          if (Object.keys(advanced).length > 0) {
+            service.advanced = advanced;
+          }
 
           parsedServices.push(service);
         }

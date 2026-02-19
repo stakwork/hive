@@ -21,6 +21,7 @@ export interface ServiceConfig {
     reset?: string;
   };
   env?: Record<string, string>; // Environment variables from stakgraph
+  advanced?: Record<string, string | number | boolean>;
 }
 
 export interface SwarmContainerConfig {
