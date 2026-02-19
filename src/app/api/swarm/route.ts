@@ -139,26 +139,33 @@ export async function POST(request: NextRequest) {
       });
       console.log(`[SWARM_CREATE] Created placeholder swarm - ID: ${placeholderSwarm.id}, Status: ${placeholderSwarm.status}`);
 
-      // Create repository record in the same transaction
+      // Create repository records in the same transaction for multiple repositories
       if (repositoryUrl) {
-        console.log(`[SWARM_CREATE] Creating repository record for ${repositoryUrl}`);
-        const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
-        const branch = repositoryDefaultBranch || "main";
+        // Parse comma-separated repository URLs
+        const repoUrls = repositoryUrl.split(',').map((url: string) => url.trim()).filter(Boolean);
+        console.log(`[SWARM_CREATE] Processing ${repoUrls.length} repository URL(s)`);
 
-        const createdRepo = await tx.repository.create({
-          data: {
-            name: repoName,
-            repositoryUrl,
-            branch,
-            workspaceId,
-            status: RepositoryStatus.PENDING,
-            // First repository during onboarding gets all sync features enabled
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-          },
-        });
-        console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
+        for (const repoUrl of repoUrls) {
+          console.log(`[SWARM_CREATE] Creating repository record for ${repoUrl}`);
+          const repoName = repoUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
+          const branch = repositoryDefaultBranch || "main";
+
+          const createdRepo = await tx.repository.create({
+            data: {
+              name: repoName,
+              repositoryUrl: repoUrl,
+              branch,
+              workspaceId,
+              status: RepositoryStatus.PENDING,
+              // All repositories during onboarding get all sync features enabled
+              codeIngestionEnabled: true,
+              docsEnabled: true,
+              mocksEnabled: true,
+              embeddingsEnabled: true,
+            },
+          });
+          console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}, URL: ${repoUrl}`);
+        }
       }
 
       return {

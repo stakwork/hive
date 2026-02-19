@@ -11,12 +11,22 @@ import {
 } from "@/components/ui/empty";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { checkRepositoryAccess } from "@/lib/github/checkRepositoryAccess";
-import { Github, Loader2 } from "lucide-react";
+import { Github, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 interface GitHubAccessManagerProps {
   repositoryUrl: string;
   onAccessError: (error: boolean) => void;
+}
+
+interface RepositoryAccessResult {
+  url: string;
+  name: string;
+  hasAccess: boolean;
+  error?: string;
+  requiresReauth?: boolean;
+  requiresInstallationUpdate?: boolean;
+  installationId?: number;
 }
 
 function extractRepoName(url: string): string {
@@ -41,31 +51,58 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
   const [errorType, setErrorType] = useState<'reauth' | 'installation-update' | 'other'>('other');
   const [error, setError] = useState<string | null>(null);
   const [installationLink, setInstallationLink] = useState<string | null>(null);
+  const [repoResults, setRepoResults] = useState<RepositoryAccessResult[]>([]);
 
   useEffect(() => {
     const checkAccess = async () => {
       setAccessState('checking');
 
       try {
-        const result = await checkRepositoryAccess(repositoryUrl);
+        // Parse comma-separated repository URLs
+        const repoUrls = repositoryUrl.split(',').map(url => url.trim()).filter(Boolean);
+        
+        // Check access for all repositories in parallel
+        const results = await Promise.all(
+          repoUrls.map(async (url) => {
+            const result = await checkRepositoryAccess(url);
+            return {
+              url,
+              name: url.split('/').pop() || url,
+              hasAccess: result.hasAccess,
+              error: result.error,
+              requiresReauth: result.requiresReauth,
+              requiresInstallationUpdate: result.requiresInstallationUpdate,
+              installationId: result.installationId,
+            };
+          })
+        );
 
-        if (result.hasAccess) {
+        setRepoResults(results);
+
+        // Fail-fast: ALL repositories must have access
+        const allHaveAccess = results.every(r => r.hasAccess);
+        const firstFailure = results.find(r => !r.hasAccess);
+
+        if (allHaveAccess) {
           setError(null);
           onAccessError(false);
         } else {
           onAccessError(true);
           setAccessState('no-access');
-          setInstallationId(result.installationId);
+          
+          if (firstFailure) {
+            setInstallationId(firstFailure.installationId);
 
-          if (result.requiresReauth) {
-            setErrorType('reauth');
-          } else if (result.requiresInstallationUpdate) {
-            setErrorType('installation-update');
-          } else {
-            setErrorType('other');
+            if (firstFailure.requiresReauth) {
+              setErrorType('reauth');
+            } else if (firstFailure.requiresInstallationUpdate) {
+              setErrorType('installation-update');
+            } else {
+              setErrorType('other');
+            }
+
+            setError(firstFailure.error || `Access denied to repository: ${firstFailure.name}`);
           }
-
-          setError(result.error || null);
         }
       } catch (err) {
         console.error("Error checking repository access:", err);
@@ -131,9 +168,28 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           <EmptyTitle>Repository Access Required</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
-          <Badge variant="outline" className="font-mono text-xs">
-            {extractRepoName(repositoryUrl)}
-          </Badge>
+          {/* Display status for all repositories */}
+          <div className="flex flex-col gap-2 w-full max-w-md">
+            {repoResults.map((repo, index) => (
+              <div key={index} className="flex items-center gap-2 text-sm">
+                {repo.hasAccess ? (
+                  <CheckCircle className="size-4 text-green-600 shrink-0" />
+                ) : (
+                  <XCircle className="size-4 text-red-600 shrink-0" />
+                )}
+                <Badge variant="outline" className="font-mono text-xs">
+                  {repo.name}
+                </Badge>
+                {!repo.hasAccess && (
+                  <span className="text-xs text-red-600 ml-auto">Access denied</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 mt-2">{error}</p>
+          )}
 
           {installationLink ? (
             <Button asChild>

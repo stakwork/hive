@@ -154,22 +154,28 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         try {
           console.log(`Creating swarm for:`, repositoryUrl);
 
-          const { owner, repo: name } = parseGithubOwnerRepo(repositoryUrl);
+          // Parse comma-separated repository URLs
+          const repoUrls = repositoryUrl.split(',').map(url => url.trim()).filter(Boolean);
+          console.log(`Processing ${repoUrls.length} repository URL(s)`);
+
+          // Fetch default branch for the first repository (used for backward compatibility)
+          const firstRepoUrl = repoUrls[0];
+          const { owner, repo: name } = parseGithubOwnerRepo(firstRepoUrl);
           const repoInfo = { owner, name };
 
-          const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl, slug);
+          const defaultBranch = await getRepositoryDefaultBranch(firstRepoUrl, slug);
           if (!defaultBranch) {
             throw new Error("Could not determine repository default branch");
           }
 
-          console.log(`About to call /api/swarm - creating new swarm`);
+          console.log(`About to call /api/swarm - creating new swarm with ${repoUrls.length} repository(s)`);
           const swarmRes = await fetch("/api/swarm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               workspaceId: workspaceId,
               repositoryName: repoInfo.name,
-              repositoryUrl: repositoryUrl,
+              repositoryUrl: repositoryUrl, // Pass comma-separated URLs
               repositoryDefaultBranch: defaultBranch,
             }),
           });
@@ -181,17 +187,37 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
           // update data only if swarmId(external) is present
           if (swarmData.data.swarmId && swarmData.data.id) {
-            updateWorkspace({
-              repositories: [
-                {
-                  id: `repo-${Date.now()}`,
-                  name: repoInfo.name,
-                  repositoryUrl: repositoryUrl,
-                  branch: defaultBranch,
-                  status: "PENDING",
+            // Fetch default branches for all repositories and prepare repository data
+            const repositoriesData = await Promise.all(
+              repoUrls.map(async (url, index) => {
+                const { repo: repoName } = parseGithubOwnerRepo(url);
+                let branch = defaultBranch; // Use first repo's branch as fallback
+                
+                // Fetch individual default branch for each repo (except first, already fetched)
+                if (index > 0) {
+                  try {
+                    const repoBranch = await getRepositoryDefaultBranch(url, slug);
+                    if (repoBranch) {
+                      branch = repoBranch;
+                    }
+                  } catch (error) {
+                    console.error(`Failed to fetch default branch for ${url}, using fallback:`, error);
+                  }
+                }
+
+                return {
+                  id: `repo-${Date.now()}-${index}`,
+                  name: repoName,
+                  repositoryUrl: url,
+                  branch,
+                  status: "PENDING" as const,
                   updatedAt: new Date().toISOString(),
-                },
-              ],
+                };
+              })
+            );
+
+            updateWorkspace({
+              repositories: repositoriesData,
               swarmId: swarmData.data.id,
               swarmStatus: "ACTIVE",
             });
