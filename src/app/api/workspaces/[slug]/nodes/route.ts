@@ -48,15 +48,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, message: "Swarm not configured" }, { status: 400 });
-    }
-
     const devMode = isDevelopmentMode();
-    const swarmUrlObj = new URL(swarm.swarmUrl);
-    const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
-    let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
-    let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+
+    let graphUrl = "";
+    let apiKey = "";
 
     if (
       devMode ||
@@ -66,6 +61,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     ) {
       graphUrl = process.env.STAKWORK_GRAPH_URL ?? graphUrl;
       apiKey = process.env.STAKWORK_GRAPH_API_KEY ?? apiKey;
+    } else {
+      if (!swarm.swarmUrl || !swarm.swarmApiKey) {
+        return NextResponse.json({ success: false, message: "Swarm not configured" }, { status: 400 });
+      }
+
+      const swarmUrlObj = new URL(swarm.swarmUrl);
+      const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
+
+      graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
+      apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     }
 
     const apiParams = new URLSearchParams({
@@ -77,7 +82,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       apiParams.set("limit", limit);
     }
 
-    const apiResult = await fetch(`${graphUrl}/nodes?${apiParams.toString()}`, {
+    const finalUrl = `${graphUrl}/nodes?${apiParams.toString()}`;
+
+    console.log("finalUrl", finalUrl);
+
+    const apiResult = await fetch(finalUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

@@ -30,10 +30,7 @@ interface UseWorkflowNodesResult {
  * @param workspaceSlug - The workspace slug
  * @param enabled - Whether to fetch (default: true)
  */
-export function useWorkflowNodes(
-  workspaceSlug: string | null,
-  enabled: boolean = true
-): UseWorkflowNodesResult {
+export function useWorkflowNodes(workspaceSlug: string | null, enabled: boolean = true): UseWorkflowNodesResult {
   const [workflows, setWorkflows] = useState<WorkflowNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,9 +64,7 @@ export function useWorkflowNodes(
       // Filter to only include Workflow nodes with valid properties
       const validWorkflows = nodes.filter(
         (node) =>
-          node.node_type === "Workflow" &&
-          node.properties?.workflow_id !== undefined &&
-          node.properties?.workflow_json
+          node.node_type === "Workflow" && node.properties?.workflow_id !== undefined && node.properties?.workflow_json,
       );
 
       setWorkflows(validWorkflows);

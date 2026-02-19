@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
+import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
+import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import { useRouter } from "next/navigation";
 import { Workflow, Plus, Loader2, Search } from "lucide-react";
 
@@ -15,6 +17,10 @@ export default function WorkflowsPage() {
   const router = useRouter();
   const { workflows, isLoading, error } = useWorkflowNodes(slug, true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  const { versions, isLoading: versionsLoading } = useWorkflowVersions(slug, selectedWorkflowId);
 
   const handleNewWorkflow = () => {
     localStorage.setItem("task_mode", "workflow_editor");
@@ -22,9 +28,18 @@ export default function WorkflowsPage() {
   };
 
   const handleWorkflowClick = (workflowId: number) => {
-    localStorage.setItem("task_mode", "workflow_editor");
-    router.push(`/w/${slug}/task/new`);
+    if (selectedWorkflowId === workflowId) {
+      setSelectedWorkflowId(null);
+      setSelectedVersionId(null);
+    } else {
+      setSelectedWorkflowId(workflowId);
+      setSelectedVersionId(null);
+    }
   };
+
+  const selectedWorkflow = workflows.find(
+    (w) => w.properties.workflow_id === selectedWorkflowId
+  );
 
   // Filter workflows based on search query
   const filteredWorkflows = workflows.filter((workflow) => {
@@ -86,25 +101,44 @@ export default function WorkflowsPage() {
 
       {!isLoading && !error && filteredWorkflows.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredWorkflows.map((workflow) => (
-            <Card
-              key={workflow.properties.workflow_id}
-              className="p-6 cursor-pointer hover:border-primary transition-colors"
-              onClick={() => handleWorkflowClick(workflow.properties.workflow_id)}
-            >
-              <div className="flex items-start gap-3">
-                <Workflow className="h-5 w-5 text-primary mt-1" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm truncate">
-                    {workflow.properties.workflow_name || `Workflow ${workflow.properties.workflow_id}`}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ID: {workflow.properties.workflow_id}
-                  </p>
+          {filteredWorkflows.map((workflow) => {
+            const isSelected = selectedWorkflowId === workflow.properties.workflow_id;
+            return (
+              <Card
+                key={workflow.properties.workflow_id}
+                className={`p-6 cursor-pointer transition-colors ${
+                  isSelected ? "border-primary" : "hover:border-primary"
+                }`}
+                onClick={() => handleWorkflowClick(workflow.properties.workflow_id)}
+              >
+                <div className="flex items-start gap-3">
+                  <Workflow className="h-5 w-5 text-primary mt-1" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-sm truncate">
+                      {workflow.properties.workflow_name || `Workflow ${workflow.properties.workflow_id}`}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ID: {workflow.properties.workflow_id}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+                {isSelected && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <WorkflowVersionSelector
+                      workflowName={
+                        selectedWorkflow?.properties.workflow_name ||
+                        `Workflow ${selectedWorkflowId}`
+                      }
+                      versions={versions}
+                      selectedVersionId={selectedVersionId}
+                      onVersionSelect={setSelectedVersionId}
+                      isLoading={versionsLoading}
+                    />
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

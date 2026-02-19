@@ -8,7 +8,7 @@ export interface WorkflowVersion {
   workflow_json: string;
   workflow_name?: string;
   date_added_to_graph: string;
-  published_at?: string | null;
+  published: boolean;
   ref_id: string;
   node_type: "Workflow_version";
 }
@@ -27,7 +27,7 @@ interface UseWorkflowVersionsResult {
  */
 export function useWorkflowVersions(
   workspaceSlug: string | null,
-  workflowId: number | null
+  workflowId: number | null,
 ): UseWorkflowVersionsResult {
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,10 +61,7 @@ export function useWorkflowVersions(
 
       // Filter to only include valid Workflow_version nodes
       const validVersions = fetchedVersions.filter(
-        (version) =>
-          version.node_type === "Workflow_version" &&
-          version.workflow_version_id &&
-          version.workflow_json
+        (version) => version.node_type === "Workflow_version" && version.workflow_version_id && version.workflow_json,
       );
 
       setVersions(validVersions);
