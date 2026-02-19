@@ -1,24 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { isDevelopmentMode } from "@/lib/runtime";
 
 export type TaskMode = "live" | "test" | "agent" | "workflow_editor" | "project_debugger" | "prompts";
 
 export function useTaskMode() {
-  const [taskMode, setTaskModeState] = useState<TaskMode>("live");
-
-  // Load from localStorage on mount
-  useEffect(() => {
+  // Use lazy initializer to synchronously read from localStorage
+  // This ensures taskMode is correctly initialized before any effects that depend on it
+  const [taskMode, setTaskModeState] = useState<TaskMode>(() => {
+    if (typeof window === "undefined") return "live";
+    
     const savedMode = localStorage.getItem("task_mode");
     if (savedMode && isValidMode(savedMode)) {
-      setTaskModeState(savedMode as TaskMode);
-    } else {
-      // Default to live mode for any invalid or unavailable modes
-      setTaskModeState("live");
-      localStorage.setItem("task_mode", "live");
+      return savedMode as TaskMode;
     }
-  }, []);
+    
+    // Default to live mode for any invalid or unavailable modes
+    localStorage.setItem("task_mode", "live");
+    return "live";
+  });
 
   // Set mode and persist to localStorage
   const setTaskMode = (mode: string) => {
