@@ -2,6 +2,7 @@ import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
 import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
+import { Neo4jConfigSettings } from "@/components/settings/Neo4jConfigSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
 import { SphinxIntegrationSettings } from "@/components/settings/SphinxIntegrationSettings";
 import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
@@ -53,6 +54,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           <VercelIntegrationSettings />
 
           <SphinxIntegrationSettings />
+
+          <Neo4jConfigSettings />
 
           {workspace.userRole === "OWNER" && (
             <DeleteWorkspace workspaceSlug={workspace.slug} workspaceName={workspace.name} />
