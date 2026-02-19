@@ -78,7 +78,7 @@ export function WorkflowVersionSelector({
                     Latest
                   </Badge>
                 )}
-                {selectedVersion.published_at && (
+                {selectedVersion.published && (
                   <Badge variant="default" className="text-xs">
                     Published
                   </Badge>
@@ -102,7 +102,7 @@ export function WorkflowVersionSelector({
                     Latest
                   </Badge>
                 )}
-                {version.published_at && (
+                {version.published && (
                   <Badge variant="default" className="text-xs">
                     Published
                   </Badge>
