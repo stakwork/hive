@@ -138,12 +138,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Map nodes to WorkflowVersion structure
     const versions: WorkflowVersion[] = nodes
-      .filter(
-        (node: any) =>
-          node.node_type === "Workflow_version" &&
-          node.properties?.workflow_version_id &&
-          node.properties?.workflow_json,
-      )
+      .filter((node: any) => node.properties?.workflow_version_id && node.properties?.workflow_json)
       .map((node: any) => ({
         workflow_version_id: node.properties.workflow_version_id,
         workflow_id: node.properties.workflow_id,
