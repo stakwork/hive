@@ -1,9 +1,8 @@
 import { generateObject, type ModelMessage } from "ai";
 import { z } from "zod";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { convertMessagesToTranscript } from "./extract-feature";
 
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 // Schema for task extraction from voice transcript
 const taskExtractionSchema = z.object({
@@ -60,7 +59,7 @@ export async function extractTaskFromTranscript(
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, workspaceSlug); // Use default model for quality
+    const model = getModel(provider, apiKey, workspaceSlug); // Use default model for quality
 
     const result = await generateObject({
       model,
