@@ -22,6 +22,52 @@ import { z } from "zod";
 
 export const runtime = "nodejs";
 
+/**
+ * Decrypts environment variables from their stored format.
+ * Handles both string (JSON-encoded) and array formats with graceful fallback.
+ */
+function decryptStoredEnvVars(environmentVariables: unknown): unknown {
+  if (typeof environmentVariables === "string") {
+    try {
+      const parsed = JSON.parse(environmentVariables);
+      if (!Array.isArray(parsed)) return parsed;
+      try {
+        return decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
+      } catch {
+        return parsed;
+      }
+    } catch {
+      return environmentVariables;
+    }
+  }
+
+  if (Array.isArray(environmentVariables)) {
+    try {
+      return decryptEnvVars(environmentVariables as Array<{ name: string; value: unknown }>);
+    } catch {
+      return environmentVariables;
+    }
+  }
+
+  return environmentVariables;
+}
+
+/**
+ * Parses swarm services from their stored format (string or array) and
+ * populates each service with its environment variables from the table.
+ */
+function parseSwarmServices(
+  rawServices: unknown,
+  serviceEnvMap: Record<string, Record<string, string>>,
+): ServiceDataConfig[] {
+  const services: ServiceDataConfig[] =
+    typeof rawServices === "string" ? JSON.parse(rawServices) : rawServices || [];
+  return services.map((service) => ({
+    ...service,
+    env: serviceEnvMap[service.name] || service.env || {},
+  }));
+}
+
 // Validation schema for stakgraph settings - all fields optional for partial updates
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
@@ -144,16 +190,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    await db.repository.findMany({
-      where: { workspaceId: workspace.id },
-      select: {
-        id: true,
-        repositoryUrl: true,
-        branch: true,
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
     const environmentVariables = swarm?.environmentVariables;
 
     // Fetch service-specific env vars from the table
@@ -212,58 +248,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       data: {
         name: swarm.name || "",
         description: swarm.description || "",
-        repositories: repositories.length > 0 ? repositories : [],
+        repositories,
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
         poolCpu: swarm.poolCpu || "2",
         poolMemory: swarm.poolMemory || "8Gi",
-        environmentVariables:
-          typeof environmentVariables === "string"
-            ? (() => {
-                try {
-                  const parsed = JSON.parse(environmentVariables);
-                  if (Array.isArray(parsed)) {
-                    try {
-                      return decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
-                    } catch {
-                      return parsed;
-                    }
-                  }
-                  return parsed;
-                } catch {
-                  return environmentVariables;
-                }
-              })()
-            : Array.isArray(environmentVariables)
-              ? (() => {
-                  try {
-                    return decryptEnvVars(
-                      environmentVariables as Array<{
-                        name: string;
-                        value: unknown;
-                      }>,
-                    );
-                  } catch {
-                    return environmentVariables;
-                  }
-                })()
-              : environmentVariables,
-        services: (() => {
-          const services = typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [];
-          // Populate each service with its environment variables from the table
-          return services.map((service: ServiceDataConfig) => ({
-            ...service,
-            env: serviceEnvMap[service.name] || service.env || {}
-          }));
-        })(),
+        environmentVariables: decryptStoredEnvVars(environmentVariables),
+        services: parseSwarmServices(swarm.services, serviceEnvMap),
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
-        webhookEnsured:
-          repositories.length > 0 && repositories[0]
-            ? Boolean(repositories[0].githubWebhookId && repositories[0].githubWebhookSecret)
-            : false,
+        webhookEnsured: repositories.length > 0
+          && Boolean(repositories[0].githubWebhookId && repositories[0].githubWebhookSecret),
       },
     });
   } catch (error) {
@@ -607,30 +604,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const pm2Content = Buffer.from(settings.containerFiles!["pm2.config.js"], "base64").toString("utf-8");
         const envVarsPerService = extractEnvVarsFromPM2Config(pm2Content);
 
-        // Save env vars for each service
-        for (const [serviceName, envVars] of envVarsPerService) {
-          // Delete existing service-specific env vars for this service
-          await db.environmentVariable.deleteMany({
-            where: {
-              swarmId: swarm.id,
-              serviceName: serviceName,
-            },
-          });
+        // Convert Map<serviceName, envVars[]> to ServiceDataConfig[] for reuse
+        const servicesFromPM2: ServiceDataConfig[] = Array.from(envVarsPerService.entries()).map(
+          ([serviceName, envVars]) => ({
+            name: serviceName,
+            port: 0,
+            scripts: { start: "" },
+            env: Object.fromEntries(envVars.map((ev) => [ev.name, ev.value])),
+          }),
+        );
 
-          // Encrypt and insert new env vars
-          if (envVars.length > 0) {
-            const encrypted = encryptEnvVars(envVars);
-            await db.environmentVariable.createMany({
-              data: encrypted.map((ev) => ({
-                swarmId: swarm.id,
-                serviceName: serviceName,
-                name: ev.name,
-                value: JSON.stringify(ev.value),
-              })),
-            });
-          }
-        }
-
+        await saveServiceEnvironmentVariables(swarm.id, servicesFromPM2);
         console.log(`[Stakgraph] Saved service-specific env vars from PM2 config for ${envVarsPerService.size} services`);
       } catch (error) {
         console.warn("[Stakgraph] Failed to extract env vars from PM2 config:", error);
@@ -762,5 +746,3 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     );
   }
 }
-
-//

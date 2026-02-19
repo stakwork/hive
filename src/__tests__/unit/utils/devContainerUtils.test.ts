@@ -9,10 +9,6 @@ import {
 import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 describe("DevContainer Utils - Unit Tests", () => {
-  beforeEach(() => {
-    // Clear any test state if needed
-  });
-
   describe("resolveCwd", () => {
     test("should return default repo for empty cwd", () => {
       const result = resolveCwd("", ["repo1", "repo2"], "repo1");
@@ -255,9 +251,10 @@ describe("DevContainer Utils - Unit Tests", () => {
       ];
 
       const result = generatePM2Apps(["test-repo"], serviceData);
+      const env = result[0].env as Record<string, string>;
 
-      expect(result[0].env.PORT).toBe("9000");
-      expect(typeof result[0].env.PORT).toBe("string");
+      expect(env.PORT).toBe("9000");
+      expect(typeof env.PORT).toBe("string");
     });
 
     test("should handle service with no start script", () => {
@@ -272,10 +269,11 @@ describe("DevContainer Utils - Unit Tests", () => {
       ];
 
       const result = generatePM2Apps(["test-repo"], serviceData);
+      const env = result[0].env as Record<string, string>;
 
       expect(result[0].script).toBe("");
-      expect(result[0].env.BUILD_COMMAND).toBe("npm run build");
-      expect(result[0].env.TEST_COMMAND).toBe("npm test");
+      expect(env.BUILD_COMMAND).toBe("npm run build");
+      expect(env.TEST_COMMAND).toBe("npm test");
     });
 
     test("should override defaults with advanced fields", () => {
@@ -312,8 +310,9 @@ describe("DevContainer Utils - Unit Tests", () => {
 
       // interpreter and env come after the spread, so they win
       expect(result[0].interpreter).toBe("node");
-      expect(result[0].env.MY_VAR).toBe("real");
-      expect(result[0].env.PORT).toBe("3000");
+      const env = result[0].env as Record<string, string>;
+      expect(env.MY_VAR).toBe("real");
+      expect(env.PORT).toBe("3000");
     });
   });
 

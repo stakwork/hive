@@ -66,11 +66,11 @@ export interface DevContainerFile {
 }
 
 // Helper function to generate PM2 apps from services data
-export const generatePM2Apps = (
+export function generatePM2Apps(
   repoNames: string[],
   servicesData: ServiceDataConfig[],
-  globalEnvVars?: Array<{ name: string; value: string }>
-) => {
+  globalEnvVars?: Array<{ name: string; value: string }>,
+): Array<Record<string, unknown>> {
   const defaultRepoName = repoNames[0] || "workspace";
 
   if (!servicesData || servicesData.length === 0) {
@@ -184,15 +184,14 @@ export const generatePM2Apps = (
 
     return appConfig;
   });
-};
+}
 
 // Known PM2 app keys that have dedicated rendering
 const KNOWN_PM2_KEYS = new Set(['name', 'script', 'cwd', 'instances', 'autorestart', 'watch', 'interpreter', 'max_memory_restart', 'env']);
 
-// Helper function to format PM2 apps as JavaScript string
-export const formatPM2Apps = (
+export function formatPM2Apps(
   apps: Array<Record<string, unknown>>,
-) => {
+): string {
   const formattedApps = apps.map((app) => {
     const env = (app.env || {}) as Record<string, string>;
     const envEntries = Object.entries(env)
@@ -228,20 +227,16 @@ ${envEntries}
   });
 
   return `[\n${formattedApps.join(",\n")}\n  ]`;
-};
+}
 
-/**
- * Mask env var values in PM2 config content for display purposes
- * Only masks values inside env: { } blocks, not other config like name, script, etc.
- */
 /**
  * Extract all env vars from PM2 config, grouped by service name
  * Filters out script commands and PORT which are service config, not env vars
  * Returns a map of service name -> env vars array
  */
-export const extractEnvVarsFromPM2Config = (
-  pm2Content: string
-): Map<string, Array<{ name: string; value: string }>> => {
+export function extractEnvVarsFromPM2Config(
+  pm2Content: string,
+): Map<string, Array<{ name: string; value: string }>> {
   const result = new Map<string, Array<{ name: string; value: string }>>();
 
   try {
@@ -275,9 +270,9 @@ export const extractEnvVarsFromPM2Config = (
   }
 
   return result;
-};
+}
 
-export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
+export function maskEnvVarsInPM2Config(pm2Content: string): string {
   // Find and replace only the env: { ... } blocks
   return pm2Content.replace(
     /env:\s*\{([^}]*)\}/g,
@@ -296,13 +291,13 @@ export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
       );
     }
   );
-};
+}
 
-export const getPM2AppsContent = (
+export function getPM2AppsContent(
   repoNames: string | string[],
   servicesData: ServiceDataConfig[],
-  globalEnvVars?: Array<{ name: string; value: string }>
-) => {
+  globalEnvVars?: Array<{ name: string; value: string }>,
+): DevContainerFile {
   // Normalize to array for backward compatibility
   const repoNamesArray = Array.isArray(repoNames) ? repoNames : [repoNames];
   const pm2Apps = generatePM2Apps(repoNamesArray, servicesData, globalEnvVars);
@@ -316,7 +311,7 @@ export const getPM2AppsContent = (
 `,
     type: "javascript",
   };
-};
+}
 
 export function devcontainerJsonContent(repoName: string) {
   return `{
@@ -383,158 +378,159 @@ const fileNamesMapper = {
   Dockerfile: "dockerfile",
 };
 
+/**
+ * Match a quoted string value for a given key in PM2 config text.
+ * Supports both double-quoted and single-quoted values.
+ */
+function matchQuotedValue(text: string, key: string): string | undefined {
+  const match = text.match(new RegExp(`${key}:\\s*"([^"]+)"`, "")) ||
+    text.match(new RegExp(`${key}:\\s*'([^']+)'`, ""));
+  return match?.[1];
+}
+
+/**
+ * Extract the cwd subdirectory from an absolute /workspaces/ path.
+ * e.g., /workspaces/jarvis-backend -> "jarvis-backend"
+ * e.g., /workspaces/jarvis-boltwall/boltwall -> "jarvis-boltwall/boltwall"
+ */
+function extractCwdSubdir(cwdPath: string): string | undefined {
+  const pathParts = cwdPath.split("/").filter((p) => p);
+  if (pathParts.length >= 2 && pathParts[0] === "workspaces") {
+    return pathParts.slice(1).join("/");
+  }
+  return undefined;
+}
+
+// Known PM2 app keys that map to dedicated ServiceConfig fields
+const KNOWN_APP_KEYS = new Set(["name", "script", "cwd", "interpreter", "env"]);
+
+/**
+ * Extract advanced PM2 fields (anything not in the known set) from an app block.
+ */
+function extractAdvancedFields(block: string): Record<string, string | number | boolean> | undefined {
+  const advanced: Record<string, string | number | boolean> = {};
+
+  // Strip out the env block to avoid matching keys inside it
+  const blockWithoutEnv = block.replace(/env:\s*\{[\s\S]*?\}/, "");
+
+  const fieldRegex = /(\w+):\s*(?:"([^"]+)"|'([^']+)'|(\d+(?:\.\d+)?)|(\btrue\b|\bfalse\b))/g;
+  let fieldMatch;
+  while ((fieldMatch = fieldRegex.exec(blockWithoutEnv)) !== null) {
+    const key = fieldMatch[1];
+    if (KNOWN_APP_KEYS.has(key)) continue;
+
+    if (fieldMatch[5] !== undefined) {
+      advanced[key] = fieldMatch[5] === "true";
+    } else if (fieldMatch[4] !== undefined) {
+      advanced[key] = Number(fieldMatch[4]);
+    } else {
+      advanced[key] = fieldMatch[2] || fieldMatch[3];
+    }
+  }
+
+  return Object.keys(advanced).length > 0 ? advanced : undefined;
+}
+
+/**
+ * Parse pm2.config.js text content into ServiceConfig[].
+ */
+function parsePM2ConfigText(pm2Content: string): ServiceConfig[] {
+  const services: ServiceConfig[] = [];
+
+  try {
+    const appsMatch = pm2Content.match(/apps:\s*\[([\s\S]*?)\]/);
+    if (!appsMatch) return services;
+
+    const serviceBlocks = appsMatch[1].split(/(?=name:)/);
+
+    for (const block of serviceBlocks) {
+      if (!block.trim()) continue;
+
+      const name = matchQuotedValue(block, "name");
+      const script = matchQuotedValue(block, "script");
+      if (!name || !script) continue;
+
+      const cwdValue = matchQuotedValue(block, "cwd");
+      const interpreter = matchQuotedValue(block, "interpreter");
+
+      // Extract env variables for port and script commands
+      let port = 3000;
+      let installCmd: string | undefined;
+      let buildCmd: string | undefined;
+      let testCmd: string | undefined;
+      let preStartCmd: string | undefined;
+      let postStartCmd: string | undefined;
+      let rebuildCmd: string | undefined;
+      let resetCmd: string | undefined;
+
+      const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
+      if (envMatch) {
+        const envContent = envMatch[1];
+        const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
+        if (portMatch) port = parseInt(portMatch[1]);
+
+        installCmd = matchQuotedValue(envContent, "INSTALL_COMMAND");
+        buildCmd = matchQuotedValue(envContent, "BUILD_COMMAND");
+        testCmd = matchQuotedValue(envContent, "TEST_COMMAND");
+        preStartCmd = matchQuotedValue(envContent, "PRE_START_COMMAND");
+        postStartCmd = matchQuotedValue(envContent, "POST_START_COMMAND");
+        rebuildCmd = matchQuotedValue(envContent, "REBUILD_COMMAND");
+        resetCmd = matchQuotedValue(envContent, "RESET_COMMAND");
+      }
+
+      const service: ServiceConfig = {
+        name,
+        port,
+        cwd: cwdValue ? extractCwdSubdir(cwdValue) : undefined,
+        interpreter,
+        scripts: {
+          start: script,
+          install: installCmd,
+          build: buildCmd,
+          test: testCmd,
+          preStart: preStartCmd,
+          postStart: postStartCmd,
+          rebuild: rebuildCmd,
+          reset: resetCmd,
+        },
+      };
+
+      const advanced = extractAdvancedFields(block);
+      if (advanced) {
+        service.advanced = advanced;
+      }
+
+      services.push(service);
+    }
+  } catch (error) {
+    console.error("Failed to parse pm2.config.js:", error);
+  }
+
+  return services;
+}
+
 // Parse pm2.config.js content regardless of encoding (plain text or base64)
 export function parsePM2Content(content: string | undefined): ServiceConfig[] {
   if (!content) return [];
 
-  const services: ServiceConfig[] = [];
+  // Try plain text first
+  const result = parsePM2ConfigText(content);
+  if (result.length > 0) return result;
 
-  // Helper function to parse pm2.config.js content to extract ServiceConfig[]
-  const parsePM2ConfigToServices = (pm2Content: string): ServiceConfig[] => {
-    console.log(">>> pm2Content", pm2Content);
-    const parsedServices: ServiceConfig[] = [];
-
-    try {
-      // Match the apps array in the module.exports
-      const appsMatch = pm2Content.match(/apps:\s*\[([\s\S]*?)\]/);
-      if (!appsMatch) return parsedServices;
-
-      const appsContent = appsMatch[1];
-
-      // Split by service objects (look for name: pattern)
-      const serviceBlocks = appsContent.split(/(?=name:)/);
-
-      for (const block of serviceBlocks) {
-        if (!block.trim()) continue;
-
-        // Extract fields using regex
-        // Use separate patterns for double-quoted and single-quoted values to handle nested quotes
-        const nameMatch = block.match(/name:\s*"([^"]+)"/) || block.match(/name:\s*'([^']+)'/);
-        const scriptMatch = block.match(/script:\s*"([^"]+)"/) || block.match(/script:\s*'([^']+)'/);
-        const cwdMatch = block.match(/cwd:\s*"([^"]+)"/) || block.match(/cwd:\s*'([^']+)'/);
-        const interpreterMatch = block.match(/interpreter:\s*"([^"]+)"/) || block.match(/interpreter:\s*'([^']+)'/);
-
-        // Extract env variables
-        const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
-        let port = 3000;
-        let installCmd: string | undefined;
-        let buildCmd: string | undefined;
-        let testCmd: string | undefined;
-        let preStartCmd: string | undefined;
-        let postStartCmd: string | undefined;
-        let rebuildCmd: string | undefined;
-        let resetCmd: string | undefined;
-
-        if (envMatch) {
-          const envContent = envMatch[1];
-          const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
-          // For command values, match double-quoted strings (which may contain single quotes) or single-quoted strings (which may contain double quotes)
-          const installMatch = envContent.match(/INSTALL_COMMAND:\s*"([^"]+)"/) || envContent.match(/INSTALL_COMMAND:\s*'([^']+)'/);
-          const buildMatch = envContent.match(/BUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/BUILD_COMMAND:\s*'([^']+)'/);
-          const testMatch = envContent.match(/TEST_COMMAND:\s*"([^"]+)"/) || envContent.match(/TEST_COMMAND:\s*'([^']+)'/);
-          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/PRE_START_COMMAND:\s*'([^']+)'/);
-          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/POST_START_COMMAND:\s*'([^']+)'/);
-          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/REBUILD_COMMAND:\s*'([^']+)'/);
-          const resetMatch = envContent.match(/RESET_COMMAND:\s*"([^"]+)"/) || envContent.match(/RESET_COMMAND:\s*'([^']+)'/);
-
-          if (portMatch) port = parseInt(portMatch[1]);
-          if (installMatch) installCmd = installMatch[1];
-          if (buildMatch) buildCmd = buildMatch[1];
-          if (testMatch) testCmd = testMatch[1];
-          if (preStartMatch) preStartCmd = preStartMatch[1];
-          if (postStartMatch) postStartCmd = postStartMatch[1];
-          if (rebuildMatch) rebuildCmd = rebuildMatch[1];
-          if (resetMatch) resetCmd = resetMatch[1];
-        }
-
-        if (nameMatch && scriptMatch) {
-          // Extract cwd - preserve everything after /workspaces/ for multi-repo support
-          // e.g., /workspaces/jarvis-backend -> "jarvis-backend"
-          // e.g., /workspaces/jarvis-boltwall/boltwall -> "jarvis-boltwall/boltwall"
-          let serviceDir: string | undefined;
-          if (cwdMatch) {
-            const cwdPath = cwdMatch[1];
-            // Extract everything after /workspaces/
-            const pathParts = cwdPath.split("/").filter((p) => p);
-            if (pathParts.length >= 2 && pathParts[0] === "workspaces") {
-              // Join all parts after "workspaces" (reponame + any subdirs)
-              serviceDir = pathParts.slice(1).join("/");
-            }
-          }
-
-          // Extract advanced PM2 fields (anything not in the known set)
-          const knownAppKeys = new Set(['name', 'script', 'cwd', 'interpreter', 'env']);
-          const advanced: Record<string, string | number | boolean> = {};
-
-          // Strip out the env block to avoid matching keys inside it
-          const blockWithoutEnv = block.replace(/env:\s*\{[\s\S]*?\}/, '');
-
-          // Match key: value patterns at the app level
-          const fieldRegex = /(\w+):\s*(?:"([^"]+)"|'([^']+)'|(\d+(?:\.\d+)?)|(\btrue\b|\bfalse\b))/g;
-          let fieldMatch;
-          while ((fieldMatch = fieldRegex.exec(blockWithoutEnv)) !== null) {
-            const key = fieldMatch[1];
-            if (knownAppKeys.has(key)) continue;
-
-            if (fieldMatch[5] !== undefined) {
-              // boolean
-              advanced[key] = fieldMatch[5] === 'true';
-            } else if (fieldMatch[4] !== undefined) {
-              // number
-              advanced[key] = Number(fieldMatch[4]);
-            } else {
-              // string (double or single quoted)
-              advanced[key] = fieldMatch[2] || fieldMatch[3];
-            }
-          }
-
-          const service: ServiceConfig = {
-            name: nameMatch[1],
-            port,
-            cwd: serviceDir,
-            interpreter: interpreterMatch ? interpreterMatch[1] : undefined,
-            scripts: {
-              start: scriptMatch[1],
-              install: installCmd,
-              build: buildCmd,
-              test: testCmd,
-              preStart: preStartCmd,
-              postStart: postStartCmd,
-              rebuild: rebuildCmd,
-              reset: resetCmd,
-            },
-          };
-
-          if (Object.keys(advanced).length > 0) {
-            service.advanced = advanced;
-          }
-
-          parsedServices.push(service);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to parse pm2.config.js:", error);
-    }
-
-    return parsedServices;
-  };
-
-  // Try plain text first, then base64
+  // Fall back to base64 decoding
   try {
-    return parsePM2ConfigToServices(content);
+    const decoded = Buffer.from(content, "base64").toString("utf-8");
+    return parsePM2ConfigText(decoded);
   } catch {
-    try {
-      const decoded = Buffer.from(content, "base64").toString("utf-8");
-      return parsePM2ConfigToServices(decoded);
-    } catch {
-      console.error("Failed to parse pm2.config.js");
-      return services;
-    }
+    console.error("Failed to parse pm2.config.js");
+    return [];
   }
 }
 
-export const getDevContainerFilesFromBase64 = (base64Files: Record<string, string>) => {
-  const containerFiles = Object.entries(base64Files).reduce(
+export function getDevContainerFilesFromBase64(
+  base64Files: Record<string, string>,
+): Record<string, DevContainerFile> {
+  return Object.entries(base64Files).reduce(
     (acc, [name, content]) => {
       const keyName = fileNamesMapper[name as keyof typeof fileNamesMapper];
       acc[keyName] = {
@@ -546,6 +542,4 @@ export const getDevContainerFilesFromBase64 = (base64Files: Record<string, strin
     },
     {} as Record<string, DevContainerFile>,
   );
-
-  return containerFiles;
-};
+}
