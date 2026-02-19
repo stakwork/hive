@@ -1,7 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
-import { parseEnv } from "@/lib/env-parser";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
@@ -180,37 +179,6 @@ export async function GET(request: NextRequest) {
                   serviceNames: services?.map(s => s.name) || [],
                 });
 
-                // Parse .env file
-                let agentEnvVars: Record<string, string> = {};
-                const envContent = agentFiles[".env"];
-                if (envContent) {
-                  try {
-                    let envText = envContent;
-                    try {
-                      const decoded = Buffer.from(envContent, "base64").toString("utf-8");
-                      if (decoded.includes("=")) {
-                        envText = decoded;
-                      }
-                    } catch {
-                      // Use as plain text
-                    }
-                    agentEnvVars = parseEnv(envText);
-                    console.log("[agent-stream] Parsed environment variables", {
-                      ...logContext,
-                      envVarCount: Object.keys(agentEnvVars).length,
-                      envVarKeys: Object.keys(agentEnvVars), // Log keys but not values for security
-                    });
-                  } catch (e) {
-                    console.error("[agent-stream] Failed to parse .env file from agent", {
-                      ...logContext,
-                      error: e instanceof Error ? e.message : String(e),
-                      envContentLength: envContent?.length || 0,
-                    });
-                  }
-                } else {
-                  console.warn("[agent-stream] No .env file found in agent results", logContext);
-                }
-
                 // Prepare container files
                 const { repo } = parseGithubOwnerRepo(repo_url);
                 const containerFiles = {
@@ -220,23 +188,16 @@ export async function GET(request: NextRequest) {
                   "devcontainer.json": Buffer.from(devcontainerJsonContent(repo)).toString("base64"),
                 };
 
-                const environmentVariables = Object.entries(agentEnvVars).map(([name, value]) => ({
-                  name,
-                  value,
-                }));
-
                 // Save to database
                 console.log("[agent-stream] Saving swarm data to database", {
                   ...logContext,
                   serviceCount: services?.length || 0,
-                  envVarCount: environmentVariables.length,
                   containerFileCount: Object.keys(containerFiles).length,
                 });
 
                 await saveOrUpdateSwarm({
                   workspaceId: swarm.workspaceId,
                   services,
-                  environmentVariables,
                   containerFiles,
                 });
 
