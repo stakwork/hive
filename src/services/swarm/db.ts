@@ -23,6 +23,11 @@ export interface ServiceConfig {
   env?: Record<string, string>; // Environment variables from stakgraph
 }
 
+export interface SwarmContainerConfig {
+  containerFiles: Record<string, string> | null; // decoded plain text, keyed by original filename
+  services: ServiceConfig[];
+}
+
 interface SaveOrUpdateSwarmParams {
   workspaceId: string;
   name?: string; // domain name (vanity_address)
@@ -174,4 +179,48 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     });
   }
   return swarm;
+}
+
+/**
+ * Fetch and decode a swarm's container configuration (containerFiles + services).
+ * containerFiles are decoded from base64 to plain text.
+ * Returns null if swarm not found.
+ */
+export async function getSwarmContainerConfig(
+  workspaceId: string
+): Promise<SwarmContainerConfig | null> {
+  const swarm = await db.swarm.findUnique({
+    where: { workspaceId },
+    select: { containerFiles: true, services: true },
+  });
+
+  if (!swarm) return null;
+
+  // Decode base64 containerFiles to plain text
+  let containerFiles: Record<string, string> | null = null;
+  const rawFiles = swarm.containerFiles as Record<string, string> | null;
+  if (rawFiles && typeof rawFiles === "object") {
+    containerFiles = Object.entries(rawFiles).reduce(
+      (acc, [name, content]) => {
+        acc[name] = Buffer.from(content, "base64").toString("utf-8");
+        return acc;
+      },
+      {} as Record<string, string>
+    );
+  }
+
+  // Parse services
+  let services: ServiceConfig[] = [];
+  if (swarm.services) {
+    try {
+      const parsed = typeof swarm.services === "string"
+        ? JSON.parse(swarm.services)
+        : swarm.services;
+      services = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      services = [];
+    }
+  }
+
+  return { containerFiles, services };
 }
