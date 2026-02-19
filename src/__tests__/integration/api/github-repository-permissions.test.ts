@@ -843,4 +843,206 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       await expectUnauthorized(response);
     });
   });
+
+  describe("Org-match guard (workspaceSlug provided)", () => {
+    test("should return 422 with org_mismatch when repository owner does not match workspace organization", async () => {
+      const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+        githubOwner: "acme",
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      // Create workspace with linked GitHub organization
+      const { db } = await import("@/lib/db");
+      
+      // First create or get the SourceControlOrg
+      const sourceControlOrg = await db.sourceControlOrg.upsert({
+        where: {
+          githubLogin: "acme-test-org-mismatch",
+        },
+        create: {
+          githubLogin: "acme-test-org-mismatch",
+          githubInstallationId: 12345,
+        },
+        update: {},
+      });
+
+      // Then create the workspace linked to it
+      const workspace = await db.workspace.create({
+        data: {
+          name: "Test Workspace",
+          slug: "test-workspace",
+          ownerId: testUser.id,
+          sourceControlOrgId: sourceControlOrg.id,
+        },
+        include: {
+          sourceControlOrg: true,
+        },
+      });
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/github/repository/permissions",
+        {
+          repositoryUrl: "https://github.com/other-org/test-repo",
+          workspaceSlug: workspace.slug,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.success).toBe(false);
+      expect(data.error).toBe("org_mismatch");
+      expect(data.message).toContain("acme-test-org-mismatch");
+      expect(data.message).toContain("organization");
+
+      // Verify getUserAppTokens was NOT called (org check short-circuits)
+      expect(getUserAppTokens).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    test("should proceed with access check when repository owner matches workspace organization (case-insensitive)", async () => {
+      const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+        githubOwner: "Acme",
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      // Create workspace with linked GitHub organization (different case)
+      const { db } = await import("@/lib/db");
+      
+      // First create or get the SourceControlOrg with different case
+      const sourceControlOrg = await db.sourceControlOrg.upsert({
+        where: {
+          githubLogin: "acme-test-case-insensitive",
+        },
+        create: {
+          githubLogin: "acme-test-case-insensitive", // Will match "Acme-Test-Case-Insensitive" case-insensitively
+          githubInstallationId: 12346,
+        },
+        update: {},
+      });
+
+      // Then create the workspace linked to it
+      const workspace = await db.workspace.create({
+        data: {
+          name: "Test Workspace",
+          slug: "test-workspace-2",
+          ownerId: testUser.id,
+          sourceControlOrgId: sourceControlOrg.id,
+        },
+        include: {
+          sourceControlOrg: true,
+        },
+      });
+
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken,
+      });
+
+      mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/github/repository/permissions",
+        {
+          repositoryUrl: "https://github.com/ACME-Test-Case-Insensitive/test-repo", // Different case
+          workspaceSlug: workspace.slug,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await expectSuccess(response);
+
+      expect(data.success).toBe(true);
+      expect(data.data.hasAccess).toBe(true);
+
+      // Verify org check passed and proceeded to access check (case-insensitive match)
+      expect(getUserAppTokens).toHaveBeenCalledWith(testUser.id, "ACME-Test-Case-Insensitive");
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    test("should skip org check when workspace has no linked organization", async () => {
+      const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+        githubOwner: "any-org",
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      // Create workspace WITHOUT linked GitHub organization
+      const { db } = await import("@/lib/db");
+      const workspace = await db.workspace.create({
+        data: {
+          name: "Test Workspace No Org",
+          slug: "test-workspace-no-org",
+          ownerId: testUser.id,
+          // No sourceControlOrg
+        },
+      });
+
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken,
+      });
+
+      mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/github/repository/permissions",
+        {
+          repositoryUrl: "https://github.com/any-org/test-repo",
+          workspaceSlug: workspace.slug,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await expectSuccess(response);
+
+      expect(data.success).toBe(true);
+      expect(data.data.hasAccess).toBe(true);
+
+      // Verify org check was skipped and proceeded to access check
+      expect(getUserAppTokens).toHaveBeenCalledWith(testUser.id, "any-org");
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    test("should skip org check when workspaceSlug is not provided (regression test)", async () => {
+      const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+        githubOwner: "test-owner",
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken,
+      });
+
+      mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/github/repository/permissions",
+        {
+          repositoryUrl: testRepositoryUrls.https,
+          // No workspaceSlug provided
+        }
+      );
+
+      const response = await POST(request);
+      const data = await expectSuccess(response);
+
+      expect(data.success).toBe(true);
+      expect(data.data.hasAccess).toBe(true);
+
+      // Verify org check was skipped and proceeded to access check normally
+      expect(getUserAppTokens).toHaveBeenCalledWith(testUser.id, "test-owner");
+      expect(mockFetch).toHaveBeenCalled();
+    });
+  });
 });
