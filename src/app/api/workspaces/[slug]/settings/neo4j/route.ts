@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth/nextauth";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
@@ -205,7 +206,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   await db.swarm.update({
     where: { workspaceId },
     data: {
-      environmentVariables: encryptEnvVars(nextEnvVars),
+      environmentVariables: encryptEnvVars(nextEnvVars) as unknown as Prisma.InputJsonValue,
     },
   });
 
