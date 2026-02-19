@@ -372,7 +372,7 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
     expect(data.data.status.pendingVms).toBe(2); // 1 PENDING + 1 STARTING
     expect(data.data.status.failedVms).toBe(1); // 1 FAILED
     expect(data.data.status.usedVms).toBe(2); // 2 RUNNING/USED
-    expect(data.data.status.unusedVms).toBe(8); // 5 RUNNING/UNUSED + 1 PENDING + 1 STARTING + 1 FAILED
+    expect(data.data.status.unusedVms).toBe(5); // 5 RUNNING/UNUSED (pending/failed pods not counted as available)
     expect(data.data.status.lastCheck).toBeDefined();
     expect(typeof data.data.status.lastCheck).toBe("string");
     // Verify it's a valid ISO timestamp
