@@ -4,7 +4,6 @@ import { PodState, PoolState, SwarmStatus } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-// Add ServiceConfig interface for the services array
 export interface ServiceConfig {
   name: string;
   port: number;
@@ -120,9 +119,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.poolState !== undefined) data.poolState = params.poolState;
   if (params.podState !== undefined) data.podState = params.podState;
 
-  if (params.services !== undefined) {
-    data.services = params.services;
-  }
+  if (params.services !== undefined) data.services = params.services;
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
@@ -163,7 +160,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolName: params.poolName || "",
       poolCpu: params.poolCpu || "2",
       poolMemory: params.poolMemory || "8Gi",
-      services: params.services ? params.services : [],
+      services: params.services || [],
       swarmSecretAlias: params.swarmSecretAlias || "",
       containerFiles: params.containerFiles,
       swarmId: params.swarmId,
