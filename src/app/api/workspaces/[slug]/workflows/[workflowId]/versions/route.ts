@@ -55,20 +55,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
-    // Check if user is a member of the workspace
-    const membership = await db.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: workspace.id,
-          userId,
-        },
-      },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
-    }
-
     // Validate workflowId is a valid number
     const workflowIdNum = parseInt(workflowId, 10);
     if (isNaN(workflowIdNum)) {
@@ -84,10 +70,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         { success: false, error: "Swarm configuration not found for this workspace" },
         { status: 404 },
       );
-    }
-
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, error: "Swarm not configured properly" }, { status: 400 });
     }
 
     const devMode = isDevelopmentMode();
@@ -128,7 +110,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         limit: 10,
         skip: 0,
         skip_cache: true,
-        sort_by: "date_added_to_graph",
+        sort_by: "workflow_version_id",
         search_filters: [
           {
             attribute: "workflow_id",
@@ -176,7 +158,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Sort by date_added_to_graph descending (newest first)
     versions.sort((a, b) => {
-      return a.workflow_version_id - b.workflow_version_id;
+      return b.workflow_version_id - a.workflow_version_id;
     });
 
     // Return up to 10 versions

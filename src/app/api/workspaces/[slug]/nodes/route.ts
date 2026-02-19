@@ -48,10 +48,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, message: "Swarm not configured" }, { status: 400 });
-    }
-
     const devMode = isDevelopmentMode();
 
     let graphUrl = "";
