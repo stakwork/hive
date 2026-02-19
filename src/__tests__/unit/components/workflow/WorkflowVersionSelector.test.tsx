@@ -16,6 +16,7 @@ describe("WorkflowVersionSelector", () => {
     workflow_json: JSON.stringify({ nodes: [], edges: [] }),
     workflow_name: "Test Workflow",
     date_added_to_graph: new Date("2024-01-15").toISOString(),
+    published: !!publishedAt,
     published_at: publishedAt || null,
     ref_id: `ref-${id}`,
     node_type: "Workflow_version",
