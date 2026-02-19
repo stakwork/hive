@@ -97,6 +97,17 @@ describe("TasksList - Sorting Functionality", () => {
   const mockRefetch = vi.fn();
   const mockLoadMore = vi.fn();
 
+  // Helper to get sorted tasks based on sort parameters
+  const getSortedTasks = (sortBy: string, sortOrder: string) => {
+    const tasksCopy = [...mockTasks];
+    tasksCopy.sort((a, b) => {
+      const aValue = sortBy === "createdAt" ? new Date(a.createdAt).getTime() : new Date(a.updatedAt).getTime();
+      const bValue = sortBy === "createdAt" ? new Date(b.createdAt).getTime() : new Date(b.updatedAt).getTime();
+      return sortOrder === "asc" ? aValue - bValue : bValue - aValue;
+    });
+    return tasksCopy;
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -111,14 +122,20 @@ describe("TasksList - Sorting Functionality", () => {
       loading: false,
     } as any);
 
-    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
-      tasks: mockTasks,
-      loading: false,
-      error: null,
-      pagination: { hasMore: false },
-      loadMore: mockLoadMore,
-      refetch: mockRefetch,
-    } as any);
+    // Mock useWorkspaceTasks to return sorted tasks based on parameters
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+      (workspaceId, workspaceSlug, enabled, pageLimit, showArchived, searchQuery, filters, showAllStatuses, sortBy = "updatedAt", sortOrder = "desc") => {
+        const sortedTasks = getSortedTasks(sortBy, sortOrder);
+        return {
+          tasks: sortedTasks,
+          loading: false,
+          error: null,
+          pagination: { hasMore: false },
+          loadMore: mockLoadMore,
+          refetch: mockRefetch,
+        } as any;
+      }
+    );
   });
 
   describe("Default Sorting", () => {
