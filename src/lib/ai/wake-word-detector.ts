@@ -1,8 +1,6 @@
 import { generateText } from "ai";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { WAKE_WORD } from "@/lib/constants/voice";
-
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export type DetectionMode = "feature" | "task";
 
@@ -48,7 +46,7 @@ export async function detectRequestType(chunk: string, workspaceSlug?: string): 
     // Use LLM to classify intent
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, workspaceSlug, "haiku"); // Use haiku for speed
+    const model = getModel(provider, apiKey, workspaceSlug, "haiku"); // Use haiku for speed
 
     const prompt = INTENT_CLASSIFICATION_PROMPT.replace("{transcript}", chunk);
 

@@ -17,6 +17,7 @@ import {
   getProviderTool as getProviderToolAieo,
   getApiKeyForProvider as getApiKeyForProviderAieo
 } from "aieo";
+import type { LanguageModel } from "ai";
 
 /**
  * Get API key for provider with mock support
@@ -37,15 +38,16 @@ export function getApiKeyForProvider(provider: Provider): string {
  * In mock mode, this configures the AI SDK to point to our mock endpoints.
  * The baseURL override makes all Anthropic API calls go to our local mock.
  */
-export async function getModel(
+export function getModel(
   provider: Provider,
   apiKey: string,
-  workspaceSlug?: string,
+  _workspaceSlug?: string,
   modelType?: string
-): Promise<ReturnType<typeof getModelAieo>> {
+): LanguageModel {
   // In mock mode for Anthropic, override baseURL
   if (config.USE_MOCKS && provider === "anthropic") {
-    const { createAnthropic } = await import("@ai-sdk/anthropic");
+    // Dynamic import not needed for sync function; use require pattern
+    const { createAnthropic } = require("@ai-sdk/anthropic");
 
     const mockProvider = createAnthropic({
       apiKey: "mock-anthropic-key-12345",
@@ -58,12 +60,11 @@ export async function getModel(
         ? "claude-3-haiku-20240307"
         : "claude-3-5-sonnet-20241022";
 
-    // Type assertion to match aieo's return type (cast through unknown for type compatibility)
-    return Promise.resolve(mockProvider(modelId) as unknown) as ReturnType<typeof getModelAieo>;
+    return mockProvider(modelId) as LanguageModel;
   }
 
   // Otherwise, use the real aieo implementation
-  return getModelAieo(provider, apiKey, workspaceSlug, modelType);
+  return getModelAieo(provider, { apiKey, modelName: modelType });
 }
 
 /**
