@@ -1,8 +1,6 @@
 import { generateObject, type ModelMessage } from "ai";
 import { z } from "zod";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
-
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 
 /**
  * Converts AI SDK messages to a transcript string
@@ -83,7 +81,7 @@ export async function extractFeatureFromTranscript(
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = await getModel(provider, apiKey, workspaceSlug); // Use default model for quality
+    const model = getModel(provider, apiKey, workspaceSlug); // Use default model for quality
 
     const result = await generateObject({
       model,
