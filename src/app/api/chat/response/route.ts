@@ -14,6 +14,7 @@ import {
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
+import { processScreenshotUpload } from "@/lib/screenshot-upload";
 
 export const fetchCache = "force-no-store";
 
@@ -39,22 +40,24 @@ export async function POST(request: NextRequest) {
       contextTags = [] as ContextTag[],
       sourceWebsocketID,
       artifacts = [] as ArtifactRequest[],
+      screenshots = [] as string[],
     } = body;
 
     let taskMode: string | undefined;
+    let task: { id: string; workspaceId: string; mode: string } | null = null;
     if (taskId) {
-      const task = await db.task.findFirst({
+      task = await db.task.findFirst({
         where: {
           id: taskId,
           deleted: false,
         },
+        select: { id: true, workspaceId: true, mode: true },
       });
 
       if (!task) {
         return NextResponse.json({ error: "Task not found" }, { status: 404 });
       }
-      // Access mode field (may not be in generated types if prisma generate hasn't been run)
-      taskMode = (task as unknown as { mode?: string }).mode;
+      taskMode = task.mode;
     }
 
     const chatMessage = await db.chatMessage.create({
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         artifacts: true,
+        attachments: true,
         task: {
           select: {
             id: true,
@@ -236,6 +240,27 @@ export async function POST(request: NextRequest) {
           } catch (fetchError) {
             console.error("Error fetching workflow spec:", fetchError);
           }
+        }
+      }
+    }
+
+    // Process screenshot attachments (after message creation so delivery isn't blocked by S3 failures)
+    if (screenshots.length > 0 && task?.workspaceId) {
+      for (const dataUrl of screenshots) {
+        try {
+          const { s3Key, buffer, hash } = await processScreenshotUpload(dataUrl, task.workspaceId);
+          const attachment = await db.attachment.create({
+            data: {
+              messageId: chatMessage.id,
+              path: s3Key,
+              filename: `screenshot-${hash}.jpg`,
+              mimeType: "image/jpeg",
+              size: buffer.length,
+            },
+          });
+          chatMessage.attachments.push(attachment);
+        } catch (screenshotError) {
+          console.error("Failed to process screenshot attachment:", screenshotError);
         }
       }
     }
