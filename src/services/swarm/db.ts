@@ -4,7 +4,6 @@ import { PodState, PoolState, SwarmStatus } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-// Add ServiceConfig interface for the services array
 export interface ServiceConfig {
   name: string;
   port: number;
@@ -21,6 +20,12 @@ export interface ServiceConfig {
     reset?: string;
   };
   env?: Record<string, string>; // Environment variables from stakgraph
+  advanced?: Record<string, string | number | boolean>;
+}
+
+export interface SwarmContainerConfig {
+  containerFiles: Record<string, string> | null; // decoded plain text, keyed by original filename
+  services: ServiceConfig[];
 }
 
 interface SaveOrUpdateSwarmParams {
@@ -114,9 +119,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.poolState !== undefined) data.poolState = params.poolState;
   if (params.podState !== undefined) data.podState = params.podState;
 
-  if (params.services !== undefined) {
-    data.services = params.services;
-  }
+  if (params.services !== undefined) data.services = params.services;
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
@@ -157,7 +160,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolName: params.poolName || "",
       poolCpu: params.poolCpu || "2",
       poolMemory: params.poolMemory || "8Gi",
-      services: params.services ? params.services : [],
+      services: params.services || [],
       swarmSecretAlias: params.swarmSecretAlias || "",
       containerFiles: params.containerFiles,
       swarmId: params.swarmId,
@@ -174,4 +177,48 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     });
   }
   return swarm;
+}
+
+/**
+ * Fetch and decode a swarm's container configuration (containerFiles + services).
+ * containerFiles are decoded from base64 to plain text.
+ * Returns null if swarm not found.
+ */
+export async function getSwarmContainerConfig(
+  workspaceId: string
+): Promise<SwarmContainerConfig | null> {
+  const swarm = await db.swarm.findUnique({
+    where: { workspaceId },
+    select: { containerFiles: true, services: true },
+  });
+
+  if (!swarm) return null;
+
+  // Decode base64 containerFiles to plain text
+  let containerFiles: Record<string, string> | null = null;
+  const rawFiles = swarm.containerFiles as Record<string, string> | null;
+  if (rawFiles && typeof rawFiles === "object") {
+    containerFiles = Object.entries(rawFiles).reduce(
+      (acc, [name, content]) => {
+        acc[name] = Buffer.from(content, "base64").toString("utf-8");
+        return acc;
+      },
+      {} as Record<string, string>
+    );
+  }
+
+  // Parse services
+  let services: ServiceConfig[] = [];
+  if (swarm.services) {
+    try {
+      const parsed = typeof swarm.services === "string"
+        ? JSON.parse(swarm.services)
+        : swarm.services;
+      services = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      services = [];
+    }
+  }
+
+  return { containerFiles, services };
 }

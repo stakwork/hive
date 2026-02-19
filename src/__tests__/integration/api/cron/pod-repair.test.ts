@@ -226,7 +226,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key', // Important: must have poolApiKey for eligibility
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       const request = createMockRequest('Bearer test-secret-123');
@@ -250,7 +250,7 @@ describe('GET /api/cron/pod-repair', () => {
         workspaceId: workspace.id,
         swarmApiKey: 'test-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Create 10 existing repair attempts (max limit)
@@ -310,7 +310,7 @@ describe('GET /api/cron/pod-repair', () => {
       await createTestSwarm({
         workspaceId: workspace.id,
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
         // No swarmApiKey = no poolApiKey
       });
 
@@ -336,7 +336,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
         podState: 'COMPLETED',
       });
 
@@ -363,7 +363,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Create an IN_PROGRESS repair run
@@ -439,7 +439,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -489,7 +489,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -557,7 +557,7 @@ describe('GET /api/cron/pod-repair', () => {
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -624,7 +624,7 @@ describe('GET /api/cron/pod-repair', () => {
         workspaceId: workspace.id,
         swarmApiKey: 'test-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool manager to throw error
@@ -654,7 +654,7 @@ describe('GET /api/cron/pod-repair', () => {
         workspaceId: workspace.id,
         swarmApiKey: 'test-api-key',
         containerFilesSetUp: true,
-        containerFiles: [{ name: 'test.json', content: 'test' }],
+        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pods
