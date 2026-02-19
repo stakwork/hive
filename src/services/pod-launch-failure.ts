@@ -357,7 +357,6 @@ async function triggerLaunchFailureRepair(
               }),
               failureType: "LAUNCH", // Distinguishes from runtime failures
               containerFiles: containerConfig?.containerFiles || null,
-              services: containerConfig?.services || [],
             },
           },
         },

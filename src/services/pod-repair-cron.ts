@@ -376,7 +376,6 @@ export async function triggerPodRepair(
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
               containerFiles: containerConfig?.containerFiles || null,
-              services: containerConfig?.services || [],
             },
           },
         },
