@@ -9,13 +9,11 @@ import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/as
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { WorkspaceConfig } from "@/lib/ai/types";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
-
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 /**
  * Provenance data types

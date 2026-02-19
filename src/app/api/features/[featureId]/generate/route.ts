@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { buildFeatureContext, generateWithStreaming } from "@/lib/ai/utils";
 import { GENERATION_TYPES, GENERATION_CONFIG_MAP, GenerationType } from "@/lib/ai/generation-config";
-
-type Provider = "anthropic" | "openai";
 
 export async function POST(
   request: NextRequest,

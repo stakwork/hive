@@ -1,8 +1,6 @@
 import { generateText } from "ai";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { WAKE_WORD } from "@/lib/constants/voice";
-
-type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export type DetectionMode = "feature" | "task";
 
