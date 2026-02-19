@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { SupportedLanguages } from "@/lib/constants";
 import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
-import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, Loader2, Plus, X } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { redirect, useRouter } from "next/navigation";
@@ -17,9 +17,11 @@ interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
 }
 
+const MAX_REPOSITORIES = 10;
+
 export const WelcomeStep = ({}: WelcomeStepProps) => {
-  const [repositoryUrl, setRepositoryUrl] = useState("");
-  const [error, setError] = useState("");
+  const [repositoryUrls, setRepositoryUrls] = useState<string[]>([""]);
+  const [errors, setErrors] = useState<string[]>([""]);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [creationStatus, setCreationStatus] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -30,15 +32,68 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const isCreatingRef = useRef(false);
 
   const validateGitHubUrl = (url: string): boolean => {
+    if (!url.trim()) return false;
     // Basic GitHub URL validation
     const githubUrlPattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+(\/.*)?$/;
     return githubUrlPattern.test(url.trim());
   };
 
-  const handleRepositoryUrlChange = (value: string) => {
-    setRepositoryUrl(value);
-    localStorage.setItem("repoUrl", value);
-    setError(""); // Clear error when user types
+  const handleRepositoryUrlChange = (index: number, value: string) => {
+    const newUrls = [...repositoryUrls];
+    newUrls[index] = value;
+    setRepositoryUrls(newUrls);
+    
+    // Clear error for this specific repository
+    const newErrors = [...errors];
+    newErrors[index] = "";
+    setErrors(newErrors);
+    
+    // Store first URL in localStorage for backward compatibility
+    if (index === 0) {
+      localStorage.setItem("repoUrl", value);
+    }
+  };
+
+  const handleAddRepository = () => {
+    if (repositoryUrls.length >= MAX_REPOSITORIES) return;
+    setRepositoryUrls([...repositoryUrls, ""]);
+    setErrors([...errors, ""]);
+  };
+
+  const handleRemoveRepository = (index: number) => {
+    if (repositoryUrls.length <= 1) return; // Always keep at least one
+    const newUrls = repositoryUrls.filter((_, i) => i !== index);
+    const newErrors = errors.filter((_, i) => i !== index);
+    setRepositoryUrls(newUrls);
+    setErrors(newErrors);
+  };
+
+  const validateAllUrls = (): boolean => {
+    const newErrors: string[] = [];
+    let allValid = true;
+
+    repositoryUrls.forEach((url, index) => {
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl) {
+        newErrors[index] = "Please enter a GitHub repository URL";
+        allValid = false;
+      } else if (!validateGitHubUrl(trimmedUrl)) {
+        newErrors[index] = "Please enter a valid GitHub repository URL";
+        allValid = false;
+      } else {
+        newErrors[index] = "";
+      }
+    });
+
+    setErrors(newErrors);
+    return allValid;
+  };
+
+  const areAllUrlsValid = (): boolean => {
+    return repositoryUrls.every(url => {
+      const trimmed = url.trim();
+      return trimmed && validateGitHubUrl(trimmed);
+    });
   };
 
   const createWorkspaceAutomatically = async (repoUrl: string) => {
@@ -49,8 +104,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     isCreatingRef.current = true;
 
     try {
-      // Extract repo name and find available workspace name
-      const repoName = extractRepoNameFromUrl(repoUrl);
+      // Extract repo name from first URL for workspace naming
+      const repoName = extractRepoNameFromUrl(repoUrl.split(',')[0].trim());
       if (!repoName) {
         throw new Error("Could not extract repository name from URL");
       }
@@ -68,7 +123,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         projectName = `${base}-${Date.now().toString().slice(-6)}`;
       }
 
-      // Create workspace
+      // Create workspace with comma-separated repository URLs
       const response = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,7 +131,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
           name: projectName,
           description: '',
           slug: projectName,
-          repositoryUrl: repoUrl,
+          repositoryUrl: repoUrl, // Already comma-separated
         }),
       });
 
@@ -94,8 +149,9 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
           method: "POST",
         }).catch(console.error);
 
-        // Check GitHub App status for this workspace/repository
-        const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
+        // Check GitHub App status for first repository
+        const firstRepoUrl = repoUrl.split(',')[0].trim();
+        const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(firstRepoUrl)}`);
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {
@@ -111,7 +167,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
             },
             body: JSON.stringify({
               workspaceSlug: data.workspace.slug,
-              repositoryUrl: repoUrl
+              repositoryUrl: firstRepoUrl
             }),
           });
 
@@ -127,38 +183,39 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         }
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to create workspace");
+      const errorMessage = error instanceof Error ? error.message : "Failed to create workspace";
+      // Set error on first repository
+      const newErrors = [...errors];
+      newErrors[0] = errorMessage;
+      setErrors(newErrors);
       setIsCreatingWorkspace(false);
       isCreatingRef.current = false;
     }
   };
 
   const handleNext = () => {
-    const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
-
-    if (!trimmedUrl) {
-      setError("Please enter a GitHub repository URL");
+    // Validate all URLs first
+    if (!validateAllUrls()) {
       return;
     }
 
-    if (!validateGitHubUrl(trimmedUrl)) {
-      setError("Please enter a valid GitHub repository URL (e.g., https://github.com/username/repo)");
-      return;
-    }
+    // Trim and clean all URLs, then join with comma
+    const trimmedUrls = repositoryUrls.map(url => url.trim().replace(/\/$/, ""));
+    const repoUrlString = trimmedUrls.join(',');
 
-    // Store in localStorage for backward compatibility
-    localStorage.setItem("repoUrl", trimmedUrl);
+    // Store first URL in localStorage for backward compatibility
+    localStorage.setItem("repoUrl", trimmedUrls[0]);
 
     // Check if user is authenticated
     if (!session?.user) {
       // Not authenticated - show auth modal
-      setPendingRepoUrl(trimmedUrl);
+      setPendingRepoUrl(repoUrlString);
       setShowAuthModal(true);
       return;
     }
 
     // Already authenticated - create workspace immediately
-    createWorkspaceAutomatically(trimmedUrl);
+    createWorkspaceAutomatically(repoUrlString);
   };
 
   const handleAuthSuccess = () => {
@@ -211,28 +268,75 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         <CardContent className="space-y-6">
         {!isCreatingWorkspace ? (
           <>
-            {/* Repository URL Input */}
-            <div className="max-w-md mx-auto">
-              <Input
-                id="repository-url"
-                type="url"
-                placeholder="https://github.com/username/repository"
-                value={repositoryUrl}
-                onChange={(e) => handleRepositoryUrlChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
-                disabled={isCreatingWorkspace}
-              />
-              {error && (
-                <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{error}</span>
-                </div>
+            {/* Repository URLs Input List */}
+            <div className="max-w-md mx-auto space-y-4">
+              <div className="space-y-3">
+                {repositoryUrls.map((url, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Repository {index + 1}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={`repository-url-${index}`}
+                            type="url"
+                            placeholder="https://github.com/username/repository"
+                            value={url}
+                            onChange={(e) => handleRepositoryUrlChange(index, e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            className={errors[index] ? "border-red-500 focus:border-red-500" : ""}
+                            disabled={isCreatingWorkspace}
+                          />
+                          {repositoryUrls.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveRepository(index)}
+                              disabled={isCreatingWorkspace}
+                              className="h-10 w-10 shrink-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {errors[index] && (
+                      <div className="flex items-center gap-2 text-red-600 text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>{errors[index]}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Another Repository Button */}
+              {repositoryUrls.length < MAX_REPOSITORIES && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddRepository}
+                  disabled={isCreatingWorkspace}
+                  className="w-full"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Another Repository
+                </Button>
               )}
             </div>
 
             <div className="flex flex-col items-center gap-3">
-              <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim() || isCreatingWorkspace}>
+              <Button 
+                onClick={handleNext} 
+                className="px-8 py-3" 
+                disabled={!areAllUrlsValid() || isCreatingWorkspace}
+              >
                 Get Started
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
