@@ -1,17 +1,14 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { 
+import {
   generatePM2Apps,
   formatPM2Apps,
   getPM2AppsContent,
+  parsePM2Content,
   resolveCwd
 } from "@/utils/devContainerUtils";
 import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 describe("DevContainer Utils - Unit Tests", () => {
-  beforeEach(() => {
-    // Clear any test state if needed
-  });
-
   describe("resolveCwd", () => {
     test("should return default repo for empty cwd", () => {
       const result = resolveCwd("", ["repo1", "repo2"], "repo1");
@@ -254,9 +251,10 @@ describe("DevContainer Utils - Unit Tests", () => {
       ];
 
       const result = generatePM2Apps(["test-repo"], serviceData);
+      const env = result[0].env as Record<string, string>;
 
-      expect(result[0].env.PORT).toBe("9000");
-      expect(typeof result[0].env.PORT).toBe("string");
+      expect(env.PORT).toBe("9000");
+      expect(typeof env.PORT).toBe("string");
     });
 
     test("should handle service with no start script", () => {
@@ -271,10 +269,50 @@ describe("DevContainer Utils - Unit Tests", () => {
       ];
 
       const result = generatePM2Apps(["test-repo"], serviceData);
+      const env = result[0].env as Record<string, string>;
 
       expect(result[0].script).toBe("");
-      expect(result[0].env.BUILD_COMMAND).toBe("npm run build");
-      expect(result[0].env.TEST_COMMAND).toBe("npm test");
+      expect(env.BUILD_COMMAND).toBe("npm run build");
+      expect(env.TEST_COMMAND).toBe("npm test");
+    });
+
+    test("should override defaults with advanced fields", () => {
+      const serviceData: ServiceDataConfig[] = [
+        {
+          name: "advanced-svc",
+          port: 3000,
+          scripts: { start: "npm start" },
+          advanced: { instances: 4, watch: true, max_memory_restart: "2G" },
+        },
+      ];
+
+      const result = generatePM2Apps(["test-repo"], serviceData);
+
+      expect(result[0].instances).toBe(4);
+      expect(result[0].watch).toBe(true);
+      expect(result[0].max_memory_restart).toBe("2G");
+      expect(result[0].autorestart).toBe(true); // default kept
+    });
+
+    test("should not let advanced override env or interpreter", () => {
+      const serviceData: ServiceDataConfig[] = [
+        {
+          name: "override-test",
+          port: 3000,
+          interpreter: "node",
+          scripts: { start: "npm start" },
+          env: { MY_VAR: "real" },
+          advanced: { interpreter: "python", env: "should-be-ignored" } as any,
+        },
+      ];
+
+      const result = generatePM2Apps(["test-repo"], serviceData);
+
+      // interpreter and env come after the spread, so they win
+      expect(result[0].interpreter).toBe("node");
+      const env = result[0].env as Record<string, string>;
+      expect(env.MY_VAR).toBe("real");
+      expect(env.PORT).toBe("3000");
     });
   });
 
@@ -400,6 +438,52 @@ describe("DevContainer Utils - Unit Tests", () => {
 
       expect(result).not.toContain('interpreter:');
     });
+
+    test("should render extra fields in PM2 output", () => {
+      const apps = [
+        {
+          name: "extra-app",
+          script: "npm start",
+          cwd: "/workspaces/test",
+          instances: 1,
+          autorestart: true,
+          watch: false,
+          max_memory_restart: "1G",
+          kill_timeout: 5000,
+          listen_timeout: 3000,
+          env: {},
+        },
+      ];
+
+      const result = formatPM2Apps(apps);
+
+      expect(result).toContain("kill_timeout: 5000,");
+      expect(result).toContain("listen_timeout: 3000,");
+    });
+
+    test("should quote string extra fields and leave numbers/booleans unquoted", () => {
+      const apps = [
+        {
+          name: "types-app",
+          script: "npm start",
+          cwd: "/workspaces/test",
+          instances: 1,
+          autorestart: true,
+          watch: false,
+          max_memory_restart: "1G",
+          custom_string: "hello",
+          custom_num: 42,
+          custom_bool: true,
+          env: {},
+        },
+      ];
+
+      const result = formatPM2Apps(apps);
+
+      expect(result).toContain('custom_string: "hello",');
+      expect(result).toContain("custom_num: 42,");
+      expect(result).toContain("custom_bool: true,");
+    });
   });
 
   describe("getPM2AppsContent", () => {
@@ -439,6 +523,196 @@ describe("DevContainer Utils - Unit Tests", () => {
       expect(result.content.startsWith("module.exports = {")).toBe(true);
       expect(result.content.endsWith("};\n")).toBe(true);
       expect(result.content).toContain("apps: [");
+    });
+  });
+
+  describe("parsePM2Content", () => {
+    test("parses a basic PM2 config", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/my-repo",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "1G",
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("api");
+      expect(result[0].scripts.start).toBe("npm start");
+      expect(result[0].port).toBe(3000);
+      expect(result[0].cwd).toBe("my-repo");
+    });
+
+    test("parses advanced fields into advanced object", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/my-repo",
+      instances: 4,
+      autorestart: false,
+      watch: true,
+      max_memory_restart: "2G",
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].advanced).toBeDefined();
+      expect(result[0].advanced!.instances).toBe(4);
+      expect(result[0].advanced!.autorestart).toBe(false);
+      expect(result[0].advanced!.watch).toBe(true);
+      expect(result[0].advanced!.max_memory_restart).toBe("2G");
+    });
+
+    test("does not put known keys in advanced", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/my-repo",
+      interpreter: "node",
+      instances: 4,
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+      const advanced = result[0].advanced || {};
+
+      expect(advanced).not.toHaveProperty("name");
+      expect(advanced).not.toHaveProperty("script");
+      expect(advanced).not.toHaveProperty("cwd");
+      expect(advanced).not.toHaveProperty("interpreter");
+      expect(advanced).toHaveProperty("instances", 4);
+    });
+
+    test("handles PM2 with no advanced fields", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/my-repo",
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].advanced).toBeUndefined();
+    });
+
+    test("handles multiple services with different advanced fields", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/repo",
+      instances: 4,
+      watch: true,
+      env: {
+        PORT: "3000"
+      }
+    },
+    {
+      name: "worker",
+      script: "npm run worker",
+      cwd: "/workspaces/repo",
+      instances: 2,
+      autorestart: false,
+      env: {
+        PORT: "0"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].advanced).toEqual({ instances: 4, watch: true });
+      expect(result[1].advanced).toEqual({ instances: 2, autorestart: false });
+    });
+
+    test("parses custom/unknown PM2 fields into advanced", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/repo",
+      kill_timeout: 5000,
+      listen_timeout: 3000,
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+      const result = parsePM2Content(pm2);
+
+      expect(result[0].advanced).toBeDefined();
+      expect(result[0].advanced!.kill_timeout).toBe(5000);
+      expect(result[0].advanced!.listen_timeout).toBe(3000);
+    });
+
+  });
+
+  describe("advanced round-trip", () => {
+    test("services → PM2 → parse → services preserves advanced", () => {
+      const serviceData: ServiceDataConfig[] = [
+        {
+          name: "api",
+          port: 3000,
+          env: {},
+          scripts: { start: "npm start" },
+          advanced: { instances: 4, watch: true },
+        },
+      ];
+
+      // Generate PM2 from services
+      const pm2Content = getPM2AppsContent(["my-repo"], serviceData);
+
+      // Verify the generated PM2 has the advanced values
+      expect(pm2Content.content).toContain("instances: 4");
+      expect(pm2Content.content).toContain("watch: true");
+
+      // Parse PM2 back to services
+      const parsed = parsePM2Content(pm2Content.content);
+
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].name).toBe("api");
+      expect(parsed[0].advanced).toBeDefined();
+      expect(parsed[0].advanced!.instances).toBe(4);
+      expect(parsed[0].advanced!.watch).toBe(true);
     });
   });
 });

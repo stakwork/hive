@@ -561,5 +561,191 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(Object.keys(containerFiles)).toHaveLength(3);
       });
     });
+
+    describe("advanced field round-tripping", () => {
+      it("Case 3: Only PM2 sent with advanced fields → services DB has advanced", async () => {
+        const pm2WithAdvanced = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/acme",
+      instances: 4,
+      autorestart: false,
+      watch: true,
+      max_memory_restart: "2G",
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+          { containerFiles: { "pm2.config.js": toBase64(pm2WithAdvanced) } }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: testData.workspace.slug }),
+        });
+        await expectSuccess(res, 200);
+
+        const swarm = await db.swarm.findUnique({
+          where: { workspaceId: testData.workspace.id },
+        });
+        const services = swarm?.services as any[];
+
+        const apiService = services.find((s: any) => s.name === "api");
+        expect(apiService).toBeDefined();
+        expect(apiService.advanced).toBeDefined();
+        expect(apiService.advanced.instances).toBe(4);
+        expect(apiService.advanced.autorestart).toBe(false);
+        expect(apiService.advanced.watch).toBe(true);
+        expect(apiService.advanced.max_memory_restart).toBe("2G");
+      });
+
+      it("Case 2: Services with advanced → PM2 has advanced values", async () => {
+        const newServices = [
+          {
+            name: "backend",
+            port: 5000,
+            scripts: { start: "npm run server" },
+            advanced: { instances: 4, watch: true },
+          },
+        ];
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+          { services: newServices }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: testData.workspace.slug }),
+        });
+        await expectSuccess(res, 200);
+
+        const swarm = await db.swarm.findUnique({
+          where: { workspaceId: testData.workspace.id },
+        });
+        const containerFiles = swarm?.containerFiles as Record<string, string>;
+        const services = swarm?.services as any[];
+
+        // Services should preserve advanced
+        const backendService = services.find((s: any) => s.name === "backend");
+        expect(backendService.advanced).toEqual({ instances: 4, watch: true });
+
+        // PM2 should have the advanced values instead of defaults
+        const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
+        expect(pm2Content).toContain("instances: 4");
+        expect(pm2Content).toContain("watch: true");
+      });
+
+      it("Case 4: Both sent, services with advanced wins", async () => {
+        const newServices = [
+          {
+            name: "api",
+            port: 3000,
+            scripts: { start: "npm start" },
+            advanced: { instances: 8 },
+          },
+        ];
+        // Conflicting PM2 with instances: 2
+        const conflictingPm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/acme",
+      instances: 2,
+      env: { PORT: "3000" }
+    }
+  ],
+};`;
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+          {
+            services: newServices,
+            containerFiles: { "pm2.config.js": toBase64(conflictingPm2) },
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: testData.workspace.slug }),
+        });
+        await expectSuccess(res, 200);
+
+        const swarm = await db.swarm.findUnique({
+          where: { workspaceId: testData.workspace.id },
+        });
+        const services = swarm?.services as any[];
+        const containerFiles = swarm?.containerFiles as Record<string, string>;
+
+        // Services win with instances: 8
+        const apiService = services.find((s: any) => s.name === "api");
+        expect(apiService.advanced).toEqual({ instances: 8 });
+
+        // Regenerated PM2 should have instances: 8 (not 2)
+        const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
+        expect(pm2Content).toContain("instances: 8");
+      });
+
+      it("Round-trip: PM2 in → services DB → PUT services back → PM2 preserved", async () => {
+        // Step 1: PUT only PM2 with instances: 4
+        const pm2WithInstances = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/acme",
+      instances: 4,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "1G",
+      env: {
+        PORT: "3000"
+      }
+    }
+  ],
+};`;
+
+        const req1 = createPutRequest(
+          `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+          { containerFiles: { "pm2.config.js": toBase64(pm2WithInstances) } }
+        );
+
+        await PUT_STAK(req1, {
+          params: Promise.resolve({ slug: testData.workspace.slug }),
+        });
+
+        // Step 2: Read services from DB
+        const swarm1 = await db.swarm.findUnique({
+          where: { workspaceId: testData.workspace.id },
+        });
+        const services = swarm1?.services as any[];
+        const apiService = services.find((s: any) => s.name === "api");
+        expect(apiService.advanced).toBeDefined();
+        expect(apiService.advanced.instances).toBe(4);
+
+        // Step 3: PUT those services back (no containerFiles)
+        const req2 = createPutRequest(
+          `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+          { services }
+        );
+
+        await PUT_STAK(req2, {
+          params: Promise.resolve({ slug: testData.workspace.slug }),
+        });
+
+        // Step 4: Verify PM2 still has instances: 4
+        const swarm2 = await db.swarm.findUnique({
+          where: { workspaceId: testData.workspace.id },
+        });
+        const containerFiles = swarm2?.containerFiles as Record<string, string>;
+        const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
+        expect(pm2Content).toContain("instances: 4");
+      });
+    });
   });
 });

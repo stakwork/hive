@@ -44,6 +44,8 @@ export default function ServicesForm({
 }: Omit<FormSectionProps<ServiceDataConfig[]>, "errors">) {
   // Track which service env sections are expanded
   const [expandedEnvSections, setExpandedEnvSections] = useState<Record<number, boolean>>({});
+  // Track which advanced PM2 config sections are expanded
+  const [expandedAdvancedSections, setExpandedAdvancedSections] = useState<Record<number, boolean>>({});
   // Track which env var values are shown (not hidden)
   const [visibleEnvVars, setVisibleEnvVars] = useState<Record<string, boolean>>({});
 
@@ -295,6 +297,74 @@ export default function ServicesForm({
       ...prev,
       [visKey]: !prev[visKey]
     }));
+  };
+
+  // Advanced PM2 config handlers
+  const toggleAdvancedSection = (idx: number) => {
+    setExpandedAdvancedSections(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
+  const parseAdvancedValue = (raw: string): string | number | boolean => {
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    const num = Number(raw);
+    if (!isNaN(num) && raw.trim() !== '') return num;
+    return raw;
+  };
+
+  const handleAdvancedChange = (
+    serviceIdx: number,
+    oldKey: string,
+    field: 'key' | 'value',
+    value: string,
+  ) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    const advanced = { ...(service.advanced || {}) };
+
+    if (field === 'key') {
+      if (oldKey !== value) {
+        const oldValue = advanced[oldKey];
+        delete advanced[oldKey];
+        if (value.trim()) {
+          advanced[value] = oldValue ?? '';
+        }
+      }
+    } else {
+      advanced[oldKey] = parseAdvancedValue(value);
+    }
+
+    updatedServices[serviceIdx] = { ...service, advanced };
+    onChange(updatedServices);
+  };
+
+  const handleAddAdvanced = (serviceIdx: number) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    let counter = 1;
+    while (`new_field_${counter}` in (service.advanced || {})) {
+      counter++;
+    }
+    updatedServices[serviceIdx] = {
+      ...service,
+      advanced: {
+        ...(service.advanced || {}),
+        [`new_field_${counter}`]: ''
+      }
+    };
+    onChange(updatedServices);
+  };
+
+  const handleRemoveAdvanced = (serviceIdx: number, key: string) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    const advanced = { ...(service.advanced || {}) };
+    delete advanced[key];
+    updatedServices[serviceIdx] = { ...service, advanced };
+    onChange(updatedServices);
   };
 
   return (
@@ -701,6 +771,89 @@ export default function ServicesForm({
                       >
                         <PlusCircle className="h-4 w-4 mr-2" />
                         Add Variable
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Advanced PM2 Config Section */}
+                <div className="border-t pt-4 mt-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => toggleAdvancedSection(idx)}
+                    disabled={loading}
+                    className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent"
+                  >
+                    {expandedAdvancedSections[idx] ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                    <span className="text-sm font-medium">
+                      Advanced PM2 Config
+                      {Object.keys(svc.advanced || {}).length > 0 && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({Object.keys(svc.advanced || {}).length})
+                        </span>
+                      )}
+                    </span>
+                  </Button>
+
+                  {expandedAdvancedSections[idx] && (
+                    <div className="mt-3 space-y-3 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                      <p className="text-xs text-muted-foreground">
+                        PM2-level config fields like instances, autorestart, watch, max_memory_restart.
+                      </p>
+
+                      {Object.entries(svc.advanced || {}).length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic">
+                          No advanced config defined for this service.
+                        </p>
+                      ) : (
+                        Object.entries(svc.advanced || {}).map(([key, value]) => (
+                          <div key={key} className="flex gap-2 items-center">
+                            <Input
+                              placeholder="Field name"
+                              value={key}
+                              onChange={(e) =>
+                                handleAdvancedChange(idx, key, 'key', e.target.value)
+                              }
+                              className="w-1/3 font-mono"
+                              disabled={loading}
+                            />
+                            <Input
+                              placeholder="Value"
+                              value={String(value)}
+                              onChange={(e) =>
+                                handleAdvancedChange(idx, key, 'value', e.target.value)
+                              }
+                              className="w-1/2 font-mono"
+                              disabled={loading}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleRemoveAdvanced(idx, key)}
+                              className="px-2"
+                              disabled={loading}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleAddAdvanced(idx)}
+                        disabled={loading}
+                        className="mt-2"
+                      >
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Add Config
                       </Button>
                     </div>
                   )}
