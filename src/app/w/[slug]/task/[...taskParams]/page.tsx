@@ -104,7 +104,6 @@ export default function TaskChatPage() {
   // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [taskDescription, setTaskDescription] = useState<string | null>(null);
-  const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [podId, setPodId] = useState<string | null>(null);
   const [featureId, setFeatureId] = useState<string | null>(null);
   const [featureTitle, setFeatureTitle] = useState<string | null>(null);
@@ -290,7 +289,6 @@ export default function TaskChatPage() {
         if (result.data.task?.stakworkProjectId) {
           console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
-          setStakworkProjectId(result.data.task.stakworkProjectId);
 
           // Create ephemeral WORKFLOW artifact for existing tasks with workflows
           // This artifact is not stored in DB - it's always generated client-side
@@ -469,7 +467,6 @@ export default function TaskChatPage() {
       // Set project ID for workflow monitoring
       if (debuggerResult.project?.id) {
         setProjectId(debuggerResult.project.id.toString());
-        setStakworkProjectId(debuggerResult.project.id);
       }
 
       // Create initial message from API response
@@ -499,17 +496,16 @@ export default function TaskChatPage() {
   // Auto-trigger project selection from URL params
   useEffect(() => {
     const projectIdParam = searchParams.get('projectId');
-    const projectNameParam = searchParams.get('projectName');
 
     // Only auto-trigger if:
-    // 1. We have projectId and projectName in URL params
-    // 2. Task mode is project_debugger
+    // 1. We have projectId in URL params (projectName not needed - we fetch full data)
+    // 2. Task mode is project_debugger (now correctly initialized via lazy initializer)
     // 3. Task hasn't started yet
     // 4. We have a slug
-    if (projectIdParam && projectNameParam && taskMode === 'project_debugger' && !started && slug) {
+    if (projectIdParam && taskMode === 'project_debugger' && !started && slug) {
       const autoTriggerProjectSelection = async () => {
         try {
-          console.log('Auto-triggering project selection:', projectIdParam, projectNameParam);
+          console.log('Auto-triggering project selection:', projectIdParam);
           
           // Fetch full project data
           const response = await fetch(`/api/stakwork/projects/${projectIdParam}`);
@@ -990,7 +986,6 @@ export default function TaskChatPage() {
         // Set project ID for the workflow link
         if (result.workflow?.project_id) {
           setProjectId(result.workflow.project_id.toString());
-          setStakworkProjectId(result.workflow.project_id);
         }
 
         // Update message status
@@ -1283,7 +1278,6 @@ export default function TaskChatPage() {
         if (result.workflow?.project_id) {
           console.log("Project ID:", result.workflow.project_id);
           setProjectId(result.workflow.project_id);
-          setStakworkProjectId(result.workflow.project_id);
           setIsChainVisible(true);
           clearLogs();
 
