@@ -16,11 +16,11 @@ function getCmdBaseUrlFromSwarmUrl(swarmUrl: string): string {
 
 /**
  * Get x-jwt by logging in to sphinx-swarm with username "admin" and the swarm password.
- * swarmUrl is the stored swarm base URL (e.g. https://swarm40.sphinx.chat/api).
+ * Login uses the same host:port as the cmd API (port 8800), e.g. https://swarm40.sphinx.chat:8800/api/login.
  */
 export async function getSwarmCmdJwt(swarmUrl: string, swarmPassword: string): Promise<string> {
-  const origin = new URL(swarmUrl).origin;
-  const loginUrl = `${origin}/api/login`;
+  const baseUrl = getCmdBaseUrlFromSwarmUrl(swarmUrl);
+  const loginUrl = `${baseUrl}/api/login`;
 
   const allowInsecure = process.env.SWARM_CMD_ALLOW_INSECURE === "true";
   const previousTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
