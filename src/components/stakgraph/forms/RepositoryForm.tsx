@@ -73,6 +73,16 @@ export default function RepositoryForm({
       });
       setCheckingIndex(null);
       
+      // If verification succeeded, update branch to the real default branch
+      if (!permissionError && permissions?.hasAccess && permissions.repository?.default_branch) {
+        const updatedRepos = [...data.repositories];
+        updatedRepos[wasChecking] = {
+          ...updatedRepos[wasChecking],
+          branch: permissions.repository.default_branch,
+        };
+        onChange({ repositories: updatedRepos });
+      }
+
       // If verification succeeded and this is a new repo, show settings modal
       if (!permissionError && permissions?.hasAccess && pendingSettingsIndex === wasChecking) {
         const repo = data.repositories[wasChecking];
@@ -83,7 +93,7 @@ export default function RepositoryForm({
       }
       setPendingSettingsIndex(null);
     }
-  }, [permissions, permissionLoading, permissionError, checkingIndex, pendingSettingsIndex, data.repositories]);
+  }, [permissions, permissionLoading, permissionError, checkingIndex, pendingSettingsIndex, data.repositories, onChange]);
 
   const handleAddRepository = () => {
     // Additional repos added via the form default to all sync options disabled
