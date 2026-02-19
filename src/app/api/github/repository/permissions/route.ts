@@ -96,7 +96,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
 
 export async function POST(request: NextRequest) {
   try {
-    const { repositoryUrl } = await request.json();
+    const { repositoryUrl, workspaceSlug } = await request.json();
 
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -123,6 +123,26 @@ export async function POST(request: NextRequest) {
     }
 
     const githubOwner = githubMatch[1];
+
+    // Check if repository owner matches workspace's linked GitHub organization
+    if (workspaceSlug) {
+      const { db } = await import("@/lib/db");
+      const workspace = await db.workspace.findUnique({
+        where: { slug: workspaceSlug },
+        include: { sourceControlOrg: true },
+      });
+      const linkedLogin = workspace?.sourceControlOrg?.githubLogin;
+      if (linkedLogin && linkedLogin.toLowerCase() !== githubOwner.toLowerCase()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "org_mismatch",
+            message: `Repository must belong to the '${linkedLogin}' organization.`,
+          },
+          { status: 422 }
+        );
+      }
+    }
 
     // Get user's GitHub App tokens for this repository's organization
     const tokens = await getUserAppTokens(session.user.id, githubOwner);
