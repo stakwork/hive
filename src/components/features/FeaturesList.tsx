@@ -73,7 +73,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[280px] font-medium truncate">
+      <TableCell className="w-[375px] font-medium truncate">
         <div className="flex items-center gap-2">
           <span className="truncate">{feature.title}</span>
           {needsReview && (
@@ -103,17 +103,17 @@ function FeatureRow({
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
         />
       </TableCell>
-      <TableCell className="w-[140px]" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-[100px]" onClick={(e) => e.stopPropagation()}>
         <FeaturePriorityPopover
           currentPriority={feature.priority}
           onUpdate={(priority) => onPriorityUpdate(feature.id, priority)}
           showLowPriority={true}
         />
       </TableCell>
-      <TableCell className="w-[150px] text-muted-foreground text-sm">
+      <TableCell className="w-[120px] text-muted-foreground text-sm">
         {feature.createdBy?.name || "Unknown"}
       </TableCell>
-      <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-[150px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
           currentAssignee={feature.assignee}
@@ -734,11 +734,11 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[300px]">Title</TableHead>
+                  <TableHead className="w-[375px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[120px]">Priority</TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
-                  <TableHead className="w-[180px]">Assigned</TableHead>
+                  <TableHead className="w-[100px]">Priority</TableHead>
+                  <TableHead className="w-[120px]">Created by</TableHead>
+                  <TableHead className="w-[150px]">Assigned</TableHead>
                   <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -747,19 +747,19 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-[300px]">
+                    <TableCell className="w-[375px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
                     </TableCell>
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
-                    <TableCell className="w-[120px]">
+                    <TableCell className="w-[100px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
-                    <TableCell className="w-[150px]">
+                    <TableCell className="w-[120px]">
                       <Skeleton className="h-4 w-32" />
                     </TableCell>
-                    <TableCell className="w-[180px]">
+                    <TableCell className="w-[150px]">
                       <Skeleton className="h-6 w-32" />
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
@@ -915,7 +915,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[300px]">
+                  <TableHead className="w-[375px]">
                     <SortableColumnHeader
                       label="Title"
                       field="title"
@@ -934,7 +934,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showStatusBadges={true}
                     />
                   </TableHead>
-                  <TableHead className="w-[140px]">
+                  <TableHead className="w-[100px]">
                     <FilterDropdownHeader
                       label="Priority"
                       options={priorityOptions}
@@ -945,8 +945,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showPriorityBadges={true}
                     />
                   </TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
-                  <TableHead className="w-[180px]">
+                  <TableHead className="w-[120px]">Created by</TableHead>
+                  <TableHead className="w-[150px]">
                     <FilterDropdownHeader
                       label="Assigned"
                       options={assigneeOptions}
