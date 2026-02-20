@@ -32,6 +32,7 @@ const initialFormData: StakgraphSettings = {
 const initialState = {
   formData: initialFormData,
   errors: {} as Record<string, string>,
+  repoValidationErrors: {} as Record<string, string>,
   loading: false,
   initialLoading: true,
   saved: false,
@@ -45,6 +46,7 @@ type StakgraphStore = {
   // State
   formData: StakgraphSettings;
   errors: Record<string, string>;
+  repoValidationErrors: Record<string, string>;
   loading: boolean;
   initialLoading: boolean;
   saved: boolean;
@@ -67,6 +69,7 @@ type StakgraphStore = {
 
   // Setters
   setErrors: (errors: Record<string, string>) => void;
+  setRepoValidationErrors: (errors: Record<string, string>) => void;
   setLoading: (loading: boolean) => void;
   setInitialLoading: (loading: boolean) => void;
   setSaved: (saved: boolean) => void;
@@ -193,6 +196,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
       // Reset previous states
       set({ errors: {}, saved: false });
+
+      // Check for repository validation errors first
+      const repoValidationErrors = get().repoValidationErrors;
+      if (Object.keys(repoValidationErrors).length > 0) {
+        set({ errors: { ...repoValidationErrors } });
+        return;
+      }
 
       const newErrors: Record<string, string> = {};
       if (!state.formData.name.trim()) {
@@ -480,6 +490,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
     // Setters
     setErrors: (errors) => set({ errors }),
+    setRepoValidationErrors: (errors) => set({ repoValidationErrors: errors }),
     setLoading: (loading) => set({ loading }),
     setInitialLoading: (loading) => set({ initialLoading: loading }),
     setSaved: (saved) => set({ saved }),
