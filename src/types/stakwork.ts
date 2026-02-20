@@ -180,12 +180,25 @@ export interface ClarifyingQuestionsResponse {
 export function isClarifyingQuestions(
   result: unknown
 ): result is ClarifyingQuestionsResponse {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("tool_use" in result) ||
+    (result as Record<string, unknown>).tool_use !== "ask_clarifying_questions" ||
+    !("content" in result)
+  ) {
+    return false;
+  }
+  const content = (result as Record<string, unknown>).content;
   return (
-    typeof result === "object" &&
-    result !== null &&
-    "tool_use" in result &&
-    (result as Record<string, unknown>).tool_use === "ask_clarifying_questions" &&
-    "content" in result &&
-    Array.isArray((result as Record<string, unknown>).content)
+    Array.isArray(content) &&
+    content.length > 0 &&
+    content.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "question" in item &&
+        typeof (item as Record<string, unknown>).question === "string"
+    )
   );
 }
