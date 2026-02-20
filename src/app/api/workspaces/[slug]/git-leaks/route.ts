@@ -91,7 +91,22 @@ export async function GET(
       );
     }
 
-    const repoUrl = workspace.repositories[0].repositoryUrl;
+    // Support multi-repository workspaces via repositoryId query param
+    const { searchParams } = new URL(request.url);
+    const repositoryId = searchParams.get("repositoryId");
+
+    const repo = repositoryId
+      ? workspace.repositories.find(r => r.id === repositoryId)
+      : workspace.repositories[0];
+
+    if (!repo) {
+      return NextResponse.json(
+        { error: "Repository not found in this workspace" },
+        { status: 400 }
+      );
+    }
+
+    const repoUrl = repo.repositoryUrl;
 
     // Get GitHub username and PAT for authentication
     const githubAuth = await getGithubUsernameAndPAT(userOrResponse.id, slug);

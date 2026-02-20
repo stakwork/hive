@@ -641,4 +641,151 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
       expect(data.responseData).toBeDefined();
     });
   });
+
+  describe("Multi-repository support", () => {
+    test("valid repositoryId scans the correct repository URL", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+      });
+
+      const repo1 = await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test/repo1",
+        name: "repo1",
+      });
+
+      const repo2 = await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test/repo2",
+        name: "repo2",
+      });
+
+      mockTransformUrl.mockReturnValue(
+        "http://graph-service:8000",
+      );
+      mockGetGithubAuth.mockResolvedValue({
+        username: "testuser",
+        token: "test-token",
+      });
+      mockSwarmApiRequest.mockResolvedValue({
+        ok: true,
+        data: { detect: [] },
+        status: 200,
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`,
+        owner,
+        { repositoryId: repo2.id },
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockSwarmApiRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ repo_url: repo2.repositoryUrl }),
+        }),
+      );
+    });
+
+    test("repositoryId from a different workspace returns 400", async () => {
+      const { owner: owner1, workspace: workspace1 } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+      });
+
+      await createTestRepository({
+        workspaceId: workspace1.id,
+        repositoryUrl: "https://github.com/test/workspace1-repo",
+        name: "workspace1-repo",
+      });
+
+      const { workspace: workspace2 } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+      });
+
+      const workspace2Repo = await createTestRepository({
+        workspaceId: workspace2.id,
+        repositoryUrl: "https://github.com/test/workspace2-repo",
+        name: "workspace2-repo",
+      });
+
+      mockTransformUrl.mockReturnValue(
+        "http://graph-service:8000",
+      );
+      mockGetGithubAuth.mockResolvedValue({
+        username: "testuser",
+        token: "test-token",
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace1.slug}/git-leaks`,
+        owner1,
+        { repositoryId: workspace2Repo.id },
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace1.slug }),
+      });
+
+      await expectError(
+        response,
+        "Repository not found in this workspace",
+        400,
+      );
+    });
+
+    test("omitted repositoryId falls back to first repository", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+      });
+
+      const repo1 = await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test/first-repo",
+        name: "first-repo",
+      });
+
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test/second-repo",
+        name: "second-repo",
+      });
+
+      mockTransformUrl.mockReturnValue(
+        "http://graph-service:8000",
+      );
+      mockGetGithubAuth.mockResolvedValue({
+        username: "testuser",
+        token: "test-token",
+      });
+      mockSwarmApiRequest.mockResolvedValue({
+        ok: true,
+        data: { detect: [] },
+        status: 200,
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockSwarmApiRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ repo_url: repo1.repositoryUrl }),
+        }),
+      );
+    });
+  });
 });
