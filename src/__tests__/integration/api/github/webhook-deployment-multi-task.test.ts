@@ -308,6 +308,14 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       },
     });
 
+    // Mock compareCommits to indicate all staging task commits are included in production
+    mockCompareCommits.mockResolvedValue({
+      data: {
+        status: "ahead", // Indicates the production commit is ahead (includes the staging commit)
+        commits: [],
+      },
+    });
+
     // Now deploy to production
     const payload = createDeploymentStatusPayload("commit3sha", "production", "success");
     const signature = computeValidWebhookSignature(
@@ -426,6 +434,16 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       },
     });
 
+    // Mock compareCommits to indicate task1's commit is included in production
+    mockCompareCommits.mockResolvedValue({
+      data: {
+        status: "ahead", // Production commit is ahead of task1's commit
+        ahead_by: 2,
+        behind_by: 0,
+        commits: [],
+      },
+    });
+
     // Deploy commit3sha to production (should find all commits from commit0 to commit3)
     const payload = createDeploymentStatusPayload("commit3sha", "production", "success");
     const signature = computeValidWebhookSignature(
@@ -511,5 +529,163 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
     expect(updatedTask1?.deploymentStatus).toBeNull();
     expect(updatedTask2?.deploymentStatus).toBeNull();
+  });
+
+  it("should check ALL staging tasks on production deployment (not limited to 250 commits)", async () => {
+    // This test verifies the fix for the 250-commit limitation
+    // Previously: Only commits in compareCommits (max 250) were checked
+    // Now: ALL staging tasks are individually verified against production deployment
+    
+    // Set all tasks to staging (simulating previous staging deployments)
+    await db.task.update({
+      where: { id: task1.id },
+      data: {
+        deploymentStatus: "staging",
+        deployedToStagingAt: new Date("2024-01-01"),
+      },
+    });
+    
+    await db.task.update({
+      where: { id: task2.id },
+      data: {
+        deploymentStatus: "staging",
+        deployedToStagingAt: new Date("2024-01-02"),
+      },
+    });
+    
+    await db.task.update({
+      where: { id: task3.id },
+      data: {
+        deploymentStatus: "staging",
+        deployedToStagingAt: new Date("2024-01-03"),
+      },
+    });
+    
+    // Mock the production deployment's individual commit comparisons
+    // For each staging task, we check if its commit is an ancestor of production
+    mockCompareCommits.mockClear();
+    
+    // First call: Check task1's commit (commit1sha) against production (commit3sha)
+    // Status "ahead" means production is ahead of task1, so task1 is included
+    mockCompareCommits.mockResolvedValueOnce({
+      data: {
+        status: "ahead",
+        ahead_by: 2,
+        behind_by: 0,
+        commits: [],
+      },
+    });
+    
+    // Second call: Check task2's commit (commit2sha) against production (commit3sha)
+    mockCompareCommits.mockResolvedValueOnce({
+      data: {
+        status: "ahead",
+        ahead_by: 1,
+        behind_by: 0,
+        commits: [],
+      },
+    });
+    
+    // Third call: Check task3's commit (commit3sha) against production (commit3sha)
+    // Status "identical" means this is the exact production commit
+    mockCompareCommits.mockResolvedValueOnce({
+      data: {
+        status: "identical",
+        ahead_by: 0,
+        behind_by: 0,
+        commits: [],
+      },
+    });
+    
+    // Deploy to production
+    const payload = createDeploymentStatusPayload("commit3sha", "production", "success");
+    const signature = computeValidWebhookSignature(
+      testSetup.webhookSecret,
+      JSON.stringify(payload)
+    );
+
+    const request = createWebhookRequest(
+      `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+      payload,
+      signature,
+      testSetup.repository.githubWebhookId!,
+      "deployment_status"
+    );
+
+    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    expect(response.status).toBe(202);
+
+    // Add delay to ensure webhook processing completes
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Verify that compareCommits was called 3 times (once for each staging task)
+    expect(mockCompareCommits).toHaveBeenCalledTimes(3);
+    
+    // Verify each call checked a staging task's commit against production
+    expect(mockCompareCommits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base: "commit1sha",
+        head: "commit3sha",
+      })
+    );
+    expect(mockCompareCommits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base: "commit2sha",
+        head: "commit3sha",
+      })
+    );
+    expect(mockCompareCommits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base: "commit3sha",
+        head: "commit3sha",
+      })
+    );
+
+    // Poll database until all updates complete
+    let allUpdated = false;
+    const maxAttempts = 30;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts && !allUpdated) {
+      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
+      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+      const updatedTask3 = await db.task.findUnique({ where: { id: task3.id } });
+      
+      if (
+        updatedTask1?.deploymentStatus === "production" &&
+        updatedTask2?.deploymentStatus === "production" &&
+        updatedTask3?.deploymentStatus === "production"
+      ) {
+        allUpdated = true;
+      }
+      
+      if (!allUpdated) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+    }
+
+    // Verify ALL staging tasks were upgraded to production
+    const finalTask1 = await db.task.findUnique({ where: { id: task1.id } });
+    const finalTask2 = await db.task.findUnique({ where: { id: task2.id } });
+    const finalTask3 = await db.task.findUnique({ where: { id: task3.id } });
+    
+    expect(finalTask1?.deploymentStatus).toBe("production");
+    expect(finalTask2?.deploymentStatus).toBe("production");
+    expect(finalTask3?.deploymentStatus).toBe("production");
+    
+    expect(finalTask1?.deployedToProductionAt).toBeTruthy();
+    expect(finalTask2?.deployedToProductionAt).toBeTruthy();
+    expect(finalTask3?.deployedToProductionAt).toBeTruthy();
+    
+    // Verify deployment records were created for all tasks
+    const deployments = await db.deployment.findMany({
+      where: {
+        repositoryId: testSetup.repository.id,
+        environment: "PRODUCTION",
+        status: "SUCCESS",
+      },
+    });
+    expect(deployments.length).toBe(3);
   });
 });
