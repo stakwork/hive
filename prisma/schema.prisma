@@ -480,6 +480,7 @@ model Repository {
   // Tasks can be linked to repositories
   tasks       Task[]
   deployments Deployment[]
+  janitorRuns JanitorRun[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
   @@index([workspaceId])
@@ -776,16 +777,20 @@ model JanitorRun {
   completedAt       DateTime?      @map("completed_at")
   error             String?
   metadata          Json           @default("{}")
+  repositoryId      String?        @map("repository_id")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
   janitorConfig   JanitorConfig           @relation(fields: [janitorConfigId], references: [id], onDelete: Cascade)
+  repository      Repository?             @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations JanitorRecommendation[]
 
   @@index([janitorConfigId])
   @@index([janitorType])
   @@index([status])
   @@index([createdAt])
+  @@index([repositoryId])
+  @@index([janitorConfigId, janitorType, repositoryId])
   @@map("janitor_runs")
 }
 
