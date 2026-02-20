@@ -23,9 +23,7 @@ vi.mock("@/utils/devContainerUtils", () => ({
   devcontainerJsonContent: vi.fn(() => "{}"),
 }));
 
-vi.mock("@/lib/env-parser", () => ({
-  parseEnv: vi.fn(),
-}));
+
 
 vi.mock("@/lib/helpers/repository", () => ({
   getPrimaryRepository: vi.fn(),
@@ -41,14 +39,12 @@ vi.mock("@/services/swarm/db", () => ({
 
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
 import { parsePM2Content } from "@/utils/devContainerUtils";
-import { parseEnv } from "@/lib/env-parser";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 
 const mockPollAgentProgress = pollAgentProgress as unknown as ReturnType<typeof vi.fn>;
 const mockParsePM2Content = parsePM2Content as unknown as ReturnType<typeof vi.fn>;
-const mockParseEnv = parseEnv as unknown as ReturnType<typeof vi.fn>;
 const mockGetPrimaryRepository = getPrimaryRepository as unknown as ReturnType<typeof vi.fn>;
 const mockParseGithubOwnerRepo = parseGithubOwnerRepo as unknown as ReturnType<typeof vi.fn>;
 const mockSaveOrUpdateSwarm = saveOrUpdateSwarm as unknown as ReturnType<typeof vi.fn>;
@@ -219,7 +215,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       ]);
 
-      mockParseEnv.mockReturnValue({ PORT: "3000" });
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -311,7 +306,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -372,7 +366,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -417,7 +410,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       ]);
 
-      mockParseEnv.mockReturnValue({ PORT: "3000" });
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -461,7 +453,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -509,7 +500,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -587,7 +577,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -662,7 +651,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       ];
 
       mockParsePM2Content.mockReturnValue(mockServices);
-      mockParseEnv.mockReturnValue({ PORT: "3000" });
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -682,7 +670,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       expect(saveCallArgs.services).toEqual(mockServices);
     });
 
-    it("should parse environment variables from .env file", async () => {
+    it("should ignore .env file (deprecated - env vars now come from PM2 config)", async () => {
       const mockEnvContent = `
         PORT=3000
         NODE_ENV=production
@@ -696,7 +684,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         status: 200,
         data: {
           "pm2.config.js": "module.exports = { apps: [] }",
-          ".env": mockEnvContent,
+          ".env": mockEnvContent, // This file should be ignored
         },
       });
 
@@ -709,15 +697,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         repo: "test-repo",
       });
 
-      const mockEnvVars = {
-        PORT: "3000",
-        NODE_ENV: "production",
-        DATABASE_URL: "postgresql://localhost/test",
-        API_KEY: "secret123",
-      };
-
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue(mockEnvVars);
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -728,18 +708,10 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       const response = await GET(request);
       await parseSSEStream(response);
 
-      // Verify parseEnv was called
-      expect(mockParseEnv).toHaveBeenCalled();
-
-      // Verify environment variables were passed to saveOrUpdateSwarm
+      // Verify saveOrUpdateSwarm was called without environmentVariables parameter
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalled();
       const saveCallArgs = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCallArgs.environmentVariables).toEqual([
-        { name: "PORT", value: "3000" },
-        { name: "NODE_ENV", value: "production" },
-        { name: "DATABASE_URL", value: "postgresql://localhost/test" },
-        { name: "API_KEY", value: "secret123" },
-      ]);
+      expect(saveCallArgs.environmentVariables).toBeUndefined();
     });
 
     it("should handle base64-encoded PM2 content", async () => {
@@ -765,7 +737,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -810,19 +781,19 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       const response = await GET(request);
       const events = await parseSSEStream(response);
 
-      // Should complete successfully with empty env vars
+      // Should complete successfully without environmentVariables
       const completedEvent = events.find((e) => e.event === "completed");
       expect(completedEvent).toBeDefined();
 
-      // Verify saveOrUpdateSwarm was called with empty environmentVariables
+      // Verify saveOrUpdateSwarm was called without environmentVariables parameter
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalled();
       const saveCallArgs = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCallArgs.environmentVariables).toEqual([]);
+      expect(saveCallArgs.environmentVariables).toBeUndefined();
     });
   });
 
   describe("Database Persistence", () => {
-    it("should call saveOrUpdateSwarm with correct parameters", async () => {
+    it("should call saveOrUpdateSwarm with correct parameters (without environmentVariables)", async () => {
       const mockServices = [
         {
           name: "api-service",
@@ -831,17 +802,12 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       ];
 
-      const mockEnvVars = {
-        PORT: "3001",
-        NODE_ENV: "development",
-      };
-
       mockPollAgentProgress.mockResolvedValue({
         ok: true,
         status: 200,
         data: {
           "pm2.config.js": "module.exports = { apps: [] }",
-          ".env": "PORT=3001",
+          ".env": "PORT=3001", // This file is ignored
         },
       });
 
@@ -855,7 +821,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue(mockServices);
-      mockParseEnv.mockReturnValue(mockEnvVars);
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -869,10 +834,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         services: mockServices,
-        environmentVariables: [
-          { name: "PORT", value: "3001" },
-          { name: "NODE_ENV", value: "development" },
-        ],
         containerFiles: expect.objectContaining({
           Dockerfile: expect.any(String),
           "pm2.config.js": expect.any(String),
@@ -880,6 +841,10 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
           "devcontainer.json": expect.any(String),
         }),
       });
+      
+      // Verify environmentVariables is NOT passed
+      const saveCallArgs = mockSaveOrUpdateSwarm.mock.calls[0][0];
+      expect(saveCallArgs.environmentVariables).toBeUndefined();
     });
 
     it("should update swarm status to COMPLETED on success", async () => {
@@ -902,7 +867,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -943,7 +907,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1042,7 +1005,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1106,7 +1068,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         throw new Error("Parse error");
       });
 
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1143,7 +1104,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockRejectedValue(new Error("Database connection failed"));
 
       const request = createGetRequest({
@@ -1187,7 +1147,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       ]);
 
-      mockParseEnv.mockReturnValue({ PORT: "3000" });
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1235,7 +1194,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({});
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1277,7 +1235,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue([]);
-      mockParseEnv.mockReturnValue({ PORT: "3000" });
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1290,12 +1247,11 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
 
       // Verify the response data was processed
       expect(mockParsePM2Content).toHaveBeenCalledWith(mockApiResponse.result["pm2.config.js"]);
-      expect(mockParseEnv).toHaveBeenCalled();
     });
   });
 
   describe("End-to-End Flow", () => {
-    it("should complete full agent stream flow successfully", async () => {
+    it("should complete full agent stream flow successfully (without .env parsing)", async () => {
       const mockServices = [
         {
           name: "frontend",
@@ -1316,18 +1272,12 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       ];
 
-      const mockEnvVars = {
-        PORT: "3000",
-        NODE_ENV: "production",
-        DATABASE_URL: "postgresql://localhost/db",
-      };
-
       mockPollAgentProgress.mockResolvedValue({
         ok: true,
         status: 200,
         data: {
           "pm2.config.js": "module.exports = { apps: [...] }",
-          ".env": "PORT=3000\nNODE_ENV=production\nDATABASE_URL=postgresql://localhost/db",
+          ".env": "PORT=3000\nNODE_ENV=production\nDATABASE_URL=postgresql://localhost/db", // Ignored
         },
       });
 
@@ -1341,7 +1291,6 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       });
 
       mockParsePM2Content.mockReturnValue(mockServices);
-      mockParseEnv.mockReturnValue(mockEnvVars);
       mockSaveOrUpdateSwarm.mockResolvedValue({});
 
       const request = createGetRequest({
@@ -1378,15 +1327,10 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       expect(updatedSwarm?.agentRequestId).toBeNull();
       expect(updatedSwarm?.containerFilesSetUp).toBe(true);
 
-      // Verify saveOrUpdateSwarm was called correctly
+      // Verify saveOrUpdateSwarm was called correctly (WITHOUT environmentVariables)
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         services: mockServices,
-        environmentVariables: [
-          { name: "PORT", value: "3000" },
-          { name: "NODE_ENV", value: "production" },
-          { name: "DATABASE_URL", value: "postgresql://localhost/db" },
-        ],
         containerFiles: expect.objectContaining({
           Dockerfile: expect.any(String),
           "pm2.config.js": expect.any(String),
@@ -1394,6 +1338,10 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
           "devcontainer.json": expect.any(String),
         }),
       });
+
+      // Verify environmentVariables is NOT passed
+      const saveCallArgs = mockSaveOrUpdateSwarm.mock.calls[0][0];
+      expect(saveCallArgs.environmentVariables).toBeUndefined();
 
       // Verify encryption maintained
       const storedApiKey = updatedSwarm?.swarmApiKey || "";
