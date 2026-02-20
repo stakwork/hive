@@ -470,6 +470,147 @@ describe("Janitor Service", () => {
         },
       });
     });
+
+    test("should use specific repository when repositoryId is provided", async () => {
+      const mockConfig = janitorMocks.createMockConfig({ 
+        unitTestsEnabled: true,
+      });
+      
+      // Create mock with multiple repositories
+      const mockRun = janitorMocks.createMockRunWithConfig(
+        { repositoryId: "repo-2", status: "PENDING" }, 
+        { unitTestsEnabled: true }
+      );
+      
+      // Override repositories to include repo-2
+      const mockRunWithRepos = {
+        ...mockRun,
+        janitorConfig: {
+          ...mockRun.janitorConfig,
+          workspace: {
+            ...mockRun.janitorConfig.workspace,
+            repositories: [
+              { id: "repo-1", repositoryUrl: "https://github.com/org/repo1", branch: "main", ignoreDirs: "node_modules" },
+              { id: "repo-2", repositoryUrl: "https://github.com/org/repo2", branch: "develop", ignoreDirs: "dist,build" },
+            ]
+          }
+        }
+      };
+      
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRunWithRepos as any);
+      vi.mocked(db.janitorRun.update).mockResolvedValue({
+        ...mockRunWithRepos,
+        status: "RUNNING",
+        stakworkProjectId: 12345,
+      } as any);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      vi.mocked(stakworkService).mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS", "MANUAL", "repo-2");
+
+      // Verify repositoryId is stored on the run
+      expect(db.janitorRun.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          repositoryId: "repo-2",
+        }),
+        include: expect.any(Object),
+      });
+
+      // Verify correct repo's branch, repositoryUrl, and ignoreDirs are passed to Stakwork
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  repositoryUrl: "https://github.com/org/repo2",
+                  branch: "develop",
+                  ignoreDirs: "dist,build",
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should log warning and return pending run when repositoryId has no repositoryUrl", async () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      
+      const mockConfig = janitorMocks.createMockConfig({ 
+        unitTestsEnabled: true,
+      });
+      
+      // Create mock with repo-2 that has no repositoryUrl
+      const mockRun = janitorMocks.createMockRunWithConfig(
+        { repositoryId: "repo-2", status: "PENDING" }, 
+        { unitTestsEnabled: true }
+      );
+      
+      // Override repositories to include repo-2 with null URL
+      const mockRunWithRepos = {
+        ...mockRun,
+        janitorConfig: {
+          ...mockRun.janitorConfig,
+          workspace: {
+            ...mockRun.janitorConfig.workspace,
+            repositories: [
+              { id: "repo-1", repositoryUrl: "https://github.com/org/repo1", branch: "main", ignoreDirs: "node_modules" },
+              { id: "repo-2", repositoryUrl: null, branch: "main", ignoreDirs: null },
+            ]
+          }
+        }
+      };
+      
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRunWithRepos as any);
+
+      const result = await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS", "MANUAL", "repo-2");
+
+      // Verify warning was logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[Janitor] No repository URL for repositoryId=repo-2")
+      );
+
+      // Verify run was created with repositoryId
+      expect(db.janitorRun.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          repositoryId: "repo-2",
+        }),
+        include: expect.any(Object),
+      });
+
+      // Verify no Stakwork call was made
+      expect(stakworkService).not.toHaveBeenCalled();
+      expect(result.status).toBe("PENDING");
+
+      consoleWarnSpy.mockRestore();
+    });
   });
 
   describe("getJanitorRuns", () => {
