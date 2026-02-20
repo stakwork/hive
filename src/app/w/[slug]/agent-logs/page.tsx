@@ -32,8 +32,9 @@ import { AgentLogsTable } from "@/components/agent-logs";
 import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AgentLogRecord, AgentLogsResponse } from "@/types/agent-logs";
-import { FileText, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 
 const LOGS_PER_PAGE = 20;
 
@@ -146,7 +147,17 @@ export default function AgentLogsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={FileText} title="Agent Logs" />
+      <div className="flex items-center justify-between">
+        <PageHeader icon={FileText} title="Agent Logs" />
+        {(slug === "hive" || slug === "stakwork") && (
+          <Button asChild>
+            <Link href={`/w/${slug}/agent-logs/chat`}>
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Logs Chat
+            </Link>
+          </Button>
+        )}
+      </div>
 
       <Card>
         <CardHeader>

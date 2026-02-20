@@ -1,0 +1,1 @@
+export { LogsChat } from "./LogsChat";
