@@ -484,7 +484,13 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
           console.log(
             `[releaseTaskPod] Pod ${podId} is assigned to different task (${podUsage.usageStatusMarkedBy}) not this task (${taskId})`,
           );
+          // Clear stale podId from the task record
+          await db.task.update({
+            where: { id: taskId },
+            data: { podId: null },
+          });
           result.reassigned = true;
+          result.taskCleared = true;
           result.success = true;
           return result;
         }
