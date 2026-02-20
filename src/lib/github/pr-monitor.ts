@@ -506,50 +506,56 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pr_use_rebase_for_updates: boolean;
     }>
   >`
-    SELECT DISTINCT ON (a.content->>'url')
-      a.id,
-      a.content,
-      t.id as task_id,
-      t.pod_id,
-      t.workspace_id,
-      w.owner_id,
-      COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
-      COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
-      COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
-      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
-      COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
-    FROM artifacts a
-    JOIN chat_messages m ON a.message_id = m.id
-    JOIN tasks t ON m.task_id = t.id
-    JOIN workspaces w ON t.workspace_id = w.id
-    LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
-    WHERE 
-      -- Indexed filters first (fast)
-      a.type = 'PULL_REQUEST'
-      AND t.deleted = false
-      AND t.archived = false
-      -- Only monitor workspaces with PR monitoring enabled
-      AND COALESCE(jc.pr_monitor_enabled, false) = true
-      -- Simple JSON checks (moderate)
-      AND a.content->>'url' IS NOT NULL
-      AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
-      -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
-      -- This prevents PRs from getting stuck if a fix attempt never completes
-      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
-      AND (
-        COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
-        OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
-        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
-      )
-      -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
-      -- All other states (checking, conflict, ci_failure) are re-checked every cron run
-      AND (
-        COALESCE(a.content->'progress'->>'state', '') != 'healthy'
-        OR a.content->'progress'->>'lastCheckedAt' IS NULL
-        OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
-      )
-    ORDER BY a.content->>'url', a.created_at DESC
-    LIMIT ${limit}
+    SELECT * FROM (
+      SELECT DISTINCT ON (a.content->>'url')
+        a.id,
+        a.content,
+        t.id as task_id,
+        t.pod_id,
+        t.workspace_id,
+        w.owner_id,
+        COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
+        COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
+        COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
+        COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
+        COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
+      FROM artifacts a
+      JOIN chat_messages m ON a.message_id = m.id
+      JOIN tasks t ON m.task_id = t.id
+      JOIN workspaces w ON t.workspace_id = w.id
+      LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
+      WHERE 
+        -- Indexed filters first (fast)
+        a.type = 'PULL_REQUEST'
+        AND t.deleted = false
+        AND t.archived = false
+        -- Only monitor workspaces with PR monitoring enabled
+        AND COALESCE(jc.pr_monitor_enabled, false) = true
+        -- Simple JSON checks (moderate)
+        AND a.content->>'url' IS NOT NULL
+        AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
+        -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
+        -- This prevents PRs from getting stuck if a fix attempt never completes
+        AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
+        AND (
+          COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
+          OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
+          OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+        )
+        -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
+        -- All other states (checking, conflict, ci_failure) are re-checked every cron run
+        AND (
+          COALESCE(a.content->'progress'->>'state', '') != 'healthy'
+          OR a.content->'progress'->>'lastCheckedAt' IS NULL
+          OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
+        )
+      ORDER BY a.content->>'url', a.created_at DESC
+      LIMIT ${limit}
+    ) sub
+    ORDER BY
+      CAST(
+        regexp_replace(sub.content->>'url', '.*/pull/(\d+).*', '\1')
+      AS int) ASC
   `;
 
   return artifacts.map((artifact) => ({
@@ -640,6 +646,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   errors: number;
   agentTriggered: number;
   notified: number;
+  rebaseSkipped: number;
 }> {
   const stats = {
     checked: 0,
@@ -652,6 +659,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     errors: 0,
     agentTriggered: 0,
     notified: 0,
+    rebaseSkipped: 0,
   };
 
   // Query is already limited at the DB level for efficiency
@@ -661,6 +669,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     maxPRs,
     prUrls: openPRs.slice(0, 5).map((p) => p.prUrl), // Log first 5 URLs for debugging
   });
+
+  // Track repos that have already been rebased this run to enforce one-rebase-per-repo-per-run
+  const rebasedThisRun = new Set<string>(); // "owner/repo" keys
 
   for (const pr of openPRs) {
     try {
@@ -773,20 +784,43 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
       if (result.state === "out_of_date") {
         stats.outOfDate++;
 
+        const repoKey = `${result.owner}/${result.repo}`;
+
         // Check if out-of-date fix is enabled for this workspace
         if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
           log.info("PR is out of date but auto-fix disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
+            repo: repoKey,
           });
           await updatePRArtifactProgress(pr.artifactId, progress);
         } else {
+          // Gate: skip if this repo already has a PR in 'checking' state
+          const repoAlreadyChecking = openPRs.some((other) => {
+            const p = parsePRUrl(other.prUrl);
+            return (
+              p &&
+              `${p.owner}/${p.repo}` === repoKey &&
+              other.progress?.state === "checking"
+            );
+          });
+
+          if (repoAlreadyChecking || rebasedThisRun.has(repoKey)) {
+            log.info("Skipping rebase: repo already checking or rebased this run", {
+              repoKey,
+              taskId: pr.taskId,
+              prNumber: result.prNumber,
+            });
+            stats.rebaseSkipped++;
+            await updatePRArtifactProgress(pr.artifactId, progress); // persist out_of_date state
+            continue;
+          }
+
           const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
           log.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
+            repo: repoKey,
             headBranch: result.headBranch,
             baseBranch: result.baseBranch,
             useRebase,
@@ -822,6 +856,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             progress.state = "checking";
             progress.problemDetails = undefined;
             await updatePRArtifactProgress(pr.artifactId, progress);
+
+            // Record successful rebase to prevent further rebases for this repo this run
+            rebasedThisRun.add(repoKey);
           } else {
             // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
             log.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
@@ -831,6 +868,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
               strategy: useRebase ? 'rebase' : 'merge',
             });
             await updatePRArtifactProgress(pr.artifactId, progress);
+            // Note: Do NOT add to rebasedThisRun on failure, so next cron run can retry
           }
         }
       } else if (needsAgentFix) {

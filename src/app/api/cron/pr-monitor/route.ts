@@ -24,10 +24,14 @@ export async function GET(request: NextRequest) {
           checked: 0,
           conflicts: 0,
           ciFailures: 0,
+          ciPending: 0,
+          outOfDate: 0,
+          autoMerged: 0,
           healthy: 0,
           errors: 0,
           agentTriggered: 0,
           notified: 0,
+          rebaseSkipped: 0,
         },
       });
     }
