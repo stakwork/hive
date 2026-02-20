@@ -14,35 +14,26 @@ export function resolveCwd(
   repoNames: string[],
   defaultRepoName: string
 ): string {
-  // Step 1: Handle empty cwd - use default repo
   if (!cwd || cwd.trim() === "") {
     return `/workspaces/${defaultRepoName}`;
   }
 
-  const trimmedCwd = cwd.trim();
+  const trimmed = cwd.trim();
 
-  // Step 2: Already absolute path - use as-is
-  if (trimmedCwd.startsWith("/workspaces/")) {
-    return trimmedCwd;
+  if (trimmed.startsWith("/workspaces/")) {
+    return trimmed;
   }
 
-  // Step 3: Single repo - always treat as relative to that repo
-  if (repoNames.length <= 1) {
-    const cleanedCwd = trimmedCwd.replace(/^\/+/, "");
-    return `/workspaces/${defaultRepoName}/${cleanedCwd}`;
-  }
+  const cleaned = trimmed.replace(/^\/+/, "");
+  const firstSegment = cleaned.split("/")[0];
 
-  // Step 4: Multiple repos - check if first segment matches a repo name
-  const segments = trimmedCwd.replace(/^\/+/, "").split("/");
-  const firstSegment = segments[0];
-
-  // Step 5: First segment matches a repo name exactly - use that repo
+  // CWD starts with a known repo name — already in canonical format
   if (repoNames.includes(firstSegment)) {
-    return `/workspaces/${segments.join("/")}`;
+    return `/workspaces/${cleaned}`;
   }
 
-  // Step 6: No repo match - treat as relative to default repo
-  return `/workspaces/${defaultRepoName}/${trimmedCwd.replace(/^\/+/, "")}`;
+  // Bare subdirectory (legacy data or user input without repo name)
+  return `/workspaces/${defaultRepoName}/${cleaned}`;
 }
 
 // These are service configuration commands, not actual env vars to persist
