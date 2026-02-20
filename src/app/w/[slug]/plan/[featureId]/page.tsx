@@ -548,6 +548,24 @@ export default function FeatureDetailPage() {
     }
   };
 
+  // Refs for Pusher handler dependencies — keeps the effect stable so
+  // subscribe/unsubscribe only runs when workspaceSlug or featureId change,
+  // preventing the shared Pusher channel from being destroyed while
+  // useStakworkGeneration still has handlers bound to it.
+  const isAutoLaunchingRef = useRef(isAutoLaunching);
+  const autoLaunchStepRef = useRef(autoLaunchStep);
+  const handleLaunchTasksRef = useRef(handleLaunchTasks);
+  const updateOriginalDataRef = useRef(updateOriginalData);
+  const fetchPendingRunsRef = useRef(fetchPendingRuns);
+  const setFeatureRef = useRef(setFeature);
+
+  isAutoLaunchingRef.current = isAutoLaunching;
+  autoLaunchStepRef.current = autoLaunchStep;
+  handleLaunchTasksRef.current = handleLaunchTasks;
+  updateOriginalDataRef.current = updateOriginalData;
+  fetchPendingRunsRef.current = fetchPendingRuns;
+  setFeatureRef.current = setFeature;
+
   // Pusher event listener for sequential execution
   useEffect(() => {
     if (!workspaceSlug || !featureId) return;
@@ -570,18 +588,18 @@ export default function FeatureDetailPage() {
       if (
         data.type === "ARCHITECTURE" &&
         data.status === "COMPLETED" &&
-        isAutoLaunching &&
-        autoLaunchStep === "architecture"
+        isAutoLaunchingRef.current &&
+        autoLaunchStepRef.current === "architecture"
       ) {
-        handleLaunchTasks();
+        handleLaunchTasksRef.current();
       }
 
       // Handle completion of task generation run during auto-launch
       if (
         data.type === "TASK_GENERATION" &&
         data.status === "COMPLETED" &&
-        isAutoLaunching &&
-        autoLaunchStep === "tasks"
+        isAutoLaunchingRef.current &&
+        autoLaunchStepRef.current === "tasks"
       ) {
         setIsAutoLaunching(false);
         setAutoLaunchStep(null);
@@ -591,7 +609,7 @@ export default function FeatureDetailPage() {
 
       // Handle failures during auto-launch
       if (
-        isAutoLaunching &&
+        isAutoLaunchingRef.current &&
         (data.status === "FAILED" || data.status === "ERROR" || data.status === "HALTED")
       ) {
         setIsAutoLaunching(false);
@@ -621,9 +639,9 @@ export default function FeatureDetailPage() {
         const response = await fetch(`/api/features/${featureId}`);
         const result = await response.json();
         if (result.success) {
-          setFeature(result.data);
-          updateOriginalData(result.data);
-          fetchPendingRuns();
+          setFeatureRef.current(result.data);
+          updateOriginalDataRef.current(result.data);
+          fetchPendingRunsRef.current();
         }
       } catch (error) {
         console.error("Failed to refetch feature after auto-accept:", error);
@@ -636,9 +654,8 @@ export default function FeatureDetailPage() {
     return () => {
       channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
       channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_DECISION, handleStakworkRunDecision);
-      pusher.unsubscribe(channelName);
     };
-  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks, updateOriginalData, fetchPendingRuns, setFeature]);
+  }, [workspaceSlug, featureId]);
 
   if (loading) {
     return (
