@@ -12,6 +12,7 @@ interface CreateRoadmapTaskParams {
   status?: TaskStatus;
   priority?: Priority;
   assigneeId?: string | null;
+  repositoryId?: string | null;
   autoMerge?: boolean;
 }
 
@@ -48,6 +49,7 @@ export function useRoadmapTaskMutations() {
           status: params.status,
           priority: params.priority,
           assigneeId: params.assigneeId,
+          repositoryId: params.repositoryId,
           autoMerge: params.autoMerge,
         }),
       });
