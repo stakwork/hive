@@ -141,7 +141,7 @@ export async function POST(
         model: "haiku",
         sessionConfig: {
           truncateToolResults: false,
-          maxToolResultLines: 50,
+          maxToolResultLines: 200,
           maxToolResultChars: 2000,
         },
       }),
