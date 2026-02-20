@@ -230,7 +230,6 @@ export function JanitorSection({
                       data-testid={`janitor-toggle-${janitor.id}`}
                       checked={isItemComingSoon ? false : isOn}
                       onCheckedChange={() => handleToggle(janitor)}
-                      className="data-[state=checked]:bg-green-500"
                       disabled={isItemComingSoon || loading || !canManageJanitors}
                     />
                   </div>
