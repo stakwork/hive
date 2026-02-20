@@ -138,7 +138,7 @@ export async function POST(
         prompt: prompt.trim(),
         swarmName,
         sessionId: sessionId || undefined,
-        model: "sonnet",
+        model: "haiku",
         sessionConfig: {
           truncateToolResults: false,
           maxToolResultLines: 50,
