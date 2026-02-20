@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,6 @@ import { Trash2, Plus, CheckCircle, Loader2, AlertTriangle, Settings } from "luc
 import { RepositoryData, Repository, FormSectionProps } from "../types";
 import { useRepositoryPermissions } from "@/hooks/useRepositoryPermissions";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useState, useEffect, useCallback } from "react";
 import { RepositorySettingsModal, type RepositorySyncSettings } from "./RepositorySettingsModal";
 import { toast } from "sonner";
 
@@ -41,6 +41,7 @@ export default function RepositoryForm({
   errors,
   loading,
   onChange,
+  onValidationChange,
 }: FormSectionProps<RepositoryData>) {
   const { slug: workspaceSlug } = useWorkspace();
   const {
@@ -62,6 +63,28 @@ export default function RepositoryForm({
   
   // Track which repos should show settings modal after verify
   const [pendingSettingsIndex, setPendingSettingsIndex] = useState<number | null>(null);
+
+  // Pre-verify repos with an id on mount
+  useEffect(() => {
+    const newStatus = { ...permissionStatus };
+    let hasChanges = false;
+
+    data.repositories.forEach((repo, index) => {
+      if (repo.id && permissionStatus[index] === undefined) {
+        newStatus[index] = {
+          checking: false,
+          hasAccess: true,
+          canAdmin: true,
+          error: null,
+        };
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      setPermissionStatus(newStatus);
+    }
+  }, [data.repositories]);
 
   useEffect(() => {
     if (checkingIndex !== null && !permissionLoading) {
@@ -267,19 +290,20 @@ export default function RepositoryForm({
       );
     }
 
-    if (status.hasAccess === true) {
-      if (status.canAdmin === false) {
-        return (
-          <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            Admin Required
-          </Badge>
-        );
-      }
+    if (status.hasAccess === true && status.canAdmin === true) {
       return (
         <Badge variant="default" className="ml-2 bg-green-600 hover:bg-green-700">
           <CheckCircle className="h-3 w-3 mr-1" />
           Access Verified
+        </Badge>
+      );
+    }
+
+    if (status.hasAccess === true && status.canAdmin === false) {
+      return (
+        <Badge variant="amber" className="ml-2">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Admin Access Required
         </Badge>
       );
     }
@@ -299,6 +323,22 @@ export default function RepositoryForm({
   const getRepoDisplayName = (repo: Repository, index: number) => {
     return repo.name || repo.repositoryUrl?.split("/").pop() || `Repository ${index + 1}`;
   };
+
+  // Emit validation errors when permission status changes
+  useEffect(() => {
+    if (!onValidationChange) return;
+
+    const errors: Record<string, string> = {};
+
+    data.repositories.forEach((repo, index) => {
+      const status = permissionStatus[index];
+      if (!status || status.canAdmin !== true) {
+        errors[`repositories.${index}.adminVerification`] = 'Admin access required';
+      }
+    });
+
+    onValidationChange(errors);
+  }, [permissionStatus, data.repositories, onValidationChange]);
 
   return (
     <div className="space-y-4">
