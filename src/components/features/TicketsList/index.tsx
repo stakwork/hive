@@ -262,6 +262,10 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     ) {
       try {
         const parsed = JSON.parse(latestRun.result);
+        // Handle double-encoded phases from Stakwork API
+        if (typeof parsed.phases === "string") {
+          parsed.phases = JSON.parse(parsed.phases);
+        }
         aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
         setGeneratedContent(parsed);
       } catch (error) {

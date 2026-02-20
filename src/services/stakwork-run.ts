@@ -850,6 +850,10 @@ async function applyAcceptResult(
 
     case StakworkRunType.TASK_GENERATION: {
       const tasksData = JSON.parse(run.result);
+      // Handle double-encoded phases from Stakwork API
+      if (typeof tasksData.phases === "string") {
+        tasksData.phases = JSON.parse(tasksData.phases);
+      }
 
       const featureWithPhase = await db.feature.findUnique({
         where: { id: run.featureId },
