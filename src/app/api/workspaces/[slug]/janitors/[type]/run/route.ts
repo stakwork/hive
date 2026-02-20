@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createJanitorRun } from "@/services/janitor";
+import { db } from "@/lib/db";
 
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ slug: string; type: string }> },
 ) {
   try {
@@ -17,23 +18,50 @@ export async function POST(
     }
 
     const { slug, type } = await params;
-    
-    const run = await createJanitorRun(
-      slug,
-      userId,
-      type,
-      "MANUAL"
+
+    // Fetch all repositories for the workspace to trigger a run per repo
+    const workspace = await db.workspace.findUnique({
+      where: { slug },
+      select: {
+        repositories: {
+          select: { id: true, repositoryUrl: true },
+        },
+      },
+    });
+
+    const repos = (workspace?.repositories ?? []).filter(
+      (r) => r.repositoryUrl && r.repositoryUrl.trim() !== ""
+    );
+
+    if (repos.length === 0) {
+      // No repos — fall back to single run (createJanitorRun handles the no-repo case)
+      const run = await createJanitorRun(slug, userId, type, "MANUAL");
+      return NextResponse.json({
+        success: true,
+        runs: [{
+          id: run.id,
+          janitorType: run.janitorType,
+          status: run.status,
+          triggeredBy: run.triggeredBy,
+          createdAt: run.createdAt,
+        }],
+      });
+    }
+
+    // Create a run for each repository
+    const runs = await Promise.all(
+      repos.map((repo) => createJanitorRun(slug, userId, type, "MANUAL", repo.id))
     );
 
     return NextResponse.json({
       success: true,
-      run: {
+      runs: runs.map((run) => ({
         id: run.id,
         janitorType: run.janitorType,
         status: run.status,
         triggeredBy: run.triggeredBy,
         createdAt: run.createdAt,
-      }
+      })),
     });
   } catch (error) {
     console.error("Error triggering janitor run:", error);
