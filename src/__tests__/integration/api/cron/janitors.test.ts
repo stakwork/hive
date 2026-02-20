@@ -3,7 +3,7 @@ import { GET } from "@/app/api/cron/janitors/route";
 import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/fixtures";
 import { JanitorType, JanitorStatus, JanitorTrigger, TaskStatus, WorkflowStatus } from "@prisma/client";
-import { shouldSkipJanitorRun } from "@/services/janitor-cron";
+import { shouldSkipJanitorRun, executeScheduledJanitorRuns } from "@/services/janitor-cron";
 import { NextRequest } from "next/server";
 
 /**
@@ -43,6 +43,20 @@ vi.mock("@/lib/service-factory", () => ({
   stakworkService: () => ({
     stakworkRequest: mockStakworkRequest,
   }),
+}));
+
+// Mock environment config
+vi.mock("@/config/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-api-key",
+    STAKWORK_JANITOR_WORKFLOW_ID: "123",
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
+  },
 }));
 
 // Helper to create authenticated request for tests
@@ -1163,6 +1177,136 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
+  describe("Multi-Repository Support", () => {
+    let testUser: { id: string };
+    let testWorkspace: { id: string; slug: string };
+    let janitorConfig: { id: string };
+
+    beforeEach(async () => {
+      await resetDatabase();
+
+      // Set up required environment variables
+      process.env.STAKWORK_API_KEY = "test-api-key";
+      process.env.STAKWORK_JANITOR_WORKFLOW_ID = "123";
+      process.env.STAKWORK_BASE_URL = "https://api.stakwork.com/api/v1";
+
+      // Setup mock for Stakwork service
+      mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 123456 },
+      });
+
+      testUser = await db.user.create({
+        data: {
+          id: "user-multi-repo",
+          email: "multirepo@test.com",
+          name: "Multi Repo Test User",
+        },
+      });
+
+      testWorkspace = await db.workspace.create({
+        data: {
+          id: "ws-multi-repo",
+          slug: "multi-repo-workspace",
+          name: "Multi Repo Workspace",
+          ownerId: testUser.id,
+        },
+      });
+
+      janitorConfig = await db.janitorConfig.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          unitTestsEnabled: true,
+          integrationTestsEnabled: false,
+          e2eTestsEnabled: false,
+          securityReviewEnabled: false,
+          mockGenerationEnabled: false,
+          generalRefactoringEnabled: false,
+        },
+      });
+    });
+
+    it("should create runs for all repositories with valid repositoryUrl", async () => {
+      // Create two repositories with valid URLs
+      const repo1 = await db.repository.create({
+        data: {
+          workspace: { connect: { id: testWorkspace.id } },
+          name: "Test Repo 1",
+          repositoryUrl: "https://github.com/test/repo1",
+          branch: "main",
+        },
+      });
+
+      const repo2 = await db.repository.create({
+        data: {
+          workspace: { connect: { id: testWorkspace.id } },
+          name: "Test Repo 2",
+          repositoryUrl: "https://github.com/test/repo2",
+          branch: "develop",
+        },
+      });
+
+      const result = await executeScheduledJanitorRuns();
+
+      expect(result.success).toBe(true);
+      expect(result.runsCreated).toBe(2);
+
+      // Verify runs were created for both repos
+      const runs = await db.janitorRun.findMany({
+        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      });
+      expect(runs).toHaveLength(2);
+      expect(runs.map(r => r.repositoryId).sort()).toEqual([repo1.id, repo2.id].sort());
+    });
+
+    it("should skip repository with missing repositoryUrl", async () => {
+      // Create one repo with URL and one with empty string (simulating missing URL)
+      await db.repository.create({
+        data: {
+          workspace: { connect: { id: testWorkspace.id } },
+          name: "Test Repo 1",
+          repositoryUrl: "https://github.com/test/repo1",
+          branch: "main",
+        },
+      });
+
+      await db.repository.create({
+        data: {
+          workspace: { connect: { id: testWorkspace.id } },
+          name: "Test Repo 2",
+          repositoryUrl: "",  // Empty string to simulate missing URL
+          branch: "main",
+        },
+      });
+
+      const result = await executeScheduledJanitorRuns();
+
+      expect(result.success).toBe(true);
+      expect(result.runsCreated).toBe(1);
+      expect(result.skipped).toBeGreaterThanOrEqual(1);
+
+      // Verify only one run was created
+      const runs = await db.janitorRun.findMany({
+        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      });
+      expect(runs).toHaveLength(1);
+    });
+
+    it("should skip workspace with zero repositories", async () => {
+      // No repositories created
+      const result = await executeScheduledJanitorRuns();
+
+      expect(result.success).toBe(true);
+      expect(result.runsCreated).toBe(0);
+      expect(result.skipped).toBeGreaterThanOrEqual(1);
+
+      // Verify no runs were created
+      const runs = await db.janitorRun.findMany({
+        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      });
+      expect(runs).toHaveLength(0);
+    });
+  });
+
   describe("Sequential Janitor Behavior (shouldSkipJanitorRun)", () => {
     /**
      * These tests verify the shouldSkipJanitorRun function which determines
@@ -1175,6 +1319,7 @@ describe("GET /api/cron/janitors", () => {
 
     let testUser: { id: string };
     let testWorkspace: { id: string; slug: string };
+    let testRepository: { id: string };
 
     beforeEach(async () => {
       await resetDatabase();
@@ -1195,10 +1340,19 @@ describe("GET /api/cron/janitors", () => {
           ownerId: testUser.id,
         },
       });
+
+      testRepository = await db.repository.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          name: "Test Repository",
+          repositoryUrl: "https://github.com/test/repo",
+          branch: "main",
+        },
+      });
     });
 
     it("should return false when no janitor tasks exist", async () => {
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(false);
     });
 
@@ -1208,6 +1362,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
@@ -1216,7 +1371,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(true);
     });
 
@@ -1226,6 +1381,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.DONE,
           workflowStatus: WorkflowStatus.COMPLETED,
           createdBy: { connect: { id: testUser.id } },
@@ -1249,7 +1405,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(false);
     });
 
@@ -1259,6 +1415,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.CANCELLED,
           workflowStatus: WorkflowStatus.COMPLETED,
           createdBy: { connect: { id: testUser.id } },
@@ -1282,7 +1439,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(false);
     });
 
@@ -1292,6 +1449,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.FAILED,
           createdBy: { connect: { id: testUser.id } },
@@ -1300,7 +1458,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(false);
     });
 
@@ -1310,6 +1468,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.CANCELLED,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
@@ -1318,7 +1477,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(false);
     });
 
@@ -1328,6 +1487,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
@@ -1351,7 +1511,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(result).toBe(true);
     });
 
@@ -1361,6 +1521,7 @@ describe("GET /api/cron/janitors", () => {
         data: {
           title: "Unit Test Task",
           workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
@@ -1370,12 +1531,46 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // UNIT_TESTS should have active task
-      const unitTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const unitTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
       expect(unitTestsResult).toBe(true);
 
       // INTEGRATION_TESTS should not have active task
-      const integrationTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.INTEGRATION_TESTS);
+      const integrationTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.INTEGRATION_TESTS, testRepository.id);
       expect(integrationTestsResult).toBe(false);
+    });
+
+    it("should not block repo-B when repo-A has an active run", async () => {
+      // Create second repository
+      const testRepositoryB = await db.repository.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          name: "Test Repository B",
+          repositoryUrl: "https://github.com/test/repo-b",
+          branch: "main",
+        },
+      });
+
+      // Create active task for repo-A
+      await db.task.create({
+        data: {
+          title: "Repo A Task",
+          workspace: { connect: { id: testWorkspace.id } },
+          repository: { connect: { id: testRepository.id } },
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdBy: { connect: { id: testUser.id } },
+          updatedBy: { connect: { id: testUser.id } },
+          janitorType: JanitorType.UNIT_TESTS,
+        },
+      });
+
+      // Repo-A should be blocked
+      const repoAResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepository.id);
+      expect(repoAResult).toBe(true);
+
+      // Repo-B should NOT be blocked
+      const repoBResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepositoryB.id);
+      expect(repoBResult).toBe(false);
     });
   });
 });

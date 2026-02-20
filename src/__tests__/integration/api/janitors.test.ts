@@ -243,7 +243,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
       expect(responseData.run).toMatchObject({
         janitorType: "UNIT_TESTS",
-        status: "RUNNING",
+        status: "PENDING",
         triggeredBy: "MANUAL",
       });
 
@@ -362,7 +362,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
       expect(responseData.run).toMatchObject({
         janitorType: "MOCK_GENERATION",
-        status: "RUNNING",
+        status: "PENDING",
         triggeredBy: "MANUAL",
       });
 

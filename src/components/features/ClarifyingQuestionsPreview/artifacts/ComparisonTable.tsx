@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 interface ComparisonRow {
   label: string;
   description?: string;
-  cells: Record<string, string[]>; // keyed by column name
+  cells: Record<string, string | string[]>; // keyed by column name
 }
 
 interface ComparisonTableData {
@@ -102,7 +102,8 @@ export function ComparisonTable({ data, className }: ComparisonTableProps) {
               {columns.map((col, colIdx) => {
                 const colType = getColumnType(col);
                 const config = colConfig[colType];
-                const cellItems = row.cells[col] || [];
+                const raw = row.cells[col];
+                const cellItems: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
                 return (
                   <td
                     key={colIdx}
