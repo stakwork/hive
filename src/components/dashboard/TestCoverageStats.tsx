@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export function TestCoverageStats() {
   const { id: workspaceId } = useWorkspace();
-  const { ignoreDirs, repo } = useCoverageStore();
+  const { ignoreDirs, statsRepo } = useCoverageStore();
   const { selectedLayer } = useGraphStore((s) => s.testLayerVisibility);
   const [data, setData] = useState<TestCoverageData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,8 +28,8 @@ export function TestCoverageStats() {
       if (ignoreDirs) {
         params.set("ignoreDirs", ignoreDirs);
       }
-      if (repo) {
-        params.set("repo", repo);
+      if (statsRepo) {
+        params.set("repo", statsRepo);
       }
 
       const response = await fetch(`/api/tests/coverage?${params.toString()}`);
@@ -46,7 +46,7 @@ export function TestCoverageStats() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, ignoreDirs, repo]);
+  }, [workspaceId, ignoreDirs, statsRepo]);
 
   useEffect(() => {
     fetchCoverageData();

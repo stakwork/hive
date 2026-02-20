@@ -17,7 +17,8 @@ type CoverageStore = {
   mocked: "all" | "mocked" | "unmocked";
   ignored: IgnoredFilter;
   ignoreDirs: string;
-  repo: string;
+  statsRepo: string;
+  nodesRepo: string;
   unitGlob: string;
   integrationGlob: string;
   e2eGlob: string;
@@ -32,7 +33,8 @@ type CoverageStore = {
   setMocked: (m: "all" | "mocked" | "unmocked") => void;
   setIgnored: (i: IgnoredFilter) => void;
   setIgnoreDirs: (dirs: string) => void;
-  setRepo: (repo: string) => void;
+  setStatsRepo: (repo: string) => void;
+  setNodesRepo: (repo: string) => void;
   setUnitGlob: (glob: string) => void;
   setIntegrationGlob: (glob: string) => void;
   setE2eGlob: (glob: string) => void;
@@ -51,7 +53,8 @@ export const useCoverageStore = create<CoverageStore>()(
     mocked: "all",
     ignored: "all",
     ignoreDirs: "",
-    repo: "",
+    statsRepo: "",
+    nodesRepo: "",
     unitGlob: "",
     integrationGlob: "",
     e2eGlob: "",
@@ -73,7 +76,8 @@ export const useCoverageStore = create<CoverageStore>()(
     setMocked: (m) => set({ mocked: m, offset: 0 }),
     setIgnored: (i) => set({ ignored: i, offset: 0 }),
     setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
-    setRepo: (repo) => set({ repo, offset: 0 }),
+    setStatsRepo: (repo) => set({ statsRepo: repo }),
+    setNodesRepo: (repo) => set({ nodesRepo: repo, offset: 0 }),
     setUnitGlob: (glob) => set({ unitGlob: glob, offset: 0 }),
     setIntegrationGlob: (glob) => set({ integrationGlob: glob, offset: 0 }),
     setE2eGlob: (glob) => set({ e2eGlob: glob, offset: 0 }),

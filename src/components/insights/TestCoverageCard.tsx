@@ -9,14 +9,38 @@ import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCoverageStore } from "@/stores/useCoverageStore";
 import { MetricDisplayCountOnly } from "../ui/metric-display-count-only";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 export function TestCoverageCard() {
-  const { id: workspaceId } = useWorkspace();
-  const { ignoreDirs, setIgnoreDirs, repo } = useCoverageStore();
+  const { id: workspaceId, workspace } = useWorkspace();
+  const { ignoreDirs, setIgnoreDirs, statsRepo, setStatsRepo } = useCoverageStore();
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const hasInitializedIgnoreDirs = useRef(false);
+
+  const currentStatsRepos = statsRepo ? statsRepo.split(",").filter(Boolean) : [];
+
+  const handleStatsRepoToggle = (value: string) => {
+    let newRepos = [...currentStatsRepos];
+    if (newRepos.includes(value)) {
+      newRepos = newRepos.filter((r) => r !== value);
+    } else {
+      newRepos.push(value);
+    }
+    setStatsRepo(newRepos.join(","));
+  };
+
+  const handleClearStatsRepos = () => {
+    setStatsRepo("");
+  };
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -33,8 +57,8 @@ export function TestCoverageCard() {
       if (hasInitializedIgnoreDirs.current && ignoreDirs) {
         params.set("ignoreDirs", ignoreDirs);
       }
-      if (repo) {
-        params.set("repo", repo);
+      if (statsRepo) {
+        params.set("repo", statsRepo);
       }
 
       const response = await fetch(`/api/tests/coverage?${params.toString()}`);
@@ -59,11 +83,11 @@ export function TestCoverageCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, ignoreDirs, repo, setIgnoreDirs]);
+  }, [workspaceId, ignoreDirs, statsRepo, setIgnoreDirs]);
 
   useEffect(() => {
     fetchTestCoverage();
-  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage]);
+  }, [workspaceId, ignoreDirs, statsRepo, fetchTestCoverage]);
 
   if (isLoading) {
     return (
@@ -140,11 +164,50 @@ export function TestCoverageCard() {
   return (
     <Card data-testid="coverage-card">
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <TestTube className="h-5 w-5 text-blue-500" />
-          <span>Test Coverage</span>
-        </CardTitle>
-        <CardDescription>Code coverage analysis from your test suite</CardDescription>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="flex items-center space-x-2">
+              <TestTube className="h-5 w-5 text-blue-500" />
+              <span>Test Coverage</span>
+            </CardTitle>
+            <CardDescription>Code coverage analysis from your test suite</CardDescription>
+          </div>
+          {workspace && workspace.repositories && workspace.repositories.length > 1 && (
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-8 w-[180px] justify-start text-xs font-normal">
+                    {currentStatsRepos.length === 0 ? "All Repositories" : `${currentStatsRepos.length} Selected`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[180px]">
+                  <DropdownMenuCheckboxItem
+                    checked={currentStatsRepos.length === 0}
+                    onCheckedChange={handleClearStatsRepos}
+                    className="text-xs"
+                  >
+                    All Repositories
+                  </DropdownMenuCheckboxItem>
+                  {workspace.repositories.map((r) => {
+                    const { owner, repo: parsedRepo } = parseGithubOwnerRepo(r.repositoryUrl);
+                    const value = `${owner}/${parsedRepo}`;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={r.id}
+                        checked={currentStatsRepos.includes(value)}
+                        onCheckedChange={() => handleStatsRepoToggle(value)}
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-xs"
+                      >
+                        {r.name}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
