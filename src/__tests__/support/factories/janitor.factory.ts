@@ -124,6 +124,7 @@ export async function createJanitorRecommendation(
   workspaceId: string,
   overrides: Partial<{
     janitorRunId: string;
+    repositoryId: string;
     title: string;
     description: string;
     priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";

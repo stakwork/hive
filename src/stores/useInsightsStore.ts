@@ -14,8 +14,11 @@ interface Recommendation {
     status: string;
     createdAt: string;
   };
+  repository?: {
+    id: string;
+    name: string;
+  } | null;
 }
-
 
 const initialState = {
   recommendations: [],
@@ -25,7 +28,6 @@ const initialState = {
   showAll: false,
   runningJanitors: new Set<string>(),
   workspaceSlug: null as string | null,
-  taskCoordinatorEnabled: false,
   recommendationSweepEnabled: false,
   ticketSweepEnabled: false,
 };

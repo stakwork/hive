@@ -162,11 +162,12 @@ export async function shouldSkipJanitorRun(
     return true;
   }
 
-  // Check for pending recommendations
+  // Check for pending recommendations for this specific repo
   const pendingRecommendation = await db.janitorRecommendation.findFirst({
     where: {
       workspaceId,
       status: "PENDING",
+      repositoryId,
       janitorRun: {
         janitorType,
       },
@@ -317,7 +318,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
               );
               result.errors.push({
                 workspaceSlug: slug,
-                janitorType: janitorType,
+                janitorType,
                 repositoryId: repository.id,
                 error: errorMessage,
               });
