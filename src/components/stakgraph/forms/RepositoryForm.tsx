@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2, Plus, CheckCircle, XCircle, Loader2, AlertTriangle, Settings } from "lucide-react";
+import { Trash2, Plus, CheckCircle, Loader2, AlertTriangle, Settings } from "lucide-react";
 import { RepositoryData, Repository, FormSectionProps } from "../types";
 import { useRepositoryPermissions } from "@/hooks/useRepositoryPermissions";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -24,6 +24,7 @@ interface RepositoryPermissionStatus {
   [index: number]: {
     checking: boolean;
     hasAccess: boolean | null;
+    canAdmin: boolean | null;
     error: string | null;
   };
 }
@@ -70,6 +71,7 @@ export default function RepositoryForm({
         status[wasChecking] = {
           checking: false,
           hasAccess: permissionError ? false : (permissions?.hasAccess ?? null),
+          canAdmin: permissionError ? null : (permissions?.canAdmin ?? null),
           error: permissionError,
         };
         return status;
@@ -149,7 +151,7 @@ export default function RepositoryForm({
 
     if (field === "repositoryUrl") {
       const status = { ...permissionStatus };
-      status[index] = { checking: false, hasAccess: null, error: null };
+      status[index] = { checking: false, hasAccess: null, canAdmin: null, error: null };
       setPermissionStatus(status);
     }
   };
@@ -159,7 +161,7 @@ export default function RepositoryForm({
 
     setCheckingIndex(index);
     const status = { ...permissionStatus };
-    status[index] = { checking: true, hasAccess: null, error: null };
+    status[index] = { checking: true, hasAccess: null, canAdmin: null, error: null };
     setPermissionStatus(status);
     
     // Mark this index to show settings modal after successful verification (for new repos only)
@@ -249,8 +251,8 @@ export default function RepositoryForm({
 
     if (status.error === 'org_mismatch') {
       return (
-        <Badge variant="destructive" className="ml-2">
-          <XCircle className="h-3 w-3 mr-1" />
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+          <AlertTriangle className="h-3 w-3 mr-1" />
           Wrong Organization
         </Badge>
       );
@@ -258,14 +260,22 @@ export default function RepositoryForm({
 
     if (status.error) {
       return (
-        <Badge variant="destructive" className="ml-2">
-          <XCircle className="h-3 w-3 mr-1" />
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+          <AlertTriangle className="h-3 w-3 mr-1" />
           No Access
         </Badge>
       );
     }
 
     if (status.hasAccess === true) {
+      if (status.canAdmin === false) {
+        return (
+          <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Admin Required
+          </Badge>
+        );
+      }
       return (
         <Badge variant="default" className="ml-2 bg-green-600 hover:bg-green-700">
           <CheckCircle className="h-3 w-3 mr-1" />
@@ -276,9 +286,9 @@ export default function RepositoryForm({
 
     if (status.hasAccess === false) {
       return (
-        <Badge variant="destructive" className="ml-2">
-          <XCircle className="h-3 w-3 mr-1" />
-          Access Denied
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          No Access
         </Badge>
       );
     }
@@ -372,12 +382,21 @@ export default function RepositoryForm({
                 <p className="text-sm text-destructive">{errors.repositoryUrl}</p>
               )}
               {checkingIndex === index && permissionError === 'org_mismatch' && permissionMessage && (
-                <p className="text-xs text-destructive mt-1">{permissionMessage}</p>
+                <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span>{permissionMessage}</span>
+                </div>
               )}
               {permissionStatus[index]?.error && permissionStatus[index]?.error !== 'org_mismatch' && (
                 <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
                   <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>{permissionStatus[index].error}</span>
+                </div>
+              )}
+              {permissionStatus[index]?.hasAccess && permissionStatus[index]?.canAdmin === false && (
+                <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span>Keeping this repo in sync requires admin access for webhook setup. Ask a repo admin to add this repository, or update your permissions.</span>
                 </div>
               )}
             </div>
