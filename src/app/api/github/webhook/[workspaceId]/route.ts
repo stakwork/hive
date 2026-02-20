@@ -716,18 +716,118 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             if (tokens?.accessToken) {
               const octokit = new Octokit({ auth: tokens.accessToken });
               
-              if (lastDeployment?.commitSha) {
-                // Compare commits between last deployment and current deployment
+              // PRODUCTION DEPLOYMENT: Check ALL staging tasks
+              if (environment === "production") {
+                console.log("[GithubWebhook] Production deployment detected - checking all staging tasks", {
+                  delivery,
+                  commitSha: commitSha.substring(0, 7),
+                });
+                
+                // Get all tasks currently in STAGING for this repository
+                const stagingTasks = await db.$queryRaw<Array<{
+                  merge_commit_sha: string;
+                }>>`
+                  SELECT DISTINCT a.content->>'merge_commit_sha' as merge_commit_sha
+                  FROM artifacts a
+                  JOIN chat_messages m ON a.message_id = m.id
+                  JOIN tasks t ON m.task_id = t.id
+                  WHERE a.type = 'PULL_REQUEST'
+                    AND a.content->>'merge_commit_sha' IS NOT NULL
+                    AND t.repository_id = ${repository.id}
+                    AND t.deployment_status = 'staging'
+                    AND t.deleted = false
+                    AND t.archived = false
+                `;
+                
+                console.log("[GithubWebhook] Found staging tasks to verify", {
+                  delivery,
+                  stagingTaskCount: stagingTasks.length,
+                });
+                
+                // For each staging task, check if its commit is included in this production deployment
+                for (const task of stagingTasks) {
+                  try {
+                    // Check if the task's merge commit is an ancestor of the production deployment
+                    const comparison = await octokit.repos.compareCommits({
+                      owner: repoOwner,
+                      repo: repoName,
+                      base: task.merge_commit_sha,
+                      head: commitSha,
+                    });
+                    
+                    // If status is "ahead" or "identical", the task's commit is included
+                    if (comparison.data.status === "ahead" || comparison.data.status === "identical") {
+                      commitsInDeployment.push(task.merge_commit_sha);
+                    }
+                  } catch (compareError) {
+                    console.warn("[GithubWebhook] Failed to compare staging task commit", {
+                      delivery,
+                      commitSha: task.merge_commit_sha.substring(0, 7),
+                      error: compareError,
+                    });
+                  }
+                }
+                
+                console.log("[GithubWebhook] Production deployment commit verification complete", {
+                  delivery,
+                  totalCommitsToUpdate: commitsInDeployment.length,
+                  stagingTasksChecked: stagingTasks.length,
+                });
+                
+              } else if (lastDeployment?.commitSha) {
+                // STAGING DEPLOYMENT: Use commit comparison with pagination
                 try {
-                  const comparison = await octokit.repos.compareCommits({
-                    owner: repoOwner,
-                    repo: repoName,
-                    base: lastDeployment.commitSha,
-                    head: commitSha,
+                  const allCommits: string[] = [];
+                  let page = 1;
+                  const perPage = 100; // GitHub API max per page
+                  let hasMorePages = true;
+                  
+                  console.log("[GithubWebhook] Fetching commits between deployments", {
+                    delivery,
+                    fromSha: lastDeployment.commitSha.substring(0, 7),
+                    toSha: commitSha.substring(0, 7),
                   });
                   
+                  // Paginate through all commits (GitHub API has 250 commit default limit)
+                  while (hasMorePages) {
+                    const comparison = await octokit.repos.compareCommits({
+                      owner: repoOwner,
+                      repo: repoName,
+                      base: lastDeployment.commitSha,
+                      head: commitSha,
+                      per_page: perPage,
+                      page,
+                    });
+                    
+                    const commits = comparison.data.commits.map(c => c.sha);
+                    allCommits.push(...commits);
+                    
+                    console.log("[GithubWebhook] Fetched commit page", {
+                      delivery,
+                      page,
+                      commitsInPage: commits.length,
+                      totalCommitsSoFar: allCommits.length,
+                    });
+                    
+                    // Check if we got fewer results than requested (last page)
+                    if (commits.length < perPage) {
+                      hasMorePages = false;
+                    } else {
+                      page++;
+                    }
+                    
+                    // Safety check: prevent infinite loops (max ~25k commits)
+                    if (page > 250) {
+                      console.warn("[GithubWebhook] Hit maximum page limit, stopping pagination", {
+                        delivery,
+                        totalCommits: allCommits.length,
+                      });
+                      break;
+                    }
+                  }
+                  
                   // Extract all commit SHAs from the comparison
-                  commitsInDeployment = comparison.data.commits.map(c => c.sha);
+                  commitsInDeployment = allCommits;
                   commitsInDeployment.push(commitSha); // Include head commit
                   
                   console.log("[GithubWebhook] Found commits in deployment range", {
@@ -735,7 +835,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     fromSha: lastDeployment.commitSha.substring(0, 7),
                     toSha: commitSha.substring(0, 7),
                     commitCount: commitsInDeployment.length,
+                    pagesFetched: page,
                   });
+                  
+                  // Warn if we're getting close to the old 250 limit
+                  if (commitsInDeployment.length >= 200) {
+                    console.warn("[GithubWebhook] Large number of commits in deployment", {
+                      delivery,
+                      commitCount: commitsInDeployment.length,
+                      suggestion: "Consider deploying more frequently",
+                    });
+                  }
                 } catch (compareError) {
                   console.warn("[GithubWebhook] Failed to compare commits, using single SHA", {
                     delivery,
