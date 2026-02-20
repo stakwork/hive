@@ -71,9 +71,7 @@ export function useStakworkGeneration({
     }
   }, [enabled, workspace?.id, featureId, type]);
 
-  useEffect(() => {
-    queryLatestRunRef.current = queryLatestRun;
-  }, [queryLatestRun]);
+  queryLatestRunRef.current = queryLatestRun;
 
   useEffect(() => {
     if (!enabled || !workspace?.id) return;
@@ -114,7 +112,6 @@ export function useStakworkGeneration({
     return () => {
       channel.unbind("stakwork-run-update", handleRunUpdate);
       channel.unbind("stakwork-run-decision", handleRunDecision);
-      pusher.unsubscribe(channelName);
     };
   }, [enabled, workspace?.slug, featureId, type]);
 
