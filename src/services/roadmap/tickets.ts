@@ -158,6 +158,20 @@ export async function createTicket(
     }
   }
 
+  // Validate repositoryId if provided
+  if (data.repositoryId) {
+    const repository = await db.repository.findFirst({
+      where: {
+        id: data.repositoryId,
+        workspaceId: feature.workspaceId,
+      },
+    });
+
+    if (!repository) {
+      throw new Error("Repository not found or does not belong to this workspace");
+    }
+  }
+
   const user = await db.user.findUnique({
     where: { id: userId },
   });
@@ -194,6 +208,7 @@ export async function createTicket(
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
       systemAssigneeType: systemAssigneeType,
       bountyCode: bountyCode,
+      repositoryId: data.repositoryId || null,
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,

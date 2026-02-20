@@ -77,6 +77,10 @@ interface ChatHistoryMessage {
   role: string;
   message: string;
   timestamp: string;
+  artifacts?: Array<{
+    type: ArtifactType;
+    content: Record<string, unknown> | null;
+  }>;
 }
 
 interface ArtifactRequest {
@@ -117,6 +121,15 @@ async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
       message: true,
       role: true,
       createdAt: true,
+      artifacts: {
+        where: {
+          type: ArtifactType.LONGFORM,
+        },
+        select: {
+          type: true,
+          content: true,
+        },
+      },
     },
   });
 
@@ -124,6 +137,10 @@ async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
     role: msg.role,
     message: msg.message,
     timestamp: msg.createdAt.toISOString(),
+    artifacts:
+      msg.artifacts.length > 0
+        ? (msg.artifacts as ChatHistoryMessage["artifacts"])
+        : undefined,
   }));
 }
 
@@ -133,7 +150,23 @@ async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
 function formatChatHistoryForPrompt(history: ChatHistoryMessage[]): string {
   const formattedMessages = history.map((msg) => {
     const role = msg.role === "USER" ? "User" : "Assistant";
-    return `${role}: ${msg.message}`;
+    let messageText = `${role}: ${msg.message}`;
+
+    if (msg.artifacts && msg.artifacts.length > 0) {
+      const artifactTexts = msg.artifacts
+        .map((artifact) => {
+          if (!artifact.content) return null;
+          const content = artifact.content;
+          return content.text || content.content || JSON.stringify(content);
+        })
+        .filter(Boolean);
+
+      if (artifactTexts.length > 0) {
+        messageText += `\n\nArtifacts:\n${artifactTexts.join("\n---\n")}`;
+      }
+    }
+
+    return messageText;
   });
 
   return `Here is the previous conversation history for context:\n\n${formattedMessages.join("\n\n")}\n\n---\n\nContinuing the conversation:`;
