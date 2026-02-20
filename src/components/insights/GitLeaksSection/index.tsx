@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert, CheckCircle2, ExternalLink } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert, CheckCircle2, ExternalLink, GitBranch } from "lucide-react";
 import { GitLeakResult } from "@/types/git-leaks";
 import { toast } from "sonner";
 
@@ -59,17 +60,29 @@ export function GitLeaksSection() {
   const [sortKey, setSortKey] = useState<SortKey>("Date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const hasAutoScanned = useRef(false);
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | undefined>(
+    () => workspace?.repositories?.[0]?.id
+  );
 
   const ITEMS_PER_PAGE = 15;
 
+  // Sync selectedRepositoryId with workspace changes
+  useEffect(() => {
+    if (!selectedRepositoryId && workspace?.repositories?.[0]?.id) {
+      setSelectedRepositoryId(workspace.repositories[0].id);
+    }
+  }, [workspace, selectedRepositoryId]);
+
   const handleRunScan = useCallback(async () => {
-    if (!workspace?.slug) return;
+    if (!workspace?.slug || !selectedRepositoryId) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/workspaces/${workspace.slug}/git-leaks`);
+      const response = await fetch(
+        `/api/workspaces/${workspace.slug}/git-leaks?repositoryId=${selectedRepositoryId}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -90,7 +103,7 @@ export function GitLeaksSection() {
     } finally {
       setLoading(false);
     }
-  }, [workspace?.slug]);
+  }, [workspace?.slug, selectedRepositoryId]);
 
   // Auto-scan only when ?scan=git-leaks is in URL (from widget click)
   useEffect(() => {
@@ -180,16 +193,48 @@ export function GitLeaksSection() {
               Scan your repository for accidental secret leaks, API keys, and sensitive data.
             </CardDescription>
           </div>
-          <Button onClick={handleRunScan} disabled={loading} size="sm">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Scanning...
-              </>
-            ) : (
-              "Run Scan"
+          <div className="flex items-center gap-2">
+            {workspace?.repositories && workspace.repositories.length > 1 && (
+              <Select
+                value={selectedRepositoryId}
+                onValueChange={(value) => {
+                  setSelectedRepositoryId(value);
+                  setLeaks([]);
+                  setScannedAt(null);
+                  setError(null);
+                }}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    <span className="truncate">
+                      {workspace.repositories.find(r => r.id === selectedRepositoryId)?.name || "Select repository"}
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {workspace.repositories.map((repo) => (
+                    <SelectItem key={repo.id} value={repo.id}>
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        <span>{repo.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-          </Button>
+            <Button onClick={handleRunScan} disabled={loading} size="sm">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Scanning...
+                </>
+              ) : (
+                "Run Scan"
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
