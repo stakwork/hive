@@ -725,4 +725,71 @@ describe("DevContainer Utils - Unit Tests", () => {
       expect(parsed[0].advanced!.watch).toBe(true);
     });
   });
+
+  describe("CWD round-trip", () => {
+    test("PM2 parse -> generate preserves CWD (single repo at root)", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/sphinx-tribes",
+      env: { PORT: "3000" }
+    }
+  ],
+};`;
+      const parsed = parsePM2Content(pm2);
+      expect(parsed[0].cwd).toBe("sphinx-tribes");
+
+      const generated = generatePM2Apps(["sphinx-tribes"], parsed as ServiceDataConfig[]);
+      expect(generated[0].cwd).toBe("/workspaces/sphinx-tribes");
+    });
+
+    test("PM2 parse -> generate preserves CWD with subdir", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "npm start",
+      cwd: "/workspaces/my-repo/backend",
+      env: { PORT: "3000" }
+    }
+  ],
+};`;
+      const parsed = parsePM2Content(pm2);
+      expect(parsed[0].cwd).toBe("my-repo/backend");
+
+      const generated = generatePM2Apps(["my-repo"], parsed as ServiceDataConfig[]);
+      expect(generated[0].cwd).toBe("/workspaces/my-repo/backend");
+    });
+
+    test("PM2 parse -> generate preserves CWD (multi-repo)", () => {
+      const pm2 = `module.exports = {
+  apps: [
+    {
+      name: "frontend",
+      script: "npm start",
+      cwd: "/workspaces/frontend-repo",
+      env: { PORT: "3000" }
+    },
+    {
+      name: "backend",
+      script: "npm start",
+      cwd: "/workspaces/backend-repo/src",
+      env: { PORT: "8080" }
+    }
+  ],
+};`;
+      const parsed = parsePM2Content(pm2);
+      expect(parsed[0].cwd).toBe("frontend-repo");
+      expect(parsed[1].cwd).toBe("backend-repo/src");
+
+      const generated = generatePM2Apps(
+        ["frontend-repo", "backend-repo"],
+        parsed as ServiceDataConfig[]
+      );
+      expect(generated[0].cwd).toBe("/workspaces/frontend-repo");
+      expect(generated[1].cwd).toBe("/workspaces/backend-repo/src");
+    });
+  });
 });
