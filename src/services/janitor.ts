@@ -83,7 +83,8 @@ export async function createJanitorRun(
   workspaceSlug: string,
   userId: string,
   janitorTypeString: string,
-  triggeredBy: JanitorTrigger = "MANUAL"
+  triggeredBy: JanitorTrigger = "MANUAL",
+  repositoryId?: string
 ) {
   // Parse janitor type first (needed regardless of auth path)
   const janitorTypeUpper = janitorTypeString.toUpperCase();
@@ -139,6 +140,7 @@ export async function createJanitorRun(
       janitorType,
       triggeredBy,
       status: "PENDING",
+      repositoryId: repositoryId ?? null,
       metadata: {
         triggeredByUserId: userId,
         workspaceId,
@@ -206,24 +208,28 @@ export async function createJanitorRun(
       console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
     }
 
-    // Get repository data from first repository
-    const repository = janitorRun.janitorConfig.workspace.repositories[0];
-    const repositoryUrl = repository?.repositoryUrl || null;
-    const ignoreDirs = repository?.ignoreDirs || null;
+    // Get repository data - lookup by repositoryId if provided, otherwise use first repository
+    const allRepositories = janitorRun.janitorConfig.workspace.repositories;
+    const repository = repositoryId
+      ? allRepositories.find((r) => r.id === repositoryId) ?? null
+      : allRepositories[0] ?? null;
 
-    if (!repositoryUrl) {
-      console.warn(`[Janitor] No repository linked to workspace: ${workspaceSlug}`);
+    if (!repository?.repositoryUrl) {
+      console.warn(`[Janitor] No repository URL for repositoryId=${repositoryId ?? 'first'} in workspace: ${workspaceSlug}`);
+      // Return the run in PENDING state without starting Stakwork workflow
+      return janitorRun;
     }
 
-    // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, ignoreDirs, and GitHub context
+    // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, branch, ignoreDirs, and GitHub context
     const vars = {
       janitorType: janitorType,
       webhookUrl: webhookUrl,
       swarmUrl: swarmUrl,
       swarmSecretAlias: swarmSecretAlias,
       workspaceId: workspaceId,
-      repositoryUrl: repositoryUrl,
-      ignoreDirs: ignoreDirs,
+      repositoryUrl: repository?.repositoryUrl ?? null,
+      branch: repository?.branch ?? null,
+      ignoreDirs: repository?.ignoreDirs ?? null,
       username: githubCreds?.username || null,
       pat: githubCreds?.token || null,
     };

@@ -470,7 +470,7 @@ export default function ServicesForm({
                     </Label>
                     <Input
                       id={`service-cwd-${idx}`}
-                      placeholder="Subdirectory (e.g. backend, services/api)"
+                      placeholder="e.g. my-repo, my-repo/backend"
                       type="text"
                       value={svc.cwd || ""}
                       onChange={(e) => {

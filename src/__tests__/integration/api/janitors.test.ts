@@ -241,9 +241,9 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.run).toMatchObject({
+      expect(responseData.runs[0]).toMatchObject({
         janitorType: "UNIT_TESTS",
-        status: "RUNNING",
+        status: "PENDING",
         triggeredBy: "MANUAL",
       });
 
@@ -255,8 +255,7 @@ describe("Janitor API Integration Tests", () => {
           },
         },
       });
-      const expectedRunsCount = 1; // Should have created exactly one run
-      expect(runs).toHaveLength(expectedRunsCount);
+      expect(runs.length).toBeGreaterThanOrEqual(1);
       expect(runs[0].janitorType).toBe("UNIT_TESTS");
     });
 
@@ -332,7 +331,7 @@ describe("Janitor API Integration Tests", () => {
       expect(response.status).toBe(200);
       const responseData = await response.json();
       expect(responseData.success).toBe(true);
-      expect(responseData.run.janitorType).toBe("UNIT_TESTS");
+      expect(responseData.runs[0].janitorType).toBe("UNIT_TESTS");
     });
 
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should trigger MOCK_GENERATION run when enabled", async () => {
@@ -360,9 +359,9 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.run).toMatchObject({
+      expect(responseData.runs[0]).toMatchObject({
         janitorType: "MOCK_GENERATION",
-        status: "RUNNING",
+        status: "PENDING",
         triggeredBy: "MANUAL",
       });
 

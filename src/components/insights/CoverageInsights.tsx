@@ -84,8 +84,8 @@ export function CoverageInsights() {
   const {
     ignoreDirs,
     setIgnoreDirs,
-    repo,
-    setRepo,
+    nodesRepo,
+    setNodesRepo,
     unitGlob,
     setUnitGlob,
     integrationGlob,
@@ -109,7 +109,9 @@ export function CoverageInsights() {
       });
       if (!response.ok) throw new Error("Failed to update");
       toast(currentlyIgnored ? "Node Restored" : "Node Ignored", {
-        description: currentlyIgnored ? "This item is now visible in the inventory." : "This item has been hidden from the inventory.",
+        description: currentlyIgnored
+          ? "This item is now visible in the inventory."
+          : "This item has been hidden from the inventory.",
       });
       queryClient.invalidateQueries({ queryKey: ["coverage-nodes"] });
     } catch (error) {
@@ -272,8 +274,8 @@ export function CoverageInsights() {
               <AdvancedFiltersPopover
                 ignoreDirs={ignoreDirs}
                 setIgnoreDirs={setIgnoreDirs}
-                repo={repo}
-                setRepo={setRepo}
+                nodesRepo={nodesRepo}
+                setNodesRepo={setNodesRepo}
                 unitGlob={unitGlob}
                 setUnitGlob={setUnitGlob}
                 integrationGlob={integrationGlob}
@@ -415,14 +417,16 @@ export function CoverageInsights() {
                           <TableCell className="text-right">
                             <Badge variant={r.covered ? "default" : "outline"}>
                               {params.nodeType === "mock"
-                                ? r.covered ? "Mocked" : "Unmocked"
-                                : r.covered ? "Tested" : "Untested"}
+                                ? r.covered
+                                  ? "Mocked"
+                                  : "Unmocked"
+                                : r.covered
+                                  ? "Tested"
+                                  : "Untested"}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Badge variant={r.is_muted ? "secondary" : "outline"}>
-                              {r.is_muted ? "Yes" : "No"}
-                            </Badge>
+                            <Badge variant={r.is_muted ? "secondary" : "outline"}>{r.is_muted ? "Yes" : "No"}</Badge>
                           </TableCell>
                           <TableCell className="w-[50px]">
                             <TooltipProvider>

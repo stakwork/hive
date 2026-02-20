@@ -8,12 +8,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { SlidersHorizontal, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 interface AdvancedFiltersPopoverProps {
   ignoreDirs: string;
   setIgnoreDirs: (dirs: string) => void;
-  repo: string;
-  setRepo: (repo: string) => void;
+  nodesRepo: string;
+  setNodesRepo: (repo: string) => void;
   unitGlob: string;
   setUnitGlob: (glob: string) => void;
   integrationGlob: string;
@@ -25,8 +33,8 @@ interface AdvancedFiltersPopoverProps {
 export function AdvancedFiltersPopover({
   ignoreDirs,
   setIgnoreDirs,
-  repo,
-  setRepo,
+  nodesRepo,
+  setNodesRepo,
   unitGlob,
   setUnitGlob,
   integrationGlob,
@@ -36,10 +44,11 @@ export function AdvancedFiltersPopover({
 }: AdvancedFiltersPopoverProps) {
   const [open, setOpen] = useState(false);
   const [ignoreDirsInput, setIgnoreDirsInput] = useState(ignoreDirs);
-  const [repoInput, setRepoInput] = useState(repo);
+  const [nodesRepoInput, setNodesRepoInput] = useState(nodesRepo);
   const [unitGlobInput, setUnitGlobInput] = useState(unitGlob);
   const [integrationGlobInput, setIntegrationGlobInput] = useState(integrationGlob);
   const [e2eGlobInput, setE2eGlobInput] = useState(e2eGlob);
+  const { workspace } = useWorkspace();
 
   // Sync inputs with store values
   useEffect(() => {
@@ -47,8 +56,8 @@ export function AdvancedFiltersPopover({
   }, [ignoreDirs]);
 
   useEffect(() => {
-    setRepoInput(repo);
-  }, [repo]);
+    setNodesRepoInput(nodesRepo);
+  }, [nodesRepo]);
 
   useEffect(() => {
     setUnitGlobInput(unitGlob);
@@ -66,12 +75,12 @@ export function AdvancedFiltersPopover({
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (ignoreDirs && ignoreDirs.length > 0) count++;
-    if (repo && repo.length > 0) count++;
+    if (nodesRepo && nodesRepo.length > 0) count++;
     if (unitGlob && unitGlob.length > 0) count++;
     if (integrationGlob && integrationGlob.length > 0) count++;
     if (e2eGlob && e2eGlob.length > 0) count++;
     return count;
-  }, [ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob]);
+  }, [ignoreDirs, nodesRepo, unitGlob, integrationGlob, e2eGlob]);
 
   const handleApplyIgnoreDirs = () => {
     const cleaned = ignoreDirsInput
@@ -84,15 +93,18 @@ export function AdvancedFiltersPopover({
     }
   };
 
-  const handleApplyRepo = () => {
-    const cleaned = repoInput
-      .split(",")
-      .map((r) => r.trim())
-      .filter((r) => r.length > 0)
-      .join(",");
-    if (cleaned !== repo) {
-      setRepo(cleaned);
+  const currentNodesRepos = nodesRepoInput ? nodesRepoInput.split(",").filter(Boolean) : [];
+
+  const handleNodesRepoToggle = (value: string) => {
+    let newRepos = [...currentNodesRepos];
+    if (newRepos.includes(value)) {
+      newRepos = newRepos.filter((r) => r !== value);
+    } else {
+      newRepos.push(value);
     }
+    const val = newRepos.join(",");
+    setNodesRepoInput(val);
+    setNodesRepo(val);
   };
 
   const handleApplyUnitGlob = () => {
@@ -118,12 +130,12 @@ export function AdvancedFiltersPopover({
 
   const handleClearAll = () => {
     setIgnoreDirs("");
-    setRepo("");
+    setNodesRepo("");
     setUnitGlob("");
     setIntegrationGlob("");
     setE2eGlob("");
     setIgnoreDirsInput("");
-    setRepoInput("");
+    setNodesRepoInput("");
     setUnitGlobInput("");
     setIntegrationGlobInput("");
     setE2eGlobInput("");
@@ -150,39 +162,52 @@ export function AdvancedFiltersPopover({
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
               <h4 className="font-semibold text-sm">Advanced Filters</h4>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setOpen(false)}
-              className="h-6 w-6"
-            >
+            <Button variant="ghost" size="icon-sm" onClick={() => setOpen(false)} className="h-6 w-6">
               <X className="h-4 w-4" />
             </Button>
           </div>
 
           <Separator />
 
-          {/* Repository Filter */}
-          <div className="space-y-2">
-            <Label htmlFor="repo-filter" className="text-xs font-medium text-muted-foreground">
-              Repository
-            </Label>
-            <Input
-              id="repo-filter"
-              type="text"
-              placeholder="all, /path/repo1, or /path/repo1,/path/repo2"
-              value={repoInput}
-              onChange={(e) => setRepoInput(e.target.value)}
-              onBlur={handleApplyRepo}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleApplyRepo();
-                  e.currentTarget.blur();
-                }
-              }}
-              className="h-9 text-sm"
-            />
-          </div>
+          {workspace && workspace.repositories && workspace.repositories.length > 1 && (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Repository</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-9 w-full justify-start text-sm font-normal">
+                    {currentNodesRepos.length === 0 ? "All Repositories" : `${currentNodesRepos.length} Selected`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[408px]">
+                  <DropdownMenuCheckboxItem
+                    checked={currentNodesRepos.length === 0}
+                    onCheckedChange={() => {
+                      setNodesRepoInput("");
+                      setNodesRepo("");
+                    }}
+                    className="text-xs"
+                  >
+                    All Repositories
+                  </DropdownMenuCheckboxItem>
+                  {workspace.repositories.map((r) => {
+                    const { owner, repo: parsedRepo } = parseGithubOwnerRepo(r.repositoryUrl);
+                    const value = `${owner}/${parsedRepo}`;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={r.id}
+                        checked={currentNodesRepos.includes(value)}
+                        onCheckedChange={() => handleNodesRepoToggle(value)}
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-xs"
+                      >
+                        {r.name}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
 
           {/* Ignore Directories */}
           <div className="space-y-2">
@@ -210,9 +235,7 @@ export function AdvancedFiltersPopover({
 
           {/* Test Pattern Filters */}
           <div className="space-y-3">
-            <Label className="text-xs font-medium text-muted-foreground">
-              Test Pattern Filters (glob)
-            </Label>
+            <Label className="text-xs font-medium text-muted-foreground">Test Pattern Filters (glob)</Label>
 
             {/* Unit Tests */}
             <div className="space-y-1.5">
@@ -294,12 +317,7 @@ export function AdvancedFiltersPopover({
             >
               Clear All
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setOpen(false)}
-              className="text-xs h-8"
-            >
+            <Button variant="default" size="sm" onClick={() => setOpen(false)} className="text-xs h-8">
               Done
             </Button>
           </div>
