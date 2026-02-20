@@ -58,7 +58,8 @@ function isValidComparisonTableArtifact(artifact: QuestionArtifact | undefined):
     const cells = r.cells as Record<string, unknown>;
     for (const key of Object.keys(cells)) {
       const value = cells[key];
-      // Each cell value must be an array of strings
+      // Each cell value must be a string or an array of strings
+      if (typeof value === "string") continue;
       if (!Array.isArray(value)) return false;
       if (!value.every((item) => typeof item === "string")) return false;
     }
@@ -153,11 +154,15 @@ export function ClarifyingQuestionsPreview({
   isLoading = false,
 }: ClarifyingQuestionsPreviewProps) {
   const validQuestions = useMemo(
-    () => questions.filter((q) => !shouldSkipQuestion(q)),
+    () => questions.filter((q) => q && !shouldSkipQuestion(q)),
     [questions]
   );
 
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  if (validQuestions.length === 0) {
+    return null;
+  }
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [showReview, setShowReview] = useState(false);
 
