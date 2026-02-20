@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, Sparkles, Clock, User } from "lucide-react";
+import { CheckCircle2, GitBranch, Loader2, Sparkles, Clock, User } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
@@ -129,6 +129,12 @@ export function RecommendationsSection() {
                       <Badge className="gap-1 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 border-purple-200" data-testid="recommendation-review-badge">
                         <User className="w-3 h-3" />
                         Review Required
+                      </Badge>
+                    )}
+                    {recommendation.repository && (
+                      <Badge variant="outline" className="gap-1 px-1.5 py-0.5 text-xs" data-testid="recommendation-repo-badge">
+                        <GitBranch className="w-3 h-3" />
+                        {recommendation.repository.name}
                       </Badge>
                     )}
                     {getPriorityBadge(recommendation.priority as Priority)}
