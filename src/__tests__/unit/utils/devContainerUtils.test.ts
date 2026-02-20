@@ -45,6 +45,16 @@ describe("DevContainer Utils - Unit Tests", () => {
       expect(result).toBe("/workspaces/sphinx-nav-fiber/some-subdir");
     });
 
+    test("should not duplicate repo name when cwd matches repo name (single repo)", () => {
+      const result = resolveCwd("sphinx-tribes", ["sphinx-tribes"], "sphinx-tribes");
+      expect(result).toBe("/workspaces/sphinx-tribes");
+    });
+
+    test("should not duplicate repo name when cwd starts with repo name and has subdir (single repo)", () => {
+      const result = resolveCwd("sphinx-tribes/src", ["sphinx-tribes"], "sphinx-tribes");
+      expect(result).toBe("/workspaces/sphinx-tribes/src");
+    });
+
     test("should handle leading slashes in cwd", () => {
       const result = resolveCwd("/subdir", ["repo1"], "repo1");
       expect(result).toBe("/workspaces/repo1/subdir");

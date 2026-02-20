@@ -26,9 +26,14 @@ export function resolveCwd(
     return trimmedCwd;
   }
 
-  // Step 3: Single repo - always treat as relative to that repo
+  // Step 3: Single repo - treat as relative to that repo, but avoid duplicating
+  // the repo name when cwd already starts with it (e.g. cwd="sphinx-tribes" + repo="sphinx-tribes")
   if (repoNames.length <= 1) {
     const cleanedCwd = trimmedCwd.replace(/^\/+/, "");
+    const segments = cleanedCwd.split("/");
+    if (segments[0] === defaultRepoName) {
+      return `/workspaces/${cleanedCwd}`;
+    }
     return `/workspaces/${defaultRepoName}/${cleanedCwd}`;
   }
 
