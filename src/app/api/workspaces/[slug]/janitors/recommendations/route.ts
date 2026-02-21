@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRecommendations } from "@/services/janitor";
 import { parseJanitorType, parseRecommendationStatus, parsePriority, validatePaginationParams } from "@/lib/helpers/janitor-validation";
-import { JanitorType, RecommendationStatus, Priority } from "@prisma/client";
+import type { JanitorRecommendationFilters } from "@/types/janitor";
 
 export async function GET(
   request: NextRequest,
@@ -23,19 +23,17 @@ export async function GET(
     const statusParam = searchParams.get("status");
     const janitorTypeParam = searchParams.get("janitorType");
     const priorityParam = searchParams.get("priority");
+    const repositoryIdParam = searchParams.get("repositoryId");
     const { limit, page } = validatePaginationParams(
       searchParams.get("limit"),
       searchParams.get("page")
     );
 
+    const filters: JanitorRecommendationFilters = { limit, page };
 
-    const filters: {
-      status?: RecommendationStatus;
-      janitorType?: JanitorType;
-      priority?: Priority;
-      limit: number;
-      page: number;
-    } = { limit, page };
+    if (repositoryIdParam) {
+      filters.repositoryId = repositoryIdParam;
+    }
 
     if (statusParam) {
       try {
@@ -77,6 +75,7 @@ export async function GET(
         createdAt: rec.createdAt,
         updatedAt: rec.updatedAt,
         janitorRun: rec.janitorRun,
+        repository: rec.repository,
         acceptedBy: rec.acceptedBy,
         dismissedBy: rec.dismissedBy,
       })),

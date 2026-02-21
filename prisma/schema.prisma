@@ -478,9 +478,10 @@ model Repository {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Tasks can be linked to repositories
-  tasks       Task[]
-  deployments Deployment[]
-  janitorRuns JanitorRun[]
+  tasks           Task[]
+  deployments     Deployment[]
+  janitorRuns     JanitorRun[]
+  recommendations JanitorRecommendation[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
   @@index([workspaceId])
@@ -798,6 +799,7 @@ model JanitorRecommendation {
   id           String  @id @default(cuid())
   janitorRunId String? @map("janitor_run_id")
   workspaceId  String  @map("workspace_id")
+  repositoryId String? @map("repository_id")
 
   // Recommendation details
   title       String
@@ -815,13 +817,15 @@ model JanitorRecommendation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  janitorRun  JanitorRun? @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  acceptedBy  User?       @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
-  dismissedBy User?       @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
+  janitorRun  JanitorRun?  @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository  Repository?  @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  acceptedBy  User?        @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
+  dismissedBy User?        @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
 
   @@index([janitorRunId])
   @@index([workspaceId])
+  @@index([repositoryId])
   @@index([status])
   @@index([priority])
   @@index([createdAt])
