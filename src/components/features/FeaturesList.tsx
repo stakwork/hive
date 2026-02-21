@@ -73,7 +73,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[375px] font-medium truncate">
+      <TableCell className="w-[469px] font-medium truncate">
         <div className="flex items-center gap-2">
           <span className="truncate">{feature.title}</span>
           {needsReview && (
@@ -734,7 +734,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[375px]">Title</TableHead>
+                  <TableHead className="w-[469px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
                   <TableHead className="w-[120px]">Created by</TableHead>
@@ -747,7 +747,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-[375px]">
+                    <TableCell className="w-[469px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
                     </TableCell>
                     <TableCell className="w-[120px]">
@@ -915,7 +915,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[375px]">
+                  <TableHead className="w-[469px]">
                     <SortableColumnHeader
                       label="Title"
                       field="title"
