@@ -6,6 +6,7 @@ import {
 } from "@/lib/helpers/swarm-access";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { EncryptionService } from "@/lib/encryption";
 
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_ATTEMPTS = 120; // 2 minutes max
@@ -19,6 +20,15 @@ const MAX_POLL_ATTEMPTS = 120; // 2 minutes max
  * Request body:
  *   - prompt: string (required)
  *   - sessionId: string (optional, for multi-turn)
+ *
+ * Forwarded to /logs/agent endpoint:
+ *   - prompt: string
+ *   - swarmName: string
+ *   - sessionId: string | undefined
+ *   - model: "haiku"
+ *   - stakworkApiKey: string (optional, decrypted from workspace)
+ *   - stakworkRuns: StakworkRunSummary[] (optional, last 25 runs with non-null projectId)
+ *   - sessionConfig: { truncateToolResults, maxToolResultLines, maxToolResultChars }
  *
  * Response:
  *   - { answer: string, sessionId: string } on success
@@ -71,7 +81,7 @@ export async function POST(
       // internal helper that allows an empty key.
       const ws = await db.workspace.findFirst({
         where: { slug, deleted: false },
-        select: { id: true },
+        select: { id: true, stakworkApiKey: true },
       });
       if (!ws) {
         return NextResponse.json(
@@ -123,6 +133,54 @@ export async function POST(
             : `https://${urlObj.hostname}:3355`;
         })();
 
+    // Query workspace for stakworkApiKey and StakworkRuns
+    const workspaceRow = await db.workspace.findFirst({
+      where: { slug, deleted: false },
+      select: { id: true, stakworkApiKey: true },
+    });
+
+    // Decrypt stakworkApiKey if present
+    let decryptedStakworkApiKey: string | undefined;
+    if (workspaceRow?.stakworkApiKey) {
+      try {
+        const encryptionService = EncryptionService.getInstance();
+        decryptedStakworkApiKey = encryptionService.decryptField(
+          "stakworkApiKey",
+          workspaceRow.stakworkApiKey,
+        );
+      } catch {
+        // Silently omit — do not crash the request
+        decryptedStakworkApiKey = undefined;
+      }
+    }
+
+    // Query last 25 StakworkRun summaries with non-null projectId
+    const rawRuns = workspaceRow
+      ? await db.stakworkRun.findMany({
+          where: {
+            workspaceId: workspaceRow.id,
+            projectId: { not: null },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+          select: {
+            projectId: true,
+            type: true,
+            status: true,
+            createdAt: true,
+            feature: { select: { title: true } },
+          },
+        })
+      : [];
+
+    const stakworkRuns = rawRuns.map((run) => ({
+      projectId: run.projectId as number,
+      type: run.type,
+      status: run.status,
+      feature: run.feature?.title ?? null,
+      createdAt: run.createdAt.toISOString(),
+    }));
+
     // Send prompt to logs agent
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -139,6 +197,8 @@ export async function POST(
         swarmName,
         sessionId: sessionId || undefined,
         model: "haiku",
+        ...(decryptedStakworkApiKey ? { stakworkApiKey: decryptedStakworkApiKey } : {}),
+        ...(stakworkRuns.length > 0 ? { stakworkRuns } : {}),
         sessionConfig: {
           truncateToolResults: false,
           maxToolResultLines: 200,
