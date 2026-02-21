@@ -139,6 +139,7 @@ export interface PullRequestContent {
   url: string;
   status: string;
   progress?: PullRequestProgress;
+  autoMerge?: boolean; // Whether this PR should be auto-rebased when out of date
 }
 
 export type Action = "create" | "rewrite" | "modify" | "delete";
