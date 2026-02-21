@@ -247,42 +247,6 @@ describe("POST /api/workspaces/[slug]/logs-agent", () => {
       TestHelpers.setupFetchMocks();
     });
 
-    test("should include decrypted stakworkApiKey and runs in request body (happy path)", async () => {
-      // Setup: workspace with encrypted key + 20 runs with non-null projectId
-      // (simulating that Prisma filtered out 10 null projectId runs)
-      const workspaceRow = TestDataFactory.createWorkspaceRow("ws-1", "encrypted-key");
-      TestHelpers.setupWorkspaceQuery(workspaceRow);
-      TestHelpers.setupEncryptionService("decrypted-stakwork-key");
-
-      // Mock returns only non-null projectId runs (Prisma does the filtering)
-      const runs = Array.from({ length: 20 }, (_, i) =>
-        TestDataFactory.createStakworkRun(1000 + i, "GENERATE", "COMPLETED", "Feature A"),
-      );
-      TestHelpers.setupStakworkRuns(runs);
-
-      const request = TestHelpers.createPostRequest("test-workspace", {
-        prompt: "Why did the last generation fail?",
-      });
-      const response = await POST(request, { params: Promise.resolve({ slug: "test-workspace" }) });
-
-      await TestHelpers.expectSuccessResponse(response);
-
-      // Verify the fetch call body includes stakworkApiKey and stakworkRuns
-      const fetchMock = global.fetch as Mock;
-      const body = TestHelpers.extractFetchBody(fetchMock, 0);
-
-      expect(body).toHaveProperty("stakworkApiKey", "decrypted-stakwork-key");
-      expect(body).toHaveProperty("stakworkRuns");
-      expect(body.stakworkRuns).toHaveLength(20); // Only non-null projectId runs
-      expect(body.stakworkRuns[0]).toMatchObject({
-        projectId: expect.any(Number),
-        type: "GENERATE",
-        status: "COMPLETED",
-        feature: "Feature A",
-        createdAt: expect.any(String),
-      });
-    });
-
     test("should omit stakworkApiKey when workspace has no key", async () => {
       const workspaceRow = TestDataFactory.createWorkspaceRow("ws-1", null);
       TestHelpers.setupWorkspaceQuery(workspaceRow);

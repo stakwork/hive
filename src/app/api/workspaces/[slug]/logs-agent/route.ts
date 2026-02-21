@@ -189,6 +189,7 @@ export async function POST(
       headers["x-api-token"] = swarmApiKey;
     }
 
+    // FIXME update to use the decryptedStakworkApiKey if we update to use keys for workspace
     const agentResponse = await fetch(`${baseUrl}/logs/agent`, {
       method: "POST",
       headers,
@@ -197,7 +198,7 @@ export async function POST(
         swarmName,
         sessionId: sessionId || undefined,
         model: "haiku",
-        ...(decryptedStakworkApiKey ? { stakworkApiKey: decryptedStakworkApiKey } : {}),
+        ...(decryptedStakworkApiKey && stakworkRuns.length > 0 ? { stakworkApiKey: process.env.STAKWORK_API_KEY } : {}),
         ...(stakworkRuns.length > 0 ? { stakworkRuns } : {}),
         sessionConfig: {
           truncateToolResults: false,
