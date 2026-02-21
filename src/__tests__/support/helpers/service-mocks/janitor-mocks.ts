@@ -29,6 +29,7 @@ export interface MockJanitorRunOptions {
   status?: JanitorStatus;
   triggeredBy?: JanitorTrigger;
   stakworkProjectId?: number | null;
+  repositoryId?: string | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
   error?: string | null;
@@ -39,7 +40,8 @@ export interface MockJanitorRunOptions {
 
 export interface MockJanitorRecommendationOptions {
   id?: string;
-  janitorRunId?: string;
+  janitorRunId?: string | null;
+  repositoryId?: string | null;
   title?: string;
   description?: string;
   priority?: Priority;
@@ -83,6 +85,7 @@ export const janitorMocks = {
       status: overrides.status || ("PENDING" as JanitorStatus),
       triggeredBy: overrides.triggeredBy || ("MANUAL" as JanitorTrigger),
       stakworkProjectId: overrides.stakworkProjectId === undefined ? null : overrides.stakworkProjectId,
+      repositoryId: overrides.repositoryId === undefined ? null : overrides.repositoryId,
       startedAt: overrides.startedAt === undefined ? null : overrides.startedAt,
       completedAt: overrides.completedAt === undefined ? null : overrides.completedAt,
       error: overrides.error === undefined ? null : overrides.error,
@@ -95,7 +98,8 @@ export const janitorMocks = {
   createMockRecommendation(overrides: MockJanitorRecommendationOptions = {}) {
     return {
       id: overrides.id || "rec-1",
-      janitorRunId: overrides.janitorRunId || "run-1",
+      janitorRunId: overrides.janitorRunId === undefined ? "run-1" : overrides.janitorRunId,
+      repositoryId: overrides.repositoryId === undefined ? null : overrides.repositoryId,
       title: overrides.title || "Add unit tests for authentication",
       description: overrides.description || "Authentication logic lacks unit test coverage",
       priority: overrides.priority || ("MEDIUM" as Priority),
