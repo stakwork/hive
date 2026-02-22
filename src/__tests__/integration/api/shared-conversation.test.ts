@@ -224,6 +224,47 @@ describe("SharedConversation API Integration Tests", () => {
 
         expect(response.status).toBe(201);
       });
+
+      test("should persist source field when provided (logs-agent)", async () => {
+        const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        const messages = [
+          { role: "user", content: "What errors occurred?" },
+          { role: "assistant", content: "Log analysis response" },
+        ];
+        const followUpQuestions = [];
+
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/share`,
+          {
+            messages,
+            followUpQuestions,
+            source: "logs-agent",
+            title: "Log Agent Conversation",
+          }
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: testWorkspace.slug }),
+        });
+
+        expect(response.status).toBe(201);
+        const data = await response.json();
+        expect(data).toHaveProperty("shareId");
+
+        // Verify the source was persisted in the database
+        const sharedConversation = await db.sharedConversation.findUnique({
+          where: { id: data.shareId },
+        });
+
+        expect(sharedConversation).toBeDefined();
+        expect(sharedConversation?.source).toBe("logs-agent");
+        expect(sharedConversation?.title).toBe("Log Agent Conversation");
+      });
     });
 
     describe("Request Validation Tests", () => {
