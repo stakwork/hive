@@ -5,6 +5,7 @@ import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
 import { db } from "@/lib/db";
 import { SharedConversationData } from "@/types/shared-conversation";
+import { Badge } from "@/components/ui/badge";
 
 interface Message {
   id: string;
@@ -196,7 +197,12 @@ export default async function SharedConversationPage({ params }: SharedConversat
         {/* Banner */}
         <div className="bg-muted/30 border-b border-border">
           <div className="max-w-4xl mx-auto px-6 py-4">
-            <h1 className="text-xl font-semibold mb-1">Shared Conversation (Read-only)</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl font-semibold">Shared Conversation (Read-only)</h1>
+              {data.source === "logs-agent" && (
+                <Badge variant="secondary" data-testid="logs-agent-badge">Logs Agent</Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               Shared by {creatorName} on {createdDate}
             </p>
