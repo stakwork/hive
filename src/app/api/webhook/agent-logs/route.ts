@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id}/${agent}.json`;
 
     const blob = await put(blobPath, logContent, {
-      access: "public",
+      access: "private",
       contentType: "application/json",
       addRandomSuffix: false,
     });
