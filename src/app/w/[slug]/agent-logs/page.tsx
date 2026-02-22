@@ -198,9 +198,9 @@ export default function AgentLogsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Agent Name</TableHead>
-                    <TableHead>Task/Run ID</TableHead>
+                     <TableHead>Timestamp</TableHead>
+                     <TableHead>Agent Name</TableHead>
+                     <TableHead>Feature</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -209,12 +209,12 @@ export default function AgentLogsPage() {
                       <TableCell>
                         <Skeleton className="h-5 w-48" />
                       </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-5 w-32" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-5 w-40" />
-                      </TableCell>
+                       <TableCell>
+                         <Skeleton className="h-5 w-32" />
+                       </TableCell>
+                       <TableCell>
+                         <Skeleton className="h-5 w-28" />
+                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
