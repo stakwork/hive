@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Download } from "lucide-react";
 import type { AgentLogRecord } from "@/types/agent-logs";
 
 interface AgentLogsTableProps {
@@ -24,6 +25,24 @@ const formatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
+  const handleDownload = async (logId: string, agent: string) => {
+    try {
+      const res = await fetch(`/api/agent-logs/${logId}/content`);
+      if (!res.ok) throw new Error("Failed to fetch log content");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${agent}-${logId}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
+  };
+
   if (logs.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -42,7 +61,8 @@ export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
           <TableRow>
             <TableHead>Timestamp</TableHead>
             <TableHead>Agent Name</TableHead>
-            <TableHead>Task/Run ID</TableHead>
+            <TableHead>Feature</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -57,7 +77,23 @@ export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
               </TableCell>
               <TableCell className="font-medium">{log.agent}</TableCell>
               <TableCell className="text-muted-foreground">
-                {log.taskId || log.stakworkRunId || "-"}
+                {log.featureTitle
+                  ? log.featureTitle.length > 20
+                    ? `${log.featureTitle.slice(0, 20)}...`
+                    : log.featureTitle
+                  : "-"}
+              </TableCell>
+              <TableCell>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownload(log.id, log.agent);
+                  }}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Download log"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
               </TableCell>
             </TableRow>
           ))}
