@@ -17,21 +17,19 @@ interface LogDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   logId: string | null;
-  blobUrl: string | null;
 }
 
 export function LogDetailDialog({
   open,
   onOpenChange,
   logId,
-  blobUrl,
 }: LogDetailDialogProps) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !blobUrl) {
+    if (!open || !logId) {
       setContent("");
       setError(null);
       return;
@@ -41,7 +39,7 @@ export function LogDetailDialog({
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(blobUrl);
+        const response = await fetch(`/api/agent-logs/${logId}/content`);
         if (!response.ok) {
           throw new Error(`Failed to fetch log: ${response.statusText}`);
         }
@@ -58,7 +56,7 @@ export function LogDetailDialog({
     };
 
     fetchContent();
-  }, [open, blobUrl]);
+  }, [open, logId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

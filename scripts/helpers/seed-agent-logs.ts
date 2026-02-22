@@ -175,7 +175,7 @@ export async function seedAgentLogs() {
       // Upload to blob storage
       const blobPath = `agent-logs/${workspace.id}/${stakworkRunId || taskId}/${agent}-${i}.json`;
       const blob = await put(blobPath, JSON.stringify(logContent, null, 2), {
-        access: "public",
+        access: "private",
         addRandomSuffix: true,
       });
 

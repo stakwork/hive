@@ -7,6 +7,7 @@ import {
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { EncryptionService } from "@/lib/encryption";
+import { generateSignedUrl } from "@/lib/signed-urls";
 
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_ATTEMPTS = 120; // 2 minutes max
@@ -154,7 +155,8 @@ export async function POST(
       }
     }
 
-    // Query last 25 StakworkRun summaries with non-null projectId
+    // Query last 25 StakworkRun summaries with non-null projectId,
+    // including any associated agent logs
     const rawRuns = workspaceRow
       ? await db.stakworkRun.findMany({
           where: {
@@ -169,9 +171,21 @@ export async function POST(
             status: true,
             createdAt: true,
             feature: { select: { title: true } },
+            agentLogs: {
+              select: { id: true, agent: true },
+            },
           },
         })
       : [];
+
+    // Derive the app base URL for generating signed URLs
+    const appBaseUrl =
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
+
+    const SIGNED_URL_EXPIRY_SECONDS = 3600; // 1 hour
 
     const stakworkRuns = rawRuns.map((run) => ({
       projectId: run.projectId as number,
@@ -179,6 +193,14 @@ export async function POST(
       status: run.status,
       feature: run.feature?.title ?? null,
       createdAt: run.createdAt.toISOString(),
+      agentLogs: run.agentLogs.map((log) => ({
+        agent: log.agent,
+        url: generateSignedUrl(
+          appBaseUrl,
+          `/api/agent-logs/${log.id}/content`,
+          SIGNED_URL_EXPIRY_SECONDS,
+        ),
+      })),
     }));
 
     // Send prompt to logs agent
