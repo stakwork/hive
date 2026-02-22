@@ -90,6 +90,7 @@ const TestDataFactory = {
     status,
     createdAt: new Date("2026-02-20T10:00:00Z"),
     feature: featureTitle ? { title: featureTitle } : null,
+    agentLogs: [],
   }),
 
   createSwarmAccessSuccess: () => ({
