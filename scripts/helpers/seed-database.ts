@@ -8,6 +8,7 @@ import {
   FeaturePriority,
   StakworkRunType,
   WorkflowStatus,
+  WorkspaceRole,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
@@ -102,6 +103,41 @@ async function seedWorkspacesAndSwarms(
         stakworkApiKey,
       },
     });
+
+    // Add the owner as a workspace member with OWNER role
+    await prisma.workspaceMember.upsert({
+      where: {
+        workspaceId_userId: {
+          workspaceId: ws.id,
+          userId: item.owner.id,
+        },
+      },
+      update: { role: WorkspaceRole.OWNER },
+      create: {
+        workspaceId: ws.id,
+        userId: item.owner.id,
+        role: WorkspaceRole.OWNER,
+      },
+    });
+
+    // Add the dev-mock user as a DEVELOPER in all workspaces
+    const devUser = users.find((u) => u.email === "dev-user@mock.dev");
+    if (devUser && devUser.id !== item.owner.id) {
+      await prisma.workspaceMember.upsert({
+        where: {
+          workspaceId_userId: {
+            workspaceId: ws.id,
+            userId: devUser.id,
+          },
+        },
+        update: {},
+        create: {
+          workspaceId: ws.id,
+          userId: devUser.id,
+          role: WorkspaceRole.DEVELOPER,
+        },
+      });
+    }
 
     const poolApiKey = `pool_key_${item.workspace.slug}`;
 
