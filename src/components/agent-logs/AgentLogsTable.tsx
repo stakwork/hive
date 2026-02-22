@@ -12,7 +12,7 @@ import type { AgentLogRecord } from "@/types/agent-logs";
 
 interface AgentLogsTableProps {
   logs: AgentLogRecord[];
-  onRowClick: (logId: string, blobUrl: string) => void;
+  onRowClick: (logId: string) => void;
 }
 
 const formatter = new Intl.DateTimeFormat("en-US", {
@@ -49,7 +49,7 @@ export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
           {logs.map((log) => (
             <TableRow
               key={log.id}
-              onClick={() => onRowClick(log.id, log.blobUrl)}
+              onClick={() => onRowClick(log.id)}
               className="cursor-pointer hover:bg-muted/50"
             >
               <TableCell>
