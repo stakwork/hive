@@ -83,7 +83,6 @@ export default function AgentLogsPage() {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
-  const [selectedBlobUrl, setSelectedBlobUrl] = useState<string | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -139,9 +138,8 @@ export default function AgentLogsPage() {
     fetchLogs();
   }, [workspaceId, page, timeRange, debouncedSearch]);
 
-  const handleRowClick = (logId: string, blobUrl: string) => {
+  const handleRowClick = (logId: string) => {
     setSelectedLogId(logId);
-    setSelectedBlobUrl(blobUrl);
     setDialogOpen(true);
   };
 
@@ -317,7 +315,6 @@ export default function AgentLogsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         logId={selectedLogId}
-        blobUrl={selectedBlobUrl}
       />
     </div>
   );
