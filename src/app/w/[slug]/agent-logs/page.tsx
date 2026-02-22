@@ -147,14 +147,14 @@ export default function AgentLogsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <PageHeader icon={FileText} title="Agent Logs" />
-        {(slug === "hive" || slug === "stakwork") && (
+        {/* {(slug === "hive" || slug === "stakwork") && ( */}
           <Button asChild>
             <Link href={`/w/${slug}/agent-logs/chat`}>
               <MessageSquare className="w-4 h-4 mr-2" />
               Logs Chat
             </Link>
           </Button>
-        )}
+        {/* )} */}
       </div>
 
       <Card>

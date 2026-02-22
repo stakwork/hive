@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
       access: "private",
       contentType: "application/json",
       addRandomSuffix: false,
+      allowOverwrite: true,
     });
 
     // Upsert the AgentLog record (overwrite if same agent + run/task)
