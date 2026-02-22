@@ -359,7 +359,7 @@ export function LogDetailDialog({
           )}
 
           {!loading && !error && content && (
-            <ScrollArea className="h-[400px] w-full rounded-md border">
+            <ScrollArea className="h-[400px] w-full rounded-md border [&_[data-radix-scroll-area-viewport]>div]:!block">
               {parsedMessages ? (
                 <div className="p-4 space-y-3">
                   {parsedMessages.map((msg, i) => (
