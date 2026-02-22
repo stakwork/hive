@@ -154,7 +154,7 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
           {allToolCallNames.map((tc, i) => (
             <div
               key={tc.id || i}
-              className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono truncate"
+              className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono break-words"
             >
               Called <span className="font-semibold">{tc.name}</span>
             </div>
@@ -261,7 +261,7 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
             {allToolCallNames.map((tc, i) => (
               <div
                 key={tc.id || i}
-                className="text-xs text-muted-foreground font-mono truncate"
+                className="text-xs text-muted-foreground font-mono break-words"
               >
                 Called <span className="font-semibold">{tc.name}</span>
               </div>
@@ -337,7 +337,7 @@ export function LogDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-hidden">
+      <DialogContent className="sm:max-w-[900px] max-h-[80vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Agent Log Details</DialogTitle>
           <DialogDescription>
