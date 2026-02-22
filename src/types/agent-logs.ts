@@ -4,6 +4,7 @@ export interface AgentLogRecord {
   agent: string;
   stakworkRunId: string | null;
   taskId: string | null;
+  featureTitle: string | null;
   createdAt: Date;
 }
 

@@ -115,10 +115,25 @@ export async function GET(request: NextRequest) {
           stakworkRunId: true,
           taskId: true,
           createdAt: true,
+          stakworkRun: {
+            select: {
+              feature: {
+                select: {
+                  title: true,
+                },
+              },
+            },
+          },
         },
       }),
       db.agentLog.count({ where }),
     ]);
+
+    // Flatten the feature title from the StakworkRun relation
+    const flattenedLogs = logs.map(({ stakworkRun, ...log }) => ({
+      ...log,
+      featureTitle: stakworkRun?.feature?.title ?? null,
+    }));
 
     // ⚠️ PERFORMANCE WARNING:
     // Keyword search fetches blob content for each log, which can be slow
@@ -126,10 +141,10 @@ export async function GET(request: NextRequest) {
     // - Adding caching layer for blob content
     // - Limiting max results when search is used
     // - Implementing server-side indexing for log content
-    let filteredLogs = logs;
+    let filteredLogs = flattenedLogs;
     if (search) {
       const logsWithContent = await Promise.all(
-        logs.map(async (log) => {
+        flattenedLogs.map(async (log) => {
           try {
             const content = await fetchBlobContent(log.blobUrl);
             return {
