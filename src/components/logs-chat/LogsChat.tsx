@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowUp, Terminal } from "lucide-react";
+import { ArrowLeft, ArrowUp, Share2, Terminal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +26,7 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
   const [messages, setMessages] = useState<LogsChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [sessionId] = useState(
     () => `logs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
@@ -118,6 +119,45 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
       setIsLoading(false);
     }
   }, [input, isLoading, workspaceSlug, sessionId]);
+
+  const handleShare = async () => {
+    if (!workspaceSlug || messages.length === 0) return;
+    setIsSharing(true);
+    try {
+      const firstUserMessage = messages.find((m) => m.role === "user" && m.content.trim());
+      const title = firstUserMessage
+        ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? "..." : "")
+        : "Shared Conversation";
+
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/chat/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          title,
+          followUpQuestions: [],
+          source: "logs-agent",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to share conversation");
+      }
+
+      const data = await response.json();
+      const shareUrl = `${window.location.origin}${data.url}`;
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Share link copied to clipboard!");
+    } catch (error) {
+      console.error("Error sharing conversation:", error);
+      toast.error("Failed to share conversation", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !isMobile) {
@@ -286,6 +326,20 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
               "Send"
             )}
           </Button>
+          {messages.length > 0 && (
+            <Button
+              type="button"
+              onClick={handleShare}
+              disabled={isLoading || isSharing}
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-full h-10 w-10"
+              title="Share conversation"
+              data-testid="logs-chat-share"
+            >
+              <Share2 className="w-4 h-4" />
+            </Button>
+          )}
         </form>
       </div>
     </div>
