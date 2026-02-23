@@ -16,7 +16,7 @@ import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+
 import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 import { z } from "zod";
@@ -522,10 +522,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // Get all repo names for pm2 generation (needed for multi-repo cwd resolution)
-    const primaryRepo = await getPrimaryRepository(workspace.id);
     const allRepos = await db.repository.findMany({
       where: { workspaceId: workspace.id },
-      select: { repositoryUrl: true },
+      select: { id: true, repositoryUrl: true, branch: true, name: true, codeIngestionEnabled: true },
       orderBy: { createdAt: "asc" },
     });
     const repoNames = allRepos.map((r) => extractRepoName(r.repositoryUrl));
@@ -638,34 +637,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Only setup GitHub webhook when using session auth (not API token auth)
+    // Setup GitHub webhooks for all repos with code ingestion enabled (session auth only)
     if (!isApiTokenAuth && userId) {
-      try {
-        const callbackUrl = getGithubWebhookCallbackUrl(workspace.id, request);
-        const webhookService = new WebhookService(getServiceConfig("github"));
+      const callbackUrl = getGithubWebhookCallbackUrl(workspace.id, request);
+      const webhookService = new WebhookService(getServiceConfig("github"));
+      const reposForWebhook = allRepos.filter((r) => r.codeIngestionEnabled);
 
-        // Reuse primaryRepo from above if available
-        if (primaryRepo) {
-          const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
-            userId,
-            workspaceId: workspace.id,
-            repositoryUrl: primaryRepo.repositoryUrl,
-            callbackUrl,
-            repositoryName: primaryRepo.name,
-          });
-
-          console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
-          if (defaultBranch && defaultBranch !== primaryRepo.branch) {
-            console.log("=====> Updating primary repository branch to:", defaultBranch);
-            await db.repository.update({
-              where: { id: primaryRepo.id },
-              data: { branch: defaultBranch },
+      await Promise.all(
+        reposForWebhook.map(async (repo) => {
+          try {
+            const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
+              userId,
+              workspaceId: workspace.id,
+              repositoryUrl: repo.repositoryUrl,
+              callbackUrl,
+              repositoryName: repo.name,
             });
+
+            if (defaultBranch && defaultBranch !== repo.branch) {
+              console.log(`[Stakgraph] Updating ${repo.name} branch to detected default: ${defaultBranch}`);
+              await db.repository.update({
+                where: { id: repo.id },
+                data: { branch: defaultBranch },
+              });
+            }
+          } catch (err) {
+            console.error(`Failed to setup webhook for ${repo.name}:`, err);
           }
-        }
-      } catch (err) {
-        console.error("Failed to setup repository with webhook:", err);
-      }
+        }),
+      );
     }
 
     // Use merged values for pool name check (convert null to undefined)
