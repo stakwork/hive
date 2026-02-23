@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { verifySignedUrl } from "@/lib/signed-urls";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";
@@ -49,10 +50,15 @@ export async function GET(
         );
       }
     } else {
-      // Session auth — require logged-in user
-      const context = getMiddlewareContext(request);
-      const userOrResponse = requireAuth(context);
-      if (userOrResponse instanceof NextResponse) return userOrResponse;
+      // Session auth — check session directly (middleware skips token
+      // extraction for webhook routes, so we can't rely on headers here)
+      const session = await getServerSession(authOptions);
+      if (!session?.user?.id) {
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 401 }
+        );
+      }
 
       // Look up the log to verify workspace membership
       const log = await db.agentLog.findUnique({
@@ -62,7 +68,7 @@ export async function GET(
           workspace: {
             select: {
               members: {
-                where: { userId: userOrResponse.id },
+                where: { userId: session.user.id },
                 select: { id: true },
               },
             },
