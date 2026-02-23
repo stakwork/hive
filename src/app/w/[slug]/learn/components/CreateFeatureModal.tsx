@@ -12,16 +12,26 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RefreshCw, Pencil } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RefreshCw, Pencil, GitBranch } from "lucide-react";
+
+interface Repository {
+  id: string;
+  name: string;
+  repositoryUrl: string;
+}
 
 interface CreateFeatureModalProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceSlug: string;
   onFeatureCreated?: () => void;
+  repositories: Repository[];
+  selectedRepoId: string;
+  onRepoChange: (repoId: string) => void;
 }
 
-export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCreated }: CreateFeatureModalProps) {
+export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCreated, repositories, selectedRepoId, onRepoChange }: CreateFeatureModalProps) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -57,6 +67,7 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
           workspace: workspaceSlug,
           name: name.trim(),
           prompt: finalPrompt.trim(),
+          ...(selectedRepoId && { repositoryId: selectedRepoId }),
         }),
       });
 
@@ -113,6 +124,27 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
                 disabled={isCreating}
               />
             </div>
+
+            {repositories.length > 1 && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium flex items-center gap-1.5">
+                  <GitBranch className="w-3.5 h-3.5" />
+                  Repository
+                </label>
+                <Select value={selectedRepoId} onValueChange={onRepoChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select repository" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repositories.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.id}>
+                        {repo.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
