@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { createHash } from "crypto";
 import { z } from "zod";
 
 const encryptionService = EncryptionService.getInstance();
@@ -91,11 +92,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const baseUrl = process.env.NEXTAUTH_URL;
     const webhookUrl = `${baseUrl}/api/vercel/log-drain?workspace=${slug}`;
 
+    // Look up swarm for agent analysis log drain
+    let swarmLogDrainUrl: string | null = null;
+    let swarmBearerToken: string | null = null;
+
+    const swarm = await db.swarm.findUnique({
+      where: { workspaceId: workspace.id },
+      select: { name: true, status: true, swarmApiKey: true },
+    });
+
+    if (swarm?.status === "ACTIVE" && swarm.name && swarm.swarmApiKey) {
+      try {
+        const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+        swarmLogDrainUrl = `https://${swarm.name}.sphinx.chat:9000/logs`;
+        swarmBearerToken = createHash("sha256").update(decryptedApiKey).digest("hex").slice(0, 24);
+      } catch (error) {
+        console.error("Error deriving swarm log drain token:", error);
+      }
+    }
+
     return NextResponse.json({
       vercelApiToken: decryptedToken,
       vercelTeamId: workspace.vercelTeamId,
       vercelWebhookSecret: decryptedWebhookSecret,
       webhookUrl,
+      swarmLogDrainUrl,
+      swarmBearerToken,
     });
   } catch (error) {
     console.error("Error fetching Vercel integration settings:", error);
