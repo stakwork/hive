@@ -49,7 +49,14 @@ export function hasInfrastructureChange(
   }
 
   // Compare containerFiles["pm2.config.js"]
-  if (incoming.containerFiles?.["pm2.config.js"] !== undefined) {
+  // Skip when services are also provided — pm2 is derived from services,
+  // so the services comparison above is the source of truth. Comparing both
+  // can produce false positives due to client vs server generation differences
+  // (e.g., env var ordering in the pm2 config).
+  if (
+    incoming.services === undefined &&
+    incoming.containerFiles?.["pm2.config.js"] !== undefined
+  ) {
     const incomingPm2 = incoming.containerFiles["pm2.config.js"];
     const existingPm2 = extractPm2Config(existing.containerFiles);
     if (incomingPm2 !== existingPm2) {
@@ -92,8 +99,26 @@ export function hasInfrastructureChange(
 }
 
 /**
+ * Recursively sort object keys for stable JSON stringification.
+ * Ensures {a:1, b:2} and {b:2, a:1} produce the same string.
+ */
+function stableSortKeys(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(stableSortKeys);
+  if (typeof value === "object") {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = stableSortKeys((value as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/**
  * Normalize unknown value to a stable JSON string for comparison.
  * Handles JSON strings, arrays, objects, and null/undefined.
+ * Object keys are sorted recursively so property order doesn't matter.
  */
 function normalizeToJson(value: unknown): string {
   if (value === null || value === undefined) {
@@ -104,15 +129,15 @@ function normalizeToJson(value: unknown): string {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      return JSON.stringify(parsed);
+      return JSON.stringify(stableSortKeys(parsed));
     } catch {
       // Not valid JSON, return as-is
       return value;
     }
   }
 
-  // Serialize objects/arrays
-  return JSON.stringify(value);
+  // Serialize objects/arrays with stable key ordering
+  return JSON.stringify(stableSortKeys(value));
 }
 
 /**
