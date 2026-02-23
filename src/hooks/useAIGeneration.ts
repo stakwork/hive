@@ -19,7 +19,7 @@ interface GenerationResult {
   accept: (onSuccess?: () => void) => Promise<void>;
   reject: (feedback?: string) => Promise<void>;
   provideFeedback: (feedback: string) => Promise<void>;
-  regenerate: (isRetry?: boolean) => Promise<void>;
+  regenerate: (isRetry?: boolean, feedback?: string) => Promise<void>;
   setContent: (content: string | null, source: GenerationSource, runId?: string) => void;
   clear: () => void;
 }
@@ -197,7 +197,7 @@ export function useAIGeneration({
     [source, currentRunId, enabled]
   );
 
-  const regenerate = useCallback(async (isRetry = false) => {
+  const regenerate = useCallback(async (isRetry = false, feedback?: string) => {
     if (!enabled || !workspaceId) return;
 
     try {
@@ -208,7 +208,7 @@ export function useAIGeneration({
         await reject("Retrying after failure");
       }
 
-      // Create new run with history if retrying
+      // Create new run with history if retrying or providing feedback
       const response = await fetch("/api/stakwork/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,7 +216,8 @@ export function useAIGeneration({
           type,
           featureId,
           workspaceId,
-          includeHistory: isRetry, // Include history on retry
+          includeHistory: isRetry || !!feedback,
+          ...(feedback && { history: [{ role: "user", content: feedback.trim() }] }),
         }),
       });
 

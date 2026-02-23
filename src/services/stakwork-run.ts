@@ -248,10 +248,13 @@ export async function createStakworkRun(
       throw new Error("STAKWORK_AI_GENERATION_WORKFLOW_ID not configured");
     }
 
-    // Fetch history if includeHistory flag is set and not already provided
-    let history = input.history;
-    if (input.includeHistory && input.featureId && !history) {
+    // Fetch history if includeHistory flag is set, then append any inline history
+    let history: Array<{ role: "assistant" | "user"; content: string }> = [];
+    if (input.includeHistory && input.featureId) {
       history = await getFeatureRunHistory(input.featureId, input.type);
+    }
+    if (input.history) {
+      history = [...history, ...input.history];
     }
 
     const vars: Record<string, unknown> = {

@@ -23,25 +23,10 @@ describe("DiagramViewer", () => {
   });
 
   describe("Placeholder State", () => {
-    it("should display placeholder message when diagramUrl is null and not generating", () => {
-      render(<DiagramViewer diagramUrl={null} isGenerating={false} />);
-      
-      expect(screen.getByText("No diagram generated yet")).toBeInTheDocument();
-    });
-
-    it("should display FileImage icon in placeholder state", () => {
+    it("should render nothing when diagramUrl is null and not generating", () => {
       const { container } = render(<DiagramViewer diagramUrl={null} isGenerating={false} />);
-      
-      // Check for FileImage icon (lucide-react renders as svg)
-      const icon = container.querySelector("svg");
-      expect(icon).toBeInTheDocument();
-    });
 
-    it("should apply correct styling to placeholder container", () => {
-      const { container } = render(<DiagramViewer diagramUrl={null} isGenerating={false} />);
-      
-      const placeholder = container.querySelector(".border-dashed");
-      expect(placeholder).toBeInTheDocument();
+      expect(container.childElementCount).toBe(0);
     });
   });
 
