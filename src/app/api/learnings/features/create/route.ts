@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "../../utils";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repository";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspace, prompt, name } = body;
+    const { workspace, prompt, name, repositoryId } = body;
 
     if (!workspace || !prompt || !name) {
       return NextResponse.json({ error: "Missing required fields: workspace, prompt, name" }, { status: 400 });
@@ -32,8 +32,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
-    // Get primary repository
-    const primaryRepo = await getPrimaryRepository(workspaceAccess.workspace.id);
+    // Get repository - use specific repositoryId if provided, otherwise fall back to primary
+    const primaryRepo = repositoryId
+      ? await getRepositoryById(repositoryId, workspaceAccess.workspace.id)
+      : await getPrimaryRepository(workspaceAccess.workspace.id);
     if (!primaryRepo) {
       return NextResponse.json({ error: "No repository configured for this workspace" }, { status: 404 });
     }
