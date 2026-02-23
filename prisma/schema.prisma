@@ -101,6 +101,7 @@ model User {
 
   // Chat messages
   chatMessages ChatMessage[] @relation("ChatMessageSender")
+  whiteboardMessages WhiteboardMessage[]
 
   // API keys
   createdApiKeys WorkspaceApiKey[] @relation("ApiKeyCreator")
@@ -1280,12 +1281,33 @@ model Whiteboard {
   // Collaboration versioning for conflict resolution
   version Int @default(0)
 
+  // Relations
+  messages WhiteboardMessage[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([createdAt])
   @@map("whiteboards")
+}
+
+model WhiteboardMessage {
+  id           String      @id @default(cuid())
+  whiteboardId String      @map("whiteboard_id")
+  whiteboard   Whiteboard  @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+  role         ChatRole
+  content      String
+  status       ChatStatus  @default(SENT)
+  userId       String?     @map("user_id")
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt    @map("updated_at")
+
+  @@index([whiteboardId])
+  @@index([createdAt])
+  @@map("whiteboard_messages")
 }
 
 // =============================================
