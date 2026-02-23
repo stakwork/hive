@@ -429,9 +429,11 @@ export default function TaskChatPage() {
       setCurrentTaskId(newTaskId);
       setTaskTitle(taskTitle);
 
-      // Update URL without reloading
+      // Update URL with the actual task ID (not before task creation)
       const newUrl = `/w/${slug}/task/${newTaskId}`;
       window.history.replaceState({}, "", newUrl);
+      // Also use router.replace to ensure Next.js routing is synced
+      router.replace(newUrl, { scroll: false });
 
       // Store project context
       setCurrentProjectContext({
@@ -507,20 +509,9 @@ export default function TaskChatPage() {
         try {
           console.log('Auto-triggering project selection:', projectIdParam);
           
-          // Fetch full project data
-          const response = await fetch(`/api/stakwork/projects/${projectIdParam}`);
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch project data: ${response.statusText}`);
-          }
-          
-          const projectData = await response.json();
-          
-          // Call handleProjectSelect with the fetched data
-          await handleProjectSelect(projectIdParam, projectData);
-          
-          // Clear URL params to prevent re-triggering on refresh
-          router.replace(`/w/${slug}/task/${currentTaskId || 'new'}`);
+          // Pass minimal project data - let handleProjectSelect fetch from API if needed
+          // This avoids duplicate fetch since project-debugger endpoint will fetch it
+          await handleProjectSelect(projectIdParam, { project: { id: projectIdParam } });
         } catch (error) {
           console.error('Error auto-triggering project selection:', error);
           toast.error('Error', { 
