@@ -301,7 +301,7 @@ export default function RepositoryForm({
 
     if (status.hasAccess === true && status.canAdmin === false) {
       return (
-        <Badge variant="amber" className="ml-2">
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
           <AlertTriangle className="h-3 w-3 mr-1" />
           Admin Access Required
         </Badge>
