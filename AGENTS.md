@@ -11,3 +11,7 @@ Hive is an AI-first PM toolkit built with Next.js 15 (App Router) and PostgreSQL
 ## Guidelines
 
 If you add a new route make sure to check `src/config/middleware.ts` in case you need to update the `ROUTE_POLICIES`.
+
+## Fundamental Principle
+
+For non-trivial changes, pause and ask: "is there a more elegant way?"

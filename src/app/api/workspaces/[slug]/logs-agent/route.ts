@@ -227,6 +227,7 @@ export async function POST(
           maxToolResultLines: 200,
           maxToolResultChars: 2000,
         },
+        workspaceSlug: slug,
       }),
     });
 
