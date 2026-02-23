@@ -446,6 +446,21 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     taskCleared: false,
   };
 
+  // Always clear pod reference from the task, even on early returns
+  async function clearTaskPodFields() {
+    if (!clearTaskFields) return;
+    try {
+      await db.task.update({
+        where: { id: taskId },
+        data: { podId: null, agentPassword: null },
+      });
+      result.taskCleared = true;
+      console.log(`[releaseTaskPod] Cleared podId/agentPassword from task ${taskId}`);
+    } catch (error) {
+      console.error(`[releaseTaskPod] Failed to clear task pod fields:`, error);
+    }
+  }
+
   try {
     console.log(`[releaseTaskPod] Starting release for task ${taskId}, pod ${podId}`);
 
@@ -476,6 +491,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
         if (!podUsage) {
           result.error = "Pod not found";
           console.error(`[releaseTaskPod] ${result.error}`);
+          await clearTaskPodFields();
           return result;
         }
 
@@ -486,6 +502,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
           );
           result.reassigned = true;
           result.success = true;
+          await clearTaskPodFields();
           return result;
         }
 
@@ -493,6 +510,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
       } catch (error) {
         console.error("[releaseTaskPod] Error verifying pod ownership:", error);
         result.error = "Failed to verify pod ownership";
+        await clearTaskPodFields();
         return result;
       }
     }
@@ -535,10 +553,12 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
       } else {
         console.log(`[releaseTaskPod] Pod ${podId} not found in database`);
         result.error = "Pod not found";
+        await clearTaskPodFields();
       }
     } catch (error) {
       console.error("[releaseTaskPod] Error releasing pod:", error);
       result.error = "Failed to release pod";
+      await clearTaskPodFields();
     }
 
     // Update task workflow status if needed
@@ -563,6 +583,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[releaseTaskPod] Unexpected error:`, errorMessage);
     result.error = errorMessage;
+    await clearTaskPodFields();
     return result;
   }
 }

@@ -11,6 +11,7 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
 import { extractEnvVarsFromPM2Config, SERVICE_CONFIG_ENV_VARS } from "@/utils/devContainerUtils";
+import { hasInfrastructureChange } from "@/utils/swarmInfraChanges";
 import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
@@ -538,6 +539,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ? (settings.environmentVariables as Array<{ name: string; value: string }>)
       : undefined;
 
+    // Check if infrastructure-affecting fields have changed BEFORE syncPM2AndServices modifies containerFiles
+    // If repositories not provided in settings, use existing repos (don't treat as removal)
+    const incomingRepos = settings.repositories ?? allRepos;
+    const infraChanged = hasInfrastructureChange(
+      settings,
+      existingSwarm,
+      incomingRepos,
+      allRepos,
+    );
+
     // Perform bidirectional sync for services/containerFiles
     const syncResult = syncPM2AndServices(
       (existingSwarm?.services as unknown as SwarmServiceConfig[]) || [],
@@ -664,7 +675,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const mergedPoolMemory = settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined;
 
     // After updating/creating the swarm, sync settings to Pool Manager
-    if (mergedPoolName && swarmPoolApiKey && swarm) {
+    // Only trigger sync if infrastructure fields actually changed (not just metadata like description)
+    if (mergedPoolName && swarmPoolApiKey && swarm && infraChanged) {
       const syncResult2 = await syncPoolManagerSettings({
         workspaceId: workspace.id,
         workspaceSlug: slug,

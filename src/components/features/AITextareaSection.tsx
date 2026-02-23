@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { GenerationControls } from "@/components/features/GenerationControls";
+import { GenerationFeedbackBar } from "@/components/features/GenerationFeedbackBar";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { DiagramViewer } from "@/components/features/DiagramViewer";
@@ -163,6 +164,18 @@ export function AITextareaSection({
       await refetch();
     } catch (error) {
       console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handlePostAcceptFeedback = async (feedback: string) => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(true, feedback);
+      await refetch();
+    } catch (error) {
+      console.error("Feedback submission failed:", error);
     } finally {
       setInitiatingDeepThink(false);
     }
@@ -400,6 +413,13 @@ export function AITextareaSection({
           {/* Image Preview - Only show in edit mode */}
           {mode === "edit" && <ImagePreview content={value} />}
         </div>
+      )}
+
+      {!!value?.trim() && !aiGeneration.content && latestRun?.status !== "IN_PROGRESS" && (
+        <GenerationFeedbackBar
+          onSubmit={handlePostAcceptFeedback}
+          isLoading={aiGeneration.isLoading || initiatingDeepThink}
+        />
       )}
     </div>
   );
