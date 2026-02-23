@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { PodRepairSection } from "@/components/pod-repair";
@@ -23,8 +24,10 @@ export default function StakgraphPage() {
     loading,
     initialLoading,
     saved,
+    repoValidationErrors,
     loadSettings,
     saveSettings,
+    setRepoValidationErrors,
     handleProjectInfoChange,
     handleRepositoryChange,
     handleSwarmChange,
@@ -178,6 +181,7 @@ export default function StakgraphPage() {
                   errors={errors}
                   loading={loading}
                   onChange={handleRepositoryChange}
+                  onValidationChange={setRepoValidationErrors}
                 />
 
                 <SwarmForm
@@ -213,7 +217,7 @@ export default function StakgraphPage() {
                 />
               </div>
 
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || Object.keys(repoValidationErrors).length > 0}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -226,6 +230,11 @@ export default function StakgraphPage() {
                   </>
                 )}
               </Button>
+              {Object.keys(repoValidationErrors).length > 0 && (
+                <p className="text-sm text-amber-600 mt-2">
+                  All repositories must be verified with admin access before saving.
+                </p>
+              )}
             </form>
           </CardContent>
         </Card>
