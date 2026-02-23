@@ -20,8 +20,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useDetailResource } from "@/hooks/useDetailResource";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import type { StakworkRunDecision, StakworkRunType, WorkflowStatus } from "@prisma/client";
@@ -29,8 +31,27 @@ import { ArrowLeft, Bot, Check, Loader2, Mic, Rocket, Trash2 } from "lucide-reac
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { PlanChatView } from "./components/PlanChatView";
 
 export default function FeatureDetailPage() {
+  const conversationalPlan = useFeatureFlag(FEATURE_FLAGS.CONVERSATIONAL_PLAN);
+  const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
+  const { featureId } = useParams() as { featureId: string };
+
+  if (conversationalPlan) {
+    return (
+      <PlanChatView
+        featureId={featureId}
+        workspaceSlug={workspaceSlug}
+        workspaceId={workspaceId}
+      />
+    );
+  }
+
+  return <FeatureDetailClassicView />;
+}
+
+function FeatureDetailClassicView() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
