@@ -65,6 +65,48 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
   };
 }
 
+export async function getRepositoryById(repositoryId: string, workspaceId: string): Promise<RepositoryInfo | null> {
+  const repo = await db.repository.findUnique({
+    where: { id: repositoryId },
+    select: {
+      id: true,
+      repositoryUrl: true,
+      ignoreDirs: true,
+      unitGlob: true,
+      integrationGlob: true,
+      e2eGlob: true,
+      name: true,
+      description: true,
+      branch: true,
+      codeIngestionEnabled: true,
+      docsEnabled: true,
+      mocksEnabled: true,
+      embeddingsEnabled: true,
+      workspaceId: true,
+    },
+  });
+
+  if (!repo || repo.workspaceId !== workspaceId) {
+    return null;
+  }
+
+  return {
+    id: repo.id,
+    repositoryUrl: repo.repositoryUrl,
+    ignoreDirs: repo.ignoreDirs,
+    unitGlob: repo.unitGlob,
+    integrationGlob: repo.integrationGlob,
+    e2eGlob: repo.e2eGlob,
+    name: repo.name,
+    description: repo.description,
+    branch: repo.branch,
+    codeIngestionEnabled: repo.codeIngestionEnabled,
+    docsEnabled: repo.docsEnabled,
+    mocksEnabled: repo.mocksEnabled,
+    embeddingsEnabled: repo.embeddingsEnabled,
+  };
+}
+
 export async function getAllRepositories(workspaceId: string): Promise<RepositoryInfo[]> {
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },

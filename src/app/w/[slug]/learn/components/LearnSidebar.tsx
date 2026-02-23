@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RefreshCw, Sprout, Box, ChevronDown, Plus } from "lucide-react";
+import { RefreshCw, Sprout, Box, ChevronDown, Plus, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CreateFeatureModal } from "./CreateFeatureModal";
 import { UsageDisplay } from "./UsageDisplay";
 import { formatRelativeOrDate } from "@/lib/date-utils";
@@ -21,12 +22,21 @@ interface Feature {
   documentation?: string;
 }
 
+interface Repository {
+  id: string;
+  name: string;
+  repositoryUrl: string;
+}
+
 interface LearnSidebarProps {
   workspaceSlug: string;
   onFeatureClick?: (featureId: string, featureName: string) => void;
+  repositories: Repository[];
+  selectedRepoId: string;
+  onRepoChange: (repoId: string) => void;
 }
 
-export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProps) {
+export function LearnSidebar({ workspaceSlug, onFeatureClick, repositories, selectedRepoId, onRepoChange }: LearnSidebarProps) {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [isFeaturesLoading, setIsFeaturesLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -95,7 +105,11 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
     setIsSeeding(true);
 
     try {
-      const response = await fetch(`/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}`, {
+      const params = new URLSearchParams({ workspace: workspaceSlug });
+      if (selectedRepoId) {
+        params.set("repositoryId", selectedRepoId);
+      }
+      const response = await fetch(`/api/learnings?${params.toString()}`, {
         method: "POST",
       });
 
@@ -242,6 +256,26 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
           </div>
           <Switch checked={autoLearnEnabled} onCheckedChange={handleAutoLearnToggle} disabled={isLoadingConfig} />
         </div>
+        {repositories.length > 1 && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Repository</span>
+            </div>
+            <Select value={selectedRepoId} onValueChange={onRepoChange}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select repository" />
+              </SelectTrigger>
+              <SelectContent>
+                {repositories.map((repo) => (
+                  <SelectItem key={repo.id} value={repo.id} className="text-xs">
+                    {repo.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="flex gap-2">
           <Button size="sm" onClick={handleSeedKnowledge} disabled={isSeeding || isProcessing} className="flex-1">
             {isSeeding || isProcessing ? (
@@ -270,6 +304,9 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
         onClose={() => setIsCreateModalOpen(false)}
         workspaceSlug={workspaceSlug}
         onFeatureCreated={handleFeatureCreated}
+        repositories={repositories}
+        selectedRepoId={selectedRepoId}
+        onRepoChange={onRepoChange}
       />
     </div>
   );
