@@ -16,6 +16,17 @@ vi.mock("@/services/pool-manager/sync", () => ({
   syncPoolManagerSettings: vi.fn(),
 }));
 
+// Mock WebhookService to avoid GitHub token requirement in tests
+vi.mock("@/services/github/WebhookService", () => ({
+  WebhookService: vi.fn().mockImplementation(() => ({
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({
+      repositoryId: "mock-repo-id",
+      defaultBranch: "main",
+      webhookId: 12345,
+    }),
+  })),
+}));
+
 // Import after mocking
 import {
   GET as GET_STAK,
@@ -123,6 +134,9 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    
+    // Mock syncPoolManagerSettings to return success
+    vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true });
 
     // Use transaction to atomically create test data with services and containerFiles
     testData = await db.$transaction(async (tx) => {
@@ -305,6 +319,12 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const res = await PUT_STAK(req, {
           params: Promise.resolve({ slug: testData.workspace.slug }),
         });
+        
+        if (res.status !== 200) {
+          const errorBody = await res.json();
+          console.error('Test failed with error:', JSON.stringify(errorBody, null, 2));
+        }
+        
         await expectSuccess(res, 200);
 
         const swarm = await db.swarm.findUnique({
