@@ -8,6 +8,7 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import type { ModelMessage } from "ai";
 
 interface LearnChatProps {
@@ -18,6 +19,9 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
+  const { workspace } = useWorkspace();
+  const repositories = workspace?.repositories ?? [];
+  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
       id: "1",
@@ -34,6 +38,13 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   });
   const hasReceivedContentRef = useRef(false);
   const hasLoadedFeatureRef = useRef(false);
+
+  // Default to first repository when repositories load
+  useEffect(() => {
+    if (repositories.length > 0 && !selectedRepoId) {
+      setSelectedRepoId(repositories[0].id);
+    }
+  }, [repositories, selectedRepoId]);
 
   const loadFeatureById = async (featureId: string, featureName?: string) => {
     setIsLoading(true);
@@ -278,7 +289,13 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       </div>
       {!isMobile && (
         <div className="fixed top-1 right-1 h-full">
-          <LearnSidebar workspaceSlug={workspaceSlug} onFeatureClick={handleFeatureClick} />
+          <LearnSidebar
+            workspaceSlug={workspaceSlug}
+            onFeatureClick={handleFeatureClick}
+            repositories={repositories}
+            selectedRepoId={selectedRepoId}
+            onRepoChange={setSelectedRepoId}
+          />
         </div>
       )}
     </div>
