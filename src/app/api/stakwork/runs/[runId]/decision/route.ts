@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrApiToken } from "@/lib/auth/api-token";
+import { db } from "@/lib/db";
 import { UpdateStakworkRunDecisionSchema } from "@/types/stakwork";
 import { updateStakworkRunDecision } from "@/services/stakwork-run";
 
@@ -16,14 +17,17 @@ export async function PATCH(
   { params }: { params: Promise<{ runId: string }> }
 ) {
   try {
-    // Authenticate user
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
+    const { runId } = await params;
+
+    // Look up the run to get workspaceId for API token auth
+    const runLookup = await db.stakworkRun.findUnique({
+      where: { id: runId },
+      select: { workspaceId: true },
+    });
+    const userOrResponse = await requireAuthOrApiToken(request, runLookup?.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const userId = userOrResponse.id;
-
-    const { runId } = await params;
 
     if (!runId) {
       return NextResponse.json(

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { StakworkRunQuerySchema } from "@/types/stakwork";
 import { getStakworkRuns } from "@/services/stakwork-run";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
@@ -14,16 +14,12 @@ export const fetchCache = "force-no-store";
  */
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate user
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
+    const url = new URL(request.url);
+    const workspaceId = url.searchParams.get("workspaceId");
+    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const userId = userOrResponse.id;
-
-    // Parse query parameters
-    const url = new URL(request.url);
-    const workspaceId = url.searchParams.get("workspaceId");
     const type = url.searchParams.get("type");
     const featureId = url.searchParams.get("featureId");
     const status = url.searchParams.get("status");

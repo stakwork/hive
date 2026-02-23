@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
@@ -9,20 +9,24 @@ export async function GET(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
+    const { featureId } = await params;
+
+    // Look up feature's workspaceId for API token auth
+    const featureLookup = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const { featureId } = await params;
-    
     // Get sort parameter from query string, default to updatedAt
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get("sortBy") || "updatedAt";
-    
+
     // Validate sortBy parameter
     const validSortFields = ["createdAt", "updatedAt", "order"];
     const sortField = validSortFields.includes(sortBy) ? sortBy : "updatedAt";
-    
+
     // Determine sort order based on field
     const sortOrder = sortField === "order" ? "asc" : "desc";
 
@@ -254,12 +258,15 @@ export async function PATCH(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { featureId } = await params;
     const body = await request.json();
+
+    const featureLookup = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const updatedFeature = await updateFeature(featureId, userOrResponse.id, body);
 
@@ -286,11 +293,14 @@ export async function DELETE(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { featureId } = await params;
+
+    const featureLookup = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     await deleteFeature(featureId, userOrResponse.id);
 
