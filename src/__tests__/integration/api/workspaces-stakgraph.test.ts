@@ -1,8 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  GET as GET_STAK,
-  PUT as PUT_STAK,
-} from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
 import { encryptEnvVars, EncryptionService } from "@/lib/encryption";
 import {
@@ -14,6 +10,29 @@ import {
   createPutRequest,
   expectSuccess,
 } from "@/__tests__/support/helpers";
+
+// Mock syncPoolManagerSettings at module level
+vi.mock("@/services/pool-manager/sync", () => ({
+  syncPoolManagerSettings: vi.fn(),
+}));
+
+// Mock WebhookService to avoid GitHub token requirement in tests
+vi.mock("@/services/github/WebhookService", () => ({
+  WebhookService: vi.fn().mockImplementation(() => ({
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({
+      repositoryId: "mock-repo-id",
+      defaultBranch: "main",
+      webhookId: 12345,
+    }),
+  })),
+}));
+
+// Import after mocking
+import {
+  GET as GET_STAK,
+  PUT as PUT_STAK,
+} from "@/app/api/workspaces/[slug]/stakgraph/route";
+import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 
 // Test fixtures for PM2 config and container files
 const DEFAULT_PM2_CONFIG = `module.exports = {
@@ -115,6 +134,9 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    
+    // Mock syncPoolManagerSettings to return success
+    vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true });
 
     // Use transaction to atomically create test data with services and containerFiles
     testData = await db.$transaction(async (tx) => {
@@ -297,6 +319,12 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const res = await PUT_STAK(req, {
           params: Promise.resolve({ slug: testData.workspace.slug }),
         });
+        
+        if (res.status !== 200) {
+          const errorBody = await res.json();
+          console.error('Test failed with error:', JSON.stringify(errorBody, null, 2));
+        }
+        
         await expectSuccess(res, 200);
 
         const swarm = await db.swarm.findUnique({
@@ -745,6 +773,266 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const containerFiles = swarm2?.containerFiles as Record<string, string>;
         const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
         expect(pm2Content).toContain("instances: 4");
+      });
+    });
+
+    describe("Infrastructure change detection", () => {
+      let infraTestData: {
+        workspace: any;
+        user: any;
+        swarm: any;
+        repository: any;
+      };
+
+      beforeEach(async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+        vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true });
+
+        const userId = generateUniqueId();
+        const workspaceSlug = generateUniqueSlug();
+
+        const user = await db.user.create({
+          data: {
+            id: userId,
+            email: `${userId}@example.com`,
+            name: "Test User",
+          },
+        });
+
+        const workspace = await db.workspace.create({
+          data: {
+            name: "Test Workspace",
+            slug: workspaceSlug,
+            ownerId: user.id,
+          },
+        });
+
+        await db.workspaceMember.create({
+          data: {
+            userId: user.id,
+            workspaceId: workspace.id,
+            role: "OWNER",
+          },
+        });
+
+        const repository = await db.repository.create({
+          data: {
+            workspaceId: workspace.id,
+            repositoryUrl: "https://github.com/test/repo",
+            name: "test-repo",
+            branch: "main",
+          },
+        });
+
+        const swarm = await db.swarm.create({
+          data: {
+            workspaceId: workspace.id,
+            name: "Test Swarm",
+            description: "Original description",
+            poolName: "test-pool",
+            poolApiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-api-key")),
+            services: JSON.stringify(DEFAULT_SERVICES),
+            containerFiles: {
+              "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG),
+            },
+            poolCpu: "2",
+            poolMemory: "4Gi",
+            environmentVariables: JSON.stringify([
+              { name: "NODE_ENV", value: "production" },
+            ]),
+          },
+        });
+
+        infraTestData = { workspace, user, swarm, repository };
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(user)
+        );
+      });
+
+      it("should NOT call syncPoolManagerSettings when only description changes", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            description: "Updated description only",
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync was NOT called
+        expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+
+        // Verify description was still saved
+        const updatedSwarm = await db.swarm.findUnique({
+          where: { id: infraTestData.swarm.id },
+        });
+        expect(updatedSwarm?.description).toBe("Updated description only");
+      });
+
+      it("should NOT call syncPoolManagerSettings when only name changes", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            name: "Updated name only",
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync was NOT called
+        expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+
+        // Verify name was still saved
+        const updatedSwarm = await db.swarm.findUnique({
+          where: { id: infraTestData.swarm.id },
+        });
+        expect(updatedSwarm?.name).toBe("Updated name only");
+      });
+
+      it("should call syncPoolManagerSettings when services change", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const newServices = [
+          {
+            name: "api",
+            port: 4000,
+            scripts: {
+              start: "npm start",
+              install: "npm install",
+            },
+            cwd: "",
+          },
+        ];
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            services: newServices,
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync WAS called
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            workspaceId: infraTestData.workspace.id,
+            swarmId: infraTestData.swarm.id,
+          })
+        );
+      });
+
+      it("should call syncPoolManagerSettings when poolCpu changes", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            poolCpu: "4",
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync WAS called
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            poolCpu: "4",
+          })
+        );
+      });
+
+      it("should call syncPoolManagerSettings when poolMemory changes", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            poolMemory: "8Gi",
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync WAS called
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            poolMemory: "8Gi",
+          })
+        );
+      });
+
+      it("should call syncPoolManagerSettings when environmentVariables change", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            environmentVariables: [
+              { name: "NODE_ENV", value: "development" },
+              { name: "DEBUG", value: "true" },
+            ],
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync WAS called
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+      });
+
+      it("should call syncPoolManagerSettings when containerFiles pm2.config.js changes", async () => {
+        vi.mocked(syncPoolManagerSettings).mockClear();
+
+        const req = createPutRequest(
+          `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
+          {
+            containerFiles: {
+              "pm2.config.js": toBase64(UPDATED_PM2_CONFIG),
+            },
+          }
+        );
+
+        const res = await PUT_STAK(req, {
+          params: Promise.resolve({ slug: infraTestData.workspace.slug }),
+        });
+
+        await expectSuccess(res, 200);
+
+        // Verify sync WAS called
+        expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
       });
     });
   });
