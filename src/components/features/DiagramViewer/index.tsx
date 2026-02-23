@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, FileImage } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface DiagramViewerProps {
@@ -24,14 +24,9 @@ export function DiagramViewer({ diagramUrl, isGenerating }: DiagramViewerProps) 
     );
   }
 
-  // Show placeholder when no diagram exists
+  // Nothing to show when no diagram exists
   if (!diagramUrl) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-border rounded-lg">
-        <FileImage className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-sm text-muted-foreground">No diagram generated yet</p>
-      </div>
-    );
+    return null;
   }
 
   // Show error state if image failed to load
