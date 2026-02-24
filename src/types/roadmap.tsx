@@ -181,6 +181,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     diagramS3Key: true;
     status: true;
     priority: true;
+    workflowStatus: true;
     createdAt: true;
     updatedAt: true;
     assignee: {

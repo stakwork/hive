@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection } from "@/hooks/usePusherConnection";
+import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import {
@@ -60,6 +60,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
   }, [featureId, fetchFeature, setFeature]);
 
+  // Hydrate workflow status from persisted feature data
+  useEffect(() => {
+    if (feature?.workflowStatus) {
+      setWorkflowStatus(feature.workflowStatus);
+    }
+  }, [feature?.workflowStatus]);
+
   // Load existing messages
   useEffect(() => {
     async function loadMessages() {
@@ -86,16 +93,16 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       return [...msgs, message];
     });
     setIsLoading(false);
-    setWorkflowStatus(WorkflowStatus.COMPLETED);
   }, []);
 
   const handleWorkflowStatusUpdate = useCallback(
-    (update: { taskId: string; workflowStatus: WorkflowStatus }) => {
+    (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
       if (
         update.workflowStatus === WorkflowStatus.COMPLETED ||
         update.workflowStatus === WorkflowStatus.FAILED ||
-        update.workflowStatus === WorkflowStatus.ERROR
+        update.workflowStatus === WorkflowStatus.ERROR ||
+        update.workflowStatus === WorkflowStatus.HALTED
       ) {
         setIsLoading(false);
       }
@@ -152,13 +159,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId],
   );
 
-  const handleSend = useCallback(
-    async (message: string) => {
-      await sendMessage(message);
-    },
-    [sendMessage],
-  );
-
   const handleArtifactAction = useCallback(
     async (_messageId: string, action: { optionResponse: string }) => {
       await sendMessage(action.optionResponse);
@@ -166,15 +166,16 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [sendMessage],
   );
 
-  const allArtifacts = messages.flatMap((m) => m.artifacts || []);
+  const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
 
   const planData: PlanData = useMemo(() => {
-    const userStoriesContent =
-      feature?.userStories && feature.userStories.length > 0
-        ? feature.userStories.length === 1
-          ? feature.userStories[0].title
-          : feature.userStories.map((s: { title: string }) => `- ${s.title}`).join("\n")
-        : null;
+    const stories = feature?.userStories ?? [];
+    let userStoriesContent: string | null = null;
+    if (stories.length === 1) {
+      userStoriesContent = stories[0].title;
+    } else if (stories.length > 1) {
+      userStoriesContent = stories.map((s) => `- ${s.title}`).join("\n");
+    }
 
     const sections: PlanSection[] = [
       { key: "brief", label: "Brief", content: feature?.brief || null },
@@ -191,6 +192,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const featureTitle = feature?.title || null;
 
+  const inputDisabled =
+    isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
+
   if (!initialLoadDone) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -206,8 +210,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           <div className="h-full min-h-0 min-w-0">
             <ChatArea
               messages={messages}
-              onSend={handleSend}
+              onSend={sendMessage}
               onArtifactAction={handleArtifactAction}
+              inputDisabled={inputDisabled}
               isLoading={isLoading}
               workflowStatus={workflowStatus}
               taskTitle={featureTitle}

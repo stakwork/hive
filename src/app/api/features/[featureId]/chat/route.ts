@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
-import { ChatRole, ChatStatus, type ContextTag, type Artifact } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus, type ContextTag, type Artifact } from "@/lib/chat";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { buildFeatureContext } from "@/services/task-coordinator";
-import { ArtifactType } from "@prisma/client";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 export const runtime = "nodejs";
@@ -282,13 +282,24 @@ export async function POST(
         planEdited,
       });
 
-      // Store Stakwork project ID on the feature for log subscription
+      // Set workflow status to IN_PROGRESS as soon as Stakwork is called
+      const updateData: Record<string, unknown> = {
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        workflowStartedAt: new Date(),
+      };
       if (stakworkData?.data?.project_id) {
-        await db.feature.update({
-          where: { id: featureId },
-          data: { stakworkProjectId: stakworkData.data.project_id },
-        });
+        updateData.stakworkProjectId = stakworkData.data.project_id;
       }
+      await db.feature.update({
+        where: { id: featureId },
+        data: updateData,
+      });
+
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      );
     }
 
     return NextResponse.json(

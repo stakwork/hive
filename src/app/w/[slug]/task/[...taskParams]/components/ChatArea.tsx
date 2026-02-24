@@ -282,7 +282,6 @@ export function ChatArea({
 
       {/* Input Bar */}
       <ChatInput
-        logs={logs}
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
@@ -294,6 +293,7 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
+        featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
       />
