@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
@@ -17,7 +16,6 @@ import {
 } from "@/__tests__/support/helpers/chat-message-mocks";
 
 // Mock all external dependencies
-vi.mock("next-auth/next");
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
   db: {
@@ -70,11 +68,6 @@ describe("callMock Function - Chat Message Processing", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Setup authenticated session
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: mockUserId, name: "Test User", email: "test@example.com" },
-    } as any);
 
     // Mock config - NO Stakwork credentials (this triggers callMock)
     vi.mocked(config).STAKWORK_API_KEY = undefined;
@@ -133,10 +126,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       await POST(request);
@@ -191,10 +188,14 @@ describe("callMock Function - Chat Message Processing", () => {
           message: "Test message",
           artifacts: [{ type: "code", content: { language: "typescript", code: "console.log('test');" } }],
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       await POST(request);
@@ -256,10 +257,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "New message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       await POST(request);
@@ -295,10 +300,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);
@@ -340,10 +349,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);
@@ -372,10 +385,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);
@@ -411,10 +428,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);
@@ -450,10 +471,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);
@@ -489,10 +514,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       await POST(request);
@@ -525,10 +554,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       await POST(request);
@@ -561,10 +594,14 @@ describe("callMock Function - Chat Message Processing", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
+        headers: (() => {
+          const h = new Headers({ "content-type": "application/json", host: "localhost:3000" });
+          h.set("x-middleware-auth-status", "authenticated");
+          h.set("x-middleware-user-id", "user-123");
+          h.set("x-middleware-user-email", "test@example.com");
+          h.set("x-middleware-user-name", "Test User");
+          return h;
+        })(),
       });
 
       const response = await POST(request);

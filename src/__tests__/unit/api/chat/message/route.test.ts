@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock all external dependencies
-vi.mock("next-auth/next");
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
   db: {
@@ -43,13 +42,32 @@ vi.mock("@/lib/utils/swarm", () => ({
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+
+/** Build a POST NextRequest with middleware auth headers */
+function createAuthenticatedPostRequest(
+  url: string,
+  body: Record<string, unknown>,
+  userId = "user-123",
+  email = "test@test.com",
+  name = "Test User",
+): NextRequest {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  headers.set("x-middleware-auth-status", "authenticated");
+  headers.set("x-middleware-user-id", userId);
+  headers.set("x-middleware-user-email", email);
+  headers.set("x-middleware-user-name", name);
+  return new NextRequest(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers,
+  });
+}
 
 describe("POST /api/chat/message - callStakwork Unit Tests", () => {
   const mockUserId = "user-123";
@@ -61,11 +79,6 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Setup default mocks
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: mockUserId },
-    } as any);
 
     vi.mocked(getBaseUrl).mockReturnValue("http://localhost:3000");
     vi.mocked(transformSwarmUrlToRepo2Graph).mockReturnValue("http://test-swarm.com:3355");
@@ -99,9 +112,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
   });
 
   describe("Authentication Tests", () => {
-    it("should return 401 when no session exists", async () => {
-      vi.mocked(getServerSession).mockResolvedValue(null);
-
+    it("should return 401 when no auth headers exist", async () => {
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
         body: JSON.stringify({
@@ -117,10 +128,9 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.error).toBe("Unauthorized");
     });
 
-    it("should return 401 when user ID is missing", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: {},
-      } as any);
+    it("should return 401 when auth status is not authenticated", async () => {
+      const headers = new Headers({ "Content-Type": "application/json" });
+      headers.set("x-middleware-auth-status", "public");
 
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
@@ -128,19 +138,20 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
+        headers,
       });
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(data.error).toBe("Invalid user session");
+      expect(data.error).toBe("Unauthorized");
     });
 
-    it("should return 401 when session user has no ID", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: { email: "test@example.com" }, // Missing id
-      } as any);
+    it("should return 401 when user ID header is missing", async () => {
+      const headers = new Headers({ "Content-Type": "application/json" });
+      headers.set("x-middleware-auth-status", "authenticated");
+      // Missing user-id, email, name headers
 
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
@@ -148,13 +159,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           taskId: mockTaskId,
           message: "Test message",
         }),
+        headers,
       });
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(data.error).toBe("Invalid user session");
+      expect(data.error).toBe("Unauthorized");
     });
   });
 
@@ -171,13 +183,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          // message missing and no artifacts
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { taskId: mockTaskId },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -187,13 +197,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should return 400 when taskId is missing", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          message: "Test message",
-          // taskId missing
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { message: "Test message" },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -244,14 +252,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { project_id: 12345 } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "", // Empty message
-          artifacts: [{ type: "CODE", content: { code: "console.log('test')" } }],
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "", // Empty message
+        artifacts: [{ type: "CODE", content: { code: "console.log('test')" } }],
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -265,13 +274,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should return 404 when task is not found", async () => {
       vi.mocked(db.task.findFirst).mockResolvedValue(null);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -300,13 +310,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
       vi.mocked(db.user.findUnique).mockResolvedValue(null);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -344,13 +355,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
       vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -374,13 +386,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
       vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -431,13 +444,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { project_id: 12345 } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -488,13 +502,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { project_id: 12345 } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -552,13 +567,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { mock: true } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -582,13 +598,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { project_id: 12345 } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -603,13 +620,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         json: async () => ({ success: true, data: { project_id: 12345 } }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -677,14 +695,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should use first workflow ID for live mode", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          mode: "live",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        mode: "live",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -695,14 +714,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should use third workflow ID for unit mode", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          mode: "unit",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        mode: "unit",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -713,14 +733,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should use third workflow ID for integration mode", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          mode: "integration",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        mode: "integration",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -731,14 +752,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should use second workflow ID for default/test mode", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          mode: "test",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        mode: "test",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -749,13 +771,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should use second workflow ID when mode is not specified", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -812,15 +835,16 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should construct vars object with all required fields", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          contextTags: [{ type: "file", value: "test.js" }],
-          mode: "live",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        contextTags: [{ type: "file", value: "test.js" }],
+        mode: "live",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -869,21 +893,22 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          attachments: [
-            {
-              path: "uploads/test/file.pdf",
-              filename: "file.pdf",
-              mimeType: "application/pdf",
-              size: 1024,
-            },
-          ],
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        attachments: [
+        {
+        path: "uploads/test/file.pdf",
+        filename: "file.pdf",
+        mimeType: "application/pdf",
+        size: 1024,
+        },
+        ],
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -902,13 +927,18 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should construct webhook URL with getBaseUrl", async () => {
       vi.mocked(getBaseUrl).mockReturnValue("https://production.example.com");
 
+      const headers = new Headers({ "Content-Type": "application/json", host: "production.example.com" });
+      headers.set("x-middleware-auth-status", "authenticated");
+      headers.set("x-middleware-user-id", mockUserId);
+      headers.set("x-middleware-user-email", "test@test.com");
+      headers.set("x-middleware-user-name", "Test User");
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
-        headers: { host: "production.example.com" },
         body: JSON.stringify({
           taskId: mockTaskId,
           message: "Test message",
         }),
+        headers,
       });
 
       await POST(request);
@@ -926,13 +956,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should override webhook URL with CUSTOM_WEBHOOK_URL env var", async () => {
       process.env.CUSTOM_WEBHOOK_URL = "https://custom-webhook.example.com";
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -946,13 +977,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should include workflow status webhook URL", async () => {
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -965,13 +997,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should transform swarm URL for repo2graph", async () => {
       vi.mocked(transformSwarmUrlToRepo2Graph).mockReturnValue("https://custom-graph.com:3355");
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -1031,13 +1064,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         statusText: "Internal Server Error",
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1065,13 +1099,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should handle Stakwork API network error (fetch rejection)", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1099,13 +1134,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     it("should return 500 on database error", async () => {
       vi.mocked(db.task.findFirst).mockRejectedValue(new Error("Database connection error"));
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1115,12 +1151,15 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should handle malformed JSON in request body", async () => {
+      const headers = new Headers({ "Content-Type": "application/json" });
+      headers.set("x-middleware-auth-status", "authenticated");
+      headers.set("x-middleware-user-id", mockUserId);
+      headers.set("x-middleware-user-email", "test@test.com");
+      headers.set("x-middleware-user-name", "Test User");
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
         body: "invalid json {",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
       });
 
       const response = await POST(request);
@@ -1136,13 +1175,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         statusText: "Service Unavailable",
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1208,15 +1248,16 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          contextTags: [{ type: "file", value: "test.js" }],
-          mode: "live",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        contextTags: [{ type: "file", value: "test.js" }],
+        mode: "live",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1269,13 +1310,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       await POST(request);
 
@@ -1307,13 +1349,14 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         }),
       } as Response);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1389,17 +1432,18 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          contextTags: [
-            { type: "file", value: "src/utils.ts" },
-            { type: "function", value: "processData" },
-          ],
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        contextTags: [
+        { type: "file", value: "src/utils.ts" },
+        { type: "function", value: "processData" },
+        ],
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1442,19 +1486,20 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          artifacts: [
-            {
-              type: "CODE",
-              content: { language: "javascript", code: "console.log('test')" },
-            },
-          ],
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        artifacts: [
+        {
+        type: "CODE",
+        content: { language: "javascript", code: "console.log('test')" },
+        },
+        ],
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -1507,17 +1552,18 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
 
-      const request = new NextRequest("http://localhost/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-          attachments: [
-            { path: "uploads/file1.pdf", filename: "file1.pdf", mimeType: "application/pdf", size: 1024 },
-            { path: "uploads/file2.jpg", filename: "file2.jpg", mimeType: "image/jpeg", size: 2048 },
-          ],
-        }),
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        {
+        taskId: mockTaskId,
+        message: "Test message",
+        attachments: [
+        { path: "uploads/file1.pdf", filename: "file1.pdf", mimeType: "application/pdf", size: 1024 },
+        { path: "uploads/file2.jpg", filename: "file2.jpg", mimeType: "image/jpeg", size: 2048 },
+        ],
+        },
+        mockUserId,
+      );
 
       const response = await POST(request);
       const data = await response.json();
