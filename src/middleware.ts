@@ -161,6 +161,10 @@ export async function middleware(request: NextRequest) {
       secureCookie: shouldUseSecureCookie(request),
     });
     if (!token) {
+      // Allow API token auth to pass through to route handlers
+      if (isApiRoute && request.headers.get("x-api-token")) {
+        return continueRequest(requestHeaders, "webhook");
+      }
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
       }
