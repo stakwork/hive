@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -27,7 +26,7 @@ interface WhiteboardChatPanelProps {
 
 export function WhiteboardChatPanel({
   whiteboardId,
-  featureId,
+  featureId: _featureId,
   excalidrawAPI,
   onReloadWhiteboard,
 }: WhiteboardChatPanelProps) {
@@ -178,7 +177,7 @@ export function WhiteboardChatPanel({
   }
 
   return (
-    <div className="absolute right-0 top-0 bottom-0 flex flex-col w-80 bg-background/95 backdrop-blur-sm border-l shadow-lg z-10 rounded-r-lg">
+    <div className="absolute right-0 top-0 bottom-0 flex flex-col w-80 bg-background/95 backdrop-blur-sm border-l shadow-lg z-10 rounded-r-lg overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <h3 className="font-medium text-sm">Chat</h3>
@@ -194,7 +193,7 @@ export function WhiteboardChatPanel({
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -224,7 +223,7 @@ export function WhiteboardChatPanel({
             <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="p-3 border-t space-y-2">
