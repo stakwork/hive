@@ -51,6 +51,21 @@ export async function GET(
             },
           },
         },
+        feature: {
+          select: {
+            id: true,
+            workspace: {
+              select: {
+                id: true,
+                ownerId: true,
+                members: {
+                  where: { userId },
+                  select: { role: true },
+                },
+              },
+            },
+          },
+        },
         artifacts: {
           orderBy: { createdAt: "asc" },
         },
@@ -69,12 +84,18 @@ export async function GET(
       },
     });
 
-    if (!chatMessage || !chatMessage.task) {
+    if (!chatMessage) {
       return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
-    const isOwner = chatMessage.task.workspace.ownerId === userId;
-    const isMember = chatMessage.task.workspace.members.length > 0;
+    // Authorize via task or feature workspace membership
+    const workspace = chatMessage.task?.workspace ?? chatMessage.feature?.workspace;
+    if (!workspace) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
+
+    const isOwner = workspace.ownerId === userId;
+    const isMember = workspace.members.length > 0;
     if (!isOwner && !isMember) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }

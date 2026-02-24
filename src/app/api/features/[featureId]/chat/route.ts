@@ -5,6 +5,8 @@ import { config } from "@/config/env";
 import { ChatRole, ChatStatus, type ContextTag, type Artifact } from "@/lib/chat";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { buildFeatureContext } from "@/services/task-coordinator";
+import { ArtifactType } from "@prisma/client";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 export const runtime = "nodejs";
@@ -124,7 +126,13 @@ export async function POST(
       where: { id: featureId },
       select: {
         id: true,
+        updatedAt: true,
         workspaceId: true,
+        phases: {
+          where: { order: 0 },
+          take: 1,
+          select: { id: true },
+        },
         workspace: {
           select: {
             slug: true,
@@ -228,6 +236,30 @@ export async function POST(
 
       const history = await fetchFeatureChatHistory(featureId, chatMessage.id);
 
+      // Build feature context using the auto-created Phase 1
+      let featureContext = undefined;
+      const phase = feature.phases?.[0];
+      if (phase) {
+        try {
+          featureContext = await buildFeatureContext(featureId, phase.id);
+        } catch (error) {
+          console.error("Error building feature context:", error);
+        }
+      }
+
+      // Detect if user has manually edited plan fields since last AI update
+      const lastPlanArtifact = await db.artifact.findFirst({
+        where: {
+          type: ArtifactType.PLAN,
+          message: { featureId },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      const planEdited = lastPlanArtifact
+        ? feature.updatedAt > lastPlanArtifact.createdAt
+        : false;
+
       stakworkData = await callStakworkAPI({
         taskId: featureId,
         message,
@@ -246,6 +278,8 @@ export async function POST(
         history,
         webhook,
         featureId,
+        featureContext,
+        planEdited,
       });
     }
 
