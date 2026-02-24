@@ -65,6 +65,7 @@ interface UsePusherConnectionOptions {
   onPRStatusChange?: (update: PRStatusChangeEvent) => void;
   onBountyStatusChange?: (update: BountyStatusChangeEvent) => void;
   onDeploymentStatusChange?: (update: DeploymentStatusChangeEvent) => void;
+  onFeatureUpdated?: () => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -90,6 +91,7 @@ export function usePusherConnection({
   onPRStatusChange,
   onBountyStatusChange,
   onDeploymentStatusChange,
+  onFeatureUpdated,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -105,6 +107,7 @@ export function usePusherConnection({
   const onPRStatusChangeRef = useRef(onPRStatusChange);
   const onBountyStatusChangeRef = useRef(onBountyStatusChange);
   const onDeploymentStatusChangeRef = useRef(onDeploymentStatusChange);
+  const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
 
@@ -115,6 +118,7 @@ export function usePusherConnection({
   onPRStatusChangeRef.current = onPRStatusChange;
   onBountyStatusChangeRef.current = onBountyStatusChange;
   onDeploymentStatusChangeRef.current = onDeploymentStatusChange;
+  onFeatureUpdatedRef.current = onFeatureUpdated;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -272,6 +276,13 @@ export function usePusherConnection({
             }
             if (onDeploymentStatusChangeRef.current) {
               onDeploymentStatusChangeRef.current(update);
+            }
+          });
+
+          // Feature updated events (plan data changed)
+          channel.bind(PUSHER_EVENTS.FEATURE_UPDATED, () => {
+            if (onFeatureUpdatedRef.current) {
+              onFeatureUpdatedRef.current();
             }
           });
         }
