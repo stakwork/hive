@@ -26,7 +26,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const { workspace, loading, error } = useWorkspace();
   const pathname = usePathname();
-  const isTaskPage = pathname.includes("/task/");
+  const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
 
   // Fetch workspace logo URL when workspace changes
@@ -105,8 +105,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
       <GlobalSearch />
 
       {/* Main content */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${isTaskPage ? "md:pl-0" : "md:pl-64"}`}>
-        <main className={`flex-1 flex flex-col overflow-auto ${isTaskPage ? "p-1 md:p-3" : "p-4 md:p-6"}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
+        <main className={`flex-1 flex flex-col overflow-auto ${isFullscreenPage ? "p-1 md:p-3" : "p-4 md:p-6"}`}>
           {children}
         </main>
       </div>
