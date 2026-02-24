@@ -125,9 +125,12 @@ export function ChatArea({
     if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
     } else {
-      // Fallback to tasks list if no history or external referrer
+      // Fallback: plan list for feature chats, task list otherwise
       if (workspaceSlug) {
-        router.push(`/w/${workspaceSlug}/tasks`);
+        const fallbackPath = featureId
+          ? `/w/${workspaceSlug}/plan`
+          : `/w/${workspaceSlug}/tasks`;
+        router.push(fallbackPath);
       } else {
         router.back();
       }
