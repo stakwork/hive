@@ -357,7 +357,7 @@ export function Sidebar({ user }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const pathname = usePathname();
-  const isTaskPage = pathname.includes("/task/");
+  const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
 
   const handleNavigate = (href: string) => {
     // Refresh notification count when user clicks Tasks menu item
@@ -379,7 +379,7 @@ export function Sidebar({ user }: SidebarProps) {
   return (
     <>
       {/* Mobile Sidebar - Hidden on task pages since we have a back button */}
-      {!isTaskPage && (
+      {!isFullscreenPage && (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
             <Button
@@ -406,7 +406,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
+        className={`${isFullscreenPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent
