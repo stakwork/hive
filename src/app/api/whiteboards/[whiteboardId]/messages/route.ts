@@ -108,25 +108,13 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Validate whiteboard has linked feature with architecture
-    if (!whiteboard.featureId) {
-      return NextResponse.json(
-        { error: "Whiteboard must be linked to a feature" },
-        { status: 400 }
-      );
-    }
-
-    if (!whiteboard.feature?.architecture) {
-      return NextResponse.json(
-        { error: "Feature must have architecture text" },
-        { status: 400 }
-      );
-    }
-
-    // Guard against concurrent diagram generation
+    // Guard against concurrent diagram generation (check by whiteboard or feature)
     const activeGeneration = await db.stakworkRun.findFirst({
       where: {
-        featureId: whiteboard.featureId,
+        OR: [
+          ...(whiteboard.featureId ? [{ featureId: whiteboard.featureId }] : []),
+          { webhookUrl: { contains: `whiteboard_id=${whiteboardId}` } }, // Check if whiteboard is in progress
+        ],
         type: "DIAGRAM_GENERATION",
         status: { in: ["PENDING", "IN_PROGRESS"] },
       },
@@ -153,13 +141,24 @@ export async function POST(
 
     // Trigger diagram generation
     const layout = body.layout || "layered";
-    const run = await createDiagramStakworkRun({
-      workspaceId: whiteboard.feature.workspaceId,
-      featureId: whiteboard.featureId,
-      architectureText: whiteboard.feature.architecture,
-      layout,
-      userId: user.id,
-    });
+    
+    // Branch based on whether whiteboard is linked to a feature
+    const run = whiteboard.featureId && whiteboard.feature?.architecture
+      ? await createDiagramStakworkRun({
+          workspaceId: whiteboard.feature.workspaceId,
+          featureId: whiteboard.featureId,
+          whiteboardId,
+          architectureText: whiteboard.feature.architecture,
+          layout,
+          userId: user.id,
+        })
+      : await createDiagramStakworkRun({
+          workspaceId: whiteboard.workspace.id,
+          whiteboardId,
+          architectureText: body.content,
+          layout,
+          userId: user.id,
+        });
 
     return NextResponse.json(
       {
