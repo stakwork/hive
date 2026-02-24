@@ -3,7 +3,7 @@
 import { ArtifactType } from "@/lib/chat";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList } from "lucide-react";
+import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList, ListChecks } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface ArtifactButton {
 // Visual artifacts (left side)
 const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "PLAN", icon: ClipboardList, label: "Plan" },
+  { type: "TASKS", icon: ListChecks, label: "Tasks" },
   { type: "BROWSER", icon: Monitor, label: "Live Preview" },
   { type: "GRAPH", icon: PiGraphFill, label: "Graph" },
   { type: "WORKFLOW", icon: Network, label: "Workflow" },
