@@ -27,6 +27,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { logger } from "@/lib/logger";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -302,6 +303,9 @@ export async function createStakworkRun(
       ...(history && history.length > 0 && {
         history,
       }),
+
+      // Token reference for Stakwork
+      tokenReference: getStakworkTokenReference(),
     };
 
     const stakworkPayload = {
@@ -363,6 +367,7 @@ export async function createDiagramStakworkRun(input: {
   architectureText: string;
   layout: string;
   userId: string;
+  diagramContext?: string | null;
 }) {
   // Validate workspace access
   const workspace = await db.workspace.findUnique({
@@ -418,12 +423,16 @@ export async function createDiagramStakworkRun(input: {
       throw new Error("STAKWORK_DIAGRAM_WORKFLOW_ID not configured");
     }
 
-    const vars = {
+    const vars: Record<string, unknown> = {
       runId: run.id,
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
+      tokenReference: getStakworkTokenReference(),
     };
+    if (input.diagramContext) {
+      vars.diagramContext = input.diagramContext;
+    }
 
     const stakworkPayload = {
       name: `diagram-gen-${Date.now()}`,

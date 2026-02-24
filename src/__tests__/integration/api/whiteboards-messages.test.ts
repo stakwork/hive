@@ -313,6 +313,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: "Generate a standalone diagram",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -348,12 +349,15 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(response.status).toBe(202);
       
       // Verify the service was called with message content as architectureText
+      // (empty architecture falls through to standalone path, but featureId is still passed)
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
+        featureId: featureNoArchitecture.id,
         whiteboardId: whiteboardNoArchitecture.id,
         architectureText: "Test message",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -497,9 +501,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         workspaceId: testWorkspace.id,
         featureId: testFeature.id,
         whiteboardId: testWhiteboard.id,
-        architectureText: "Test architecture for diagram generation",
+        architectureText: "Architecture:\nTest architecture for diagram generation\n\nUser request:\nGenerate a diagram for user authentication flow",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -520,9 +525,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         workspaceId: testWorkspace.id,
         featureId: testFeature.id,
         whiteboardId: testWhiteboard.id,
-        architectureText: "Test architecture for diagram generation",
+        architectureText: "Architecture:\nTest architecture for diagram generation\n\nUser request:\nTest message",
         layout: "force",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -583,6 +589,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: messageContent, // User's message is used as prompt
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
 
       // Verify message was persisted

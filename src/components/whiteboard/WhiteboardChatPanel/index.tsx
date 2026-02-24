@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { serializeDiagramContext } from "@/services/excalidraw-layout";
 import { ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -118,10 +119,17 @@ export function WhiteboardChatPanel({
     setGenerating(true);
 
     try {
+      // Extract compact diagram context from current canvas elements
+      const diagramContext = excalidrawAPI
+        ? serializeDiagramContext(
+            excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+          )
+        : null;
+
       const res = await fetch(`/api/whiteboards/${whiteboardId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmedInput, layout: "layered" }),
+        body: JSON.stringify({ content: trimmedInput, layout: "layered", diagramContext }),
       });
 
       if (res.status === 409) {
@@ -151,7 +159,7 @@ export function WhiteboardChatPanel({
       toast.error("Failed to send message");
       setGenerating(false);
     }
-  }, [input, generating, whiteboardId]);
+  }, [input, generating, whiteboardId, excalidrawAPI]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -162,7 +170,7 @@ export function WhiteboardChatPanel({
 
   if (isCollapsed) {
     return (
-      <div className="flex items-start pt-4">
+      <div className="absolute right-2 top-2 z-10">
         <Button
           variant="outline"
           size="icon"
@@ -177,7 +185,7 @@ export function WhiteboardChatPanel({
   }
 
   return (
-    <div className="flex flex-col w-80 border-l bg-background">
+    <div className="absolute right-0 top-0 bottom-0 flex flex-col w-80 bg-background/95 backdrop-blur-sm border-l shadow-lg z-10 rounded-r-lg">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <h3 className="font-medium text-sm">Chat</h3>

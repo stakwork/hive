@@ -9,6 +9,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 export const runtime = "nodejs";
 
@@ -178,6 +179,9 @@ export async function POST(request: NextRequest) {
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId: task.workspaceId,
+      
+      // Token reference
+      tokenReference: getStakworkTokenReference(),
     };
 
     // Build Stakwork payload

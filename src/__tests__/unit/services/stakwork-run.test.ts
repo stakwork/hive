@@ -205,6 +205,7 @@ describe("Stakwork Run Service", () => {
                   userStories: expect.stringContaining("User story"),
                   requirements: "",
                   architecture: "Existing architecture",
+                  tokenReference: "{{HIVE_STAGING}}", // Default when VERCEL_ENV is undefined
                 }),
               }),
             }),

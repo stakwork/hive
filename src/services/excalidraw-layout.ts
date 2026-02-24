@@ -18,12 +18,15 @@ export interface ParsedComponent {
   id: string;
   name: string;
   type: "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
+  color?: string | null;
+  backgroundColor?: string | null;
 }
 
 export interface ParsedConnection {
   from: string;
   to: string;
   label: string;
+  color?: string | null;
 }
 
 export interface ParsedDiagram {
@@ -447,7 +450,9 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const elementId = generateId();
   const textId = generateId();
   const timestamp = Date.now();
-  const { backgroundColor, strokeColor } = getComponentColors(component.type);
+  const defaults = getComponentColors(component.type);
+  const strokeColor = component.color ?? defaults.strokeColor;
+  const backgroundColor = component.backgroundColor ?? defaults.backgroundColor;
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, 16);
 
@@ -527,6 +532,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
   const arrowId = generateId();
   const labelId = generateId();
   const timestamp = Date.now();
+  const arrowColor = connection.color ?? "#1e1e1e";
 
   const origin = connection.routePoints[0];
   const points: [number, number][] = connection.routePoints.map((p) => [
@@ -544,7 +550,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
     width: lastPoint[0],
     height: lastPoint[1],
     angle: 0,
-    strokeColor: "#1e1e1e",
+    strokeColor: arrowColor,
     backgroundColor: "transparent",
     fillStyle: "solid",
     strokeWidth: 2,
@@ -759,6 +765,41 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
   }
 
   return { components, connections };
+}
+
+/**
+ * Serialize current Excalidraw elements into a compact text summary
+ * suitable for sending as LLM context. Uses extractParsedDiagram to
+ * get structured components/connections, then formats as human-readable text.
+ *
+ * Returns null if the diagram has no recognizable components.
+ */
+export function serializeDiagramContext(
+  elements: readonly Record<string, unknown>[]
+): string | null {
+  const parsed = extractParsedDiagram(elements);
+  if (!parsed || parsed.components.length === 0) return null;
+
+  const lines: string[] = [];
+
+  lines.push("Components:");
+  for (const c of parsed.components) {
+    lines.push(`- "${c.name}" (${c.type})`);
+  }
+
+  if (parsed.connections.length > 0) {
+    lines.push("");
+    lines.push("Connections:");
+    const nameById = new Map(parsed.components.map((c) => [c.id, c.name]));
+    for (const conn of parsed.connections) {
+      const from = nameById.get(conn.from) ?? conn.from;
+      const to = nameById.get(conn.to) ?? conn.to;
+      const label = conn.label ? ` [${conn.label}]` : "";
+      lines.push(`- "${from}" -> "${to}"${label}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /**
