@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback } from "react";
+import { useMemo, useEffect, useState, useCallback, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,7 +49,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   }, [featureId, onFeatureUpdate]);
 
   const { saving, saved, savedField, triggerSaved } = useAutoSave({
-    data: feature as Record<string, unknown> | null ?? null,
+    data: (feature as Record<string, unknown>) ?? null,
     onSave: handlePlanSave,
   });
 
@@ -113,7 +113,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
 
   const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
   const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
-  const isGenerating = isApiCalling || !!isRunInProgress;
+  const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating;
 
   const handleGenerateTasks = useCallback(async () => {
@@ -146,6 +146,48 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
       setIsApiCalling(false);
     }
   }, [featureId, workspaceId, refetchRun]);
+
+  function renderGenerateTasksButton(): ReactNode {
+    if (!hasFeature || hasTasks) return undefined;
+
+    let buttonLabel = "Generate Tasks";
+    if (isGenerating) buttonLabel = "Generating...";
+    else if (isRunFailed) buttonLabel = "Retry";
+
+    const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating;
+    const needsTooltip = !hasArchitecture && !isRunFailed;
+
+    const btn = (
+      <Button
+        size="sm"
+        onClick={handleGenerateTasks}
+        disabled={isDisabled}
+        className="gap-1.5 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed"
+      >
+        {isGenerating ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Sparkles className="h-3 w-3" />
+        )}
+        {buttonLabel}
+      </Button>
+    );
+
+    if (needsTooltip) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{btn}</TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Architecture required to generate tasks</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return btn;
+  }
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
@@ -191,43 +233,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
               availableArtifacts={availableTabs}
               activeArtifact={activeTab}
               onArtifactChange={setActiveTab}
-              headerAction={hasFeature && !hasTasks ? (
-                (() => {
-                  const buttonLabel = isGenerating ? "Generating..." : isRunFailed ? "Retry" : "Generate Tasks";
-                  const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating;
-
-                  const btn = (
-                    <Button
-                      size="sm"
-                      onClick={handleGenerateTasks}
-                      disabled={isDisabled}
-                      className="gap-1.5 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed"
-                    >
-                      {isGenerating ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3 w-3" />
-                      )}
-                      {buttonLabel}
-                    </Button>
-                  );
-
-                  if (!hasArchitecture && !isRunFailed) {
-                    return (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>{btn}</TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p>Architecture required to generate tasks</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    );
-                  }
-
-                  return btn;
-                })()
-              ) : undefined}
+              headerAction={renderGenerateTasksButton()}
             />
           </motion.div>
         )}
