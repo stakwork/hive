@@ -1376,6 +1376,7 @@ describe("Stakwork Run Service", () => {
         update: {
           elements: expect.any(Array),
           appState: expect.any(Object),
+          version: { increment: 1 },
         },
         create: expect.objectContaining({
           name: "Test Feature - Architecture",
@@ -1726,6 +1727,7 @@ describe("Stakwork Run Service", () => {
         data: {
           elements: expect.any(Array),
           appState: expect.any(Object),
+          version: { increment: 1 },
         },
       });
 
