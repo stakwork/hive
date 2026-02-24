@@ -46,7 +46,7 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
-  ChatInput: ({ onSend, disabled, isLoading, logs, pendingDebugAttachment, onRemoveDebugAttachment, workflowStatus }: any) => (
+  ChatInput: ({ onSend, disabled, isLoading, pendingDebugAttachment, onRemoveDebugAttachment, workflowStatus }: any) => (
     <div data-testid="chat-input">
       <input
         data-testid="message-input"
@@ -68,9 +68,6 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
       )}
       {workflowStatus && (
         <div data-testid="workflow-status">{workflowStatus}</div>
-      )}
-      {logs && logs.length > 0 && (
-        <div data-testid="logs-count">{logs.length}</div>
       )}
     </div>
   ),
@@ -544,7 +541,6 @@ describe("ChatArea", () => {
       expect(screen.getByPlaceholderText("Loading...")).toBeInTheDocument();
       expect(screen.getByTestId("debug-attachment")).toBeInTheDocument();
       expect(screen.getByTestId("workflow-status")).toBeInTheDocument();
-      expect(screen.getByTestId("logs-count")).toBeInTheDocument();
     });
 
     test("handles send message from ChatInput", async () => {

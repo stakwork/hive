@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma, PodUsageStatus } from "@prisma/client";
+import { Prisma, PodUsageStatus, WorkflowStatus } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
     // Process PLAN artifacts — update Feature model with parsed plan content
     if (featureId) {
       for (const dbArtifact of chatMessage.artifacts) {
-        if ((dbArtifact.type as string) === "PLAN") {
+        if (dbArtifact.type === ArtifactType.PLAN) {
           const raw = dbArtifact.content;
           const planXml =
             typeof raw === "string"
@@ -456,10 +456,26 @@ export async function POST(request: NextRequest) {
 
     if (featureId) {
       try {
+        await db.feature.update({
+          where: { id: featureId },
+          data: {
+            workflowStatus: WorkflowStatus.COMPLETED,
+            workflowCompletedAt: new Date(),
+          },
+        });
+      } catch (error) {
+        console.error("Error updating feature workflow status:", error);
+      }
+
+      try {
         const channelName = getFeatureChannelName(featureId);
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, {
+          taskId: featureId,
+          workflowStatus: WorkflowStatus.COMPLETED,
+        });
       } catch (error) {
-        console.error("Error broadcasting to Pusher (feature):", error);
+        console.error("Error broadcasting feature update to Pusher:", error);
       }
     }
 

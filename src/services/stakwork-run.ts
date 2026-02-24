@@ -19,6 +19,7 @@ import {
   pusherServer,
   getWorkspaceChannelName,
   getWhiteboardChannelName,
+  getFeatureChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
@@ -848,6 +849,17 @@ export async function processStakworkRunWebhook(
         );
       } catch (pusherError) {
         console.error("Error broadcasting auto-accept decision to Pusher:", pusherError);
+      }
+
+      // Also notify feature channel so plan mode listeners refetch
+      try {
+        const featureChannelName = getFeatureChannelName(run.featureId);
+        await pusherServer.trigger(featureChannelName, PUSHER_EVENTS.FEATURE_UPDATED, {
+          featureId: run.featureId,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (pusherError) {
+        console.error("Error broadcasting feature update to Pusher:", pusherError);
       }
     } catch (error) {
       console.error(`Auto-accept failed for run ${run.id}:`, error);

@@ -12,7 +12,6 @@ import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { InputStepAttachment } from "@/components/InputStepAttachment";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
@@ -31,7 +30,6 @@ interface PendingImage {
 }
 
 interface ChatInputProps {
-  logs: LogEntry[];
   onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
@@ -44,6 +42,7 @@ interface ChatInputProps {
   workspaceSlug?: string;
   taskMode?: string;
   taskId?: string;
+  featureId?: string;
   onOpenBountyRequest?: () => void;
 }
 
@@ -60,6 +59,7 @@ export function ChatInput({
   workspaceSlug,
   taskMode,
   taskId,
+  featureId,
   onOpenBountyRequest,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -361,14 +361,10 @@ export function ChatInput({
   };
 
   const getModeConfig = (mode: string) => {
-    switch (mode) {
-      case "live":
-        return { icon: Workflow, label: "Workflow" };
-      case "agent":
-        return { icon: Bot, label: "Agent" };
-      default:
-        return { icon: Workflow, label: "Workflow" };
+    if (mode === "agent") {
+      return { icon: Bot, label: "Agent" };
     }
+    return { icon: Workflow, label: "Workflow" };
   };
 
   const modeConfig = getModeConfig(mode);
@@ -395,7 +391,7 @@ export function ChatInput({
     }
   };
 
-  if (isTerminalState) {
+  if (isTerminalState && !featureId) {
     return (
       <div className={cn(
         "px-4 py-4 border-t bg-background",
@@ -562,8 +558,8 @@ export function ChatInput({
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
           }}
-          autoFocus
           disabled={disabled}
+          autoFocus
           rows={1}
           data-testid="chat-message-input"
         />

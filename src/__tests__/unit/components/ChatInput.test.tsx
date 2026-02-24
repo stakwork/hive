@@ -64,7 +64,6 @@ vi.mock("@/components/InputDebugAttachment", () => ({
 
 describe("ChatInput - Task Mode", () => {
   const defaultProps = {
-    logs: [],
     onSend: vi.fn().mockResolvedValue(undefined),
     disabled: false,
     isLoading: false,
