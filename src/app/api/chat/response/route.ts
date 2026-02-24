@@ -15,6 +15,7 @@ import {
 import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload } from "@/lib/screenshot-upload";
+import { parsePlanXml } from "@/lib/utils/plan-xml";
 
 export const fetchCache = "force-no-store";
 
@@ -241,6 +242,67 @@ export async function POST(request: NextRequest) {
             }
           } catch (fetchError) {
             console.error("Error fetching workflow spec:", fetchError);
+          }
+        }
+      }
+    }
+
+    // Process PLAN artifacts — update Feature model with parsed plan content
+    if (featureId) {
+      for (const dbArtifact of chatMessage.artifacts) {
+        if ((dbArtifact.type as string) === "PLAN") {
+          const content = dbArtifact.content as { plan?: string } | null;
+          if (content?.plan) {
+            try {
+              const parsed = parsePlanXml(content.plan);
+              const updateData: Record<string, string> = {};
+              if (parsed.brief) updateData.brief = parsed.brief;
+              if (parsed.requirements) updateData.requirements = parsed.requirements;
+              if (parsed.architecture) updateData.architecture = parsed.architecture;
+
+              if (Object.keys(updateData).length > 0) {
+                await db.feature.update({
+                  where: { id: featureId },
+                  data: updateData,
+                });
+              }
+
+              // Store user stories as a single UserStory record with all markdown content
+              if (parsed.userStories) {
+                const existingStory = await db.userStory.findFirst({
+                  where: { featureId },
+                  orderBy: { order: "asc" },
+                });
+
+                if (existingStory) {
+                  await db.userStory.update({
+                    where: { id: existingStory.id },
+                    data: { title: parsed.userStories },
+                  });
+                } else {
+                  // Get workspace owner for audit fields
+                  const feature = await db.feature.findUnique({
+                    where: { id: featureId },
+                    select: { workspace: { select: { ownerId: true } } },
+                  });
+                  const ownerId = feature?.workspace?.ownerId;
+                  if (ownerId) {
+                    await db.userStory.create({
+                      data: {
+                        title: parsed.userStories,
+                        featureId,
+                        order: 0,
+                        completed: false,
+                        createdById: ownerId,
+                        updatedById: ownerId,
+                      },
+                    });
+                  }
+                }
+              }
+            } catch (error) {
+              console.error("Error processing PLAN artifact for feature update:", error);
+            }
           }
         }
       }
