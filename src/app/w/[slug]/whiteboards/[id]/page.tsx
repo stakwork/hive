@@ -383,13 +383,13 @@ export default function WhiteboardDetailPage() {
           </div>
         }
       />
-      <div className="flex flex-1 overflow-hidden mt-4">
+      <div className="relative flex-1 overflow-hidden mt-4">
         <div
           ref={containerRef}
           className={
             isFullscreen
               ? "fixed inset-0 z-50 bg-white"
-              : "flex-1 border rounded-lg overflow-hidden bg-white"
+              : "w-full h-full border rounded-lg overflow-hidden bg-white"
           }
         >
           {isFullscreen && (

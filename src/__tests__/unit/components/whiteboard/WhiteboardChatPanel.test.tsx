@@ -9,6 +9,9 @@ import { toast } from "sonner";
 // Mock dependencies
 vi.mock("@/lib/pusher");
 vi.mock("sonner");
+vi.mock("@/services/excalidraw-layout", () => ({
+  serializeDiagramContext: vi.fn(() => null),
+}));
 
 const mockPusherClient = {
   subscribe: vi.fn(() => ({
@@ -20,6 +23,7 @@ const mockPusherClient = {
 
 const mockExcalidrawAPI = {
   scrollToContent: vi.fn(),
+  getSceneElements: vi.fn(() => []),
 };
 
 describe("WhiteboardChatPanel", () => {
@@ -348,7 +352,7 @@ describe("WhiteboardChatPanel", () => {
     expect(postCall[1]).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: "Update the diagram", layout: "layered" }),
+      body: JSON.stringify({ content: "Update the diagram", layout: "layered", diagramContext: null }),
     });
 
     // Verify optimistic message appears
