@@ -1652,6 +1652,114 @@ describe("Stakwork Run Service", () => {
         expect.anything()
       );
     });
+
+    test("should process standalone whiteboard diagram generation without featureId", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "Component A", type: "service" },
+        { id: "c2", name: "Component B", type: "database" },
+      ];
+      const diagramConnections = [
+        { from: "c1", to: "c2", label: "queries" },
+      ];
+
+      const mockRun = {
+        id: "run-standalone",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: null,
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      const mockWhiteboard = { id: "whiteboard-456" };
+      const mockAssistantMessage = {
+        id: "msg-2",
+        whiteboardId: "whiteboard-456",
+        role: "ASSISTANT",
+        content: "Diagram updated based on your request.",
+        status: "SENT",
+        createdAt: new Date(),
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboard.update = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Mock the dynamic import of excalidraw-layout
+      vi.resetModules();
+      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
+        elements: [{ id: "el-1", type: "rectangle" }],
+        appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+      });
+      vi.doMock("@/services/excalidraw-layout", () => ({
+        relayoutDiagram: mockRelayoutDiagram,
+      }));
+
+      const result = await processStakworkRunWebhook(
+        {
+          result: {
+            request_params: {
+              result: {
+                components: diagramComponents,
+                connections: diagramConnections,
+              },
+            },
+          },
+          project_status: "completed",
+          project_id: 12345,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          whiteboard_id: "whiteboard-456",
+        }
+      );
+
+      expect(result.runId).toBe("run-standalone");
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+
+      // Verify whiteboard was UPDATED (not upserted) since it already exists
+      expect(db.whiteboard.update).toHaveBeenCalledWith({
+        where: { id: "whiteboard-456" },
+        data: {
+          elements: expect.any(Array),
+          appState: expect.any(Object),
+        },
+      });
+
+      // Verify whiteboard.upsert was NOT called (standalone path uses update)
+      expect(db.whiteboard.upsert).not.toHaveBeenCalled();
+
+      // Verify whiteboard was fetched by id (not featureId)
+      expect(db.whiteboard.findUnique).toHaveBeenCalledWith({
+        where: { id: "whiteboard-456" },
+        select: { id: true },
+      });
+
+      // Verify ASSISTANT message was created
+      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+        data: {
+          whiteboardId: "whiteboard-456",
+          role: "ASSISTANT",
+          content: "Diagram updated based on your request.",
+          status: "SENT",
+        },
+      });
+
+      // Verify Pusher events were triggered
+      expect(mockedPusherServer.trigger).toHaveBeenCalledTimes(2);
+      expect(mockedPusherServer.trigger).toHaveBeenNthCalledWith(
+        1,
+        "whiteboard-whiteboard-456",
+        "whiteboard-chat-message",
+        {
+          message: mockAssistantMessage,
+          timestamp: expect.any(Date),
+        }
+      );
+    });
   });
 
   describe("getStakworkRuns", () => {
