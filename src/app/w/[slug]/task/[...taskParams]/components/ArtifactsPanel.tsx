@@ -116,8 +116,15 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating;
 
+  // Clear the API-calling flag once the run status has taken over
+  useEffect(() => {
+    if (isApiCalling && isRunInProgress) {
+      setIsApiCalling(false);
+    }
+  }, [isApiCalling, isRunInProgress]);
+
   const handleGenerateTasks = useCallback(async () => {
-    if (!featureId || !workspaceId) return;
+    if (!featureId || !workspaceId || isGenerating) return;
 
     setIsApiCalling(true);
     setActiveTab("TASKS");
@@ -142,10 +149,9 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
       await refetchRun();
     } catch (error) {
       console.error("Failed to generate tasks:", error);
-    } finally {
       setIsApiCalling(false);
     }
-  }, [featureId, workspaceId, refetchRun]);
+  }, [featureId, workspaceId, refetchRun, isGenerating]);
 
   function renderGenerateTasksButton(): ReactNode {
     if (!hasFeature || hasTasks) return undefined;
