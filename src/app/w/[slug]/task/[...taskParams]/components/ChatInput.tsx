@@ -44,6 +44,7 @@ interface ChatInputProps {
   workspaceSlug?: string;
   taskMode?: string;
   taskId?: string;
+  featureId?: string;
   onOpenBountyRequest?: () => void;
 }
 
@@ -60,6 +61,7 @@ export function ChatInput({
   workspaceSlug,
   taskMode,
   taskId,
+  featureId,
   onOpenBountyRequest,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -395,7 +397,7 @@ export function ChatInput({
     }
   };
 
-  if (isTerminalState) {
+  if (isTerminalState && !featureId) {
     return (
       <div className={cn(
         "px-4 py-4 border-t bg-background",
@@ -563,7 +565,6 @@ export function ChatInput({
             overflowY: "auto",
           }}
           autoFocus
-          disabled={disabled}
           rows={1}
           data-testid="chat-message-input"
         />
