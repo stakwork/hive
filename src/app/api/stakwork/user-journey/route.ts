@@ -9,6 +9,7 @@ import { type StakworkWorkflowPayload } from "@/types/stakwork";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getBaseUrl } from "@/lib/utils";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,7 @@ async function callStakwork(
       testFileUrl,
       baseBranch,
       testName,
+      tokenReference: getStakworkTokenReference(),
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
