@@ -18,6 +18,7 @@ import { getBaseUrl } from "@/lib/utils";
 import {
   pusherServer,
   getWorkspaceChannelName,
+  getWhiteboardChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
@@ -699,6 +700,34 @@ export async function processStakworkRunWebhook(
         },
       });
       logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
+
+      // Persist ASSISTANT message and broadcast via Pusher
+      const upsertedWhiteboard = await db.whiteboard.findUnique({
+        where: { featureId: feature_id },
+        select: { id: true },
+      });
+
+      if (upsertedWhiteboard) {
+        const assistantMessage = await db.whiteboardMessage.create({
+          data: {
+            whiteboardId: upsertedWhiteboard.id,
+            role: "ASSISTANT",
+            content: "Diagram updated based on your request.",
+            status: "SENT",
+          },
+        });
+
+        try {
+          const whiteboardChannel = getWhiteboardChannelName(upsertedWhiteboard.id);
+          await pusherServer.trigger(
+            whiteboardChannel,
+            PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE,
+            { message: assistantMessage, timestamp: new Date() }
+          );
+        } catch (pusherError) {
+          logger.error("[diagram] Failed to broadcast chat message", "stakwork-run", { error: String(pusherError) });
+        }
+      }
     } catch (postProcessError) {
       logger.error("[diagram] Error post-processing diagram generation", "stakwork-run", { error: String(postProcessError) });
       // Don't throw — the result is already saved in the run
