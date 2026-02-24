@@ -283,6 +283,7 @@ describe("pusher.ts", () => {
         DEPLOYMENT_STATUS_CHANGE: "deployment-status-change",
         WHITEBOARD_ELEMENTS_UPDATE: "whiteboard-elements-update",
         WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
+        WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
         WHITEBOARD_USER_JOIN: "whiteboard-user-join",
         WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
       });
