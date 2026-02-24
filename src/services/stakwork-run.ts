@@ -364,7 +364,6 @@ export async function createDiagramStakworkRun(input: {
   layout: string;
   userId: string;
   diagramContext?: string | null;
-  userMessage?: string;
 }) {
   // Validate workspace access
   const workspace = await db.workspace.findUnique({
@@ -428,9 +427,6 @@ export async function createDiagramStakworkRun(input: {
     };
     if (input.diagramContext) {
       vars.diagramContext = input.diagramContext;
-    }
-    if (input.userMessage) {
-      vars.userMessage = input.userMessage;
     }
 
     const stakworkPayload = {
