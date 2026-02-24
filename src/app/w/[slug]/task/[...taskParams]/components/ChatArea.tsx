@@ -167,8 +167,8 @@ export function ChatArea({
                   title={taskTitle}
                   data-testid="task-title"
                 >
-                  {/* Inline Breadcrumbs */}
-                  {workspaceSlug && (
+                  {/* Inline Breadcrumbs - only show in task chat context */}
+                  {workspaceSlug && taskId && (
                     <TaskBreadcrumbs
                       featureId={featureId ?? null}
                       featureTitle={featureTitle ?? null}
