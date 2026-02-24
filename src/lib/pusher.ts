@@ -54,4 +54,5 @@ export const PUSHER_EVENTS = {
   WHITEBOARD_USER_JOIN: "whiteboard-user-join",
   WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
   WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
+  FEATURE_UPDATED: "feature-updated",
 } as const;
