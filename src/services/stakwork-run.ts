@@ -664,7 +664,12 @@ export async function processStakworkRunWebhook(
       logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
 
       const { relayoutDiagram } = await import("@/services/excalidraw-layout");
-      const parsedResult = JSON.parse(serializedResult);
+      // Strip markdown code fences if LLM wrapped the JSON in ```json ... ```
+      let cleanedResult = serializedResult.trim();
+      if (cleanedResult.startsWith("```")) {
+        cleanedResult = cleanedResult.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+      }
+      const parsedResult = JSON.parse(cleanedResult);
       logger.debug("[diagram] Parsed result", "stakwork-run", { type: typeof parsedResult, isArray: Array.isArray(parsedResult) });
 
       const diagramData = extractDiagramData(parsedResult);
@@ -761,6 +766,31 @@ export async function processStakworkRunWebhook(
     } catch (postProcessError) {
       logger.error("[diagram] Error post-processing diagram generation", "stakwork-run", { error: String(postProcessError) });
       // Don't throw — the result is already saved in the run
+
+      // Notify the user so the chat panel clears the spinner
+      const errorWhiteboardId = whiteboard_id
+        ?? (feature_id ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id : null);
+
+      if (errorWhiteboardId) {
+        try {
+          const errorMessage = await db.whiteboardMessage.create({
+            data: {
+              whiteboardId: errorWhiteboardId,
+              role: "ASSISTANT",
+              content: "Sorry, I couldn't process the diagram. Please try again.",
+              status: "SENT",
+            },
+          });
+
+          const errorChannel = getWhiteboardChannelName(errorWhiteboardId);
+          await pusherServer.trigger(errorChannel, PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE, {
+            message: errorMessage,
+            timestamp: new Date(),
+          });
+        } catch (notifyError) {
+          logger.error("[diagram] Failed to notify user of error", "stakwork-run", { error: String(notifyError) });
+        }
+      }
     }
   }
 
