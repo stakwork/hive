@@ -1,25 +1,12 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
-import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
+import { createAuthenticatedGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { expectSuccess } from "@/__tests__/support/helpers/api-assertions";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 async function createTestFeature(
   workspaceId: string,
@@ -109,12 +96,9 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&showAllStatuses=true`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&showAllStatuses=true`,
+        testUser
       );
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -148,12 +132,9 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&showAllStatuses=true&search=Searchable`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&showAllStatuses=true&search=Searchable`,
+        testUser
       );
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -189,13 +170,10 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
       // No showAllStatuses — triggers visibility OR rules (Recent tab)
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}`,
+        testUser
       );
       const response = await GET(request);
       const data = await expectSuccess(response, 200);

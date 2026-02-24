@@ -1,28 +1,15 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
-import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
+import { createAuthenticatedGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import {
   expectSuccess,
   expectError,
 } from "@/__tests__/support/helpers/api-assertions";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Local helper for creating tasks with filtering-specific fields
 async function createTaskForFiltering(
@@ -96,13 +83,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -129,13 +113,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=COMPLETED`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=COMPLETED`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -152,13 +133,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=invalid-status`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=invalid-status`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -178,13 +156,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -216,13 +191,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=true`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=true`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -253,13 +225,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=false`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=false`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -276,13 +245,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=invalid`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=invalid`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -321,13 +287,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -361,13 +324,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=false`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=false`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -396,13 +356,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       }
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
         // First page
-        const request1 = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=1&limit=10`
+        const request1 = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=1&limit=10`,
+          testUser
         );
 
         const response1 = await GET(request1);
@@ -413,8 +370,9 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
         expect(data1.pagination.hasMore).toBe(true);
 
         // Second page
-        const request2 = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=2&limit=10`
+        const request2 = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=2&limit=10`,
+          testUser
         );
 
         const response2 = await GET(request2);
@@ -448,13 +406,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&search=bug`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&search=bug`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -484,13 +439,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
         // Active tasks
-        const request1 = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&includeArchived=false`
+        const request1 = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&includeArchived=false`,
+          testUser
         );
 
         const response1 = await GET(request1);
@@ -499,8 +451,9 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
         expect(data1.data[0].title).toBe("Active Running Task");
 
         // Archived tasks
-        const request2 = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&includeArchived=true`
+        const request2 = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&includeArchived=true`,
+          testUser
         );
 
         const response2 = await GET(request2);
@@ -529,13 +482,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=true`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&hasPod=true`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -560,13 +510,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       }
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=1&limit=10`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&status=running&hasPod=true&page=1&limit=10`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -603,14 +550,11 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       }
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
         // Test each status
         for (const status of statuses) {
-          const request = createGetRequest(
-            `/api/tasks?workspaceId=${testWorkspace.id}&status=${status}`
+          const request = createAuthenticatedGetRequest(
+            `/api/tasks?workspaceId=${testWorkspace.id}&status=${status}`,
+            testUser
           );
 
           const response = await GET(request);
@@ -642,13 +586,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}`,
+          testUser
+          );
 
         const response = await GET(request);
 
@@ -670,13 +611,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       });
 
       try {
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          `/api/tasks?workspaceId=${testWorkspace.id}&search=search&page=1&limit=10`
-        );
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&search=search&page=1&limit=10`,
+          testUser
+          );
 
         const response = await GET(request);
 

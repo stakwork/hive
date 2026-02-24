@@ -47,6 +47,8 @@ function parseTokenString(base64Token: string): {
   }
 }
 
+export type VerifyResult = { valid: true } | { valid: false; reason: string };
+
 /**
  * Verify a Lightning-signed Sphinx token against a claimed public key.
  *
@@ -61,26 +63,27 @@ function parseTokenString(base64Token: string): {
  * @param token - Base64-encoded token (69 bytes: 4 timestamp + 65 signature)
  * @param claimedPubkey - The public key claimed by the client (66-char hex string)
  * @param checkTimestamp - Whether to validate the timestamp is recent (default: true)
- * @returns true if signature is valid and matches claimed pubkey, false otherwise
+ * @returns VerifyResult with valid flag and reason on failure
  *
  * @example
  * ```typescript
- * const isValid = verifySphinxToken(
+ * const result = verifySphinxToken(
  *   "AAABjYPQ1ZE...", // base64 token
  *   "02a1b2c3..."     // claimed pubkey (66 hex chars)
  * );
+ * if (!result.valid) console.log(result.reason);
  * ```
  */
 export function verifySphinxToken(
   token: string,
   claimedPubkey: string,
   checkTimestamp: boolean = true
-): boolean {
+): VerifyResult {
   try {
     // Parse token into timestamp and signature components
     const parsed = parseTokenString(token);
     if (!parsed) {
-      return false;
+      return { valid: false, reason: "Invalid token format" };
     }
 
     const { timestamp, timestampBytes, signature } = parsed;
@@ -96,7 +99,7 @@ export function verifySphinxToken(
           now,
           diff: timestamp - now,
         });
-        return false;
+        return { valid: false, reason: "Token timestamp is in the future" };
       }
 
       // Check if timestamp is too old
@@ -107,7 +110,7 @@ export function verifySphinxToken(
           diff: now - timestamp,
           maxAge: MAX_TOKEN_AGE_SECONDS,
         });
-        return false;
+        return { valid: false, reason: "Token expired" };
       }
     }
 
@@ -125,7 +128,7 @@ export function verifySphinxToken(
 
     // Validate recovery ID is in valid range
     if (recoveryId < 0 || recoveryId > 3) {
-      return false;
+      return { valid: false, reason: "Invalid signature" };
     }
 
     // Extract compact signature (remaining 64 bytes after first byte)
@@ -133,7 +136,7 @@ export function verifySphinxToken(
 
     // Validate compact signature length
     if (compactSig.length !== 64) {
-      return false;
+      return { valid: false, reason: "Invalid signature" };
     }
 
     // Create Signature object from compact bytes and add recovery bit
@@ -154,14 +157,18 @@ export function verifySphinxToken(
       claimedBuffer.length !== recoveredBuffer.length ||
       claimedBuffer.length !== 33
     ) {
-      return false;
+      return { valid: false, reason: "Invalid signature" };
     }
 
     // Use timing-safe comparison to prevent timing attacks
-    return timingSafeEqual(claimedBuffer, recoveredBuffer);
+    if (!timingSafeEqual(claimedBuffer, recoveredBuffer)) {
+      return { valid: false, reason: "Invalid signature" };
+    }
+
+    return { valid: true };
   } catch (error) {
     // Log error but return false for invalid signatures
     logger.error("Sphinx token verification failed", "SPHINX_AUTH", { error });
-    return false;
+    return { valid: false, reason: "Invalid signature" };
   }
 }

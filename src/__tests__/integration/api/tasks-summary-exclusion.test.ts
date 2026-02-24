@@ -4,14 +4,17 @@ import { GET as GET_TASK } from "@/app/api/task/[taskId]/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
-import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
+import {
+  createAuthenticatedGetRequest,
+  createGetRequest,
+} from "@/__tests__/support/helpers/request-builders";
 import {
   createAuthenticatedSession,
   getMockedSession,
 } from "@/__tests__/support/helpers/auth";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
-// Mock NextAuth
+// Mock NextAuth for GET /api/task/[taskId] which still uses getServerSession
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
@@ -41,12 +44,9 @@ describe("GET /api/tasks - Summary Field Exclusion", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `http://localhost/api/tasks?workspaceId=${testWorkspace.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/tasks?workspaceId=${testWorkspace.id}`,
+        testUser
       );
 
       const response = await GET_TASKS(request);

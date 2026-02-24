@@ -1,28 +1,15 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import { createTestFeature } from "@/__tests__/support/factories/feature.factory";
-import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
+import { createAuthenticatedGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { TaskStatus } from "@prisma/client";
 import {
   expectSuccess,
 } from "@/__tests__/support/helpers/api-assertions";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Cleanup helper
 async function cleanup(workspaceIds: string[], userIds: string[], featureIds: string[]) {
@@ -44,7 +31,7 @@ async function cleanup(workspaceIds: string[], userIds: string[], featureIds: st
 }
 
 describe("GET /api/tasks - Dependencies and Feature Data", () => {
-  let testUser: { id: string; email: string };
+  let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: { id: string; slug: string };
   let testFeature: { id: string; title: string };
 
@@ -93,10 +80,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
@@ -129,10 +115,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
@@ -165,10 +150,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
@@ -199,10 +183,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
@@ -253,10 +236,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
@@ -302,10 +284,9 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
       },
     });
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    const request = createGetRequest(
-      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`
+    const request = createAuthenticatedGetRequest(
+      `/api/tasks?workspaceId=${testWorkspace.id}&limit=10&showAllStatuses=true`,
+      testUser
     );
 
     const response = await GET(request);
