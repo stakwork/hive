@@ -37,6 +37,7 @@ interface TicketsListProps {
   feature: FeatureDetail;
   onUpdate: (feature: FeatureDetail) => void;
   onDecisionMade?: () => void;
+  hideControls?: boolean;
 }
 
 interface GeneratedTask {
@@ -57,7 +58,7 @@ interface GeneratedContent {
   phases: GeneratedPhase[];
 }
 
-export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: TicketsListProps) {
+export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hideControls = false }: TicketsListProps) {
   const router = useRouter();
   const { slug: workspaceSlug, id: workspaceId, workspace } = useWorkspace();
 
@@ -593,20 +594,22 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
           )}
 
           {/* Deep Research */}
-          <GenerationControls
-            onQuickGenerate={() => {}}
-            onDeepThink={handleDeepThink}
-            onRetry={handleRetry}
-            onStop={stopRun}
-            status={latestRun?.status}
-            isLoading={aiGeneration.isLoading || initiatingDeepThink}
-            isQuickGenerating={false}
-            isStopping={isStopping}
-            disabled={false}
-            showDeepThink={true}
-          />
+          {!hideControls && (
+            <GenerationControls
+              onQuickGenerate={() => {}}
+              onDeepThink={handleDeepThink}
+              onRetry={handleRetry}
+              onStop={stopRun}
+              status={latestRun?.status}
+              isLoading={aiGeneration.isLoading || initiatingDeepThink}
+              isQuickGenerating={false}
+              isStopping={isStopping}
+              disabled={false}
+              showDeepThink={true}
+            />
+          )}
 
-          {!isCreatingTicket && (
+          {!hideControls && !isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Add Task
@@ -774,19 +777,21 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
             </TabsList>
           </Tabs>
           
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground">Sort by:</Label>
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as "updatedAt" | "createdAt" | "order")}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="updatedAt">Last Updated</SelectItem>
-                <SelectItem value="createdAt">Created Date</SelectItem>
-                <SelectItem value="order">Manual Order</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {!hideControls && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground">Sort by:</Label>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as "updatedAt" | "createdAt" | "order")}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updatedAt">Last Updated</SelectItem>
+                  <SelectItem value="createdAt">Created Date</SelectItem>
+                  <SelectItem value="order">Manual Order</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       )}
 

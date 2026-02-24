@@ -3,8 +3,6 @@ import { GET } from "@/app/api/tasks/[taskId]/messages/route";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
   expectForbidden,
@@ -12,7 +10,7 @@ import {
   generateUniqueId,
   generateUniqueSlug,
   createGetRequest,
-  getMockedSession,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
@@ -189,8 +187,6 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Authentication", () => {
     it("should return 401 when no session provided", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -204,9 +200,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       expect(data.error).toBe("Unauthorized");
     });
 
-    it("should return 401 when session has no user", async () => {
-      getMockedSession().mockResolvedValue({ user: null });
-
+    it("should return 401 when no auth headers present", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -218,31 +212,14 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       expect(response?.status).toBe(401);
       const data = await response?.json();
       expect(data.error).toBe("Unauthorized");
-    });
-
-    it("should return 401 when session user has no id", async () => {
-      getMockedSession().mockResolvedValue({ user: { name: "Test User" } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
-      );
-
-      const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
-      });
-
-      expect(response?.status).toBe(401);
-      const data = await response?.json();
-      expect(data.error).toBe("Invalid user session");
     });
   });
 
   describe("Input Validation", () => {
     it("should return 400 when taskId is missing", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        "http://localhost:3000/api/tasks//messages"
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/tasks//messages",
+        testUser,
       );
 
       const response = await GET(request, {
@@ -255,11 +232,10 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should return 404 when task does not exist", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
       const nonExistentId = "non-existent-task-id";
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${nonExistentId}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${nonExistentId}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -272,16 +248,15 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should return 404 for soft-deleted tasks", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
       // Soft-delete the task
       await db.task.update({
         where: { id: testTask.id },
         data: { deleted: true, deletedAt: new Date() },
       });
 
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -296,10 +271,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Authorization & Access Control", () => {
     it("should return 403 when user is not workspace owner or member", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: otherUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        otherUser,
       );
 
       const response = await GET(request, {
@@ -312,10 +286,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should allow access for workspace owner", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -329,10 +302,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should allow access for workspace member", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: memberUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        memberUser,
       );
 
       const response = await GET(request, {
@@ -348,10 +320,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Message Retrieval with Relations", () => {
     it("should return messages with artifacts and attachments", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -383,10 +354,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should include task metadata in response", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -408,10 +378,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Chronological Ordering", () => {
     it("should return messages ordered by timestamp ascending", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -437,10 +406,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should order artifacts by createdAt ascending", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -470,10 +438,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Message Threading via replyId", () => {
     it("should preserve replyId field for message threading", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -496,10 +463,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("contextTags JSON Parsing", () => {
     it("should parse contextTags from JSON string to array", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -531,10 +497,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Response Structure", () => {
     it("should return correct response structure", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -560,10 +525,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should not expose sensitive workspace data", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -584,8 +548,6 @@ describe("GET /api/tasks/[taskId]/messages", () => {
     });
 
     it("should return empty messages array for task with no messages", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
       // Create a new task without messages
       const emptyTask = await db.task.create({
         data: {
@@ -598,8 +560,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         },
       });
 
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${emptyTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${emptyTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -617,12 +580,11 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Error Handling", () => {
     it("should handle database errors gracefully", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
       // Use invalid task ID format that might cause database issues
       const invalidTaskId = "invalid-uuid-format";
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${invalidTaskId}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${invalidTaskId}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {
@@ -639,10 +601,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
   describe("Security Headers", () => {
     it("should return appropriate content-type header", async () => {
-      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/tasks/${testTask.id}/messages`,
+        testUser,
       );
 
       const response = await GET(request, {

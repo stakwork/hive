@@ -6,22 +6,8 @@ import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import {
   createAuthenticatedGetRequest,
-  createGetRequest,
 } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
-
-// Mock NextAuth for GET /api/task/[taskId] which still uses getServerSession
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 describe("GET /api/tasks - Summary Field Exclusion", () => {
   test("should not include summary field in task list response", async () => {
@@ -99,11 +85,7 @@ describe("GET /api/task/[taskId] - Summary Field Exclusion", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(`http://localhost/api/task/${taskId}`);
+      const request = createAuthenticatedGetRequest(`http://localhost/api/task/${taskId}`, testUser);
 
       const response = await GET_TASK(request, {
         params: Promise.resolve({ taskId }),
@@ -152,11 +134,7 @@ describe("GET /api/task/[taskId] - Summary Field Exclusion", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(`http://localhost/api/task/${taskId}`);
+      const request = createAuthenticatedGetRequest(`http://localhost/api/task/${taskId}`, testUser);
 
       const response = await GET_TASK(request, {
         params: Promise.resolve({ taskId }),

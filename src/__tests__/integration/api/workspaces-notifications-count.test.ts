@@ -3,26 +3,28 @@ import { NextRequest } from "next/server";
 import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
-import {
-  getMockedSession,
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-} from "@/__tests__/support/helpers/auth";
 import { generateUniqueSlug } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace, Task, ChatMessage } from "@prisma/client";
 
-// Mock next-auth
-vi.mock("next-auth/next");
 
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Test Helpers
 const TestHelpers = {
   createGetRequest: (slug: string) => {
     return new NextRequest(`http://localhost:3000/api/workspaces/${slug}/tasks/notifications-count`, {
       method: "GET",
+    });
+  },
+
+  createAuthenticatedGetRequest: (slug: string, user: { id: string; email?: string | null; name?: string | null }) => {
+    const headers = new Headers();
+    headers.set("x-middleware-auth-status", "authenticated");
+    headers.set("x-middleware-user-id", user.id);
+    headers.set("x-middleware-user-email", user.email || "test@example.com");
+    headers.set("x-middleware-user-name", user.name || "Test User");
+    return new NextRequest(`http://localhost:3000/api/workspaces/${slug}/tasks/notifications-count`, {
+      method: "GET",
+      headers,
     });
   },
 
@@ -158,15 +160,10 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
     testWorkspace = scenario.workspace;
     testSlug = scenario.slug;
-
-    // Setup authenticated session
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
   });
 
   describe("Authentication", () => {
     test("should return 401 for unauthenticated user", async () => {
-      getMockedSession().mockResolvedValue(null);
-
       const request = TestHelpers.createGetRequest(testSlug);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
@@ -174,10 +171,6 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should return 401 for invalid session with missing user ID", async () => {
-      getMockedSession().mockResolvedValue({
-        user: { email: "test@example.com" },
-      });
-
       const request = TestHelpers.createGetRequest(testSlug);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
@@ -185,7 +178,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should proceed with valid authenticated session", async () => {
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 0);
@@ -194,7 +187,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
   describe("Authorization", () => {
     test("should allow workspace owner to access notification count", async () => {
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 0);
@@ -213,9 +206,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(memberUser));
-
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, memberUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 0);
@@ -226,16 +217,14 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         email: `outsider-${Date.now()}@example.com`,
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(outsiderUser));
-
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, outsiderUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectForbidden(response);
     });
 
     test("should return 404 for non-existent workspace", async () => {
-      const request = TestHelpers.createGetRequest("non-existent-workspace");
+      const request = TestHelpers.createAuthenticatedGetRequest("non-existent-workspace", testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: "non-existent-workspace" }) });
 
       await TestHelpers.expectNotFound(response);
@@ -247,7 +236,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         data: { deleted: true },
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectNotFound(response);
@@ -268,7 +257,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "FORM",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 2);
@@ -299,7 +288,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "FORM",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 2);
@@ -320,7 +309,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         deleted: true,
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 1);
@@ -338,7 +327,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         withMessage: false,
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 1);
@@ -363,7 +352,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "BROWSER",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 1);
@@ -388,14 +377,14 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         latestMessageArtifactType: "CODE", // Latest message
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 1);
     });
 
     test("should return zero count when workspace has no tasks", async () => {
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 0);
@@ -414,7 +403,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "CODE",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 0);
@@ -465,7 +454,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         withMessage: false,
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 2);
@@ -495,7 +484,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "FORM",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       await TestHelpers.expectSuccess(response, 2);
@@ -511,7 +500,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         });
       }
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       // Should count tasks where:
@@ -534,7 +523,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "FORM",
       });
 
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       // Verify database state hasn't changed
@@ -553,8 +542,8 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         artifactType: "FORM",
       });
 
-      const request1 = TestHelpers.createGetRequest(testSlug);
-      const request2 = TestHelpers.createGetRequest(testSlug);
+      const request1 = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
+      const request2 = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
 
       const [response1, response2] = await Promise.all([
         GET(request1, { params: Promise.resolve({ slug: testSlug }) }),
@@ -568,7 +557,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
   describe("Response Format Validation", () => {
     test("should return correct response structure", async () => {
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
       const data = await response.json();
 
@@ -580,7 +569,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should return correct status code for successful requests", async () => {
-      const request = TestHelpers.createGetRequest(testSlug);
+      const request = TestHelpers.createAuthenticatedGetRequest(testSlug, testUser);
       const response = await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       expect(response.status).toBe(200);
