@@ -122,12 +122,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string) => {
+    async (messageText: string, options?: { replyId?: string }) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        replyId: options?.replyId,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -138,7 +139,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText }),
+          body: JSON.stringify({
+            message: messageText,
+            ...(options?.replyId && { replyId: options.replyId }),
+          }),
         });
 
         if (res.ok) {
@@ -164,8 +168,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   );
 
   const handleArtifactAction = useCallback(
-    async (_messageId: string, action: { optionResponse: string }) => {
-      await sendMessage(action.optionResponse);
+    async (messageId: string, action: { optionResponse: string }) => {
+      await sendMessage(action.optionResponse, { replyId: messageId });
     },
     [sendMessage],
   );

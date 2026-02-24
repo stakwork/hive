@@ -173,7 +173,7 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -189,6 +189,7 @@ export async function POST(
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
         sourceWebsocketID,
+        replyId,
       },
       include: {
         artifacts: true,
