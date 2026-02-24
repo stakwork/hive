@@ -1,12 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export const fetchCache = "force-no-store";
+
+function buildWorkflowTimestamps(status: WorkflowStatus): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    workflowStatus: status,
+    updatedAt: new Date(),
+  };
+  if (status === WorkflowStatus.IN_PROGRESS) {
+    data.workflowStartedAt = new Date();
+  } else if (
+    status === WorkflowStatus.COMPLETED ||
+    status === WorkflowStatus.FAILED ||
+    status === WorkflowStatus.HALTED
+  ) {
+    data.workflowCompletedAt = new Date();
+  }
+  return data;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -125,28 +142,40 @@ export async function POST(request: NextRequest) {
     });
 
     if (!task) {
+      // If no task found, check if this is a feature (plan mode uses featureId as taskId)
+      const feature = await db.feature.findFirst({
+        where: { id: finalTaskId },
+      });
+
+      if (feature) {
+        await db.feature.update({
+          where: { id: feature.id },
+          data: buildWorkflowTimestamps(workflowStatus),
+        });
+
+        try {
+          await pusherServer.trigger(
+            getFeatureChannelName(feature.id),
+            PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+            { taskId: feature.id, workflowStatus },
+          );
+        } catch (error) {
+          console.error("Error broadcasting feature status to Pusher:", error);
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: { featureId: feature.id, workflowStatus },
+        }, { status: 200 });
+      }
+
       console.error(`Task not found: ${finalTaskId}`);
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    const updateData: Record<string, unknown> = {
-      workflowStatus,
-      updatedAt: new Date(),
-    };
-
-    if (workflowStatus === WorkflowStatus.IN_PROGRESS) {
-      updateData.workflowStartedAt = new Date();
-    } else if (
-      workflowStatus === WorkflowStatus.COMPLETED ||
-      workflowStatus === WorkflowStatus.FAILED ||
-      workflowStatus === WorkflowStatus.HALTED
-    ) {
-      updateData.workflowCompletedAt = new Date();
-    }
-
     const updatedTask = await db.task.update({
       where: { id: finalTaskId },
-      data: updateData,
+      data: buildWorkflowTimestamps(workflowStatus),
       select: {
         workflowStartedAt: true,
         workflowCompletedAt: true,

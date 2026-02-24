@@ -1089,6 +1089,11 @@ model Feature {
   // Stakwork project ID for log subscription
   stakworkProjectId Int? @map("stakwork_project_id")
 
+  // Workflow status (mirrors Task workflow fields)
+  workflowStatus      WorkflowStatus? @default(PENDING) @map("workflow_status")
+  workflowStartedAt   DateTime?       @map("workflow_started_at")
+  workflowCompletedAt DateTime?       @map("workflow_completed_at")
+
   status   FeatureStatus   @default(BACKLOG)
   priority FeaturePriority @default(LOW)
 
