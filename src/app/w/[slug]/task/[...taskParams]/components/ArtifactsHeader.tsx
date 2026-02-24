@@ -33,9 +33,10 @@ interface ArtifactsHeaderProps {
   availableArtifacts: ArtifactType[];
   activeArtifact: ArtifactType | null;
   onArtifactChange: (type: ArtifactType) => void;
+  headerAction?: React.ReactNode;
 }
 
-export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange }: ArtifactsHeaderProps) {
+export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange, headerAction }: ArtifactsHeaderProps) {
   const renderButton = ({ type, icon: Icon, label }: ArtifactButton) => {
     if (!availableArtifacts.includes(type)) return null;
 
@@ -77,8 +78,9 @@ export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifact
           {visualButtons}
         </div>
 
-        {/* Right side: Code artifacts */}
+        {/* Right side: Header action + Code artifacts */}
         <div className="flex items-center gap-1">
+          {headerAction}
           {codeButtons}
         </div>
       </div>

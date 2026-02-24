@@ -3,7 +3,8 @@
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Monitor } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Monitor, Sparkles, Loader2 } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
@@ -11,6 +12,7 @@ import { TicketsList } from "@/components/features/TicketsList";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import type { FeatureDetail } from "@/types/roadmap";
 
 interface ArtifactsPanelProps {
@@ -30,6 +32,7 @@ interface ArtifactsPanelProps {
 
 export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
+  const [isApiCalling, setIsApiCalling] = useState(false);
 
   const handlePlanSave = useCallback(async (updates: Record<string, unknown>) => {
     if (!featureId) return;
@@ -99,11 +102,55 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
 
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
+  const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
+  const hasArchitecture = !!feature?.architecture;
+
+  const { latestRun, refetch: refetchRun } = useStakworkGeneration({
+    featureId: featureId || "",
+    type: "TASK_GENERATION",
+    enabled: hasFeature,
+  });
+
+  const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
+  const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
+  const isGenerating = isApiCalling || !!isRunInProgress;
+  const showTasksTab = hasTasks || isGenerating;
+
+  const handleGenerateTasks = useCallback(async () => {
+    if (!featureId || !workspaceId) return;
+
+    setIsApiCalling(true);
+    setActiveTab("TASKS");
+
+    try {
+      const response = await fetch("/api/stakwork/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "TASK_GENERATION",
+          featureId,
+          workspaceId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate tasks");
+      }
+
+      await refetchRun();
+    } catch (error) {
+      console.error("Failed to generate tasks:", error);
+    } finally {
+      setIsApiCalling(false);
+    }
+  }, [featureId, workspaceId, refetchRun]);
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
     if (planData) tabs.push("PLAN");
-    if (hasFeature) tabs.push("TASKS");
+    if (hasFeature && showTasksTab) tabs.push("TASKS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -111,11 +158,11 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
-  // Auto-select first tab when artifacts become available
+  // Auto-select first tab, or fall back when active tab is removed
   useEffect(() => {
-    if (availableTabs.length > 0 && !activeTab) {
+    if (availableTabs.length > 0 && (!activeTab || !availableTabs.includes(activeTab))) {
       setActiveTab(availableTabs[0]);
     }
   }, [availableTabs, activeTab]);
@@ -144,6 +191,43 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
               availableArtifacts={availableTabs}
               activeArtifact={activeTab}
               onArtifactChange={setActiveTab}
+              headerAction={hasFeature && !hasTasks ? (
+                (() => {
+                  const buttonLabel = isGenerating ? "Generating..." : isRunFailed ? "Retry" : "Generate Tasks";
+                  const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating;
+
+                  const btn = (
+                    <Button
+                      size="sm"
+                      onClick={handleGenerateTasks}
+                      disabled={isDisabled}
+                      className="gap-1.5 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {buttonLabel}
+                    </Button>
+                  );
+
+                  if (!hasArchitecture && !isRunFailed) {
+                    return (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>{btn}</TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p>Architecture required to generate tasks</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  }
+
+                  return btn;
+                })()
+              ) : undefined}
             />
           </motion.div>
         )}
@@ -183,13 +267,16 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
               />
             </div>
           )}
-          {hasFeature && (
+          {hasFeature && showTasksTab && (
             <div className="h-full" hidden={activeTab !== "TASKS"}>
-              <TicketsList
-                featureId={featureId!}
-                feature={feature!}
-                onUpdate={onFeatureUpdate!}
-              />
+              <div className="h-full overflow-auto p-4">
+                <TicketsList
+                  featureId={featureId!}
+                  feature={feature!}
+                  onUpdate={onFeatureUpdate!}
+                  hideControls
+                />
+              </div>
             </div>
           )}
           {codeArtifacts.length > 0 && (
