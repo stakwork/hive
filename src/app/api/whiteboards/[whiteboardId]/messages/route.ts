@@ -143,26 +143,21 @@ export async function POST(
     const layout = body.layout || "layered";
     const diagramContext = typeof body.diagramContext === "string" ? body.diagramContext : null;
 
-    // Branch based on whether whiteboard is linked to a feature
-    const run = whiteboard.featureId && whiteboard.feature?.architecture
-      ? await createDiagramStakworkRun({
-          workspaceId: whiteboard.feature.workspaceId,
-          featureId: whiteboard.featureId,
-          whiteboardId,
-          architectureText: whiteboard.feature.architecture,
-          layout,
-          userId: user.id,
-          diagramContext,
-          userMessage: body.content,
-        })
-      : await createDiagramStakworkRun({
-          workspaceId: whiteboard.workspace.id,
-          whiteboardId,
-          architectureText: body.content,
-          layout,
-          userId: user.id,
-          diagramContext,
-        });
+    // Build architectureText: for feature-linked whiteboards, combine feature
+    // architecture with the user's request so Stakwork gets both in one field.
+    const architectureText = whiteboard.featureId && whiteboard.feature?.architecture
+      ? `Architecture:\n${whiteboard.feature.architecture}\n\nUser request:\n${body.content}`
+      : body.content;
+
+    const run = await createDiagramStakworkRun({
+      workspaceId: whiteboard.featureId ? whiteboard.feature!.workspaceId : whiteboard.workspace.id,
+      featureId: whiteboard.featureId ?? undefined,
+      whiteboardId,
+      architectureText,
+      layout,
+      userId: user.id,
+      diagramContext,
+    });
 
     return NextResponse.json(
       {
