@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
-import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
@@ -146,8 +144,7 @@ function FeatureRow({
   );
 }
 
-const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, FeaturesListProps>(
-  function FeaturesList({ workspaceId }, ref) {
+export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { slug: workspaceSlug } = useWorkspace();
@@ -273,21 +270,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   // Debounce search query to reduce API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  // New feature creation state
-  const [isCreating, setIsCreating] = useState(false);
-  const [newFeatureTitle, setNewFeatureTitle] = useState("");
-  const [newFeatureStatus, setNewFeatureStatus] = useState<FeatureStatus>("BACKLOG");
-  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("LOW");
-  const [newFeatureAssigneeId, setNewFeatureAssigneeId] = useState<string | null>(null);
-  const [newFeatureAssigneeDisplay, setNewFeatureAssigneeDisplay] = useState<{
-    id: string;
-    name: string | null;
-    email: string | null;
-    image: string | null;
-  } | null>(null);
-  const [creating, setCreating] = useState(false);
-  const featureInputRef = useRef<HTMLInputElement>(null);
-
   // View state management with localStorage persistence
   const [viewType, setViewType] = useState<"list" | "kanban">(() => {
     if (typeof window !== "undefined") {
@@ -296,15 +278,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
     return "list";
   });
-
-  // Expose triggerCreate method to parent via ref
-  useImperativeHandle(ref, () => ({
-    triggerCreate: () => {
-      setIsCreating(true);
-      setViewType("list");
-      localStorage.setItem("features-view-preference", "list");
-    }
-  }));
 
   const fetchFeatures = async (pageNum: number) => {
     try {
@@ -404,22 +377,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
-
-  // Auto-open creation form when no features exist AND no filters are active (only on initial load)
-  useEffect(() => {
-    if (!loading && hasLoadedOnce && !workspaceHasFeatures && !isCreating && !hasActiveFilters) {
-      setIsCreating(true);
-      setViewType("list");
-      localStorage.setItem("features-view-preference", "list");
-    }
-  }, [loading, hasLoadedOnce, workspaceHasFeatures, isCreating, hasActiveFilters]);
-
-  // Auto-focus after feature creation completes
-  useEffect(() => {
-    if (!creating && !newFeatureTitle && isCreating) {
-      featureInputRef.current?.focus();
-    }
-  }, [creating, newFeatureTitle, isCreating]);
 
   // Pusher integration for real-time deployment updates
   const handleDeploymentStatusChange = useCallback((event: DeploymentStatusChangeEvent) => {
@@ -600,52 +557,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  const handleCreateFeature = async () => {
-    if (!newFeatureTitle.trim()) {
-      return;
-    }
-
-    try {
-      setCreating(true);
-      const response = await fetch("/api/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newFeatureTitle.trim(),
-          workspaceId,
-          status: newFeatureStatus,
-          priority: newFeaturePriority,
-          assigneeId: newFeatureAssigneeId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create feature");
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Navigate to the new feature detail page
-        router.push(`/w/${workspaceSlug}/plan/${result.data.id}`);
-      }
-    } catch (error) {
-      console.error("Failed to create feature:", error);
-      // TODO: Show error toast
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleCancelCreate = () => {
-    setNewFeatureTitle("");
-    setNewFeatureStatus("BACKLOG");
-    setNewFeaturePriority("LOW");
-    setNewFeatureAssigneeId(null);
-    setNewFeatureAssigneeDisplay(null);
-    setIsCreating(false);
-  };
-
   const handleDeleteFeature = async (featureId: string) => {
     try {
       const response = await fetch(`/api/features/${featureId}`, {
@@ -781,357 +692,285 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           </div>
         ) : (
           <>
-            {!isCreating && (
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search features..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-9 pr-9"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => handleSearchChange("")}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label="Clear search"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <Button
-                variant={needsAttentionFilter ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setNeedsAttentionFilter(!needsAttentionFilter);
-                  setPage(1);
-                }}
-                className="whitespace-nowrap"
-              >
-                <Bell className="h-4 w-4 mr-2" />
-                Needs input
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleToggleCanceled}
-                className="whitespace-nowrap"
-              >
-                {showCanceled ? (
-                  <>
-                    <EyeOff className="h-4 w-4 mr-2" />
-                    Hide canceled
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-4 w-4 mr-2" />
-                    Show canceled
-                  </>
-                )}
-              </Button>
-            </div>
-            {hasActiveFilters && (
-              <Button variant="outline" size="sm" onClick={handleClearFilters}>
-                <X className="h-4 w-4 mr-2" />
-                Clear filters
-              </Button>
-            )}
-          </div>
-        )}
-
-        {isCreating && (
-          <div className="mb-4">
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="space-y-3">
-                <div>
-                  <Input
-                    ref={featureInputRef}
-                    placeholder="Feature title..."
-                    value={newFeatureTitle}
-                    onChange={(e) => setNewFeatureTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !creating) {
-                        handleCreateFeature();
-                      } else if (e.key === "Escape") {
-                        handleCancelCreate();
-                      }
-                    }}
-                    autoFocus
-                    disabled={creating}
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4 flex-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search features..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pl-9 pr-9 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => handleSearchChange("")}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <StatusPopover
-                    statusType="feature"
-                    currentStatus={newFeatureStatus}
-                    onUpdate={async (status) => setNewFeatureStatus(status)}
-                  />
-                  <FeaturePriorityPopover
-                    currentPriority={newFeaturePriority}
-                    onUpdate={async (priority) => setNewFeaturePriority(priority)}
-                    showLowPriority={true}
-                  />
-                  <AssigneeCombobox
+                <Button
+                  variant={needsAttentionFilter ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setNeedsAttentionFilter(!needsAttentionFilter);
+                    setPage(1);
+                  }}
+                  className="whitespace-nowrap"
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  Needs input
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleToggleCanceled}
+                  className="whitespace-nowrap"
+                >
+                  {showCanceled ? (
+                    <>
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      Hide canceled
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-4 w-4 mr-2" />
+                      Show canceled
+                    </>
+                  )}
+                </Button>
+              </div>
+              {hasActiveFilters && (
+                <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                  <X className="h-4 w-4 mr-2" />
+                  Clear filters
+                </Button>
+              )}
+            </div>
+
+            {viewType === "list" ? (
+              hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
+                <div className="rounded-md border">
+                  <Table className="table-fixed">
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead className="w-[469px]">
+                          <SortableColumnHeader
+                            label="Title"
+                            field="title"
+                            currentSort={sortBy === "title" ? sortOrder : null}
+                            onSort={(order) => handleSort("title", order)}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[120px]">
+                          <FilterDropdownHeader
+                            label="Status"
+                            options={statusOptions}
+                            value={statusFilters}
+                            onChange={handleStatusFiltersChange}
+                            showSearch={false}
+                            multiSelect={true}
+                            showStatusBadges={true}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[100px]">
+                          <FilterDropdownHeader
+                            label="Priority"
+                            options={priorityOptions}
+                            value={priorityFilters}
+                            onChange={handlePriorityFiltersChange}
+                            showSearch={false}
+                            multiSelect={true}
+                            showPriorityBadges={true}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[120px]">Created by</TableHead>
+                        <TableHead className="w-[150px]">
+                          <FilterDropdownHeader
+                            label="Assigned"
+                            options={assigneeOptions}
+                            value={assigneeFilter}
+                            onChange={handleAssigneeFilterChange}
+                            showSearch={true}
+                            showAvatars={true}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[150px] text-right">
+                          <SortableColumnHeader
+                            label="Updated At"
+                            field="updatedAt"
+                            currentSort={sortBy === "updatedAt" ? sortOrder : null}
+                            onSort={(order) => handleSort("updatedAt", order)}
+                            align="right"
+                          />
+                        </TableHead>
+                        <TableHead className="w-[150px] text-right">
+                          <SortableColumnHeader
+                            label="Created"
+                            field="createdAt"
+                            currentSort={sortBy === "createdAt" ? sortOrder : null}
+                            onSort={(order) => handleSort("createdAt", order)}
+                            align="right"
+                          />
+                        </TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredFeatures.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="h-32 text-center">
+                            <p className="text-muted-foreground">No features match your filters</p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredFeatures.map((feature) => (
+                          <FeatureRow
+                            key={feature.id}
+                            feature={feature}
+                            workspaceSlug={workspaceSlug}
+                            onStatusUpdate={handleUpdateStatus}
+                            onPriorityUpdate={handleUpdatePriority}
+                            onAssigneeUpdate={handleUpdateAssignee}
+                            onDelete={handleDeleteFeature}
+                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}?page=${page}`)}
+                          />
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : null
+            ) : (
+              <KanbanView
+                items={filteredFeatures}
+                columns={FEATURE_KANBAN_COLUMNS}
+                getItemStatus={(feature) => feature.status}
+                getItemId={(feature) => feature.id}
+                renderCard={(feature) => (
+                  <FeatureCard
+                    feature={feature}
                     workspaceSlug={workspaceSlug}
-                    currentAssignee={newFeatureAssigneeDisplay}
-                    onSelect={async (assigneeId, assigneeData) => {
-                      setNewFeatureAssigneeId(assigneeId);
-                      setNewFeatureAssigneeDisplay(assigneeData || null);
-                    }}
+                    hideStatus={true}
                   />
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleCreateFeature}
-                    disabled={creating || !newFeatureTitle.trim()}
-                  >
-                    {creating ? (
-                      <>
-                        <Spinner className="h-4 w-4 mr-2" />
-                        Creating...
-                      </>
-                    ) : (
-                      "Create"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {viewType === "list" ? (
-          hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
-            <div className="rounded-md border">
-            <Table className="table-fixed">
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead className="w-[469px]">
-                    <SortableColumnHeader
-                      label="Title"
-                      field="title"
-                      currentSort={sortBy === "title" ? sortOrder : null}
-                      onSort={(order) => handleSort("title", order)}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[120px]">
-                    <FilterDropdownHeader
-                      label="Status"
-                      options={statusOptions}
-                      value={statusFilters}
-                      onChange={handleStatusFiltersChange}
-                      showSearch={false}
-                      multiSelect={true}
-                      showStatusBadges={true}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[100px]">
-                    <FilterDropdownHeader
-                      label="Priority"
-                      options={priorityOptions}
-                      value={priorityFilters}
-                      onChange={handlePriorityFiltersChange}
-                      showSearch={false}
-                      multiSelect={true}
-                      showPriorityBadges={true}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[120px]">Created by</TableHead>
-                  <TableHead className="w-[150px]">
-                    <FilterDropdownHeader
-                      label="Assigned"
-                      options={assigneeOptions}
-                      value={assigneeFilter}
-                      onChange={handleAssigneeFilterChange}
-                      showSearch={true}
-                      showAvatars={true}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[150px] text-right">
-                    <SortableColumnHeader
-                      label="Updated At"
-                      field="updatedAt"
-                      currentSort={sortBy === "updatedAt" ? sortOrder : null}
-                      onSort={(order) => handleSort("updatedAt", order)}
-                      align="right"
-                    />
-                  </TableHead>
-                  <TableHead className="w-[150px] text-right">
-                    <SortableColumnHeader
-                      label="Created"
-                      field="createdAt"
-                      currentSort={sortBy === "createdAt" ? sortOrder : null}
-                      onSort={(order) => handleSort("createdAt", order)}
-                      align="right"
-                    />
-                  </TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredFeatures.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center">
-                      <p className="text-muted-foreground">No features match your filters</p>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredFeatures.map((feature) => (
-                    <FeatureRow
-                      key={feature.id}
-                      feature={feature}
-                      workspaceSlug={workspaceSlug}
-                      onStatusUpdate={handleUpdateStatus}
-                      onPriorityUpdate={handleUpdatePriority}
-                      onAssigneeUpdate={handleUpdateAssignee}
-                      onDelete={handleDeleteFeature}
-                      onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}?page=${page}`)}
-                    />
-                  ))
                 )}
-              </TableBody>
-            </Table>
-            </div>
-          ) : null
-        ) : (
-          <KanbanView
-            items={filteredFeatures}
-            columns={FEATURE_KANBAN_COLUMNS}
-            getItemStatus={(feature) => feature.status}
-            getItemId={(feature) => feature.id}
-            renderCard={(feature) => (
-              <FeatureCard
-                feature={feature}
-                workspaceSlug={workspaceSlug}
-                hideStatus={true}
+                sortItems={(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()}
+                loading={loading}
+                enableDragDrop={true}
+                onStatusChange={handleFeatureStatusChange}
               />
             )}
-            sortItems={(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()}
-            loading={loading}
-            enableDragDrop={true}
-            onStatusChange={handleFeatureStatusChange}
-          />
-        )}
 
-        {viewType === "list" && filteredFeatures.length > 0 && (
-          <div className="pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
+            {viewType === "list" && filteredFeatures.length > 0 && (
+              <div className="pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </div>
+                </div>
+                <Pagination>
+                  <PaginationContent>
+                    {/* Previous button */}
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage((p) => Math.max(1, p - 1));
+                        }}
+                        aria-disabled={page === 1}
+                        className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+
+                    {/* Always show page 1 */}
+                    {totalPages > 0 && (
+                      <PaginationItem>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(1);
+                          }}
+                          isActive={page === 1}
+                          className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          1
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+
+                    {/* Show ellipsis if there's a gap between page 1 and the range */}
+                    {page > 4 && totalPages > 7 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+
+                    {/* Show page range (3 pages on each side of current) */}
+                    {getPageRange(page, totalPages).map((pageNum) => (
+                      <PaginationItem key={pageNum}>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(pageNum);
+                          }}
+                          isActive={page === pageNum}
+                          className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          {pageNum}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+
+                    {/* Show ellipsis if there's a gap between the range and last page */}
+                    {page < totalPages - 3 && totalPages > 7 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+
+                    {/* Always show last page (if > 1) */}
+                    {totalPages > 1 && (
+                      <PaginationItem>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(totalPages);
+                          }}
+                          isActive={page === totalPages}
+                          className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          {totalPages}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+
+                    {/* Next button */}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage((p) => Math.min(totalPages, p + 1));
+                        }}
+                        aria-disabled={page >= totalPages}
+                        className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
-            </div>
-            <Pagination>
-              <PaginationContent>
-                {/* Previous button */}
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.max(1, p - 1));
-                    }}
-                    aria-disabled={page === 1}
-                    className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-
-                {/* Always show page 1 */}
-                {totalPages > 0 && (
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(1);
-                      }}
-                      isActive={page === 1}
-                      className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      1
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-
-                {/* Show ellipsis if there's a gap between page 1 and the range */}
-                {page > 4 && totalPages > 7 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-
-                {/* Show page range (3 pages on each side of current) */}
-                {getPageRange(page, totalPages).map((pageNum) => (
-                  <PaginationItem key={pageNum}>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(pageNum);
-                      }}
-                      isActive={page === pageNum}
-                      className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      {pageNum}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-
-                {/* Show ellipsis if there's a gap between the range and last page */}
-                {page < totalPages - 3 && totalPages > 7 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-
-                {/* Always show last page (if > 1) */}
-                {totalPages > 1 && (
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(totalPages);
-                      }}
-                      isActive={page === totalPages}
-                      className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      {totalPages}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-
-                {/* Next button */}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.min(totalPages, p + 1));
-                    }}
-                    aria-disabled={page >= totalPages}
-                    className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        )}
+            )}
           </>
         )}
       </CardContent>
     </Card>
   );
-});
-
-FeaturesListComponent.displayName = "FeaturesList";
-
-export { FeaturesListComponent as FeaturesList };
+}
