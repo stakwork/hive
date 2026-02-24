@@ -40,6 +40,27 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [featureData, setFeatureData] = useState<FeatureData | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
+  const refetchFeature = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/features/${featureId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const feature = data.data;
+        if (feature) {
+          setFeatureData({
+            title: feature.title || null,
+            brief: feature.brief || null,
+            requirements: feature.requirements || null,
+            architecture: feature.architecture || null,
+            userStories: feature.userStories || [],
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching feature:", error);
+    }
+  }, [featureId]);
+
   // Load existing messages and feature data
   useEffect(() => {
     async function loadMessages() {
@@ -56,57 +77,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       }
     }
 
-    async function loadFeature() {
-      try {
-        const res = await fetch(`/api/features/${featureId}`);
-        if (res.ok) {
-          const data = await res.json();
-          const feature = data.data;
-          if (feature) {
-            setFeatureData({
-              title: feature.title || null,
-              brief: feature.brief || null,
-              requirements: feature.requirements || null,
-              architecture: feature.architecture || null,
-              userStories: feature.userStories || [],
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error loading feature:", error);
-      }
-    }
-
     loadMessages();
-    loadFeature();
-  }, [featureId]);
-
-  // Refetch feature data when workflow completes (AI may have updated fields)
-  useEffect(() => {
-    if (workflowStatus === WorkflowStatus.COMPLETED) {
-      async function refetchFeature() {
-        try {
-          const res = await fetch(`/api/features/${featureId}`);
-          if (res.ok) {
-            const data = await res.json();
-            const feature = data.data;
-            if (feature) {
-              setFeatureData({
-                title: feature.title || null,
-                brief: feature.brief || null,
-                requirements: feature.requirements || null,
-                architecture: feature.architecture || null,
-                userStories: feature.userStories || [],
-              });
-            }
-          }
-        } catch (error) {
-          console.error("Error refetching feature:", error);
-        }
-      }
-      refetchFeature();
-    }
-  }, [workflowStatus, featureId]);
+    refetchFeature();
+  }, [featureId, refetchFeature]);
 
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
@@ -136,6 +109,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
+    onFeatureUpdated: refetchFeature,
   });
 
   const sendMessage = useCallback(
@@ -199,7 +173,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const planData: PlanData = useMemo(() => {
     const userStoriesContent =
       featureData?.userStories && featureData.userStories.length > 0
-        ? featureData.userStories.map((s) => `- ${s.title}`).join("\n")
+        ? featureData.userStories.length === 1
+          ? featureData.userStories[0].title
+          : featureData.userStories.map((s) => `- ${s.title}`).join("\n")
         : null;
 
     const sections: PlanSection[] = [
