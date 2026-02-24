@@ -733,6 +733,7 @@ enum ArtifactType {
   PUBLISH_WORKFLOW
   BOUNTY
   PLAN
+  TASKS
 }
 
 // =============================================
