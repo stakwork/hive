@@ -1,11 +1,9 @@
 import { describe, test, expect, vi, beforeEach, afterEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
 
 // Mock all dependencies at module level
-vi.mock("next-auth/next");
 vi.mock("@/lib/db", () => ({
   db: {
     task: {
@@ -59,7 +57,6 @@ vi.mock("@/lib/utils", () => ({
 global.fetch = vi.fn();
 
 // Import mocked modules
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/config/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
@@ -141,16 +138,21 @@ const TestDataFactory = {
 
 // Test Helpers - Reusable assertion and setup functions
 const TestHelpers = {
-  createMockRequest: (body: object) => {
+  createMockRequest: (body: object, userId = "test-user-id") => {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    headers.set("x-middleware-auth-status", "authenticated");
+    headers.set("x-middleware-user-id", userId);
+    headers.set("x-middleware-user-email", "test@example.com");
+    headers.set("x-middleware-user-name", "Test User");
     return new NextRequest("http://localhost:3000/api/chat/message", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
   },
 
   setupValidSession: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    // Auth is now handled via middleware headers set in createMockRequest
   },
 
   setupValidTaskAndUser: () => {
