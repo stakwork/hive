@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getInitialAppState } from "@/lib/excalidraw-config";
@@ -28,6 +29,7 @@ interface WhiteboardData {
   appState: Record<string, unknown>;
   files: Record<string, unknown>;
   version: number;
+  featureId: string | null;
 }
 
 export default function WhiteboardDetailPage() {
@@ -333,47 +335,57 @@ export default function WhiteboardDetailPage() {
           </div>
         }
       />
-      <div
-        ref={containerRef}
-        className={
-          isFullscreen
-            ? "fixed inset-0 z-50 bg-white"
-            : "flex-1 mt-4 border rounded-lg overflow-hidden bg-white"
-        }
-      >
-        {isFullscreen && (
-          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
-              title="Zoom to fit"
-              disabled={!excalidrawAPI}
-            >
-              <Scan className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={toggleFullscreen}
-              title="Exit fullscreen"
-            >
-              <Minimize2 className="w-4 h-4" />
-            </Button>
-          </div>
+      <div className="flex flex-1 overflow-hidden mt-4">
+        <div
+          ref={containerRef}
+          className={
+            isFullscreen
+              ? "fixed inset-0 z-50 bg-white"
+              : "flex-1 border rounded-lg overflow-hidden bg-white"
+          }
+        >
+          {isFullscreen && (
+            <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+                title="Zoom to fit"
+                disabled={!excalidrawAPI}
+              >
+                <Scan className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={toggleFullscreen}
+                title="Exit fullscreen"
+              >
+                <Minimize2 className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+          <Excalidraw
+            excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
+            initialData={{
+              elements: whiteboard.elements as readonly ExcalidrawElement[],
+              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
+            }}
+            onChange={handleChange}
+            onPointerUpdate={handlePointerUpdate}
+            isCollaborating={excalidrawCollaborators.size > 0}
+            // @ts-expect-error - collaborators prop exists at runtime but not in types for v0.18
+            collaborators={excalidrawCollaborators}
+          />
+        </div>
+        {!isFullscreen && (
+          <WhiteboardChatPanel
+            whiteboardId={whiteboardId}
+            featureId={whiteboard.featureId ?? null}
+            excalidrawAPI={excalidrawAPI}
+            onReloadWhiteboard={loadWhiteboard}
+          />
         )}
-        <Excalidraw
-          excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-          initialData={{
-            elements: whiteboard.elements as readonly ExcalidrawElement[],
-            appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-          }}
-          onChange={handleChange}
-          onPointerUpdate={handlePointerUpdate}
-          isCollaborating={excalidrawCollaborators.size > 0}
-          // @ts-expect-error - collaborators prop exists at runtime but not in types for v0.18
-          collaborators={excalidrawCollaborators}
-        />
       </div>
     </div>
   );
