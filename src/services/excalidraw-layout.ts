@@ -762,6 +762,41 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
 }
 
 /**
+ * Serialize current Excalidraw elements into a compact text summary
+ * suitable for sending as LLM context. Uses extractParsedDiagram to
+ * get structured components/connections, then formats as human-readable text.
+ *
+ * Returns null if the diagram has no recognizable components.
+ */
+export function serializeDiagramContext(
+  elements: readonly Record<string, unknown>[]
+): string | null {
+  const parsed = extractParsedDiagram(elements);
+  if (!parsed || parsed.components.length === 0) return null;
+
+  const lines: string[] = [];
+
+  lines.push("Components:");
+  for (const c of parsed.components) {
+    lines.push(`- "${c.name}" (${c.type})`);
+  }
+
+  if (parsed.connections.length > 0) {
+    lines.push("");
+    lines.push("Connections:");
+    const nameById = new Map(parsed.components.map((c) => [c.id, c.name]));
+    for (const conn of parsed.connections) {
+      const from = nameById.get(conn.from) ?? conn.from;
+      const to = nameById.get(conn.to) ?? conn.to;
+      const label = conn.label ? ` [${conn.label}]` : "";
+      lines.push(`- "${from}" -> "${to}"${label}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * Re-layout a parsed diagram with a given algorithm.
  * Runs entirely client-side (ELK + element creation). No API call needed.
  */

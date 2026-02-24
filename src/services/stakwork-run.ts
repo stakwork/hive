@@ -363,6 +363,8 @@ export async function createDiagramStakworkRun(input: {
   architectureText: string;
   layout: string;
   userId: string;
+  diagramContext?: string | null;
+  userMessage?: string;
 }) {
   // Validate workspace access
   const workspace = await db.workspace.findUnique({
@@ -418,12 +420,18 @@ export async function createDiagramStakworkRun(input: {
       throw new Error("STAKWORK_DIAGRAM_WORKFLOW_ID not configured");
     }
 
-    const vars = {
+    const vars: Record<string, unknown> = {
       runId: run.id,
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
     };
+    if (input.diagramContext) {
+      vars.diagramContext = input.diagramContext;
+    }
+    if (input.userMessage) {
+      vars.userMessage = input.userMessage;
+    }
 
     const stakworkPayload = {
       name: `diagram-gen-${Date.now()}`,

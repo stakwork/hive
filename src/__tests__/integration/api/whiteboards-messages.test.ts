@@ -313,6 +313,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: "Generate a standalone diagram",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -354,6 +355,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: "Test message",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
     });
 
@@ -500,6 +502,8 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: "Test architecture for diagram generation",
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
+        userMessage: "Generate a diagram for user authentication flow",
       });
     });
 
@@ -523,6 +527,8 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: "Test architecture for diagram generation",
         layout: "force",
         userId: testUser.id,
+        diagramContext: null,
+        userMessage: "Test message",
       });
     });
 
@@ -583,6 +589,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         architectureText: messageContent, // User's message is used as prompt
         layout: "layered",
         userId: testUser.id,
+        diagramContext: null,
       });
 
       // Verify message was persisted

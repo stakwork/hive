@@ -141,7 +141,8 @@ export async function POST(
 
     // Trigger diagram generation
     const layout = body.layout || "layered";
-    
+    const diagramContext = typeof body.diagramContext === "string" ? body.diagramContext : null;
+
     // Branch based on whether whiteboard is linked to a feature
     const run = whiteboard.featureId && whiteboard.feature?.architecture
       ? await createDiagramStakworkRun({
@@ -151,6 +152,8 @@ export async function POST(
           architectureText: whiteboard.feature.architecture,
           layout,
           userId: user.id,
+          diagramContext,
+          userMessage: body.content,
         })
       : await createDiagramStakworkRun({
           workspaceId: whiteboard.workspace.id,
@@ -158,6 +161,7 @@ export async function POST(
           architectureText: body.content,
           layout,
           userId: user.id,
+          diagramContext,
         });
 
     return NextResponse.json(
