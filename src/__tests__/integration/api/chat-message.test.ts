@@ -316,7 +316,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       } as Response);
 
       // Test live mode
-      const liveRequest = createPostRequest("http://localhost:3000/api/chat/message", {
+      const liveRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
         taskId: testTask.id,
         message: "Live mode test",
         mode: "live",
@@ -326,7 +326,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(liveResponse.status).toBe(201);
 
       // Test unit mode
-      const unitRequest = createPostRequest("http://localhost:3000/api/chat/message", {
+      const unitRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
         taskId: testTask.id,
         message: "Unit mode test",
         mode: "unit",
@@ -336,7 +336,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(unitResponse.status).toBe(201);
 
       // Test integration mode
-      const integrationRequest = createPostRequest("http://localhost:3000/api/chat/message", {
+      const integrationRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
         taskId: testTask.id,
         message: "Integration mode test",
         mode: "integration",
