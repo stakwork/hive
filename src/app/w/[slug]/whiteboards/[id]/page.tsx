@@ -180,6 +180,32 @@ export default function WhiteboardDetailPage() {
     };
   }, []);
 
+  // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
+  useEffect(() => {
+    if (whiteboard && excalidrawAPI && !isInitialLoadRef.current) {
+      // Cancel any pending debounced save so stale elements don't overwrite
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      isInitialLoadRef.current = true;
+      excalidrawAPI.updateScene({
+        elements: whiteboard.elements as readonly ExcalidrawElement[],
+        appState: whiteboard.appState as unknown as AppState,
+      });
+      setTimeout(() => {
+        excalidrawAPI.scrollToContent(undefined, {
+          fitToViewport: true,
+          viewportZoomFactor: 0.9,
+          animate: true,
+          duration: 300,
+        });
+        isInitialLoadRef.current = false;
+      }, 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whiteboard?.id, whiteboard?.version, excalidrawAPI]);
+
   const handleSaveName = async () => {
     if (!whiteboard || !editName.trim()) return;
 
