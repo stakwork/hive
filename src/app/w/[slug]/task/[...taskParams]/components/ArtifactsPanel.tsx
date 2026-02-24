@@ -54,30 +54,21 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (!featureId) return;
 
     if (field === "user-stories") {
-      const stories = feature?.userStories ?? [];
-      if (stories.length === 1) {
-        const res = await fetch(`/api/user-stories/${stories[0].id}`, {
+      const story = feature?.userStories?.[0];
+      if (story) {
+        const res = await fetch(`/api/user-stories/${story.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: value }),
         });
         if (!res.ok) throw new Error("Failed to update user story");
-      } else if (stories.length === 0) {
+      } else {
         const res = await fetch(`/api/features/${featureId}/user-stories`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: value }),
         });
         if (!res.ok) throw new Error("Failed to create user story");
-      } else {
-        // Multiple stories — save as a single combined story update to the first one,
-        // or just patch the feature brief-style. For now, update first story.
-        const res = await fetch(`/api/user-stories/${stories[0].id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: value }),
-        });
-        if (!res.ok) throw new Error("Failed to update user story");
       }
 
       // Refetch feature to get updated user stories
