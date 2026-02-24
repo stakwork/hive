@@ -282,23 +282,24 @@ export async function POST(
         planEdited,
       });
 
-      // Store Stakwork project ID and set workflow status on the feature
+      // Set workflow status to IN_PROGRESS as soon as Stakwork is called
+      const updateData: Record<string, unknown> = {
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        workflowStartedAt: new Date(),
+      };
       if (stakworkData?.data?.project_id) {
-        await db.feature.update({
-          where: { id: featureId },
-          data: {
-            stakworkProjectId: stakworkData.data.project_id,
-            workflowStatus: WorkflowStatus.IN_PROGRESS,
-            workflowStartedAt: new Date(),
-          },
-        });
-
-        await pusherServer.trigger(
-          getFeatureChannelName(featureId),
-          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-          { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
-        );
+        updateData.stakworkProjectId = stakworkData.data.project_id;
       }
+      await db.feature.update({
+        where: { id: featureId },
+        data: updateData,
+      });
+
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      );
     }
 
     return NextResponse.json(
