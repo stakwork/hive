@@ -1327,6 +1327,8 @@ describe("Stakwork Run Service", () => {
       mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
       mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-1" });
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-1", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Mock the dynamic import of excalidraw-layout
@@ -1406,6 +1408,8 @@ describe("Stakwork Run Service", () => {
       mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Feature 2" });
       mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-2" });
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-2", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       vi.resetModules();
