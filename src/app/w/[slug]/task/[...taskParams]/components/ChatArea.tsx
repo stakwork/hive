@@ -294,6 +294,7 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
+        featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
       />
