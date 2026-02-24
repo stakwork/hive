@@ -190,11 +190,15 @@ export function createAuthenticatedPostRequest(
  */
 export function createAuthenticatedGetRequest(
   url: string,
-  user: { id: string; email: string; name: string },
+  user: { id: string; email: string | null; name: string | null },
   searchParams?: Record<string, string>
 ): NextRequest {
   const baseRequest = createGetRequest(url, searchParams);
-  return addMiddlewareHeaders(baseRequest, user);
+  return addMiddlewareHeaders(baseRequest, {
+    id: user.id,
+    email: user.email || "",
+    name: user.name || "",
+  });
 }
 
 /**
@@ -215,10 +219,14 @@ export function createAuthenticatedPutRequest(
 export function createAuthenticatedPatchRequest(
   url: string,
   body: object,
-  user: { id: string; email: string; name: string }
+  user: { id: string; email: string | null; name: string | null }
 ): NextRequest {
   const baseRequest = createPatchRequest(url, body);
-  return addMiddlewareHeaders(baseRequest, user);
+  return addMiddlewareHeaders(baseRequest, {
+    id: user.id,
+    email: user.email || "",
+    name: user.name || "",
+  });
 }
 
 /**

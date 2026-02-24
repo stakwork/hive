@@ -1,19 +1,8 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/tasks/route";
-import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority } from "@prisma/client";
-
-// Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-// Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -34,15 +23,30 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+/** Build a NextRequest with middleware auth headers pre-set */
+function authedRequest(
+  url: string,
+  opts: { method: string; body: string; headers?: Record<string, string>; userId?: string; userEmail?: string; userName?: string },
+) {
+  const { userId = "user1", userEmail = "test@example.com", userName = "Test User", method, body, headers: extraHeaders } = opts;
+  const headers = new Headers(extraHeaders);
+  headers.set("x-middleware-auth-status", "authenticated");
+  headers.set("x-middleware-user-id", userId);
+  headers.set("x-middleware-user-email", userEmail);
+  headers.set("x-middleware-user-name", userName);
+  return new NextRequest(url, { method, body, headers });
+}
+
+/** Build an unauthenticated NextRequest (no middleware headers) */
+function unauthRequest(url: string, opts: { method: string; body: string; headers?: Record<string, string> }) {
+  return new NextRequest(url, opts);
+}
+
 describe("POST /api/tasks - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetAllMocks();
   });
-
-  const mockSession = {
-    user: { id: "user1" },
-  };
 
   const mockWorkspace = {
     id: "workspace1",
@@ -101,14 +105,13 @@ describe("POST /api/tasks - Unit Tests", () => {
   };
 
   test("should create task successfully with all fields", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.user.findFirst as Mock).mockResolvedValue(mockAssignee);
     (db.repository.findFirst as Mock).mockResolvedValue(mockRepository);
     (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -206,12 +209,11 @@ describe("POST /api/tasks - Unit Tests", () => {
       repository: null,
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue(minimalTask);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -249,9 +251,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 401 for unauthenticated user", async () => {
-    (getServerSession as Mock).mockResolvedValue(null);
-
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = unauthRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -268,30 +268,8 @@ describe("POST /api/tasks - Unit Tests", () => {
     expect(db.task.create).not.toHaveBeenCalled();
   });
 
-  test("should return 401 for invalid user session", async () => {
-    (getServerSession as Mock).mockResolvedValue({ user: {} });
-
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
-      method: "POST",
-      body: JSON.stringify({
-        title: "Test Task",
-        workspaceSlug: "test-workspace",
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(401);
-    expect(data.error).toBe("Invalid user session");
-    expect(db.task.create).not.toHaveBeenCalled();
-  });
-
   test("should return 400 for missing required fields", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
-
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         description: "Missing title and workspaceSlug",
@@ -308,10 +286,9 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 404 for non-existent workspace", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(null);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -329,11 +306,10 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 404 for non-existent user", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(null);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -357,11 +333,10 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [], // No members
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -379,11 +354,10 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for invalid status", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -402,11 +376,10 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for invalid priority", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -425,12 +398,11 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for non-existent assignee", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.user.findFirst as Mock).mockResolvedValue(null);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -455,12 +427,11 @@ describe("POST /api/tasks - Unit Tests", () => {
       workspaceId: "different-workspace",
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.repository.findFirst as Mock).mockResolvedValue(repositoryInDifferentWorkspace);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -479,7 +450,6 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should handle status mapping from 'active' to IN_PROGRESS", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue({
@@ -487,7 +457,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       status: TaskStatus.IN_PROGRESS,
     });
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -498,7 +468,6 @@ describe("POST /api/tasks - Unit Tests", () => {
     });
 
     const response = await POST(request);
-    const data = await response.json();
 
     expect(response.status).toBe(201);
     expect(db.task.create).toHaveBeenCalledWith({
@@ -510,12 +479,11 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should handle database error gracefully", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockRejectedValue(new Error("Database connection failed"));
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
@@ -538,12 +506,11 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [{ role: "DEVELOPER" }], // User is a member
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithMember);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
 
-    const request = new NextRequest("http://localhost:3000/api/tasks", {
+    const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         title: "Test Task",
