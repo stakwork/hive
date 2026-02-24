@@ -107,6 +107,7 @@ export default function WhiteboardDetailPage() {
             gridSize: appState.gridSize,
           },
           files,
+          expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
         };
@@ -116,6 +117,13 @@ export default function WhiteboardDetailPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
+
+        if (res.status === 409) {
+          // Version conflict — server has newer data (e.g. from webhook).
+          // Reload to pick up the latest and skip error logging.
+          await loadWhiteboard();
+          return;
+        }
 
         if (!res.ok) {
           throw new Error("Failed to save");
@@ -134,11 +142,11 @@ export default function WhiteboardDetailPage() {
         setSaving(false);
       }
     },
-    [whiteboard, senderId]
+    [whiteboard, senderId, loadWhiteboard]
   );
 
   const handleChange = useCallback(
-    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+    (elements: readonly ExcalidrawElement[], appState: AppState, _files: BinaryFiles) => {
       // Skip on initial load
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
@@ -147,19 +155,38 @@ export default function WhiteboardDetailPage() {
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
-
-      // Clear existing save timeout
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      // Debounce database save by 2 seconds
-      saveTimeoutRef.current = setTimeout(() => {
-        saveToDatabase(elements, appState, files);
-      }, 2000);
     },
-    [broadcastElements, saveToDatabase]
+    [broadcastElements]
   );
+
+  // Save on user interaction (pointerup) — never fires from programmatic updateScene
+  const handlePointerUp = useCallback(() => {
+    if (!excalidrawAPI) return;
+
+    // Clear any previously scheduled save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Short debounce to batch rapid interactions
+    saveTimeoutRef.current = setTimeout(() => {
+      const elements = excalidrawAPI.getSceneElements();
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+      saveToDatabase(elements, appState, files);
+    }, 500);
+  }, [excalidrawAPI, saveToDatabase]);
+
+  // Attach pointerup listener to the canvas container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      container.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [handlePointerUp]);
 
   // Handle pointer/cursor updates for collaboration
   const handlePointerUpdate = useCallback(
@@ -183,11 +210,6 @@ export default function WhiteboardDetailPage() {
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
     if (whiteboard && excalidrawAPI && !isInitialLoadRef.current) {
-      // Cancel any pending debounced save so stale elements don't overwrite
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
       isInitialLoadRef.current = true;
       excalidrawAPI.updateScene({
         elements: whiteboard.elements as readonly ExcalidrawElement[],
