@@ -139,7 +139,7 @@ export function PlanArtifactPanel({
         <div className="px-5 py-3 border-b shrink-0">
           <h2 className="text-sm font-semibold text-foreground">{featureTitle}</h2>
         </div>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
           <p className="text-sm text-muted-foreground/40">Plan will appear as the conversation progresses</p>
         </div>
       </div>
@@ -151,32 +151,30 @@ export function PlanArtifactPanel({
       <div className="px-5 py-3 border-b shrink-0">
         <h2 className="text-sm font-semibold text-foreground">{featureTitle}</h2>
       </div>
-      <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="absolute inset-0">
-          <div className="px-5 py-4">
-            <AnimatePresence initial={false}>
-              {filledSections.map((section, i) => (
-                <motion.div
-                  key={section.key}
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  transition={{ duration: 0.35, ease: "easeOut" }}
-                  className="overflow-hidden"
-                >
-                  {i > 0 && <div className="border-b my-5" />}
-                  <EditableSection
-                    section={section}
-                    onSave={onSectionSave ? handleSectionSave : undefined}
-                    savedField={savedField}
-                    saving={saving}
-                    saved={saved}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
-      </div>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="px-5 py-4">
+          <AnimatePresence initial={false}>
+            {filledSections.map((section, i) => (
+              <motion.div
+                key={section.key}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                {i > 0 && <div className="border-b my-5" />}
+                <EditableSection
+                  section={section}
+                  onSave={onSectionSave ? handleSectionSave : undefined}
+                  savedField={savedField}
+                  saving={saving}
+                  saved={saved}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </ScrollArea>
     </div>
   );
 }
