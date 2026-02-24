@@ -251,10 +251,14 @@ export async function POST(request: NextRequest) {
     if (featureId) {
       for (const dbArtifact of chatMessage.artifacts) {
         if ((dbArtifact.type as string) === "PLAN") {
-          const content = dbArtifact.content as { plan?: string } | null;
-          if (content?.plan) {
+          const raw = dbArtifact.content;
+          const planXml =
+            typeof raw === "string"
+              ? raw
+              : (raw as { plan?: string } | null)?.plan;
+          if (planXml) {
             try {
-              const parsed = parsePlanXml(content.plan);
+              const parsed = parsePlanXml(planXml);
               const updateData: Record<string, string> = {};
               if (parsed.brief) updateData.brief = parsed.brief;
               if (parsed.requirements) updateData.requirements = parsed.requirements;
@@ -299,6 +303,16 @@ export async function POST(request: NextRequest) {
                     });
                   }
                 }
+              }
+              // Notify connected clients that the feature was updated
+              try {
+                const featureChannelName = getFeatureChannelName(featureId);
+                await pusherServer.trigger(featureChannelName, PUSHER_EVENTS.FEATURE_UPDATED, {
+                  featureId,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (pusherError) {
+                console.error("Failed to broadcast feature update:", pusherError);
               }
             } catch (error) {
               console.error("Error processing PLAN artifact for feature update:", error);

@@ -89,8 +89,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     });
     setIsLoading(false);
     setWorkflowStatus(WorkflowStatus.COMPLETED);
-    refetchFeature();
-  }, [refetchFeature]);
+  }, []);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: { taskId: string; workflowStatus: WorkflowStatus }) => {
@@ -110,6 +109,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
+    onFeatureUpdated: refetchFeature,
   });
 
   const sendMessage = useCallback(
