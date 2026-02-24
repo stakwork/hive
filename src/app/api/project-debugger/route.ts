@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, WorkflowStatus, ArtifactType } from "@prisma/client";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 /**
  * POST /api/project-debugger
@@ -135,6 +136,9 @@ export async function POST(request: NextRequest) {
 
       // Workspace context
       workspaceId: task.workspaceId,
+      
+      // Token reference
+      tokenReference: getStakworkTokenReference(),
     };
 
     // Build Stakwork payload

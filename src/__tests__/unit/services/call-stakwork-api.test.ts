@@ -81,6 +81,40 @@ describe("callStakworkAPI", () => {
     });
   });
 
+  describe("Token Reference", () => {
+    test("includes HIVE_STAGING token reference when VERCEL_ENV is undefined", async () => {
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams());
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1]?.body as string);
+
+      expect(body.workflow_params.set_var.attributes.vars.tokenReference).toBe(
+        "{{HIVE_STAGING}}"
+      );
+    });
+
+    test("includes HIVE_PROD token reference when VERCEL_ENV is production", async () => {
+      const originalEnv = process.env.VERCEL_ENV;
+      process.env.VERCEL_ENV = "production";
+
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams());
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1]?.body as string);
+
+      expect(body.workflow_params.set_var.attributes.vars.tokenReference).toBe(
+        "{{HIVE_PROD}}"
+      );
+
+      // Restore
+      process.env.VERCEL_ENV = originalEnv;
+    });
+  });
+
   describe("Workflow ID Selection", () => {
     test("selects first workflow ID for live mode", async () => {
       const { config } = await import("@/config/env");
@@ -243,6 +277,7 @@ describe("callStakworkAPI", () => {
         attachments: ["file1.txt", "file2.pdf"],
         taskSource: "codebase_recommendation", // Should be lowercase
         workspaceId: "workspace-789",
+        tokenReference: "{{HIVE_STAGING}}", // Default when VERCEL_ENV is undefined
       });
     });
 

@@ -22,6 +22,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/config/env";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -232,6 +233,7 @@ export async function createJanitorRun(
       ignoreDirs: repository?.ignoreDirs ?? null,
       username: githubCreds?.username || null,
       pat: githubCreds?.token || null,
+      tokenReference: getStakworkTokenReference(),
     };
 
     // Create Stakwork project using the stakworkRequest method (following existing pattern)
