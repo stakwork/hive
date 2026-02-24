@@ -13,6 +13,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cn } from "@/lib/utils";
+import { isClarifyingQuestions } from "@/types/stakwork";
+import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
+import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 
 /**
  * Parse message content to extract <logs> sections
@@ -253,6 +256,45 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           </div>
         ))}
+      {/* Clarifying Questions (PLAN artifact with ask_clarifying_questions) */}
+      {message.artifacts
+        ?.filter((a) => a.type === "PLAN" && isClarifyingQuestions(a.content))
+        .map((artifact) => {
+          const questions = (artifact.content as ClarifyingQuestionsResponse).content;
+          const isAnswered = !!replyMessage;
+
+          return (
+            <div key={artifact.id} className="flex justify-start">
+              <div className="w-full max-w-full">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                  {isAnswered ? (
+                    <div className="rounded-md border border-border bg-muted/50 p-4">
+                      <p className="text-xs text-muted-foreground mb-2">Clarifying questions answered</p>
+                      <div className="space-y-1 text-sm">
+                        {questions.map((q, i) => (
+                          <p key={i} className="text-muted-foreground">
+                            <span className="font-medium text-foreground">{q.question}</span>
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <ClarifyingQuestionsPreview
+                      questions={questions}
+                      onSubmit={(formattedAnswers) => {
+                        onArtifactAction(message.id, {
+                          actionType: "button",
+                          optionLabel: "Submit",
+                          optionResponse: formattedAnswers,
+                        }, "");
+                      }}
+                    />
+                  )}
+                </motion.div>
+              </div>
+            </div>
+          );
+        })}
       {/* Image Enlargement Dialog */}
       <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">

@@ -187,7 +187,12 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [sendMessage],
   );
 
-  const handleArtifactAction = useCallback(async () => {}, []);
+  const handleArtifactAction = useCallback(
+    async (_messageId: string, action: { optionResponse: string }) => {
+      await sendMessage(action.optionResponse);
+    },
+    [sendMessage],
+  );
 
   const allArtifacts = messages.flatMap((m) => m.artifacts || []);
 
