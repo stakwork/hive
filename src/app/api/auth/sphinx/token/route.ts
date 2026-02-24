@@ -53,21 +53,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the signature (timestamp is extracted from token internally)
-    let isValidSignature: boolean;
-    try {
-      isValidSignature = verifySphinxToken(token, pubkey);
-    } catch (verifyError) {
-      logger.error("Signature verification error", "SPHINX_AUTH", { error: verifyError });
-      return NextResponse.json(
-        { error: "Invalid signature" },
-        { status: 401 }
-      );
-    }
+    const verifyResult = verifySphinxToken(token, pubkey);
 
-    if (!isValidSignature) {
-      logger.warn("Invalid signature", "SPHINX_AUTH", { pubkey });
+    if (!verifyResult.valid) {
+      logger.warn("Signature verification failed", "SPHINX_AUTH", { pubkey, reason: verifyResult.reason });
       return NextResponse.json(
-        { error: "Invalid signature" },
+        { error: verifyResult.reason },
         { status: 401 }
       );
     }

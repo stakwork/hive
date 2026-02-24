@@ -104,21 +104,12 @@ export async function POST(
     }
 
     // Verify the Lightning signature (timestamp is extracted from token internally)
-    let isValid: boolean;
-    try {
-      isValid = verifySphinxToken(token, pubkey);
-    } catch (verifyError) {
-      logger.error("Error verifying Sphinx token", "SPHINX_AUTH", { error: verifyError });
-      return NextResponse.json(
-        { success: false, error: "Signature verification failed" },
-        { status: 500 }
-      );
-    }
+    const verifyResult = verifySphinxToken(token, pubkey);
 
-    if (!isValid) {
-      logger.warn("Invalid Sphinx signature", "SPHINX_AUTH", { challenge, pubkey });
+    if (!verifyResult.valid) {
+      logger.warn("Sphinx signature verification failed", "SPHINX_AUTH", { challenge, pubkey, reason: verifyResult.reason });
       return NextResponse.json(
-        { success: false, error: "Invalid signature" },
+        { success: false, error: verifyResult.reason },
         { status: 401 }
       );
     }
