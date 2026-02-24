@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
+import { TicketsList } from "@/components/features/TicketsList";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
+import { useAutoSave } from "@/hooks/useAutoSave";
+import type { FeatureDetail } from "@/types/roadmap";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -20,10 +23,70 @@ interface ArtifactsPanelProps {
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
   planData?: PlanData;
+  feature?: FeatureDetail | null;
+  featureId?: string;
+  onFeatureUpdate?: (feature: FeatureDetail) => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
+
+  const handlePlanSave = useCallback(async (updates: Record<string, unknown>) => {
+    if (!featureId) return;
+    const response = await fetch(`/api/features/${featureId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) throw new Error("Failed to update feature");
+    const result = await response.json();
+    if (result.success && onFeatureUpdate) {
+      onFeatureUpdate(result.data);
+    }
+  }, [featureId, onFeatureUpdate]);
+
+  const { saving, saved, savedField, triggerSaved } = useAutoSave({
+    data: feature as Record<string, unknown> | null ?? null,
+    onSave: handlePlanSave,
+  });
+
+  const handleSectionSave = useCallback(async (field: string, value: string) => {
+    if (!featureId) return;
+
+    if (field === "user-stories") {
+      const story = feature?.userStories?.[0];
+      if (story) {
+        const res = await fetch(`/api/user-stories/${story.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: value }),
+        });
+        if (!res.ok) throw new Error("Failed to update user story");
+      } else {
+        const res = await fetch(`/api/features/${featureId}/user-stories`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: value }),
+        });
+        if (!res.ok) throw new Error("Failed to create user story");
+      }
+
+      // Refetch feature to get updated user stories
+      const featureRes = await fetch(`/api/features/${featureId}`);
+      if (featureRes.ok) {
+        const result = await featureRes.json();
+        if (result.success && onFeatureUpdate) {
+          onFeatureUpdate(result.data);
+        }
+      }
+      triggerSaved("user-stories");
+      return;
+    }
+
+    // Standard fields: brief, requirements, architecture
+    await handlePlanSave({ [field]: value });
+    triggerSaved(field);
+  }, [featureId, feature, onFeatureUpdate, handlePlanSave, triggerSaved]);
 
   // Separate artifacts by type
   const codeArtifacts = artifacts.filter((a) => a.type === "CODE");
@@ -35,9 +98,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
   const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
 
+  const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
+
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
     if (planData) tabs.push("PLAN");
+    if (hasFeature) tabs.push("TASKS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -45,7 +111,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -108,7 +174,22 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
         >
           {planData && (
             <div className="h-full" hidden={activeTab !== "PLAN"}>
-              <PlanArtifactPanel planData={planData} />
+              <PlanArtifactPanel
+                planData={planData}
+                onSectionSave={featureId ? handleSectionSave : undefined}
+                savedField={savedField}
+                saving={saving}
+                saved={saved}
+              />
+            </div>
+          )}
+          {hasFeature && (
+            <div className="h-full" hidden={activeTab !== "TASKS"}>
+              <TicketsList
+                featureId={featureId!}
+                feature={feature!}
+                onUpdate={onFeatureUpdate!}
+              />
             </div>
           )}
           {codeArtifacts.length > 0 && (

@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
+import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   ChatMessage,
@@ -13,17 +14,10 @@ import {
   createChatMessage,
 } from "@/lib/chat";
 import { PlanSection, PlanData } from "./PlanArtifact";
+import type { FeatureDetail } from "@/types/roadmap";
 
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-}
-
-interface FeatureData {
-  title: string | null;
-  brief: string | null;
-  requirements: string | null;
-  architecture: string | null;
-  userStories: { id: string; title: string }[];
 }
 
 interface PlanChatViewProps {
@@ -37,31 +31,36 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
-  const [featureData, setFeatureData] = useState<FeatureData | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  const fetchFeature = useCallback(async (id: string) => {
+    const response = await fetch(`/api/features/${id}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch feature");
+    }
+    return response.json();
+  }, []);
+
+  const {
+    data: feature,
+    setData: setFeature,
+  } = useDetailResource<FeatureDetail>({
+    resourceId: featureId,
+    fetchFn: fetchFeature,
+  });
 
   const refetchFeature = useCallback(async () => {
     try {
-      const res = await fetch(`/api/features/${featureId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const feature = data.data;
-        if (feature) {
-          setFeatureData({
-            title: feature.title || null,
-            brief: feature.brief || null,
-            requirements: feature.requirements || null,
-            architecture: feature.architecture || null,
-            userStories: feature.userStories || [],
-          });
-        }
+      const result = await fetchFeature(featureId);
+      if (result.success && result.data) {
+        setFeature(result.data);
       }
     } catch (error) {
       console.error("Error fetching feature:", error);
     }
-  }, [featureId]);
+  }, [featureId, fetchFeature, setFeature]);
 
-  // Load existing messages and feature data
+  // Load existing messages
   useEffect(() => {
     async function loadMessages() {
       try {
@@ -78,8 +77,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
 
     loadMessages();
-    refetchFeature();
-  }, [featureId, refetchFeature]);
+  }, [featureId]);
 
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
@@ -172,26 +170,26 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const planData: PlanData = useMemo(() => {
     const userStoriesContent =
-      featureData?.userStories && featureData.userStories.length > 0
-        ? featureData.userStories.length === 1
-          ? featureData.userStories[0].title
-          : featureData.userStories.map((s) => `- ${s.title}`).join("\n")
+      feature?.userStories && feature.userStories.length > 0
+        ? feature.userStories.length === 1
+          ? feature.userStories[0].title
+          : feature.userStories.map((s: { title: string }) => `- ${s.title}`).join("\n")
         : null;
 
     const sections: PlanSection[] = [
-      { key: "brief", label: "Brief", content: featureData?.brief || null },
+      { key: "brief", label: "Brief", content: feature?.brief || null },
       { key: "user-stories", label: "User Stories", content: userStoriesContent },
-      { key: "requirements", label: "Requirements", content: featureData?.requirements || null },
-      { key: "architecture", label: "Architecture", content: featureData?.architecture || null },
+      { key: "requirements", label: "Requirements", content: feature?.requirements || null },
+      { key: "architecture", label: "Architecture", content: feature?.architecture || null },
     ];
 
     return {
-      featureTitle: featureData?.title || null,
+      featureTitle: feature?.title || null,
       sections,
     };
-  }, [featureData]);
+  }, [feature]);
 
-  const featureTitle = featureData?.title || null;
+  const featureTitle = feature?.title || null;
 
   if (!initialLoadDone) {
     return (
@@ -230,6 +228,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   workspaceId={workspaceId}
                   taskId={featureId}
                   planData={planData}
+                  feature={feature}
+                  featureId={featureId}
+                  onFeatureUpdate={setFeature}
                 />
               </div>
             </ResizablePanel>
