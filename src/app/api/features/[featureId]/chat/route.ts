@@ -8,6 +8,7 @@ import { callStakworkAPI } from "@/services/task-workflow";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -213,6 +214,17 @@ export async function POST(
         content: artifact.content as unknown,
       })) as Artifact[],
     };
+
+    // Broadcast user message to Pusher
+    try {
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.NEW_MESSAGE,
+        chatMessage.id
+      );
+    } catch (error) {
+      console.error('Error broadcasting user message to Pusher (feature):', error);
+    }
 
     // Call Stakwork workflow
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
