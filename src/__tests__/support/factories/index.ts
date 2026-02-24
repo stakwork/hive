@@ -24,3 +24,6 @@ export * from "./github-permissions.factory";
 
 // UI testing factory (React Flow nodes)
 export * from "./graphFactory";
+
+// Whiteboard factories
+export * from "./whiteboard-message.factory";

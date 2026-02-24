@@ -20,10 +20,18 @@ vi.mock("@/lib/pusher", () => ({
     trigger: vi.fn(),
   },
   getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
+  getWhiteboardChannelName: vi.fn((id: string) => `whiteboard-${id}`),
   PUSHER_EVENTS: {
     STAKWORK_RUN_UPDATE: "stakwork-run-update",
     STAKWORK_RUN_DECISION: "stakwork-run-decision",
+    WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
   },
+}));
+vi.mock("@/services/excalidraw-layout", () => ({
+  relayoutDiagram: vi.fn().mockResolvedValue({
+    elements: [],
+    appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+  }),
 }));
 vi.mock("@/lib/ai/utils", () => ({
   buildFeatureContext: vi.fn((feature: any) => {
@@ -1429,6 +1437,219 @@ describe("Stakwork Run Service", () => {
       expect(mockRelayoutDiagram).toHaveBeenCalledWith(
         { components: diagramComponents, connections: diagramConnections },
         "layered"
+      );
+    });
+
+    test("should create ASSISTANT WhiteboardMessage and emit Pusher event on completion", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "Component", type: "service" },
+      ];
+      const diagramConnections: never[] = [];
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-1",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      const mockWhiteboard = { id: "whiteboard-123" };
+      const mockAssistantMessage = {
+        id: "msg-1",
+        whiteboardId: "whiteboard-123",
+        role: "ASSISTANT",
+        content: "Diagram updated based on your request.",
+        status: "SENT",
+        createdAt: new Date(),
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Ensure db is the mocked instance
+      expect(db).toBe(mockedDb);
+
+      await processStakworkRunWebhook(
+        {
+          result: {
+            request_params: {
+              result: {
+                components: diagramComponents,
+                connections: diagramConnections,
+              },
+            },
+          },
+          project_status: "completed",
+          project_id: 12345,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+        }
+      );
+
+      // Verify whiteboard was fetched by featureId
+      expect(db.whiteboard.findUnique).toHaveBeenCalledWith({
+        where: { featureId: "feature-1" },
+        select: { id: true },
+      });
+
+      // Verify ASSISTANT message was created
+      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+        data: {
+          whiteboardId: "whiteboard-123",
+          role: "ASSISTANT",
+          content: "Diagram updated based on your request.",
+          status: "SENT",
+        },
+      });
+
+      // Verify Pusher event was triggered on correct channel with correct event
+      // Should be the 1st call (1st is whiteboard-chat-message, 2nd is stakwork-run-update)
+      expect(mockedPusherServer.trigger).toHaveBeenCalledTimes(2);
+      expect(mockedPusherServer.trigger).toHaveBeenNthCalledWith(
+        1,
+        "whiteboard-whiteboard-123",
+        "whiteboard-chat-message",
+        {
+          message: mockAssistantMessage,
+          timestamp: expect.any(Date),
+        }
+      );
+    });
+
+    test("should handle missing whiteboard gracefully without throwing", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "Component", type: "service" },
+      ];
+      const diagramConnections: never[] = [];
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-1",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(null); // No whiteboard found
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Should not throw despite missing whiteboard
+      await expect(
+        processStakworkRunWebhook(
+          {
+            result: {
+              request_params: {
+                result: {
+                  components: diagramComponents,
+                  connections: diagramConnections,
+                },
+              },
+            },
+            project_status: "completed",
+            project_id: 12345,
+          },
+          {
+            type: "DIAGRAM_GENERATION",
+            workspace_id: "ws-1",
+            feature_id: "feature-1",
+          }
+        )
+      ).resolves.toBeDefined();
+
+      // Verify whiteboardMessage.create was NOT called
+      expect(db.whiteboardMessage.create).not.toHaveBeenCalled();
+
+      // Verify Pusher was NOT called with whiteboard-chat-message
+      expect(mockedPusherServer.trigger).not.toHaveBeenCalledWith(
+        expect.stringContaining("whiteboard-"),
+        "whiteboard-chat-message",
+        expect.anything()
+      );
+    });
+
+    test("should handle Pusher error in chat message broadcast without throwing", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "Component", type: "service" },
+      ];
+      const diagramConnections: never[] = [];
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-1",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      const mockWhiteboard = { id: "whiteboard-123" };
+      const mockAssistantMessage = {
+        id: "msg-1",
+        whiteboardId: "whiteboard-123",
+        role: "ASSISTANT",
+        content: "Diagram updated based on your request.",
+        status: "SENT",
+        createdAt: new Date(),
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      
+      // Mock Pusher to throw error on all calls
+      const pusherError = new Error("Pusher connection failed");
+      mockedPusherServer.trigger = vi.fn().mockRejectedValue(pusherError);
+
+      // Should not throw despite Pusher error
+      const result = await processStakworkRunWebhook(
+        {
+          result: {
+            request_params: {
+              result: {
+                components: diagramComponents,
+                connections: diagramConnections,
+              },
+            },
+          },
+          project_status: "completed",
+          project_id: 12345,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+        }
+      );
+
+      // Verify webhook succeeded
+      expect(result.runId).toBe("run-1");
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+
+      // Verify message was created despite Pusher failure
+      expect(db.whiteboardMessage.create).toHaveBeenCalled();
+
+      // Verify Pusher was attempted for both events (whiteboard-chat-message and stakwork-run-update)
+      expect(mockedPusherServer.trigger).toHaveBeenCalledTimes(2);
+      expect(mockedPusherServer.trigger).toHaveBeenNthCalledWith(
+        1,
+        "whiteboard-whiteboard-123",
+        "whiteboard-chat-message",
+        expect.anything()
       );
     });
   });
