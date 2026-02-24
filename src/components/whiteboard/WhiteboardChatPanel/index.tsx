@@ -36,7 +36,7 @@ export function WhiteboardChatPanel({
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
 
   // Fetch messages on mount
@@ -60,14 +60,7 @@ export function WhiteboardChatPanel({
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector(
-        "[data-radix-scroll-area-viewport]"
-      );
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // Pusher subscription for real-time ASSISTANT messages
@@ -201,7 +194,7 @@ export function WhiteboardChatPanel({
       </div>
 
       {/* Messages */}
-      <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -228,6 +221,7 @@ export function WhiteboardChatPanel({
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </ScrollArea>
