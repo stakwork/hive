@@ -321,6 +321,7 @@ describe("Janitor Service", () => {
               attributes: expect.objectContaining({
                 vars: expect.objectContaining({
                   ignoreDirs: "node_modules,dist",
+                  tokenReference: "{{HIVE_STAGING}}", // Default when VERCEL_ENV is undefined
                 }),
               }),
             }),

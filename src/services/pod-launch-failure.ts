@@ -11,6 +11,7 @@ import {
 } from "@/types/pool-manager";
 import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 import { getSwarmContainerConfig } from "@/services/swarm/db";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const MAX_LAUNCH_FAILURE_ATTEMPTS = parseInt(
   process.env.POD_LAUNCH_FAILURE_MAX_ATTEMPTS || "5",
@@ -357,6 +358,7 @@ async function triggerLaunchFailureRepair(
               }),
               failureType: "LAUNCH", // Distinguishes from runtime failures
               containerFiles: containerConfig?.containerFiles || null,
+              tokenReference: getStakworkTokenReference(),
             },
           },
         },
