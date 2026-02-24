@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       count: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -1025,6 +1026,210 @@ describe("listFeatures", () => {
           skip: 10,
           take: 10,
         })
+      );
+    });
+  });
+
+  describe("needsAttention filter with ChatMessage", () => {
+    beforeEach(() => {
+      vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+      });
+    });
+
+    test("includes features where last message is from ASSISTANT", async () => {
+      const featureId = "feature-needs-attention";
+      
+      // Mock raw query to return feature IDs where last message is ASSISTANT
+      vi.mocked(db.$queryRaw).mockResolvedValue([{ feature_id: featureId }]);
+
+      const mockFeatureWithAssistantMessage = {
+        id: featureId,
+        title: "Feature needing input",
+        status: FeatureStatus.IN_PROGRESS,
+        priority: FeaturePriority.MEDIUM,
+        workspaceId: mockWorkspaceId,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdById: mockUserId,
+        assigneeId: null,
+        chatMessages: [{ role: "ASSISTANT" }],
+        _count: { userStories: 0 },
+        phases: [],
+      };
+
+      vi.mocked(db.feature.findMany).mockResolvedValue([mockFeatureWithAssistantMessage]);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        needsAttention: true,
+      });
+
+      // Verify raw query was called
+      expect(db.$queryRaw).toHaveBeenCalled();
+      
+      // Verify feature was returned
+      expect(result.features).toHaveLength(1);
+      expect(result.features[0].id).toBe(featureId);
+      
+      // Verify _count.stakworkRuns is set to 1 (backward compat)
+      expect(result.features[0]._count.stakworkRuns).toBe(1);
+    });
+
+    test("excludes features where last message is from USER", async () => {
+      const featureId = "feature-user-responded";
+      
+      // Mock raw query returns empty - no features need attention
+      vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+      vi.mocked(db.feature.findMany).mockResolvedValue([]);
+      vi.mocked(db.feature.count).mockResolvedValue(0);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        needsAttention: true,
+      });
+
+      expect(result.features).toHaveLength(0);
+    });
+
+    test("excludes features with no chat messages", async () => {
+      // Mock raw query returns empty
+      vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+      vi.mocked(db.feature.findMany).mockResolvedValue([]);
+      vi.mocked(db.feature.count).mockResolvedValue(0);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        needsAttention: true,
+      });
+
+      expect(result.features).toHaveLength(0);
+    });
+
+    test("excludes COMPLETED features regardless of last message role", async () => {
+      const featureId = "feature-completed";
+      
+      // Raw query would return this feature
+      vi.mocked(db.$queryRaw).mockResolvedValue([{ feature_id: featureId }]);
+
+      // But findMany filters it out due to status filter
+      vi.mocked(db.feature.findMany).mockResolvedValue([]);
+      vi.mocked(db.feature.count).mockResolvedValue(0);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        needsAttention: true,
+      });
+
+      // Verify the where clause excludes COMPLETED status
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { not: "COMPLETED" },
+          }),
+        })
+      );
+
+      expect(result.features).toHaveLength(0);
+    });
+
+    test("returns _count.stakworkRuns as 0 when last message is from USER", async () => {
+      const featureId = "feature-user-message";
+      
+      // No needsAttention filter, just checking the count logic
+      const mockFeatureWithUserMessage = {
+        id: featureId,
+        title: "Feature with user message",
+        status: FeatureStatus.IN_PROGRESS,
+        priority: FeaturePriority.MEDIUM,
+        workspaceId: mockWorkspaceId,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdById: mockUserId,
+        assigneeId: null,
+        chatMessages: [{ role: "USER" }],
+        _count: { userStories: 0 },
+        phases: [],
+      };
+
+      vi.mocked(db.feature.findMany).mockResolvedValue([mockFeatureWithUserMessage]);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+      });
+
+      expect(result.features[0]._count.stakworkRuns).toBe(0);
+    });
+
+    test("returns _count.stakworkRuns as 0 when no chat messages", async () => {
+      const featureId = "feature-no-messages";
+      
+      const mockFeatureNoMessages = {
+        id: featureId,
+        title: "Feature with no messages",
+        status: FeatureStatus.TODO,
+        priority: FeaturePriority.LOW,
+        workspaceId: mockWorkspaceId,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdById: mockUserId,
+        assigneeId: null,
+        chatMessages: [],
+        _count: { userStories: 0 },
+        phases: [],
+      };
+
+      vi.mocked(db.feature.findMany).mockResolvedValue([mockFeatureNoMessages]);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      const result = await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+      });
+
+      expect(result.features[0]._count.stakworkRuns).toBe(0);
+    });
+
+    test("combines needsAttention with status filters", async () => {
+      vi.mocked(db.$queryRaw).mockResolvedValue([{ feature_id: "feature-1" }]);
+      vi.mocked(db.feature.findMany).mockResolvedValue([]);
+      vi.mocked(db.feature.count).mockResolvedValue(0);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        needsAttention: true,
+        statuses: [FeatureStatus.IN_PROGRESS, FeatureStatus.TODO],
+      });
+
+      // Verify the raw query was called to find features needing attention
+      expect(db.$queryRaw).toHaveBeenCalled();
+      
+      // Verify both id filter and status filter are applied
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0][0];
+      expect(callArgs.where).toMatchObject({
+        id: { in: ["feature-1"] },
+        workspaceId: mockWorkspaceId,
+      });
+      // Status filter should have filtered out COMPLETED (but IN_PROGRESS and TODO remain)
+      expect(callArgs.where.status).toHaveProperty("in");
+      expect(callArgs.where.status.in).toEqual(
+        expect.arrayContaining([FeatureStatus.IN_PROGRESS, FeatureStatus.TODO])
       );
     });
   });
