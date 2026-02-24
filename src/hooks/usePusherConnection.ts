@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ChatMessage, WorkflowStatus } from "@/lib/chat";
-import { getPusherClient, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { getPusherClient, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
 
 export interface WorkflowStatusUpdate {
@@ -55,6 +55,7 @@ export interface DeploymentStatusChangeEvent {
 
 interface UsePusherConnectionOptions {
   taskId?: string | null;
+  featureId?: string | null;
   workspaceSlug?: string | null;
   enabled?: boolean;
   onMessage?: (message: ChatMessage) => void;
@@ -70,7 +71,7 @@ interface UsePusherConnectionOptions {
 interface UsePusherConnectionReturn {
   isConnected: boolean;
   connectionId: string | null;
-  connect: (id: string, type: "task" | "workspace") => void;
+  connect: (id: string, type: "task" | "feature" | "workspace") => void;
   disconnect: () => void;
   error: string | null;
 }
@@ -79,6 +80,7 @@ const LOGS = false;
 
 export function usePusherConnection({
   taskId,
+  featureId,
   workspaceSlug,
   enabled = true,
   onMessage,
@@ -104,7 +106,7 @@ export function usePusherConnection({
   const onBountyStatusChangeRef = useRef(onBountyStatusChange);
   const onDeploymentStatusChangeRef = useRef(onDeploymentStatusChange);
   const currentChannelIdRef = useRef<string | null>(null);
-  const currentChannelTypeRef = useRef<"task" | "workspace" | null>(null);
+  const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
@@ -120,7 +122,9 @@ export function usePusherConnection({
       const channelName =
         currentChannelTypeRef.current === "task"
           ? getTaskChannelName(currentChannelIdRef.current)
-          : getWorkspaceChannelName(currentChannelIdRef.current);
+          : currentChannelTypeRef.current === "feature"
+            ? getFeatureChannelName(currentChannelIdRef.current)
+            : getWorkspaceChannelName(currentChannelIdRef.current);
 
       if (LOGS) {
         console.log("Unsubscribing from Pusher channel:", channelName);
@@ -143,7 +147,7 @@ export function usePusherConnection({
 
   // Stable connect function
   const connect = useCallback(
-    (targetId: string, type: "task" | "workspace") => {
+    (targetId: string, type: "task" | "feature" | "workspace") => {
       // Disconnect from any existing channel
       disconnect();
 
@@ -152,7 +156,7 @@ export function usePusherConnection({
       }
 
       try {
-        const channelName = type === "task" ? getTaskChannelName(targetId) : getWorkspaceChannelName(targetId);
+        const channelName = type === "task" ? getTaskChannelName(targetId) : type === "feature" ? getFeatureChannelName(targetId) : getWorkspaceChannelName(targetId);
         const channel = getPusherClient().subscribe(channelName);
 
         // Set up event handlers
@@ -175,8 +179,8 @@ export function usePusherConnection({
           setIsConnected(false);
         });
 
-        // Task-specific events
-        if (type === "task") {
+        // Task and feature channels share the same message events
+        if (type === "task" || type === "feature") {
           // Message events (payload is messageId)
           channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
             try {
@@ -329,17 +333,22 @@ export function usePusherConnection({
         console.log("Connecting to Pusher channel for task:", taskId);
       }
       connect(taskId, "task");
+    } else if (featureId && featureId !== currentChannelIdRef.current) {
+      if (LOGS) {
+        console.log("Connecting to Pusher channel for feature:", featureId);
+      }
+      connect(featureId, "feature");
     } else if (workspaceSlug && workspaceSlug !== currentChannelIdRef.current) {
       if (LOGS) {
         console.log("Connecting to Pusher channel for workspace:", workspaceSlug);
       }
       connect(workspaceSlug, "workspace");
-    } else if (!taskId && !workspaceSlug) {
+    } else if (!taskId && !featureId && !workspaceSlug) {
       disconnect();
     }
 
     return disconnect;
-  }, [taskId, workspaceSlug, enabled, connect, disconnect]);
+  }, [taskId, featureId, workspaceSlug, enabled, connect, disconnect]);
 
   // Cleanup on unmount
   useEffect(() => {

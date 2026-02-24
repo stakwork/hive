@@ -650,6 +650,10 @@ model ChatMessage {
   userId    String? @map("user_id")
   createdBy User?   @relation("ChatMessageSender", fields: [userId], references: [id], onDelete: SetNull)
 
+  // Optional feature association (for plan mode conversations)
+  featureId String?  @map("feature_id")
+  feature   Feature? @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
   artifacts   Artifact[]
   attachments Attachment[]
 
@@ -657,6 +661,7 @@ model ChatMessage {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([taskId])
+  @@index([featureId])
   @@index([timestamp])
   @@index([userId])
   @@map("chat_messages")
@@ -727,6 +732,7 @@ enum ArtifactType {
   DIFF
   PUBLISH_WORKFLOW
   BOUNTY
+  PLAN
 }
 
 // =============================================
@@ -1094,6 +1100,7 @@ model Feature {
   tasks        Task[]
   stakworkRuns StakworkRun[]
   whiteboard   Whiteboard?
+  chatMessages ChatMessage[]
 
   deleted   Boolean   @default(false)
   deletedAt DateTime? @map("deleted_at")

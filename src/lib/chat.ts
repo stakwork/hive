@@ -229,6 +229,7 @@ export function createChatMessage(data: {
   role: ChatRole;
   status: ChatStatus;
   taskId?: string;
+  featureId?: string;
   workflowUrl?: string;
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
@@ -248,6 +249,7 @@ export function createChatMessage(data: {
   return {
     id: data.id,
     taskId: data.taskId || null,
+    featureId: data.featureId || null,
     message: data.message,
     workflowUrl: data.workflowUrl || null,
     role: data.role,

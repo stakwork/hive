@@ -29,6 +29,7 @@ export const getPusherClient = (): PusherClient => {
 // Channel naming helpers
 export const getTaskChannelName = (taskId: string) => `task-${taskId}`;
 export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${workspaceSlug}`;
+export const getFeatureChannelName = (featureId: string) => `feature-${featureId}`;
 export const getWhiteboardChannelName = (whiteboardId: string) => `whiteboard-${whiteboardId}`;
 
 // Event names

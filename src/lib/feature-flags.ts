@@ -5,6 +5,7 @@ export const FEATURE_FLAGS = {
   CODEBASE_RECOMMENDATION: 'CODEBASE_RECOMMENDATION',
   WORKSPACE_LOGO: 'WORKSPACE_LOGO',
   BOUNTY_REQUEST: 'BOUNTY_REQUEST',
+  CONVERSATIONAL_PLAN: 'CONVERSATIONAL_PLAN',
 } as const;
 
 export type FeatureFlag = typeof FEATURE_FLAGS[keyof typeof FEATURE_FLAGS];
@@ -24,6 +25,9 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     case FEATURE_FLAGS.BOUNTY_REQUEST:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_BOUNTY_REQUEST === 'true';
       break;
+    case FEATURE_FLAGS.CONVERSATIONAL_PLAN:
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CONVERSATIONAL_PLAN === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -31,9 +35,10 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
   if (!isEnabled) return false;
 
   const roleRequirements: Record<FeatureFlag, WorkspaceRole[]> = {
-    [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [], // No role restriction - available to all when enabled
-    [FEATURE_FLAGS.WORKSPACE_LOGO]: [], // No role restriction - available to all when enabled
-    [FEATURE_FLAGS.BOUNTY_REQUEST]: [], // No role restriction - available to all when enabled
+    [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [],
+    [FEATURE_FLAGS.WORKSPACE_LOGO]: [],
+    [FEATURE_FLAGS.BOUNTY_REQUEST]: [],
+    [FEATURE_FLAGS.CONVERSATIONAL_PLAN]: [],
   };
 
   const allowedRoles = roleRequirements[feature];
@@ -45,7 +50,7 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
 // Server-side feature flag check (for API routes) - uses same logic but reads server-side env vars
 export function canAccessServerFeature(feature: FeatureFlag, userRole?: WorkspaceRole): boolean {
   let isEnabled = false;
-  
+
   // Use NEXT_PUBLIC_ for consistency - these are available server-side too
   switch (feature) {
     case FEATURE_FLAGS.CODEBASE_RECOMMENDATION:
@@ -57,6 +62,9 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     case FEATURE_FLAGS.BOUNTY_REQUEST:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_BOUNTY_REQUEST === 'true';
       break;
+    case FEATURE_FLAGS.CONVERSATIONAL_PLAN:
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CONVERSATIONAL_PLAN === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -64,9 +72,10 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
   if (!isEnabled) return false;
 
   const roleRequirements: Record<FeatureFlag, WorkspaceRole[]> = {
-    [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [], // No role restriction - available to all when enabled
-    [FEATURE_FLAGS.WORKSPACE_LOGO]: [], // No role restriction - available to all when enabled
-    [FEATURE_FLAGS.BOUNTY_REQUEST]: [], // No role restriction - available to all when enabled
+    [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [],
+    [FEATURE_FLAGS.WORKSPACE_LOGO]: [],
+    [FEATURE_FLAGS.BOUNTY_REQUEST]: [],
+    [FEATURE_FLAGS.CONVERSATIONAL_PLAN]: [],
   };
 
   const allowedRoles = roleRequirements[feature];
