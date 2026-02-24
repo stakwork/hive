@@ -101,6 +101,18 @@ export async function PATCH(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Optimistic locking: reject stale saves when elements are being updated.
+    // The frontend sends expectedVersion (its last-known version). If the DB
+    // version is higher (e.g. webhook saved newer data), reject with 409.
+    if (body.elements !== undefined && typeof body.expectedVersion === "number") {
+      if (whiteboard.version > body.expectedVersion) {
+        return NextResponse.json(
+          { error: "Version conflict", stale: true, currentVersion: whiteboard.version },
+          { status: 409 }
+        );
+      }
+    }
+
     // Block element saves while diagram generation is active
     if (body.elements !== undefined && whiteboard.featureId) {
       const activeGeneration = await db.stakworkRun.findFirst({
