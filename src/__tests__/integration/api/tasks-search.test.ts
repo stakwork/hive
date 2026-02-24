@@ -1,23 +1,10 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect } from "vitest";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
-import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
+import { createAuthenticatedGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { TaskStatus } from "@prisma/client";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Test Data Setup Functions
 async function createTestWorkspace(ownerId: string) {
@@ -101,15 +88,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      // Mock NextAuth session
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search for "authentication" (should match first task)
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=authentication`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=authentication`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -138,14 +120,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search for "authentication" in description
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=authentication`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=authentication`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -170,14 +148,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search with different case
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=uppercase`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=uppercase`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -207,14 +181,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search for "bug" (should match two tasks)
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=bug`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=bug`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -238,14 +208,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search for non-existent term
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=nonexistent`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=nonexistent`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -268,14 +234,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search with leading/trailing whitespace
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=${encodeURIComponent("  search  ")}`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=${encodeURIComponent("  search  ")}`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -302,14 +264,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     }
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // First page
-      const request1 = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=test&page=1&limit=10`
-      );
+      const request1 = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=test&page=1&limit=10`,
+        testUser
+        );
 
       const response1 = await GET(request1);
       const data1 = await response1.json();
@@ -319,8 +277,9 @@ describe("GET /api/tasks - Search Functionality", () => {
       expect(data1.pagination.totalPages).toBeGreaterThan(1);
 
       // Second page
-      const request2 = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=test&page=2&limit=10`
+      const request2 = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=test&page=2&limit=10`,
+        testUser
       );
 
       const response2 = await GET(request2);
@@ -348,14 +307,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search only in archived tasks
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=keyword&includeArchived=true`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=keyword&includeArchived=true`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -380,14 +335,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Empty search parameter
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=`,
+        testUser
+        );
 
       const response = await GET(request);
 
@@ -410,14 +361,10 @@ describe("GET /api/tasks - Search Functionality", () => {
     });
 
     try {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      // Search with special characters
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&search=${encodeURIComponent("[BUG-123]")}`
-      );
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&search=${encodeURIComponent("[BUG-123]")}`,
+        testUser
+        );
 
       const response = await GET(request);
 

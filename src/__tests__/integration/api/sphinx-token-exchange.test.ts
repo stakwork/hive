@@ -27,7 +27,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     testUserId = user.id;
     
     // Mock successful signature verification for all tests by default
-    vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
+    vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue({ valid: true });
   });
 
   afterEach(async () => {
@@ -116,7 +116,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
   describe("Signature Verification Tests", () => {
     it("should return 401 when signature is invalid", async () => {
       // Mock failed signature verification
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(false);
+      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue({ valid: false, reason: "Invalid signature" });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -150,7 +150,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
       });
 
       // Mock successful signature verification
-      const verifySpy = vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(true);
+      const verifySpy = vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue({ valid: true });
 
       await invokeRoute(POST, {
         method: "POST",
@@ -164,7 +164,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
       expect(verifySpy).toHaveBeenCalledWith(testToken, testPubkey);
     });
 
-    it("should return 401 when signature verification throws error", async () => {
+    it("should return 500 when signature verification throws unexpected error", async () => {
       // Mock signature verification throwing error
       vi.spyOn(sphinxVerify, "verifySphinxToken").mockImplementation(() => {
         throw new Error("Signature verification failed");
@@ -179,9 +179,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         },
       });
 
-      expect(result.status).toBe(401);
+      expect(result.status).toBe(500);
       const data = await result.json();
-      expect(data.error).toBe("Invalid signature");
+      expect(data.error).toBe("An unexpected error occurred");
     });
   });
 
@@ -516,7 +516,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
     it("should not leak user existence for invalid signatures", async () => {
       // Mock failed signature verification
-      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(false);
+      vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue({ valid: false, reason: "Invalid signature" });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -534,7 +534,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should validate signature before database lookup", async () => {
-      const verifySpy = vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue(false);
+      const verifySpy = vi.spyOn(sphinxVerify, "verifySphinxToken").mockReturnValue({ valid: false, reason: "Invalid signature" });
 
       await invokeRoute(POST, {
         method: "POST",

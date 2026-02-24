@@ -5,23 +5,10 @@ import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedPatchRequest,
-  createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace, Task } from "@prisma/client";
-
-// Mock NextAuth for GET tests that use getServerSession
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
 
 // Test Data Setup Functions
 async function createTestWorkspace(ownerId: string) {
@@ -212,13 +199,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
     });
 
     try {
-      // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}`,
+        testUser
       );
 
       const response = await GET(request);
@@ -244,13 +227,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
     });
 
     try {
-      // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=true`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=true`,
+        testUser
       );
 
       const response = await GET(request);
@@ -280,13 +259,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
     });
 
     try {
-      // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
-
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=false`
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=false`,
+        testUser
       );
 
       const response = await GET(request);
