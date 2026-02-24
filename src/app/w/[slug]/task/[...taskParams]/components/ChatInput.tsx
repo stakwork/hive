@@ -558,6 +558,7 @@ export function ChatInput({
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
           }}
+          disabled={disabled}
           autoFocus
           rows={1}
           data-testid="chat-message-input"
