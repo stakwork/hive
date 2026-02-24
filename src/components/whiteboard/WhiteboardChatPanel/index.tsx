@@ -60,7 +60,7 @@ export function WhiteboardChatPanel({
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [messages]);
 
   // Pusher subscription for real-time ASSISTANT messages
