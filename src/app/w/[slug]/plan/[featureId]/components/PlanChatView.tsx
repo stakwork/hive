@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
@@ -12,9 +12,18 @@ import {
   WorkflowStatus,
   createChatMessage,
 } from "@/lib/chat";
+import { PlanSection, PlanData } from "./PlanArtifact";
 
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
+
+interface FeatureData {
+  title: string | null;
+  brief: string | null;
+  requirements: string | null;
+  architecture: string | null;
+  userStories: { id: string; title: string }[];
 }
 
 interface PlanChatViewProps {
@@ -28,10 +37,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
-  const [featureTitle, setFeatureTitle] = useState<string | null>(null);
+  const [featureData, setFeatureData] = useState<FeatureData | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
-  // Load existing messages
+  // Load existing messages and feature data
   useEffect(() => {
     async function loadMessages() {
       try {
@@ -47,13 +56,21 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       }
     }
 
-    // Load feature title
     async function loadFeature() {
       try {
         const res = await fetch(`/api/features/${featureId}`);
         if (res.ok) {
           const data = await res.json();
-          setFeatureTitle(data.data?.title || null);
+          const feature = data.data;
+          if (feature) {
+            setFeatureData({
+              title: feature.title || null,
+              brief: feature.brief || null,
+              requirements: feature.requirements || null,
+              architecture: feature.architecture || null,
+              userStories: feature.userStories || [],
+            });
+          }
         }
       } catch (error) {
         console.error("Error loading feature:", error);
@@ -64,7 +81,33 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     loadFeature();
   }, [featureId]);
 
-  // Handle incoming Pusher messages
+  // Refetch feature data when workflow completes (AI may have updated fields)
+  useEffect(() => {
+    if (workflowStatus === WorkflowStatus.COMPLETED) {
+      async function refetchFeature() {
+        try {
+          const res = await fetch(`/api/features/${featureId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const feature = data.data;
+            if (feature) {
+              setFeatureData({
+                title: feature.title || null,
+                brief: feature.brief || null,
+                requirements: feature.requirements || null,
+                architecture: feature.architecture || null,
+                userStories: feature.userStories || [],
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error refetching feature:", error);
+        }
+      }
+      refetchFeature();
+    }
+  }, [workflowStatus, featureId]);
+
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
       const exists = msgs.some((m) => m.id === message.id);
@@ -75,7 +118,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     setWorkflowStatus(WorkflowStatus.COMPLETED);
   }, []);
 
-  // Handle workflow status updates
   const handleWorkflowStatusUpdate = useCallback(
     (update: { taskId: string; workflowStatus: WorkflowStatus }) => {
       setWorkflowStatus(update.workflowStatus);
@@ -90,14 +132,12 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [],
   );
 
-  // Pusher connection for feature channel
   usePusherConnection({
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
   });
 
-  // Send a message
   const sendMessage = useCallback(
     async (messageText: string) => {
       const newMessage = createChatMessage({
@@ -120,7 +160,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
         if (res.ok) {
           const data = await res.json();
-          // Update the temp message with the real one
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
@@ -141,7 +180,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId],
   );
 
-  // Handle send from ChatArea
   const handleSend = useCallback(
     async (message: string) => {
       await sendMessage(message);
@@ -149,14 +187,30 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [sendMessage],
   );
 
-  // Handle artifact actions (no-op for plan mode but required by ChatArea)
-  const handleArtifactAction = useCallback(async () => {
-    // Plan mode doesn't support artifact actions
-  }, []);
+  const handleArtifactAction = useCallback(async () => {}, []);
 
-  // Collect all artifacts from messages
   const allArtifacts = messages.flatMap((m) => m.artifacts || []);
-  const hasArtifacts = allArtifacts.length > 0;
+
+  const planData: PlanData = useMemo(() => {
+    const userStoriesContent =
+      featureData?.userStories && featureData.userStories.length > 0
+        ? featureData.userStories.map((s) => `- ${s.title}`).join("\n")
+        : null;
+
+    const sections: PlanSection[] = [
+      { key: "brief", label: "Brief", content: featureData?.brief || null },
+      { key: "user-stories", label: "User Stories", content: userStoriesContent },
+      { key: "requirements", label: "Requirements", content: featureData?.requirements || null },
+      { key: "architecture", label: "Architecture", content: featureData?.architecture || null },
+    ];
+
+    return {
+      featureTitle: featureData?.title || null,
+      sections,
+    };
+  }, [featureData]);
+
+  const featureTitle = featureData?.title || null;
 
   if (!initialLoadDone) {
     return (
@@ -169,7 +223,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
-        <ResizablePanel defaultSize={hasArtifacts && !isMobile ? 50 : 100} minSize={30}>
+        <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
             <ChatArea
               messages={messages}
@@ -185,7 +239,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             />
           </div>
         </ResizablePanel>
-        {hasArtifacts && !isMobile && (
+        {!isMobile && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={50} minSize={25}>
@@ -194,6 +248,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   artifacts={allArtifacts}
                   workspaceId={workspaceId}
                   taskId={featureId}
+                  planData={planData}
                 />
               </div>
             </ResizablePanel>

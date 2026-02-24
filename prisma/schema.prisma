@@ -732,6 +732,7 @@ enum ArtifactType {
   DIFF
   PUBLISH_WORKFLOW
   BOUNTY
+  PLAN
 }
 
 // =============================================

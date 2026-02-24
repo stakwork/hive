@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
+import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 
@@ -18,9 +19,10 @@ interface ArtifactsPanelProps {
   isMobile?: boolean;
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
+  planData?: PlanData;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -35,6 +37,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
+    if (planData) tabs.push("PLAN");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -42,7 +45,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -103,6 +106,11 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
+          {planData && (
+            <div className="h-full" hidden={activeTab !== "PLAN"}>
+              <PlanArtifactPanel planData={planData} />
+            </div>
+          )}
           {codeArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "CODE"}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
