@@ -52,4 +52,5 @@ export const PUSHER_EVENTS = {
   WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
   WHITEBOARD_USER_JOIN: "whiteboard-user-join",
   WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
+  WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
 } as const;
