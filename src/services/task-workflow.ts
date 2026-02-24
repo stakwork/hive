@@ -528,6 +528,7 @@ export async function callStakworkAPI(params: {
   podId?: string | null;
   podPassword?: string | null;
   featureId?: string | null;
+  planEdited?: boolean;
 }) {
   const {
     taskId,
@@ -557,6 +558,7 @@ export async function callStakworkAPI(params: {
     podId = null,
     podPassword = null,
     featureId = null,
+    planEdited,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -618,6 +620,9 @@ export async function callStakworkAPI(params: {
   }
   if (branch) {
     vars.branch = branch;
+  }
+  if (planEdited !== undefined) {
+    vars.planEdited = planEdited;
   }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;
