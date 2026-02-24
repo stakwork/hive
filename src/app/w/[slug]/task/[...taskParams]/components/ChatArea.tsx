@@ -125,9 +125,12 @@ export function ChatArea({
     if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
     } else {
-      // Fallback to tasks list if no history or external referrer
+      // Fallback: plan list for feature chats, task list otherwise
       if (workspaceSlug) {
-        router.push(`/w/${workspaceSlug}/tasks`);
+        const fallbackPath = featureId
+          ? `/w/${workspaceSlug}/plan`
+          : `/w/${workspaceSlug}/tasks`;
+        router.push(fallbackPath);
       } else {
         router.back();
       }
@@ -164,8 +167,8 @@ export function ChatArea({
                   title={taskTitle}
                   data-testid="task-title"
                 >
-                  {/* Inline Breadcrumbs */}
-                  {workspaceSlug && (
+                  {/* Inline Breadcrumbs - only show in task chat context */}
+                  {workspaceSlug && taskId && (
                     <TaskBreadcrumbs
                       featureId={featureId ?? null}
                       featureTitle={featureTitle ?? null}
