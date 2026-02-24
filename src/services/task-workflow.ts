@@ -527,6 +527,7 @@ export async function callStakworkAPI(params: {
   repoName?: string | null;
   podId?: string | null;
   podPassword?: string | null;
+  featureId?: string | null;
 }) {
   const {
     taskId,
@@ -555,6 +556,7 @@ export async function callStakworkAPI(params: {
     repoName = null,
     podId = null,
     podPassword = null,
+    featureId = null,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -611,6 +613,9 @@ export async function callStakworkAPI(params: {
   if (podPassword) {
     vars.podPassword = podPassword;
   }
+  if (featureId) {
+    vars.featureId = featureId;
+  }
   if (branch) {
     vars.branch = branch;
   }
@@ -625,8 +630,10 @@ export async function callStakworkAPI(params: {
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
   let workflowId: string;
-  // Use task workflow for non-janitor tasks when configured
-  if (config.STAKWORK_TASK_WORKFLOW_ID && mode === "live" && taskSource !== "JANITOR") {
+  // Use plan mode workflow for conversational planning
+  if (config.STAKWORK_PLAN_MODE_WORKFLOW_ID && mode === "plan_mode") {
+    workflowId = config.STAKWORK_PLAN_MODE_WORKFLOW_ID;
+  } else if (config.STAKWORK_TASK_WORKFLOW_ID && mode === "live" && taskSource !== "JANITOR") {
     workflowId = config.STAKWORK_TASK_WORKFLOW_ID;
   } else if (mode === "live") {
     workflowId = stakworkWorkflowIds[0];

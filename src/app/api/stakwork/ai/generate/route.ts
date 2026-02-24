@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { CreateStakworkRunSchema } from "@/types/stakwork";
 import { createStakworkRun } from "@/services/stakwork-run";
 
@@ -12,15 +12,12 @@ export const fetchCache = "force-no-store";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate user
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
+    const body = await request.json();
+    const userOrResponse = await requireAuthOrApiToken(request, body.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const userId = userOrResponse.id;
 
-    // Parse and validate request body
-    const body = await request.json();
     const validationResult = CreateStakworkRunSchema.safeParse(body);
 
     if (!validationResult.success) {

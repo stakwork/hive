@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import type {
@@ -10,12 +10,10 @@ import type {
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
 
@@ -143,11 +141,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const body: CreateFeatureRequest = await request.json();
+    const userOrResponse = await requireAuthOrApiToken(request, body.workspaceId);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     if (!body.title || !body.workspaceId) {
       return NextResponse.json(

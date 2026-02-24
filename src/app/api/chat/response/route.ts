@@ -12,7 +12,7 @@ import {
   type BrowserContent,
   type WorkflowContent,
 } from "@/lib/chat";
-import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload } from "@/lib/screenshot-upload";
 
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       taskId,
+      featureId,
       message,
       workflowUrl,
       contextTags = [] as ContextTag[],
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
     const chatMessage = await db.chatMessage.create({
       data: {
         taskId,
+        featureId: featureId || undefined,
         message: message || "",
         workflowUrl,
         role: ChatRole.ASSISTANT,
@@ -373,6 +375,15 @@ export async function POST(request: NextRequest) {
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
       } catch (error) {
         console.error("Error broadcasting to Pusher:", error);
+      }
+    }
+
+    if (featureId) {
+      try {
+        const channelName = getFeatureChannelName(featureId);
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
+      } catch (error) {
+        console.error("Error broadcasting to Pusher (feature):", error);
       }
     }
 
