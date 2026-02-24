@@ -281,6 +281,14 @@ export async function POST(
         featureContext,
         planEdited,
       });
+
+      // Store Stakwork project ID on the feature for log subscription
+      if (stakworkData?.data?.project_id) {
+        await db.feature.update({
+          where: { id: featureId },
+          data: { stakworkProjectId: stakworkData.data.project_id },
+        });
+      }
     }
 
     return NextResponse.json(

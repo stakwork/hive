@@ -1085,6 +1085,9 @@ model Feature {
   diagramUrl   String? @map("diagram_url")
   diagramS3Key String? @map("diagram_s3_key")
 
+  // Stakwork project ID for log subscription
+  stakworkProjectId Int? @map("stakwork_project_id")
+
   status   FeatureStatus   @default(BACKLOG)
   priority FeaturePriority @default(LOW)
 
