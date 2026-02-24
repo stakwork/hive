@@ -278,7 +278,7 @@ describe("WhiteboardChatPanel", () => {
     });
   });
 
-  it("disables input and Send button when featureId is null", async () => {
+  it("enables input and Send button when featureId is null", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ success: true, data: [] }),
@@ -287,14 +287,74 @@ describe("WhiteboardChatPanel", () => {
     render(<WhiteboardChatPanel {...defaultProps} featureId={null} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/link this whiteboard to a feature/i)).toBeInTheDocument();
+      expect(screen.queryByText(/link this whiteboard to a feature/i)).not.toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/chat disabled/i);
-    expect(textarea).toBeDisabled();
+    const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
+    expect(textarea).not.toBeDisabled();
 
     const sendButton = screen.getByRole("button", { name: "" });
-    expect(sendButton).toBeDisabled();
+    expect(sendButton).toBeDisabled(); // Still disabled because input is empty
+  });
+
+  it("sends message successfully when featureId is null", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        json: async () => ({
+          success: true,
+          data: {
+            message: {
+              id: "msg-123",
+              whiteboardId: "wb-123",
+              role: "USER",
+              content: "Update the diagram",
+              status: "SENT",
+              createdAt: new Date().toISOString(),
+              userId: "user-123",
+            },
+            runId: "run-123",
+          },
+        }),
+      } as Response);
+
+    render(<WhiteboardChatPanel {...defaultProps} featureId={null} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
+    await user.type(textarea, "Update the diagram");
+
+    const sendButton = screen.getByRole("button", { name: "" });
+    await user.click(sendButton);
+
+    // Verify fetch was called for POST (the second call)
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    // Verify the POST call had correct body
+    const postCall = vi.mocked(global.fetch).mock.calls[1];
+    expect(postCall[0]).toBe("/api/whiteboards/wb-123/messages");
+    expect(postCall[1]).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Update the diagram", layout: "layered" }),
+    });
+
+    // Verify optimistic message appears
+    await waitFor(() => {
+      expect(screen.getByText("Update the diagram")).toBeInTheDocument();
+    });
   });
 
   it("disables input and Send button when generating is true", async () => {

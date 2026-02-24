@@ -358,7 +358,8 @@ export async function createStakworkRun(
  */
 export async function createDiagramStakworkRun(input: {
   workspaceId: string;
-  featureId: string;
+  featureId?: string;
+  whiteboardId: string;
   architectureText: string;
   layout: string;
   userId: string;
@@ -395,7 +396,7 @@ export async function createDiagramStakworkRun(input: {
     data: {
       type: StakworkRunType.DIAGRAM_GENERATION,
       workspaceId: input.workspaceId,
-      featureId: input.featureId,
+      featureId: input.featureId ?? null,
       status: WorkflowStatus.PENDING,
       webhookUrl: "",
       dataType: "string",
@@ -403,7 +404,7 @@ export async function createDiagramStakworkRun(input: {
   });
 
   // Build webhook URL with layout param for post-processing
-  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${input.workspaceId}&feature_id=${input.featureId}&layout=${input.layout}`;
+  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${input.workspaceId}&whiteboard_id=${input.whiteboardId}&layout=${input.layout}${input.featureId ? `&feature_id=${input.featureId}` : ''}`;
   const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
 
   await db.stakworkRun.update({
@@ -547,6 +548,7 @@ export async function processStakworkRunWebhook(
     type: string;
     workspace_id: string;
     feature_id?: string;
+    whiteboard_id?: string;
     layout?: string;
   }
 ) {
@@ -636,22 +638,25 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status: run.status };
   }
 
-  // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert whiteboard
+  // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert/update whiteboard
+  const { whiteboard_id } = queryParams;
   logger.debug("[diagram] Post-process check", "stakwork-run", {
     type,
     status,
     hasResult: !!serializedResult,
     resultLength: serializedResult?.length,
     feature_id,
+    whiteboard_id,
   });
+  
   if (
     type === "DIAGRAM_GENERATION" &&
     status === WorkflowStatus.COMPLETED &&
     serializedResult &&
-    feature_id
+    (feature_id || whiteboard_id)
   ) {
     try {
-      logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id });
+      logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id, whiteboard_id });
       logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
 
       const { relayoutDiagram } = await import("@/services/excalidraw-layout");
@@ -678,35 +683,54 @@ export async function processStakworkRunWebhook(
       const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
       logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
 
-      // Upsert whiteboard for this feature (atomic to avoid race conditions)
-      const feature = await db.feature.findUnique({
-        where: { id: feature_id },
-        select: { title: true },
-      });
+      let upsertedWhiteboard: { id: string } | null = null;
 
-      await db.whiteboard.upsert({
-        where: { featureId: feature_id },
-        update: {
-          elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-          appState: layoutData.appState as Prisma.InputJsonValue,
-        },
-        create: {
-          name: `${feature?.title || "Feature"} - Architecture`,
-          workspaceId: workspace_id,
-          featureId: feature_id,
-          elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-          appState: layoutData.appState as Prisma.InputJsonValue,
-          files: {},
-        },
-      });
-      logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
+      if (feature_id) {
+        // Feature-linked path: upsert whiteboard by featureId
+        const feature = await db.feature.findUnique({
+          where: { id: feature_id },
+          select: { title: true },
+        });
+
+        await db.whiteboard.upsert({
+          where: { featureId: feature_id },
+          update: {
+            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            appState: layoutData.appState as Prisma.InputJsonValue,
+          },
+          create: {
+            name: `${feature?.title || "Feature"} - Architecture`,
+            workspaceId: workspace_id,
+            featureId: feature_id,
+            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            appState: layoutData.appState as Prisma.InputJsonValue,
+            files: {},
+          },
+        });
+        logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
+
+        upsertedWhiteboard = await db.whiteboard.findUnique({
+          where: { featureId: feature_id },
+          select: { id: true },
+        });
+      } else if (whiteboard_id) {
+        // Standalone path: whiteboard already exists, just update elements
+        await db.whiteboard.update({
+          where: { id: whiteboard_id },
+          data: {
+            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            appState: layoutData.appState as Prisma.InputJsonValue,
+          },
+        });
+        logger.info("[diagram] Whiteboard updated successfully", "stakwork-run", { whiteboard_id });
+
+        upsertedWhiteboard = await db.whiteboard.findUnique({
+          where: { id: whiteboard_id },
+          select: { id: true },
+        });
+      }
 
       // Persist ASSISTANT message and broadcast via Pusher
-      const upsertedWhiteboard = await db.whiteboard.findUnique({
-        where: { featureId: feature_id },
-        select: { id: true },
-      });
-
       if (upsertedWhiteboard) {
         const assistantMessage = await db.whiteboardMessage.create({
           data: {

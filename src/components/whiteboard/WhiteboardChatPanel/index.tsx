@@ -102,7 +102,7 @@ export function WhiteboardChatPanel({
 
   const handleSend = useCallback(async () => {
     const trimmedInput = input.trim();
-    if (!trimmedInput || generating || !featureId) return;
+    if (!trimmedInput || generating) return;
 
     // Optimistic USER message
     const optimisticMessage: WhiteboardMessage = {
@@ -151,7 +151,7 @@ export function WhiteboardChatPanel({
       toast.error("Failed to send message");
       setGenerating(false);
     }
-  }, [input, generating, featureId, whiteboardId]);
+  }, [input, generating, whiteboardId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -232,27 +232,18 @@ export function WhiteboardChatPanel({
             <span>Generating diagram...</span>
           </div>
         )}
-        {!featureId && (
-          <div className="text-xs text-muted-foreground">
-            Link this whiteboard to a feature to enable chat.
-          </div>
-        )}
         <div className="flex gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              featureId
-                ? "Ask to update the diagram..."
-                : "Chat disabled"
-            }
-            disabled={generating || !featureId}
+            placeholder="Ask to update the diagram..."
+            disabled={generating}
             className="min-h-[80px] resize-none"
           />
           <Button
             onClick={handleSend}
-            disabled={!input.trim() || generating || !featureId}
+            disabled={!input.trim() || generating}
             size="icon"
             className="shrink-0"
           >

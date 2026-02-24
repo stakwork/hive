@@ -275,7 +275,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
   });
 
   describe("Validation", () => {
-    it("returns 400 when whiteboard has no linked feature", async () => {
+    it("creates message and triggers diagram run for standalone whiteboard (no featureId)", async () => {
       const whiteboardNoFeature = await db.whiteboard.create({
         data: {
           name: "No Feature Whiteboard",
@@ -290,21 +290,33 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/whiteboards/${whiteboardNoFeature.id}/messages`,
         testUser,
-        { content: "Test message" }
+        { content: "Generate a standalone diagram" }
       );
 
       const response = await POST(request, {
         params: Promise.resolve({ whiteboardId: whiteboardNoFeature.id }),
       });
 
-      await expectError(
-        response,
-        "Whiteboard must be linked to a feature",
-        400
-      );
+      expect(response.status).toBe(202);
+      const result = await response.json();
+
+      expect(result.success).toBe(true);
+      expect(result.data.message).toBeDefined();
+      expect(result.data.message.content).toBe("Generate a standalone diagram");
+      expect(result.data.runId).toBe("mock-run-id");
+
+      // Verify createDiagramStakworkRun was called with standalone params
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
+        workspaceId: testWorkspace.id,
+        featureId: undefined,
+        whiteboardId: whiteboardNoFeature.id,
+        architectureText: "Generate a standalone diagram",
+        layout: "layered",
+        userId: testUser.id,
+      });
     });
 
-    it("returns 400 when feature has no architecture", async () => {
+    it("uses message content as architectureText when feature has no architecture", async () => {
       const featureNoArchitecture = await createTestFeature({
         workspaceId: testWorkspace.id,
         createdById: testUser.id,
@@ -333,11 +345,16 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         params: Promise.resolve({ whiteboardId: whiteboardNoArchitecture.id }),
       });
 
-      await expectError(
-        response,
-        "Feature must have architecture text",
-        400
-      );
+      expect(response.status).toBe(202);
+      
+      // Verify the service was called with message content as architectureText
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
+        workspaceId: testWorkspace.id,
+        whiteboardId: whiteboardNoArchitecture.id,
+        architectureText: "Test message",
+        layout: "layered",
+        userId: testUser.id,
+      });
     });
 
     it("returns 400 when content is missing", async () => {
@@ -479,6 +496,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         featureId: testFeature.id,
+        whiteboardId: testWhiteboard.id,
         architectureText: "Test architecture for diagram generation",
         layout: "layered",
         userId: testUser.id,
@@ -501,6 +519,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         featureId: testFeature.id,
+        whiteboardId: testWhiteboard.id,
         architectureText: "Test architecture for diagram generation",
         layout: "force",
         userId: testUser.id,
@@ -519,6 +538,98 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       });
 
       expect(response.status).toBe(202);
+    });
+  });
+
+  describe("Standalone Whiteboard (no featureId)", () => {
+    it("creates message and triggers diagram run using message content as architectureText", async () => {
+      const standaloneWhiteboard = await db.whiteboard.create({
+        data: {
+          name: "Standalone Whiteboard",
+          workspaceId: testWorkspace.id,
+          featureId: null, // No linked feature
+          elements: [],
+          appState: {},
+          files: {},
+        },
+      });
+
+      const messageContent = "Create a microservices architecture diagram with API gateway, user service, and database";
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/whiteboards/${standaloneWhiteboard.id}/messages`,
+        testUser,
+        { content: messageContent, layout: "layered" }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ whiteboardId: standaloneWhiteboard.id }),
+      });
+
+      expect(response.status).toBe(202);
+      const result = await response.json();
+
+      expect(result.success).toBe(true);
+      expect(result.data.message).toBeDefined();
+      expect(result.data.message.role).toBe("USER");
+      expect(result.data.message.content).toBe(messageContent);
+      expect(result.data.runId).toBe("mock-run-id");
+
+      // Verify createDiagramStakworkRun was called with message content as architectureText
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
+        workspaceId: testWorkspace.id,
+        featureId: undefined, // No featureId
+        whiteboardId: standaloneWhiteboard.id,
+        architectureText: messageContent, // User's message is used as prompt
+        layout: "layered",
+        userId: testUser.id,
+      });
+
+      // Verify message was persisted
+      const persistedMessage = await db.whiteboardMessage.findUnique({
+        where: { id: result.data.message.id },
+      });
+      expect(persistedMessage).toBeDefined();
+      expect(persistedMessage?.whiteboardId).toBe(standaloneWhiteboard.id);
+    });
+
+    it("returns 409 when standalone whiteboard has generation in progress", async () => {
+      const standaloneWhiteboard = await db.whiteboard.create({
+        data: {
+          name: "Standalone Whiteboard 2",
+          workspaceId: testWorkspace.id,
+          featureId: null,
+          elements: [],
+          appState: {},
+          files: {},
+        },
+      });
+
+      // Create a pending run for this whiteboard
+      await db.stakworkRun.create({
+        data: {
+          type: "DIAGRAM_GENERATION",
+          status: "IN_PROGRESS",
+          featureId: null,
+          workspaceId: testWorkspace.id,
+          webhookUrl: `http://localhost:3000/api/webhook/stakwork/response?whiteboard_id=${standaloneWhiteboard.id}`,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/whiteboards/${standaloneWhiteboard.id}/messages`,
+        testUser,
+        { content: "Test message" }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ whiteboardId: standaloneWhiteboard.id }),
+      });
+
+      expect(response.status).toBe(409);
+      const result = await response.json();
+      expect(result.error).toBe("Diagram generation in progress");
+      expect(result.generating).toBe(true);
     });
   });
 
