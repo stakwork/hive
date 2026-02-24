@@ -64,10 +64,28 @@ export async function POST(
       );
     }
 
+    // Find or create the whiteboard linked to this feature
+    let whiteboard = await db.whiteboard.findUnique({
+      where: { featureId: feature.id },
+      select: { id: true },
+    });
+
+    if (!whiteboard) {
+      whiteboard = await db.whiteboard.create({
+        data: {
+          name: `${feature.title} - Whiteboard`,
+          workspaceId: feature.workspaceId,
+          featureId: feature.id,
+        },
+        select: { id: true },
+      });
+    }
+
     // Fire-and-forget: create a Stakwork run for async diagram generation
     const run = await createDiagramStakworkRun({
       workspaceId: feature.workspaceId,
       featureId: feature.id,
+      whiteboardId: whiteboard.id,
       architectureText: feature.architecture,
       layout,
       userId: userOrResponse.id,
