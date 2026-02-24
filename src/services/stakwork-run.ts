@@ -697,6 +697,7 @@ export async function processStakworkRunWebhook(
           update: {
             elements: layoutData.elements as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
+            version: { increment: 1 },
           },
           create: {
             name: `${feature?.title || "Feature"} - Architecture`,
@@ -720,6 +721,7 @@ export async function processStakworkRunWebhook(
           data: {
             elements: layoutData.elements as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
+            version: { increment: 1 },
           },
         });
         logger.info("[diagram] Whiteboard updated successfully", "stakwork-run", { whiteboard_id });
