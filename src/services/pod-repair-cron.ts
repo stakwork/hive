@@ -18,6 +18,7 @@ import {
   PROCESS_NAMES,
 } from "@/lib/pods";
 import { getSwarmContainerConfig } from "@/services/swarm/db";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
@@ -376,6 +377,7 @@ export async function triggerPodRepair(
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
               containerFiles: containerConfig?.containerFiles || null,
+              tokenReference: getStakworkTokenReference(),
             },
           },
         },

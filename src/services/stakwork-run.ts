@@ -27,6 +27,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { logger } from "@/lib/logger";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -302,6 +303,9 @@ export async function createStakworkRun(
       ...(history && history.length > 0 && {
         history,
       }),
+
+      // Token reference for Stakwork
+      tokenReference: getStakworkTokenReference(),
     };
 
     const stakworkPayload = {
@@ -424,6 +428,7 @@ export async function createDiagramStakworkRun(input: {
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
+      tokenReference: getStakworkTokenReference(),
     };
     if (input.diagramContext) {
       vars.diagramContext = input.diagramContext;

@@ -6,6 +6,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -597,6 +598,7 @@ export async function callStakworkAPI(params: {
     base_branch: baseBranch,
     repo_name: repoName,
     history,
+    tokenReference: getStakworkTokenReference(),
   };
 
   // Add optional parameters if provided
@@ -729,6 +731,7 @@ export async function callStakworkBountyAPI(params: {
             artifactId: params.artifactId,
             podPassword: params.agentPassword,
             webhookUrl,
+            tokenReference: getStakworkTokenReference(),
           },
         },
       },

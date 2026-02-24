@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
 import { StakworkWorkflowPayload } from "@/types/stakwork";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 async function sendChunkToStakwork(chunk: string) {
   try {
@@ -15,6 +16,7 @@ async function sendChunkToStakwork(chunk: string) {
     // stakwork workflow vars
     const vars = {
       chunk,
+      tokenReference: getStakworkTokenReference(),
     };
 
     const workflowId = config.STAKWORK_TRANSCRIPT_WORKFLOW_ID || "";
