@@ -28,6 +28,8 @@ export const viewport: Viewport = {
 export const metadata: Metadata = getMetadata();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const previewLinkBranch = process.env.PREVIEW_LINK_BRANCH;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -58,6 +60,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </ThemeProvider>
         <Toaster />
         {process.env.USE_MOCKS === "true" && <DevPanel />}
+        {previewLinkBranch && (
+          <div className="fixed bottom-4 right-4 z-50 rounded-md bg-amber-500/90 text-sm font-medium text-black px-4 py-2 shadow-lg border border-amber-400">
+            Preview branch: {previewLinkBranch}
+          </div>
+        )}
       </body>
     </html>
   );
