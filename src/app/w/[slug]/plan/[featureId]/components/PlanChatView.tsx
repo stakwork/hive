@@ -252,6 +252,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const featureTitle = feature?.title || null;
 
+  // Set document title based on feature title
+  useEffect(() => {
+    document.title = featureTitle ?? "Hive";
+    return () => {
+      document.title = "Hive";
+    };
+  }, [featureTitle]);
+
   const inputDisabled =
     isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
 
