@@ -164,10 +164,49 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   );
 
   const handleArtifactAction = useCallback(
-    async (_messageId: string, action: { optionResponse: string }) => {
-      await sendMessage(action.optionResponse);
+    async (messageId: string, action: { optionResponse: string }) => {
+      const newMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: action.optionResponse,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+        replyId: messageId,
+      });
+
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+
+      try {
+        const res = await fetch(`/api/features/${featureId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: action.optionResponse,
+            replyId: messageId,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
+          );
+        } else {
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+          );
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Error sending message:", error);
+        setMessages((msgs) =>
+          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+        );
+        setIsLoading(false);
+      }
     },
-    [sendMessage],
+    [featureId],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
