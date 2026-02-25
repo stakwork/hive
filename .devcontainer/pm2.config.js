@@ -14,7 +14,8 @@ module.exports = {
         TEST_COMMAND: "npm run test",
         BUILD_COMMAND: "npm run build",
         PRE_START_COMMAND: "npx prisma migrate dev",
-        RESET_COMMAND: "npx -y prisma migrate reset -f"
+        RESET_COMMAND: "npx -y prisma migrate reset -f",
+        NEXT_PUBLIC_FEATURE_CONVERSATIONAL_PLAN: "true"
       }
     }
   ],
