@@ -148,8 +148,8 @@ export default function TaskChatPage() {
   });
   const hasReceivedContentRef = useRef(false);
 
-  // Handle incoming SSE messages
-  const handleSSEMessage = useCallback((message: ChatMessage) => {
+  // Deduplicate: the sender already has this message locally after the temp-to-real ID swap
+  const handleNewMessage = useCallback((message: ChatMessage) => {
     setMessages((prev) => {
       const exists = prev.some((m) => m.id === message.id);
       if (exists) return prev;
@@ -249,7 +249,7 @@ export default function TaskChatPage() {
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
-    onMessage: handleSSEMessage,
+    onMessage: handleNewMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
     onPRStatusChange: handlePRStatusChange,
