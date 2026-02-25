@@ -1,9 +1,24 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import { ChatRole, ChatStatus } from "@/lib/chat";
+
+const mockReplace = vi.fn();
+const mockGet = vi.fn();
+
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    replace: mockReplace,
+  })),
+  usePathname: vi.fn(() => "/w/test-workspace/plan/feature-123"),
+  useSearchParams: vi.fn(() => ({
+    get: mockGet,
+  })),
+}));
 
 // Mock dependencies
 vi.mock("@/hooks/useWorkspace", () => ({
@@ -42,6 +57,7 @@ vi.mock("@/components/ui/resizable", () => ({
   ResizableHandle: () => <div />,
 }));
 
+const mockArtifactsPanel = vi.fn();
 vi.mock("@/components/chat", () => ({
   ChatArea: ({ onArtifactAction }: { onArtifactAction: (messageId: string, action: { optionResponse: string }) => void }) => (
     <div data-testid="chat-area">
@@ -53,58 +69,284 @@ vi.mock("@/components/chat", () => ({
       </button>
     </div>
   ),
-  ArtifactsPanel: () => <div data-testid="artifacts-panel">Artifacts Panel</div>,
+  ArtifactsPanel: (props: any) => {
+    mockArtifactsPanel(props);
+    return <div data-testid="artifacts-panel">Artifacts Panel</div>;
+  },
 }));
 
 describe("PlanChatView", () => {
   const mockFetch = vi.fn();
+  let localStorageMock: Record<string, string> = {};
 
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
-  });
-
-  it("should pass replyId when handleArtifactAction is called", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          message: {
-            id: "new-message-id",
-            message: "Test answer",
-            role: ChatRole.USER,
-            status: ChatStatus.SENT,
-            replyId: "test-message-id",
-            createdAt: new Date().toISOString(),
-          },
+    
+    // Mock localStorage
+    localStorageMock = {};
+    Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: vi.fn((key: string) => localStorageMock[key] || null),
+        setItem: vi.fn((key: string, value: string) => {
+          localStorageMock[key] = value;
         }),
-      });
-
-    render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+        removeItem: vi.fn((key: string) => {
+          delete localStorageMock[key];
+        }),
+        clear: vi.fn(() => {
+          localStorageMock = {};
+        }),
+      },
+      writable: true,
     });
 
-    const submitButton = screen.getByTestId("artifact-action-button");
-    await userEvent.click(submitButton);
+    // Default mock for fetch
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [] }),
+    });
 
-    await waitFor(() => {
-      const sendMessageCall = mockFetch.mock.calls.find(
-        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
-      );
+    // Reset URL param mock
+    mockGet.mockReturnValue(null);
+  });
 
-      expect(sendMessageCall).toBeDefined();
-      const body = JSON.parse(sendMessageCall![1].body);
-      expect(body).toEqual({
-        message: "Test answer",
-        replyId: "test-message-id",
+  afterEach(() => {
+    localStorageMock = {};
+  });
+
+  describe("Tab state management", () => {
+    it("should default to PLAN tab when no URL param or localStorage", async () => {
+      mockGet.mockReturnValue(null);
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
       });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+    });
+
+    it("should use URL param ?tab=tasks when present", async () => {
+      mockGet.mockReturnValue("tasks");
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+    });
+
+    it("should use localStorage when no URL param", async () => {
+      mockGet.mockReturnValue(null);
+      localStorageMock["plan_tab_feature-123"] = "TASKS";
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+    });
+
+    it("should prioritize URL param over localStorage", async () => {
+      mockGet.mockReturnValue("plan");
+      localStorageMock["plan_tab_feature-123"] = "TASKS";
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+    });
+
+    it("should fall back to PLAN for invalid URL param", async () => {
+      mockGet.mockReturnValue("invalid");
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+    });
+
+    it("should fall back to PLAN for invalid localStorage value", async () => {
+      mockGet.mockReturnValue(null);
+      localStorageMock["plan_tab_feature-123"] = "INVALID";
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+    });
+
+    it("should handle case-insensitive URL params", async () => {
+      mockGet.mockReturnValue("Tasks");
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+    });
+
+    it("should use correct localStorage key per feature", async () => {
+      mockGet.mockReturnValue(null);
+      localStorageMock["plan_tab_feature-456"] = "TASKS";
+      localStorageMock["plan_tab_feature-123"] = "PLAN";
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(window.localStorage.getItem).toHaveBeenCalledWith("plan_tab_feature-123");
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
     });
   });
 
+  describe("Tab change handler", () => {
+    it("should update URL when tab changes", async () => {
+      mockGet.mockReturnValue(null);
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      const onControlledTabChange = lastCall.onControlledTabChange;
+
+      // Simulate tab change
+      await act(async () => {
+        onControlledTabChange("TASKS");
+      });
+
+      expect(mockReplace).toHaveBeenCalledWith("?tab=tasks", { scroll: false });
+    });
+
+    it("should write to localStorage when tab changes", async () => {
+      mockGet.mockReturnValue(null);
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      const onControlledTabChange = lastCall.onControlledTabChange;
+
+      // Simulate tab change
+      await act(async () => {
+        onControlledTabChange("TASKS");
+      });
+
+      expect(window.localStorage.setItem).toHaveBeenCalledWith("plan_tab_feature-123", "TASKS");
+    });
+
+    it("should use lowercase in URL", async () => {
+      mockGet.mockReturnValue(null);
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      const onControlledTabChange = lastCall.onControlledTabChange;
+
+      await act(async () => {
+        onControlledTabChange("PLAN");
+      });
+      expect(mockReplace).toHaveBeenCalledWith("?tab=plan", { scroll: false });
+
+      await act(async () => {
+        onControlledTabChange("TASKS");
+      });
+      expect(mockReplace).toHaveBeenCalledWith("?tab=tasks", { scroll: false });
+    });
+
+    it("should pass controlledTab and onControlledTabChange to ArtifactsPanel", async () => {
+      mockGet.mockReturnValue("tasks");
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+      expect(typeof lastCall.onControlledTabChange).toBe("function");
+    });
+  });
+
+  describe("replyId handling (existing test)", () => {
+    it("should pass replyId when handleArtifactAction is called", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "new-message-id",
+              message: "Test answer",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              replyId: "test-message-id",
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      const submitButton = screen.getByTestId("artifact-action-button");
+      await userEvent.click(submitButton);
+
+      await waitFor(() => {
+        const sendMessageCall = mockFetch.mock.calls.find(
+          (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+        );
+
+        expect(sendMessageCall).toBeDefined();
+        const body = JSON.parse(sendMessageCall![1].body);
+        expect(body).toEqual({
+          message: "Test answer",
+          replyId: "test-message-id",
+        });
+      });
+    });
+  });
 });
