@@ -390,6 +390,38 @@ describe("PlanChatView", () => {
     });
   });
 
+  it("should refetch feature and messages when tab becomes visible", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [] }),
+    });
+
+    render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
+
+    // Clear initial fetch calls
+    mockFetch.mockClear();
+
+    // Simulate tab becoming visible
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+
+    const visibilityEvent = new Event('visibilitychange');
+    document.dispatchEvent(visibilityEvent);
+
+    await waitFor(() => {
+      // Should refetch both feature data and messages
+      expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123");
+      expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123/chat");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("should not refetch when tab becomes hidden", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
