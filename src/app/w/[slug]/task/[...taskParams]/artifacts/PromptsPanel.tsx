@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Pencil, Save, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, History, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { diffLines } from "diff";
 
 interface PromptUsage {
   workflow_id: number;
@@ -31,6 +32,20 @@ interface PromptDetail {
   version_count: number;
 }
 
+interface PromptVersion {
+  id: number;
+  version_number: number;
+  created_at: string;
+  whodunnit: string | null;
+}
+
+interface PromptVersionDetail {
+  version_id: number;
+  version_number: number;
+  value: string;
+  created_at: string;
+}
+
 interface PromptsListResponse {
   success: boolean;
   data: {
@@ -50,7 +65,7 @@ interface PromptsPanelProps {
   workflowId?: number;
 }
 
-type ViewMode = "list" | "detail" | "create";
+type ViewMode = "list" | "detail" | "create" | "history";
 
 export function PromptsPanel({ workflowId }: PromptsPanelProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -67,6 +82,15 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [selectedUsages, setSelectedUsages] = useState<PromptUsage[]>([]);
+
+  // Version history state
+  const [versions, setVersions] = useState<PromptVersion[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [selectedVersionAId, setSelectedVersionAId] = useState<number | null>(null);
+  const [selectedVersionBId, setSelectedVersionBId] = useState<number | null>(null);
+  const [versionAContent, setVersionAContent] = useState<string | null>(null);
+  const [versionBContent, setVersionBContent] = useState<string | null>(null);
+  const [isLoadingDiff, setIsLoadingDiff] = useState(false);
 
   // Form state for create/edit
   const [formName, setFormName] = useState("");
@@ -119,6 +143,45 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
       console.error("Error fetching prompt detail:", err);
     } finally {
       setIsLoadingDetail(false);
+    }
+  }, []);
+
+  const fetchVersionList = useCallback(async (promptId: number) => {
+    setIsLoadingVersions(true);
+    try {
+      const response = await fetch(`/api/workflow/prompts/${promptId}/versions`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch version list");
+      }
+      const data = await response.json();
+      if (data.success && data.data.versions) {
+        setVersions(data.data.versions);
+      } else {
+        throw new Error("Failed to fetch version list");
+      }
+    } catch (err) {
+      console.error("Error fetching version list:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch version list");
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  }, []);
+
+  const fetchVersionContent = useCallback(async (promptId: number, versionId: number): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch version content");
+      }
+      const data = await response.json();
+      if (data.success && data.data.value !== undefined) {
+        return data.data.value;
+      } else {
+        throw new Error("Failed to fetch version content");
+      }
+    } catch (err) {
+      console.error("Error fetching version content:", err);
+      return null;
     }
   }, []);
 
@@ -259,6 +322,89 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
       await navigator.clipboard.writeText(selectedPrompt.value);
       setCopiedValue(true);
       setTimeout(() => setCopiedValue(false), 2000);
+    }
+  };
+
+  const handleHistoryClick = async () => {
+    if (!selectedPrompt) return;
+    
+    setViewMode("history");
+    await fetchVersionList(selectedPrompt.id);
+    
+    // Pre-select current version as version A
+    if (selectedPrompt.current_version_id) {
+      setSelectedVersionAId(selectedPrompt.current_version_id);
+    }
+  };
+
+  const handleBackToDetail = () => {
+    setViewMode("detail");
+    setVersions([]);
+    setSelectedVersionAId(null);
+    setSelectedVersionBId(null);
+    setVersionAContent(null);
+    setVersionBContent(null);
+  };
+
+  const handleVersionClick = (versionId: number) => {
+    if (selectedVersionAId === null) {
+      setSelectedVersionAId(versionId);
+    } else if (selectedVersionBId === null) {
+      if (versionId === selectedVersionAId) {
+        // Clicking the same version twice deselects it
+        setSelectedVersionAId(null);
+      } else {
+        setSelectedVersionBId(versionId);
+      }
+    } else {
+      // Both selected, replace B with new selection
+      if (versionId === selectedVersionAId) {
+        // Deselect A, move B to A
+        setSelectedVersionAId(selectedVersionBId);
+        setSelectedVersionBId(null);
+      } else if (versionId === selectedVersionBId) {
+        // Deselect B
+        setSelectedVersionBId(null);
+      } else {
+        // Replace B with new selection
+        setSelectedVersionBId(versionId);
+      }
+    }
+  };
+
+  // Fetch version content when both A and B are selected
+  useEffect(() => {
+    if (!selectedPrompt || !selectedVersionAId || !selectedVersionBId) {
+      setVersionAContent(null);
+      setVersionBContent(null);
+      return;
+    }
+
+    const fetchDiff = async () => {
+      setIsLoadingDiff(true);
+      try {
+        const [contentA, contentB] = await Promise.all([
+          fetchVersionContent(selectedPrompt.id, selectedVersionAId),
+          fetchVersionContent(selectedPrompt.id, selectedVersionBId),
+        ]);
+        setVersionAContent(contentA);
+        setVersionBContent(contentB);
+      } catch (err) {
+        console.error("Error fetching version content for diff:", err);
+      } finally {
+        setIsLoadingDiff(false);
+      }
+    };
+
+    fetchDiff();
+  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent]);
+
+  const formatTimestamp = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    } catch {
+      return timestamp;
     }
   };
 
@@ -509,12 +655,193 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                 </div>
               )}
 
-              {!isEditing && selectedPrompt.version_count > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  Version count: {selectedPrompt.version_count}
+              {!isEditing && selectedPrompt.version_count > 1 && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleHistoryClick}
+                    className="w-full"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    View History ({selectedPrompt.version_count} versions)
+                  </Button>
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Show version history view
+  if (viewMode === "history" && selectedPrompt) {
+    interface DiffPart {
+      added?: boolean;
+      removed?: boolean;
+      value: string;
+    }
+
+    let diffChanges: DiffPart[] = [];
+    let stats = { additions: 0, deletions: 0 };
+
+    if (versionAContent && versionBContent) {
+      diffChanges = diffLines(versionAContent, versionBContent);
+      stats = diffChanges.reduce(
+        (acc, part) => {
+          const lines = part.value.split('\n').filter(line => line !== '');
+          if (part.added) {
+            acc.additions += lines.length;
+          } else if (part.removed) {
+            acc.deletions += lines.length;
+          }
+          return acc;
+        },
+        { additions: 0, deletions: 0 }
+      );
+    }
+
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex items-center gap-2 p-3 border-b flex-shrink-0">
+          <Button variant="ghost" size="sm" onClick={handleBackToDetail}>
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+          <span className="text-sm font-medium truncate flex-1">Version History - {selectedPrompt.name}</span>
+        </div>
+
+        {isLoadingVersions ? (
+          <div className="flex items-center justify-center flex-1 p-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-muted-foreground text-sm">Loading versions...</span>
+          </div>
+        ) : versions.length === 0 ? (
+          <div className="flex items-center justify-center flex-1 p-8">
+            <div className="text-center">
+              <Clock className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+              <div className="text-muted-foreground text-sm">No history yet</div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Version List */}
+            <div className="border-b bg-muted/30 p-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Select two versions to compare
+              </div>
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {versions.map((version) => {
+                  const isSelectedA = selectedVersionAId === version.id;
+                  const isSelectedB = selectedVersionBId === version.id;
+                  const isSelected = isSelectedA || isSelectedB;
+
+                  return (
+                    <button
+                      key={version.id}
+                      onClick={() => handleVersionClick(version.id)}
+                      className={cn(
+                        "w-full text-left px-3 py-2 rounded transition-colors text-sm",
+                        "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
+                        isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
+                        isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        !isSelected && "bg-muted/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-medium">v{version.version_number}</span>
+                          {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
+                          {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTimestamp(version.created_at)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Diff View */}
+            {selectedVersionAId && selectedVersionBId && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {isLoadingDiff ? (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground text-sm">Loading diff...</span>
+                  </div>
+                ) : versionAContent && versionBContent ? (
+                  <>
+                    <div className="flex items-center justify-between p-3 border-b bg-muted/30 flex-shrink-0">
+                      <span className="text-xs font-medium">Changes</span>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                          <Plus className="w-3 h-3" />
+                          {stats.additions}
+                        </span>
+                        <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                          <Minus className="w-3 h-3" />
+                          {stats.deletions}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto font-mono text-xs">
+                      <table className="w-full border-collapse">
+                        <tbody>
+                          {diffChanges.map((part: DiffPart, index: number) => {
+                            const lines = part.value.split('\n');
+                            if (lines[lines.length - 1] === '') {
+                              lines.pop();
+                            }
+
+                            return lines.map((line: string, lineIndex: number) => {
+                              let bgColor = "";
+                              let textColor = "";
+                              let prefix = " ";
+                              let Icon: typeof Plus | typeof Minus | null = null;
+
+                              if (part.added) {
+                                bgColor = "bg-green-50 dark:bg-green-950/50";
+                                textColor = "text-green-800 dark:text-green-300";
+                                prefix = "+";
+                                Icon = Plus;
+                              } else if (part.removed) {
+                                bgColor = "bg-red-50 dark:bg-red-950/50";
+                                textColor = "text-red-800 dark:text-red-300";
+                                prefix = "-";
+                                Icon = Minus;
+                              }
+
+                              return (
+                                <tr key={`${index}-${lineIndex}`} className={bgColor}>
+                                  <td className={cn(
+                                    "w-8 px-2 py-0.5 text-right select-none border-r border-border/50",
+                                    textColor || "text-muted-foreground"
+                                  )}>
+                                    {Icon && <Icon className="w-3 h-3 inline" />}
+                                    {!Icon && <span className="opacity-30">{prefix}</span>}
+                                  </td>
+                                  <td className={cn("px-3 py-0.5 whitespace-pre", textColor)}>
+                                    {line || " "}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <div className="text-muted-foreground text-sm">Failed to load version content</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
