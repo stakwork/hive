@@ -122,13 +122,16 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string, options?: { replyId?: string }) => {
+    async (
+      messageText: string,
+      attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>,
+    ) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
-        replyId: options?.replyId,
+        attachments,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -141,7 +144,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: messageText,
-            ...(options?.replyId && { replyId: options.replyId }),
+            attachments,
           }),
         });
 
@@ -167,11 +170,58 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId],
   );
 
+  // Separate function for sending reply messages (e.g., from clarifying questions)
+  const sendReplyMessage = useCallback(
+    async (messageText: string, replyId: string) => {
+      const newMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: messageText,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+        replyId,
+      });
+
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+
+      try {
+        const res = await fetch(`/api/features/${featureId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: messageText,
+            replyId,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
+          );
+        } else {
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+          );
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Error sending reply message:", error);
+        setMessages((msgs) =>
+          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+        );
+        setIsLoading(false);
+      }
+    },
+    [featureId],
+  );
+
   const handleArtifactAction = useCallback(
     async (messageId: string, action: { optionResponse: string }) => {
-      await sendMessage(action.optionResponse, { replyId: messageId });
+      await sendReplyMessage(action.optionResponse, messageId);
     },
-    [sendMessage],
+    [sendReplyMessage],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
