@@ -49,6 +49,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
+  { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/mcp/*", strategy: "pattern", access: "webhook" },
 ] as const;
 
