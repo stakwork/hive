@@ -37,6 +37,13 @@ vi.mock("@/hooks/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
+vi.mock("@/hooks/usePlanPresence", () => ({
+  usePlanPresence: vi.fn(() => ({
+    collaborators: [],
+    isConnected: true,
+  })),
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
