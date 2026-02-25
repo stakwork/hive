@@ -283,7 +283,7 @@ export function WhiteboardChatPanel({
             onKeyDown={handleKeyDown}
             placeholder={isListening ? "Listening..." : "Ask to update the diagram..."}
             disabled={generating}
-            className="min-h-[80px] resize-none pr-10"
+            className="min-h-[80px] max-h-[160px] resize-none overflow-y-auto pr-10"
           />
           {isSupported && (
             <TooltipProvider>
