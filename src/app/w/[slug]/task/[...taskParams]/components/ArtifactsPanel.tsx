@@ -28,10 +28,17 @@ interface ArtifactsPanelProps {
   feature?: FeatureDetail | null;
   featureId?: string;
   onFeatureUpdate?: (feature: FeatureDetail) => void;
+  controlledTab?: ArtifactType | null;
+  onControlledTabChange?: (tab: ArtifactType) => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate }: ArtifactsPanelProps) {
-  const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange }: ArtifactsPanelProps) {
+  const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
+  
+  // Support controlled mode (plan) and uncontrolled mode (task)
+  const isControlled = controlledTab !== undefined;
+  const activeTab = isControlled ? controlledTab : internalTab;
+  const setActiveTab = isControlled && onControlledTabChange ? onControlledTabChange : setInternalTab;
   const [isApiCalling, setIsApiCalling] = useState(false);
 
   const handlePlanSave = useCallback(async (updates: Record<string, unknown>) => {
@@ -127,7 +134,13 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (!featureId || !workspaceId || isGenerating) return;
 
     setIsApiCalling(true);
-    setActiveTab("TASKS");
+    
+    // Switch to TASKS tab in both controlled and uncontrolled modes
+    if (isControlled && onControlledTabChange) {
+      onControlledTabChange("TASKS");
+    } else {
+      setInternalTab("TASKS");
+    }
 
     try {
       const response = await fetch("/api/stakwork/ai/generate", {
@@ -151,7 +164,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
       console.error("Failed to generate tasks:", error);
       setIsApiCalling(false);
     }
-  }, [featureId, workspaceId, refetchRun, isGenerating]);
+  }, [featureId, workspaceId, refetchRun, isGenerating, isControlled, onControlledTabChange]);
 
   function renderGenerateTasksButton(): ReactNode {
     if (!hasFeature || hasTasks) return undefined;
@@ -211,9 +224,13 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   // Auto-select first tab, or fall back when active tab is removed
   useEffect(() => {
     if (availableTabs.length > 0 && (!activeTab || !availableTabs.includes(activeTab))) {
-      setActiveTab(availableTabs[0]);
+      if (isControlled && onControlledTabChange) {
+        onControlledTabChange(availableTabs[0]);
+      } else {
+        setInternalTab(availableTabs[0]);
+      }
     }
-  }, [availableTabs, activeTab]);
+  }, [availableTabs, activeTab, isControlled, onControlledTabChange]);
 
   if (availableTabs.length === 0) {
     return null;

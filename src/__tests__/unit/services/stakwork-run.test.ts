@@ -1767,6 +1767,190 @@ describe("Stakwork Run Service", () => {
         }
       );
     });
+
+    test("should use feature creator identity when auto-accepting TASK_GENERATION", async () => {
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-1",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "workspace-owner-id",
+        },
+        feature: {
+          createdById: "feature-creator-id",
+        },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        phases: [
+          {
+            id: "phase-1",
+            name: "Phase 1",
+            order: 0,
+          },
+        ],
+        workspace: {
+          id: "ws-1",
+        },
+      };
+
+      const mockCreatedTask = {
+        id: "task-1",
+        title: "Task 1",
+        createdById: "feature-creator-id",
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.task.create = vi.fn().mockResolvedValue(mockCreatedTask);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t1",
+                title: "Task 1",
+                description: "",
+                priority: "MEDIUM",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        {
+          project_status: "completed",
+          result: taskGenerationResult,
+        },
+        {
+          type: "TASK_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+        }
+      );
+
+      // Assert task was created with feature creator's ID, not workspace owner's
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          createdById: "feature-creator-id",
+          title: "Task 1",
+          priority: "MEDIUM",
+        }),
+      });
+
+      // Verify stakworkRun.update was called to set decision to ACCEPTED
+      expect(mockedDb.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: { decision: StakworkRunDecision.ACCEPTED },
+      });
+    });
+
+    test("should fallback to workspace owner when feature has no creator", async () => {
+      const mockRun = {
+        id: "run-2",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-2",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "workspace-owner-id",
+        },
+        feature: null,
+      };
+
+      const mockFeature = {
+        id: "feature-2",
+        title: "Test Feature 2",
+        phases: [
+          {
+            id: "phase-1",
+            name: "Phase 1",
+            order: 0,
+          },
+        ],
+        workspace: {
+          id: "ws-1",
+        },
+      };
+
+      const mockCreatedTask = {
+        id: "task-2",
+        title: "Task 2",
+        createdById: "workspace-owner-id",
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.task.create = vi.fn().mockResolvedValue(mockCreatedTask);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t2",
+                title: "Task 2",
+                description: "",
+                priority: "HIGH",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        {
+          project_status: "completed",
+          result: taskGenerationResult,
+        },
+        {
+          type: "TASK_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-2",
+        }
+      );
+
+      // Assert task was created with workspace owner's ID as fallback
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          createdById: "workspace-owner-id",
+          title: "Task 2",
+          priority: "HIGH",
+        }),
+      });
+
+      // Verify stakworkRun.update was called to set decision to ACCEPTED
+      expect(mockedDb.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-2" },
+        data: { decision: StakworkRunDecision.ACCEPTED },
+      });
+    });
   });
 
   describe("getStakworkRuns", () => {
