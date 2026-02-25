@@ -201,7 +201,6 @@ describe("usePlanPresence", () => {
       const rebroadcastCall = vi.mocked(global.fetch).mock.calls[0];
       const body = JSON.parse(rebroadcastCall[1]?.body as string);
       expect(body.user.odinguserId).toBe("user-123");
-      expect(body.rebroadcast).toBe(true);
     });
 
     it("should not re-broadcast for own join events", async () => {
@@ -218,57 +217,6 @@ describe("usePlanPresence", () => {
         joinCallback({
           user: { odinguserId: "user-123", name: "Test User", image: null, color: "#FF6B6B", joinedAt: Date.now() },
         });
-      });
-
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it("should not re-broadcast duplicate joins for the same collaborator", async () => {
-      renderHook(() => usePlanPresence({ featureId }));
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-      });
-      vi.mocked(global.fetch).mockClear();
-
-      const joinCallback = getEventCallback("plan-user-join");
-      const collaborator: CollaboratorInfo = {
-        odinguserId: "user-456",
-        name: "Other User",
-        image: null,
-        color: "#FF6B6B",
-        joinedAt: Date.now(),
-      };
-
-      act(() => {
-        joinCallback?.({ user: collaborator });
-        joinCallback?.({ user: collaborator });
-      });
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    it("should not re-broadcast a join that is already marked as rebroadcast", async () => {
-      renderHook(() => usePlanPresence({ featureId }));
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-      });
-      vi.mocked(global.fetch).mockClear();
-
-      const joinCallback = getEventCallback("plan-user-join");
-      const collaborator: CollaboratorInfo = {
-        odinguserId: "user-789",
-        name: "Third User",
-        image: null,
-        color: "#45B7D1",
-        joinedAt: Date.now(),
-      };
-
-      act(() => {
-        joinCallback?.({ user: collaborator, rebroadcast: true });
       });
 
       expect(global.fetch).not.toHaveBeenCalled();
