@@ -114,24 +114,40 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
   }, [feature?.workflowStatus]);
 
-  // Load existing messages
-  useEffect(() => {
-    async function loadMessages() {
-      try {
-        const res = await fetch(`/api/features/${featureId}/chat`);
-        if (res.ok) {
-          const data = await res.json();
-          setMessages(data.data || []);
-        }
-      } catch (error) {
-        console.error("Error loading feature messages:", error);
-      } finally {
-        setInitialLoadDone(true);
+  // Load existing messages - promoted to useCallback for visibility refetch
+  const loadMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/features/${featureId}/chat`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.data || []);
       }
+    } catch (error) {
+      console.error("Error loading feature messages:", error);
+    } finally {
+      setInitialLoadDone(true);
     }
-
-    loadMessages();
   }, [featureId]);
+
+  // Initial load
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  // Refetch on tab visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refetchFeature();
+        loadMessages();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refetchFeature, loadMessages]);
 
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
