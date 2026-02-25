@@ -16,6 +16,7 @@ import {
   PullRequestContent,
   BountyContent,
 } from "@/lib/chat";
+import { getPusherClient } from "@/lib/pusher";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import {
   usePusherConnection,
@@ -1248,6 +1249,7 @@ export default function TaskChatPage() {
           message: messageText,
           contextTags: [],
           mode: taskMode,
+          sourceWebsocketID: getPusherClient().connection.socket_id,
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
