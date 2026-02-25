@@ -13,6 +13,30 @@ vi.mock("@/services/excalidraw-layout", () => ({
   serializeDiagramContext: vi.fn(() => null),
 }));
 
+const mockSpeechRecognition = {
+  isListening: false,
+  transcript: "",
+  isSupported: true,
+  startListening: vi.fn(),
+  stopListening: vi.fn(),
+  resetTranscript: vi.fn(),
+};
+
+vi.mock("@/hooks/useSpeechRecognition", () => ({
+  useSpeechRecognition: () => mockSpeechRecognition,
+}));
+
+vi.mock("@/hooks/useControlKeyHold", () => ({
+  useControlKeyHold: vi.fn(),
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  TooltipProvider: ({ children }: any) => <>{children}</>,
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div>{children}</div>,
+}));
+
 const mockPusherClient = {
   subscribe: vi.fn(() => ({
     bind: vi.fn(),
@@ -37,7 +61,15 @@ describe("WhiteboardChatPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
-    
+
+    // Reset speech recognition mock to defaults
+    mockSpeechRecognition.isListening = false;
+    mockSpeechRecognition.transcript = "";
+    mockSpeechRecognition.isSupported = true;
+    mockSpeechRecognition.startListening = vi.fn();
+    mockSpeechRecognition.stopListening = vi.fn();
+    mockSpeechRecognition.resetTranscript = vi.fn();
+
     vi.mocked(pusherLib.getPusherClient).mockReturnValue(mockPusherClient as any);
     vi.mocked(pusherLib.getWhiteboardChannelName).mockReturnValue("whiteboard-wb-123");
     vi.mocked(pusherLib.PUSHER_EVENTS).WHITEBOARD_CHAT_MESSAGE = "whiteboard-chat-message";
@@ -133,7 +165,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     await user.type(textarea, "Test message");
     
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     await user.click(sendButton);
 
     // Optimistic message should appear
@@ -180,7 +212,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     await user.type(textarea, "Test");
     
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     await user.click(sendButton);
 
     // Spinner should appear
@@ -212,7 +244,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     await user.type(textarea, "Test message");
     
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     await user.click(sendButton);
 
     await waitFor(() => {
@@ -297,7 +329,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     expect(textarea).not.toBeDisabled();
 
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     expect(sendButton).toBeDisabled(); // Still disabled because input is empty
   });
 
@@ -338,7 +370,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     await user.type(textarea, "Update the diagram");
 
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     await user.click(sendButton);
 
     // Verify fetch was called for POST (the second call)
@@ -382,7 +414,7 @@ describe("WhiteboardChatPanel", () => {
     const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
     await user.type(textarea, "Test");
     
-    const sendButton = screen.getByRole("button", { name: "" });
+    const sendButton = screen.getByRole("button", { name: /send/i });
     await user.click(sendButton);
 
     // While generating, input and button should be disabled
@@ -423,6 +455,88 @@ describe("WhiteboardChatPanel", () => {
     // Panel should expand again
     await waitFor(() => {
       expect(screen.getByText("Chat")).toBeInTheDocument();
+    });
+  });
+
+  describe("voice input", () => {
+    it("renders mic button when speech recognition is supported", async () => {
+      mockSpeechRecognition.isSupported = true;
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mic-button")).toBeInTheDocument();
+      });
+    });
+
+    it("hides mic button when speech recognition is not supported", async () => {
+      mockSpeechRecognition.isSupported = false;
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("mic-button")).not.toBeInTheDocument();
+    });
+
+    it("shows 'Listening...' placeholder when recording", async () => {
+      mockSpeechRecognition.isSupported = true;
+      mockSpeechRecognition.isListening = true;
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Listening...")).toBeInTheDocument();
+      });
+    });
+
+    it("disables mic button during diagram generation", async () => {
+      mockSpeechRecognition.isSupported = true;
+      mockSpeechRecognition.isListening = false;
+
+      const user = userEvent.setup();
+
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: [] }),
+        } as Response)
+        .mockResolvedValueOnce(
+          new Promise(() => {}) // Never resolves to keep generating state
+        );
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
+      await user.type(textarea, "Test");
+
+      const sendButton = screen.getByRole("button", { name: /send/i });
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mic-button")).toBeDisabled();
+      });
     });
   });
 });
