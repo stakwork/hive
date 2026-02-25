@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
+import { validateWorkspaceSlug } from "@/services/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,19 @@ export async function GET(request: NextRequest) {
         { success: false, error: "Slug parameter is required" },
         { status: 400 }
       );
+    }
+
+    // Check against reserved slugs and format rules
+    const validation = validateWorkspaceSlug(slug.toLowerCase());
+    if (!validation.isValid) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          slug,
+          isAvailable: false,
+          message: validation.error,
+        }
+      });
     }
 
     // Check if workspace with this slug already exists
