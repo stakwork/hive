@@ -6,6 +6,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { usePlanPresence } from "@/hooks/usePlanPresence";
 import {
   ChatMessage,
   ChatRole,
@@ -32,6 +33,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Real-time presence tracking
+  const { collaborators } = usePlanPresence({ featureId });
 
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
@@ -213,6 +217,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               onSend={sendMessage}
               onArtifactAction={handleArtifactAction}
               inputDisabled={inputDisabled}
+              collaborators={collaborators}
               isLoading={isLoading}
               workflowStatus={workflowStatus}
               taskTitle={featureTitle}

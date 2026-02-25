@@ -55,4 +55,7 @@ export const PUSHER_EVENTS = {
   WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
   WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
   FEATURE_UPDATED: "feature-updated",
+  // Plan presence events
+  PLAN_USER_JOIN: "plan-user-join",
+  PLAN_USER_LEAVE: "plan-user-leave",
 } as const;

@@ -16,6 +16,8 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
+import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -44,6 +46,7 @@ interface ChatAreaProps {
   isReleasingPod?: boolean;
   featureId?: string | null;
   featureTitle?: string | null;
+  collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
 }
 
@@ -73,6 +76,7 @@ export function ChatArea({
   isReleasingPod = false,
   featureId,
   featureTitle,
+  collaborators,
   onOpenBountyRequest,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -181,6 +185,13 @@ export function ChatArea({
                 </motion.h2>
               </AnimatePresence>
             </div>
+
+            {/* Presence Avatars */}
+            {collaborators && collaborators.length > 0 && (
+              <div className="flex-shrink-0 self-center">
+                <CollaboratorAvatars collaborators={collaborators} />
+              </div>
+            )}
 
             {/* Preview Toggle Button (Mobile Only) */}
             {showPreviewToggle && onTogglePreview && (
