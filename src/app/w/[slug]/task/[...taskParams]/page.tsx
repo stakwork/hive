@@ -148,9 +148,13 @@ export default function TaskChatPage() {
   });
   const hasReceivedContentRef = useRef(false);
 
-  // Handle incoming SSE messages
-  const handleSSEMessage = useCallback((message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
+  // Deduplicate: the sender already has this message locally after the temp-to-real ID swap
+  const handleNewMessage = useCallback((message: ChatMessage) => {
+    setMessages((prev) => {
+      const exists = prev.some((m) => m.id === message.id);
+      if (exists) return prev;
+      return [...prev, message];
+    });
 
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
@@ -245,7 +249,7 @@ export default function TaskChatPage() {
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
-    onMessage: handleSSEMessage,
+    onMessage: handleNewMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
     onPRStatusChange: handlePRStatusChange,
@@ -1290,10 +1294,11 @@ export default function TaskChatPage() {
           );
         }
 
-        // Update the temporary message status instead of replacing entirely
-        // This prevents re-animation since React sees it as the same message
+        // Replace temp ID with real DB ID so Pusher dedup can match
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) =>
+            msg.id === newMessage.id ? { ...msg, id: result.message.id, status: ChatStatus.SENT } : msg,
+          ),
         );
       } catch (error) {
         console.error("Error sending message:", error);

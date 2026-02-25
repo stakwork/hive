@@ -12,6 +12,7 @@ import { callStakworkAPI } from "@/services/task-workflow";
 import { EncryptionService } from "@/lib/encryption";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -281,7 +282,12 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     } as ChatMessage;
 
-    console.log("clientMessage", clientMessage);
+    // Broadcast user message to other connected clients
+    try {
+      await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
+    } catch (error) {
+      console.error("Error broadcasting user message to Pusher (task):", error);
+    }
 
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 

@@ -214,6 +214,13 @@ export async function POST(
       })) as Artifact[],
     };
 
+    // Broadcast user message to other connected clients
+    try {
+      await pusherServer.trigger(getFeatureChannelName(featureId), PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
+    } catch (error) {
+      console.error("Error broadcasting user message to Pusher (feature):", error);
+    }
+
     // Call Stakwork workflow
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
     let stakworkData = null;
