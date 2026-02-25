@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, workspaceId, title, description, testName } = body;
+    const { message, workspaceId, title, description, testName, repositoryId } = body;
 
     // Validate required fields
     if (!message) {
@@ -170,11 +170,16 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.poolName || swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    // Get workspace's primary repository if available
-    const repository = await db.repository.findFirst({
-      where: { workspaceId: workspace.id },
-      select: { id: true, repositoryUrl: true, branch: true },
-    });
+    // Get workspace's repository based on selection or default to first
+    const repository = repositoryId
+      ? await db.repository.findUnique({
+          where: { id: repositoryId },
+          select: { id: true, repositoryUrl: true, branch: true },
+        })
+      : await db.repository.findFirst({
+          where: { workspaceId: workspace.id },
+          select: { id: true, repositoryUrl: true, branch: true },
+        });
 
     // Don't create fake testFilePath - Stakwork workflow will determine the actual path
     // The path will be synced from the graph after the workflow completes
