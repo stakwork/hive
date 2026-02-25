@@ -2,6 +2,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/workflow/prompts/route";
 import { GET as GET_BY_ID, PUT } from "@/app/api/workflow/prompts/[id]/route";
+import { GET as GET_VERSIONS } from "@/app/api/workflow/prompts/[id]/versions/route";
+import { GET as GET_VERSION_BY_ID } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/route";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -1504,6 +1506,884 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
         params: Promise.resolve({ id: "nonexistent" }),
       });
       await expectError(response, "Failed to update prompt", 404);
+    });
+  });
+});
+
+describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
+  let testUser: { id: string; email: string; name: string };
+  let stakworkWorkspace: { id: string; slug: string };
+  let otherUser: { id: string; email: string; name: string };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockFetch.mockClear();
+    mockGetServerSession.mockReset();
+    mockIsDevelopmentMode.mockReset();
+
+    mockIsDevelopmentMode.mockReturnValue(false);
+
+    testUser = await createTestUser();
+    otherUser = await createTestUser();
+
+    stakworkWorkspace = await createTestWorkspace({
+      ownerId: testUser.id,
+      name: "Stakwork",
+      slug: "stakwork",
+    });
+
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: stakworkWorkspace.id,
+        userId: testUser.id,
+        role: "OWNER",
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("Authentication Tests", () => {
+    test("returns 401 when user is not authenticated", async () => {
+      mockGetServerSession.mockResolvedValueOnce(null);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session has no user", async () => {
+      mockGetServerSession.mockResolvedValueOnce({ user: null } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session user has no id", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { email: "test@example.com" },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectError(response, "Invalid user session", 401);
+    });
+  });
+
+  describe("Authorization Tests", () => {
+    test("returns 403 when user is not a member of stakwork workspace", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectForbidden(response, "not a member of stakwork workspace");
+    });
+
+    test("allows workspace member to fetch version list", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 123,
+            prompt_name: "Test Prompt",
+            versions: [
+              { id: 1, version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: "user1" },
+            ],
+            current_version_id: 1,
+            version_count: 1,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Development Mode Tests", () => {
+    test("bypasses stakwork workspace check when in development mode", async () => {
+      mockIsDevelopmentMode.mockReturnValue(true);
+
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 456,
+            prompt_name: "Dev Prompt",
+            versions: [],
+            current_version_id: null,
+            version_count: 0,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-456/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-456" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Validation Tests", () => {
+    test("returns 400 when prompt id is missing", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts//versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "" }),
+      });
+      await expectError(response, "Prompt ID is required", 400);
+    });
+  });
+
+  describe("Version List Retrieval Tests", () => {
+    test("returns version list successfully with multiple versions", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const mockVersions = [
+        { id: 5, version_number: 5, created_at: "2024-01-05T00:00:00Z", whodunnit: "user1" },
+        { id: 4, version_number: 4, created_at: "2024-01-04T00:00:00Z", whodunnit: "user2" },
+        { id: 3, version_number: 3, created_at: "2024-01-03T00:00:00Z", whodunnit: "user1" },
+        { id: 2, version_number: 2, created_at: "2024-01-02T00:00:00Z", whodunnit: null },
+        { id: 1, version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: "user1" },
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 789,
+            prompt_name: "Multi-version Prompt",
+            versions: mockVersions,
+            current_version_id: 5,
+            version_count: 5,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-789/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-789" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(5);
+      expect(data.data.version_count).toBe(5);
+      expect(data.data.current_version_id).toBe(5);
+      expect(data.data.prompt_name).toBe("Multi-version Prompt");
+    });
+
+    test("handles single-version edge case", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 111,
+            prompt_name: "Single Version Prompt",
+            versions: [
+              { id: 1, version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: "user1" },
+            ],
+            current_version_id: 1,
+            version_count: 1,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-111/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-111" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(1);
+      expect(data.data.version_count).toBe(1);
+    });
+
+    test("handles version with null whodunnit", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 222,
+            prompt_name: "Null Whodunnit Prompt",
+            versions: [
+              { id: 2, version_number: 2, created_at: "2024-01-02T00:00:00Z", whodunnit: null },
+              { id: 1, version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: "user1" },
+            ],
+            current_version_id: 2,
+            version_count: 2,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-222/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-222" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.versions[0].whodunnit).toBeNull();
+    });
+  });
+
+  describe("Stakwork API Integration Tests", () => {
+    test("calls Stakwork API with correct URL and headers", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompt_id: 333,
+            prompt_name: "API Test",
+            versions: [],
+            current_version_id: null,
+            version_count: 0,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-333/versions"
+      );
+
+      await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-333" }),
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.stakwork.test/prompts/prompt-333/versions",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: "Token token=test-stakwork-key-123",
+            "Content-Type": "application/json",
+          }),
+        })
+      );
+    });
+
+    test("handles Stakwork API error responses", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Prompt not found",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/nonexistent/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "nonexistent" }),
+      });
+      await expectError(response, "Failed to fetch prompt versions", 404);
+    });
+
+    test("handles Stakwork API with success: false", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: false,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-fail/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-fail" }),
+      });
+      await expectError(response, "Failed to fetch prompt versions from Stakwork", 400);
+    });
+
+    test("handles network errors", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-network/versions"
+      );
+
+      const response = await GET_VERSIONS(request, {
+        params: Promise.resolve({ id: "prompt-network" }),
+      });
+      await expectError(response, "Failed to fetch prompt versions", 500);
+    });
+  });
+});
+
+describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests", () => {
+  let testUser: { id: string; email: string; name: string };
+  let stakworkWorkspace: { id: string; slug: string };
+  let otherUser: { id: string; email: string; name: string };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockFetch.mockClear();
+    mockGetServerSession.mockReset();
+    mockIsDevelopmentMode.mockReset();
+
+    mockIsDevelopmentMode.mockReturnValue(false);
+
+    testUser = await createTestUser();
+    otherUser = await createTestUser();
+
+    stakworkWorkspace = await createTestWorkspace({
+      ownerId: testUser.id,
+      name: "Stakwork",
+      slug: "stakwork",
+    });
+
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: stakworkWorkspace.id,
+        userId: testUser.id,
+        role: "OWNER",
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("Authentication Tests", () => {
+    test("returns 401 when user is not authenticated", async () => {
+      mockGetServerSession.mockResolvedValueOnce(null);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "1" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session has no user", async () => {
+      mockGetServerSession.mockResolvedValueOnce({ user: null } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "1" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session user has no id", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { email: "test@example.com" },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "1" }),
+      });
+      await expectError(response, "Invalid user session", 401);
+    });
+  });
+
+  describe("Authorization Tests", () => {
+    test("returns 403 when user is not a member of stakwork workspace", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "1" }),
+      });
+      await expectForbidden(response, "not a member of stakwork workspace");
+    });
+
+    test("allows workspace member to fetch version detail", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 1,
+            version_id: 1,
+            version_number: 1,
+            name: "Test Prompt",
+            value: "This is the prompt content for version 1",
+            description: "Test description",
+            usage_notation: "@prompt-123",
+            created_at: "2024-01-01T00:00:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "1" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Development Mode Tests", () => {
+    test("bypasses stakwork workspace check when in development mode", async () => {
+      mockIsDevelopmentMode.mockReturnValue(true);
+
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 2,
+            version_id: 2,
+            version_number: 2,
+            name: "Dev Prompt",
+            value: "Dev mode content",
+            description: "Dev description",
+            usage_notation: "@dev-prompt",
+            created_at: "2024-01-02T00:00:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-456/versions/2"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-456", versionId: "2" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Validation Tests", () => {
+    test("returns 400 when prompt id is missing", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts//versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "", versionId: "1" }),
+      });
+      await expectError(response, "Prompt ID is required", 400);
+    });
+
+    test("returns 400 when version id is missing", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "" }),
+      });
+      await expectError(response, "Version ID is required", 400);
+    });
+  });
+
+  describe("Version Detail Retrieval Tests", () => {
+    test("returns full version content successfully", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const samplePromptText = `You are a helpful AI assistant.
+Your task is to analyze the following code and provide suggestions for improvement.
+
+Consider:
+- Code readability
+- Performance optimization
+- Best practices
+- Security concerns
+
+Be specific and actionable in your recommendations.`;
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 5,
+            version_id: 5,
+            version_number: 5,
+            name: "Code Review Assistant",
+            value: samplePromptText,
+            description: "A prompt for code review assistance",
+            usage_notation: "@code-review-v5",
+            created_at: "2024-01-05T10:30:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-789/versions/5"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-789", versionId: "5" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.version_id).toBe(5);
+      expect(data.data.version_number).toBe(5);
+      expect(data.data.name).toBe("Code Review Assistant");
+      expect(data.data.value).toBe(samplePromptText);
+      expect(data.data.description).toBe("A prompt for code review assistance");
+      expect(data.data.usage_notation).toBe("@code-review-v5");
+    });
+
+    test("handles version with minimal fields", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 1,
+            version_id: 1,
+            version_number: 1,
+            name: "Minimal Prompt",
+            value: "Simple prompt text",
+            description: "",
+            usage_notation: "@minimal",
+            created_at: "2024-01-01T00:00:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-minimal/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-minimal", versionId: "1" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.description).toBe("");
+    });
+
+    test("handles version with long prompt value", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const longPromptValue = "A".repeat(5000);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 3,
+            version_id: 3,
+            version_number: 3,
+            name: "Long Prompt",
+            value: longPromptValue,
+            description: "A very long prompt",
+            usage_notation: "@long-prompt",
+            created_at: "2024-01-03T00:00:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-long/versions/3"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-long", versionId: "3" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+      expect(data.data.value).toHaveLength(5000);
+    });
+  });
+
+  describe("Stakwork API Integration Tests", () => {
+    test("calls Stakwork API with correct URL and headers", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 2,
+            version_id: 2,
+            version_number: 2,
+            name: "API Test Prompt",
+            value: "API test content",
+            description: "API test",
+            usage_notation: "@api-test",
+            created_at: "2024-01-02T00:00:00Z",
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-333/versions/2"
+      );
+
+      await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-333", versionId: "2" }),
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.stakwork.test/prompts/prompt-333/versions/2",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: "Token token=test-stakwork-key-123",
+            "Content-Type": "application/json",
+          }),
+        })
+      );
+    });
+
+    test("handles Stakwork API error when version not found", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Version not found",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123/versions/999"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-123", versionId: "999" }),
+      });
+      await expectError(response, "Failed to fetch prompt version", 404);
+    });
+
+    test("handles Stakwork API error when prompt not found", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Prompt not found",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/nonexistent/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "nonexistent", versionId: "1" }),
+      });
+      await expectError(response, "Failed to fetch prompt version", 404);
+    });
+
+    test("handles Stakwork API with success: false", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: false,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-fail/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-fail", versionId: "1" }),
+      });
+      await expectError(response, "Failed to fetch prompt version from Stakwork", 400);
+    });
+
+    test("handles network errors", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockRejectedValueOnce(new Error("Connection timeout"));
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-network/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-network", versionId: "1" }),
+      });
+      await expectError(response, "Failed to fetch prompt version", 500);
+    });
+
+    test("handles Stakwork API server errors", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "Internal server error",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-error/versions/1"
+      );
+
+      const response = await GET_VERSION_BY_ID(request, {
+        params: Promise.resolve({ id: "prompt-error", versionId: "1" }),
+      });
+      await expectError(response, "Failed to fetch prompt version", 500);
     });
   });
 });
