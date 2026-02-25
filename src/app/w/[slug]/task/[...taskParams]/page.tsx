@@ -1294,12 +1294,20 @@ export default function TaskChatPage() {
           );
         }
 
-        // Replace temp ID with real DB ID so Pusher dedup can match
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, id: result.message.id, status: ChatStatus.SENT } : msg,
-          ),
-        );
+        // Replace temp id with real DB id and update status
+        // This allows Pusher deduplication to work correctly
+        if (result.message) {
+          setMessages((msgs) =>
+            msgs.map((msg) =>
+              msg.id === newMessage.id ? { ...result.message, status: ChatStatus.SENT } : msg
+            )
+          );
+        } else {
+          // Fallback: just update status if message not returned
+          setMessages((msgs) =>
+            msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
+          );
+        }
       } catch (error) {
         console.error("Error sending message:", error);
 
