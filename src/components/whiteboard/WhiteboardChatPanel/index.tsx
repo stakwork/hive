@@ -3,10 +3,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { serializeDiagramContext } from "@/services/excalidraw-layout";
-import { ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { ChevronLeft, ChevronRight, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhiteboardMessage {
@@ -37,6 +45,38 @@ export function WhiteboardChatPanel({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
+  const preVoiceInputRef = useRef("");
+
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
+
+  // Sync speech transcript into textarea
+  useEffect(() => {
+    if (transcript) {
+      const newValue = preVoiceInputRef.current
+        ? `${preVoiceInputRef.current} ${transcript}`.trim()
+        : transcript;
+      setInput(newValue);
+    }
+  }, [transcript]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      preVoiceInputRef.current = input;
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, input]);
+
+  useControlKeyHold({
+    onStart: () => {
+      preVoiceInputRef.current = input;
+      startListening();
+    },
+    onStop: stopListening,
+    enabled: isSupported && !generating,
+  });
 
   // Fetch messages on mount
   useEffect(() => {
@@ -108,6 +148,9 @@ export function WhiteboardChatPanel({
 
     setMessages((prev) => [...prev, optimisticMessage]);
     setInput("");
+    if (isListening) stopListening();
+    resetTranscript();
+    preVoiceInputRef.current = "";
     setGenerating(true);
 
     try {
@@ -151,7 +194,7 @@ export function WhiteboardChatPanel({
       toast.error("Failed to send message");
       setGenerating(false);
     }
-  }, [input, generating, whiteboardId, excalidrawAPI]);
+  }, [input, generating, whiteboardId, excalidrawAPI, isListening, stopListening, resetTranscript]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -177,9 +220,9 @@ export function WhiteboardChatPanel({
   }
 
   return (
-    <div className="absolute right-0 top-0 bottom-0 flex flex-col w-80 bg-background/95 backdrop-blur-sm border-l shadow-lg z-10 rounded-r-lg overflow-hidden">
+    <div className="absolute right-0 top-0 bottom-0 flex flex-col w-80 bg-sidebar border-l border-sidebar-border shadow-lg z-10 rounded-r-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b">
+      <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
         <h3 className="font-medium text-sm">Chat</h3>
         <Button
           variant="ghost"
@@ -226,31 +269,57 @@ export function WhiteboardChatPanel({
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t space-y-2">
+      <div className="p-3 border-t border-sidebar-border space-y-2">
         {generating && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span>Generating diagram...</span>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="relative">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask to update the diagram..."
+            placeholder={isListening ? "Listening..." : "Ask to update the diagram..."}
             disabled={generating}
-            className="min-h-[80px] resize-none"
+            className="min-h-[80px] resize-none pr-10"
           />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() || generating}
-            size="icon"
-            className="shrink-0"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+          {isSupported && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={toggleListening}
+                    disabled={generating}
+                    size="icon"
+                    variant="ghost"
+                    data-testid="mic-button"
+                    className={`absolute right-1.5 top-1.5 h-7 w-7 ${isListening ? "text-red-500 bg-red-500/10 hover:bg-red-500/20" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {isListening ? (
+                      <MicOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
+        <Button
+          onClick={handleSend}
+          disabled={!input.trim() || generating}
+          size="sm"
+          className="w-full"
+        >
+          <Send className="w-3.5 h-3.5 mr-2" />
+          Send
+        </Button>
       </div>
     </div>
   );
