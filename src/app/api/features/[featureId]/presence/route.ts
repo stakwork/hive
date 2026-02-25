@@ -4,7 +4,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 
 type PresencePayload =
-  | { type: "join"; user: CollaboratorInfo }
+  | { type: "join"; user: CollaboratorInfo; rebroadcast?: boolean }
   | { type: "leave" };
 
 /**
@@ -47,6 +47,7 @@ export async function POST(
           odinguserId: userOrResponse.id,
           name: userOrResponse.name || body.user.name,
         },
+        ...(body.rebroadcast === true ? { rebroadcast: true } : {}),
       });
 
       return NextResponse.json({ success: true });

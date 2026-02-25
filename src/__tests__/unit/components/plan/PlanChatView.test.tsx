@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
-import { ChatRole, ChatStatus } from "@/lib/chat";
+import { ChatRole, ChatStatus, WorkflowStatus } from "@/lib/chat";
+import { usePusherConnection } from "@/hooks/usePusherConnection";
 
 // Mock dependencies
 vi.mock("@/hooks/useWorkspace", () => ({
@@ -43,8 +44,18 @@ vi.mock("@/components/ui/resizable", () => ({
 }));
 
 vi.mock("@/components/chat", () => ({
-  ChatArea: ({ onArtifactAction }: { onArtifactAction: (messageId: string, action: { optionResponse: string }) => void }) => (
+  ChatArea: ({
+    onArtifactAction,
+    isLoading,
+    workflowStatus,
+  }: {
+    onArtifactAction: (messageId: string, action: { optionResponse: string }) => void;
+    isLoading: boolean;
+    workflowStatus: WorkflowStatus | null;
+  }) => (
     <div data-testid="chat-area">
+      <div data-testid="chat-is-loading">{String(isLoading)}</div>
+      <div data-testid="chat-workflow-status">{workflowStatus || "null"}</div>
       <button
         data-testid="artifact-action-button"
         onClick={() => onArtifactAction("test-message-id", { optionResponse: "Test answer" })}
@@ -58,10 +69,22 @@ vi.mock("@/components/chat", () => ({
 
 describe("PlanChatView", () => {
   const mockFetch = vi.fn();
+  let latestPusherOptions: Record<string, unknown> | null = null;
 
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
+    latestPusherOptions = null;
+    vi.mocked(usePusherConnection).mockImplementation((options) => {
+      latestPusherOptions = options as unknown as Record<string, unknown>;
+      return {
+        isConnected: true,
+        connectionId: "pusher_feature_feature-123_1",
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        error: null,
+      };
+    });
   });
 
   it("should pass replyId when handleArtifactAction is called", async () => {
@@ -100,14 +123,12 @@ describe("PlanChatView", () => {
 
       expect(sendMessageCall).toBeDefined();
       const body = JSON.parse(sendMessageCall![1].body);
-      expect(body).toEqual({
-        message: "Test answer",
-        replyId: "test-message-id",
-      });
+      expect(body.message).toBe("Test answer");
+      expect(body.replyId).toBe("test-message-id");
     });
   });
 
-  it("should refetch feature and messages when tab becomes visible", async () => {
+  it("should refetch feature and messages when stale connection callback is fired", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
@@ -122,14 +143,8 @@ describe("PlanChatView", () => {
     // Clear initial fetch calls
     mockFetch.mockClear();
 
-    // Simulate tab becoming visible
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => 'visible',
-    });
-
-    const visibilityEvent = new Event('visibilitychange');
-    document.dispatchEvent(visibilityEvent);
+    const onStaleConnection = latestPusherOptions?.onStaleConnection as (() => void) | undefined;
+    onStaleConnection?.();
 
     await waitFor(() => {
       // Should refetch both feature data and messages
@@ -139,7 +154,7 @@ describe("PlanChatView", () => {
     });
   });
 
-  it("should not refetch when tab becomes hidden", async () => {
+  it("should not refetch when stale connection callback is not fired", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
@@ -154,28 +169,19 @@ describe("PlanChatView", () => {
     // Clear initial fetch calls
     mockFetch.mockClear();
 
-    // Simulate tab becoming hidden
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => 'hidden',
-    });
-
-    const visibilityEvent = new Event('visibilitychange');
-    document.dispatchEvent(visibilityEvent);
-
     // Wait a bit to ensure no fetch calls are made
     await new Promise(resolve => setTimeout(resolve, 100));
 
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("should cleanup visibility listener on unmount", async () => {
+  it("should refetch feature and messages when feature update callback is fired", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
     });
 
-    const { unmount } = render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+    render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
@@ -184,22 +190,76 @@ describe("PlanChatView", () => {
     // Clear initial fetch calls
     mockFetch.mockClear();
 
-    // Unmount the component
-    unmount();
+    const onFeatureUpdated = latestPusherOptions?.onFeatureUpdated as (() => void) | undefined;
+    onFeatureUpdated?.();
 
-    // Simulate tab becoming visible after unmount
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => 'visible',
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123");
+      expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123/chat");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("should reconcile workflowStatus and loading from feature refetch on stale connection", async () => {
+    mockFetch.mockImplementation((url: string, options?: { method?: string }) => {
+      if (url === "/api/features/feature-123/chat" && options?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "new-message-id",
+              message: "Test answer",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              replyId: "test-message-id",
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+      }
+
+      if (url === "/api/features/feature-123") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              id: "feature-123",
+              title: "Feature",
+              workflowStatus: WorkflowStatus.COMPLETED,
+              userStories: [],
+            },
+          }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
     });
 
-    const visibilityEvent = new Event('visibilitychange');
-    document.dispatchEvent(visibilityEvent);
+    render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
-    // Wait a bit to ensure no fetch calls are made
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
 
-    expect(mockFetch).not.toHaveBeenCalled();
+    const submitButton = screen.getByTestId("artifact-action-button");
+    await userEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-workflow-status")).toHaveTextContent(WorkflowStatus.IN_PROGRESS);
+      expect(screen.getByTestId("chat-is-loading")).toHaveTextContent("true");
+    });
+
+    const onStaleConnection = latestPusherOptions?.onStaleConnection as (() => void) | undefined;
+    onStaleConnection?.();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-workflow-status")).toHaveTextContent(WorkflowStatus.COMPLETED);
+      expect(screen.getByTestId("chat-is-loading")).toHaveTextContent("false");
+    });
   });
 
 });

@@ -66,6 +66,7 @@ interface UsePusherConnectionOptions {
   onBountyStatusChange?: (update: BountyStatusChangeEvent) => void;
   onDeploymentStatusChange?: (update: DeploymentStatusChangeEvent) => void;
   onFeatureUpdated?: () => void;
+  onStaleConnection?: () => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -92,6 +93,7 @@ export function usePusherConnection({
   onBountyStatusChange,
   onDeploymentStatusChange,
   onFeatureUpdated,
+  onStaleConnection,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -108,8 +110,10 @@ export function usePusherConnection({
   const onBountyStatusChangeRef = useRef(onBountyStatusChange);
   const onDeploymentStatusChangeRef = useRef(onDeploymentStatusChange);
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
+  const onStaleConnectionRef = useRef(onStaleConnection);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
+  const hasEverConnectedRef = useRef(false);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
@@ -119,6 +123,13 @@ export function usePusherConnection({
   onBountyStatusChangeRef.current = onBountyStatusChange;
   onDeploymentStatusChangeRef.current = onDeploymentStatusChange;
   onFeatureUpdatedRef.current = onFeatureUpdated;
+  onStaleConnectionRef.current = onStaleConnection;
+
+  const notifyStaleConnection = useCallback(() => {
+    if (onStaleConnectionRef.current) {
+      onStaleConnectionRef.current();
+    }
+  }, []);
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -334,6 +345,7 @@ export function usePusherConnection({
   // Connection management effect
   useEffect(() => {
     if (!enabled) {
+      hasEverConnectedRef.current = false;
       disconnect();
       return;
     }
@@ -355,11 +367,52 @@ export function usePusherConnection({
       }
       connect(workspaceSlug, "workspace");
     } else if (!taskId && !featureId && !workspaceSlug) {
+      hasEverConnectedRef.current = false;
       disconnect();
     }
 
     return disconnect;
   }, [taskId, featureId, workspaceSlug, enabled, connect, disconnect]);
+
+  // Notify consumers when real-time updates may have been missed.
+  // 1) visibility restore from background tabs
+  // 2) reconnect transitions after an established connection
+  useEffect(() => {
+    if (!enabled || (!taskId && !featureId && !workspaceSlug)) {
+      return;
+    }
+
+    let client;
+    try {
+      client = getPusherClient();
+    } catch (error) {
+      console.error("Error getting Pusher client for stale-connection monitoring:", error);
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        notifyStaleConnection();
+      }
+    };
+
+    const handleStateChange = (states: { previous: string; current: string }) => {
+      if (states.current === "connected") {
+        if (hasEverConnectedRef.current && states.previous !== "connected") {
+          notifyStaleConnection();
+        }
+        hasEverConnectedRef.current = true;
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    client.connection.bind("state_change", handleStateChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      client.connection.unbind("state_change", handleStateChange);
+    };
+  }, [enabled, taskId, featureId, workspaceSlug, notifyStaleConnection]);
 
   // Cleanup on unmount
   useEffect(() => {

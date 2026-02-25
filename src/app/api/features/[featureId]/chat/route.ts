@@ -215,13 +215,18 @@ export async function POST(
       })) as Artifact[],
     };
 
+    const validSourceWebsocketID =
+      typeof sourceWebsocketID === "string" && /^\d+\.\d+$/.test(sourceWebsocketID)
+        ? sourceWebsocketID
+        : undefined;
+
     // Broadcast user message to other connected clients (exclude sender to prevent duplicates)
     try {
       await pusherServer.trigger(
         getFeatureChannelName(featureId),
         PUSHER_EVENTS.NEW_MESSAGE,
         chatMessage.id,
-        sourceWebsocketID ? { socket_id: sourceWebsocketID } : {},
+        validSourceWebsocketID ? { socket_id: validSourceWebsocketID } : {},
       );
     } catch (error) {
       console.error("Error broadcasting user message to Pusher (feature):", error);
@@ -308,11 +313,15 @@ export async function POST(
         data: updateData,
       });
 
-      await pusherServer.trigger(
-        getFeatureChannelName(featureId),
-        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
-      );
+      try {
+        await pusherServer.trigger(
+          getFeatureChannelName(featureId),
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+        );
+      } catch (error) {
+        console.error("Error broadcasting workflow status to Pusher (feature):", error);
+      }
     }
 
     return NextResponse.json(

@@ -148,6 +148,16 @@ export default function TaskChatPage() {
     hiddenToolTextIds: { final_answer: "final-answer" },
   });
   const hasReceivedContentRef = useRef(false);
+  const resyncInFlightRef = useRef(false);
+  const lastResyncAtRef = useRef(0);
+
+  const getSourceWebsocketID = useCallback(() => {
+    try {
+      return getPusherClient().connection.socket_id || undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   // Deduplicate: the sender already has this message locally after the temp-to-real ID swap
   const handleNewMessage = useCallback((message: ChatMessage) => {
@@ -247,27 +257,12 @@ export default function TaskChatPage() {
     );
   }, []);
 
-  // Use the Pusher connection hook
-  const { isConnected, error: connectionError } = usePusherConnection({
-    taskId: currentTaskId,
-    onMessage: handleNewMessage,
-    onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
-    onTaskTitleUpdate: handleTaskTitleUpdate,
-    onPRStatusChange: handlePRStatusChange,
-    onBountyStatusChange: handleBountyStatusChange,
-  });
-
-  // Show connection errors as toasts
-  useEffect(() => {
-    if (connectionError) {
-      toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
-    }
-    // toast in deps causes infinite re-render
-  }, [connectionError]);
-
-  const loadTaskMessages = useCallback(async (taskId: string) => {
+  const loadTaskMessages = useCallback(async (taskId: string, options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
     try {
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      }
       const response = await fetch(`/api/tasks/${taskId}/messages`);
 
       if (!response.ok) {
@@ -384,9 +379,13 @@ export default function TaskChatPage() {
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
-      toast.error("Error", { description: "Failed to load existing messages." });
+      if (!silent) {
+        toast.error("Error", { description: "Failed to load existing messages." });
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -399,6 +398,43 @@ export default function TaskChatPage() {
       loadTaskMessages(taskIdFromUrl);
     }
   }, [taskIdFromUrl, loadTaskMessages]);
+
+  const resyncTaskState = useCallback(() => {
+    if (!currentTaskId) {
+      return;
+    }
+
+    const now = Date.now();
+    // Prevent back-to-back duplicate refetches from stale-connection callbacks.
+    if (resyncInFlightRef.current || now - lastResyncAtRef.current < 750) {
+      return;
+    }
+
+    resyncInFlightRef.current = true;
+    void loadTaskMessages(currentTaskId, { silent: true }).finally(() => {
+      lastResyncAtRef.current = Date.now();
+      resyncInFlightRef.current = false;
+    });
+  }, [currentTaskId, loadTaskMessages]);
+
+  // Use the Pusher connection hook
+  const { isConnected, error: connectionError } = usePusherConnection({
+    taskId: currentTaskId,
+    onMessage: handleNewMessage,
+    onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
+    onPRStatusChange: handlePRStatusChange,
+    onBountyStatusChange: handleBountyStatusChange,
+    onStaleConnection: resyncTaskState,
+  });
+
+  // Show connection errors as toasts
+  useEffect(() => {
+    if (connectionError) {
+      toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
+    }
+    // toast in deps causes infinite re-render
+  }, [connectionError]);
 
   // Handle project selection in project_debugger mode
   const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
@@ -1249,7 +1285,7 @@ export default function TaskChatPage() {
           message: messageText,
           contextTags: [],
           mode: taskMode,
-          sourceWebsocketID: getPusherClient().connection.socket_id,
+          sourceWebsocketID: getSourceWebsocketID(),
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
@@ -1323,7 +1359,7 @@ export default function TaskChatPage() {
         setIsLoading(false);
       }
     },
-    [taskMode, currentTaskId, processStream, clearLogs],
+    [taskMode, currentTaskId, processStream, clearLogs, getSourceWebsocketID],
   );
 
   const handleArtifactAction = useCallback(

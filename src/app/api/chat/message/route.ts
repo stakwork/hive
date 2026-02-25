@@ -282,13 +282,18 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     } as ChatMessage;
 
+    const validSourceWebsocketID =
+      typeof sourceWebsocketID === "string" && /^\d+\.\d+$/.test(sourceWebsocketID)
+        ? sourceWebsocketID
+        : undefined;
+
     // Broadcast user message to other connected clients (exclude sender to prevent duplicates)
     try {
       await pusherServer.trigger(
         getTaskChannelName(taskId),
         PUSHER_EVENTS.NEW_MESSAGE,
         chatMessage.id,
-        sourceWebsocketID ? { socket_id: sourceWebsocketID } : {},
+        validSourceWebsocketID ? { socket_id: validSourceWebsocketID } : {},
       );
     } catch (error) {
       console.error("Error broadcasting user message to Pusher (task):", error);

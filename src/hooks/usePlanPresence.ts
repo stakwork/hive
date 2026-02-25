@@ -29,8 +29,8 @@ interface UsePlanPresenceReturn {
  * Hook to manage real-time presence for plan collaboration.
  * Tracks who is currently viewing the same plan and broadcasts join/leave events.
  *
- * Initial sync: when we see another user join, we re-broadcast our own join
- * so they learn about us (they may have joined after we did).
+ * Initial sync: when we see a new user join, we re-broadcast our own join
+ * once so they learn about us (they may have joined after we did).
  *
  * Leave: uses navigator.sendBeacon so the request survives unmount/tab close.
  */
@@ -40,6 +40,7 @@ export function usePlanPresence({
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
   const hasSentJoin = useRef(false);
+  const knownCollaboratorIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!session?.user) return;
@@ -56,13 +57,18 @@ export function usePlanPresence({
     });
 
     const presenceUrl = `/api/features/${featureId}/presence`;
+    knownCollaboratorIdsRef.current.clear();
+    setCollaborators([]);
 
     const sendJoin = () => {
       if (hasSentJoin.current) return;
       fetch(presenceUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+        body: JSON.stringify({
+          type: "join",
+          user: buildUserPayload(),
+        }),
       }).catch((err) => console.error("Error sending join notification:", err));
       hasSentJoin.current = true;
     };
@@ -71,25 +77,25 @@ export function usePlanPresence({
     const channelName = getFeatureChannelName(featureId);
     const channel = pusherClient.subscribe(channelName);
 
-    const handleUserJoin = (data: { user: CollaboratorInfo }) => {
+    const handleUserJoin = (data: { user: CollaboratorInfo; rebroadcast?: boolean }) => {
       if (data.user.odinguserId === userId) return;
+      if (knownCollaboratorIdsRef.current.has(data.user.odinguserId)) return;
 
-      setCollaborators((prev) => {
-        const exists = prev.some((c) => c.odinguserId === data.user.odinguserId);
-        if (exists) return prev;
-        return [...prev, data.user];
-      });
+      knownCollaboratorIdsRef.current.add(data.user.odinguserId);
 
-      if (hasSentJoin.current) {
+      setCollaborators((prev) => [...prev, data.user]);
+
+      if (hasSentJoin.current && data.rebroadcast !== true) {
         fetch(presenceUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+          body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
         }).catch((err) => console.error("Error re-broadcasting join:", err));
       }
     };
 
     const handleUserLeave = (data: { userId: string }) => {
+      knownCollaboratorIdsRef.current.delete(data.userId);
       setCollaborators((prev) =>
         prev.filter((c) => c.odinguserId !== data.userId)
       );
@@ -115,6 +121,7 @@ export function usePlanPresence({
       pusherClient.unsubscribe(channelName);
       sendLeaveBeacon();
       hasSentJoin.current = false;
+      knownCollaboratorIdsRef.current.clear();
     };
   }, [featureId, session]);
 

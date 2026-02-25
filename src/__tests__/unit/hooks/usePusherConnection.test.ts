@@ -15,6 +15,7 @@ vi.mock("pusher-js", () => ({
 vi.mock("@/lib/pusher", () => ({
   getPusherClient: vi.fn(),
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  getFeatureChannelName: vi.fn((featureId: string) => `feature-${featureId}`),
   getWorkspaceChannelName: vi.fn((workspaceSlug: string) => `workspace-${workspaceSlug}`),
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
@@ -23,6 +24,7 @@ vi.mock("@/lib/pusher", () => ({
     RECOMMENDATIONS_UPDATED: "recommendations-updated",
     TASK_TITLE_UPDATE: "task-title-update",
     WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
+    FEATURE_UPDATED: "feature-updated",
   },
 }));
 
@@ -43,6 +45,10 @@ const mockPusherClient = {
   subscribe: vi.fn(() => mockChannel),
   unsubscribe: vi.fn(),
   disconnect: vi.fn(),
+  connection: {
+    bind: vi.fn(),
+    unbind: vi.fn(),
+  },
 };
 
 // Mock fetch globally for NEW_MESSAGE event handler
@@ -61,6 +67,8 @@ describe("usePusherConnection Hook", () => {
     mockChannel.unbind_all.mockImplementation(() => {});
     mockPusherClient.subscribe.mockReturnValue(mockChannel as unknown as Channel);
     mockPusherClient.unsubscribe.mockImplementation(() => {});
+    mockPusherClient.connection.bind.mockImplementation(() => {});
+    mockPusherClient.connection.unbind.mockImplementation(() => {});
     
     // Reset fetch mock
     (global.fetch as any).mockResolvedValue({
@@ -723,6 +731,68 @@ describe("usePusherConnection Hook", () => {
         MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE,
         expect.any(Function)
       );
+    });
+  });
+
+  describe("Stale Connection Recovery", () => {
+    test("should call onStaleConnection when tab becomes visible", async () => {
+      const taskId = "task-123";
+      const onStaleConnection = vi.fn();
+
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onStaleConnection,
+        }),
+      );
+
+      act(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      await waitFor(() => {
+        expect(onStaleConnection).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    test("should call onStaleConnection when pusher reconnects after first connection", async () => {
+      const taskId = "task-123";
+      const onStaleConnection = vi.fn();
+
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onStaleConnection,
+        }),
+      );
+
+      const stateChangeCallback = mockPusherClient.connection.bind.mock.calls.find(
+        (call) => call[0] === "state_change",
+      )?.[1] as ((states: { previous: string; current: string }) => void) | undefined;
+
+      expect(stateChangeCallback).toBeDefined();
+
+      // First connect should not trigger stale callback.
+      act(() => {
+        stateChangeCallback?.({ previous: "connecting", current: "connected" });
+      });
+
+      expect(onStaleConnection).not.toHaveBeenCalled();
+
+      // Reconnect should trigger stale callback.
+      act(() => {
+        stateChangeCallback?.({ previous: "unavailable", current: "connected" });
+      });
+
+      await waitFor(() => {
+        expect(onStaleConnection).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

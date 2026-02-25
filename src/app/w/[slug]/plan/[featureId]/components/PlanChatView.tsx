@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
@@ -34,6 +34,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const resyncInFlightRef = useRef(false);
+  const lastResyncAtRef = useRef(0);
 
   // Real-time presence tracking
   const { collaborators } = usePlanPresence({ featureId });
@@ -59,17 +61,17 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       const result = await fetchFeature(featureId);
       if (result.success && result.data) {
         setFeature(result.data);
+        return result.data as FeatureDetail;
       }
     } catch (error) {
       console.error("Error fetching feature:", error);
     }
+    return null;
   }, [featureId, fetchFeature, setFeature]);
 
   // Hydrate workflow status from persisted feature data
   useEffect(() => {
-    if (feature?.workflowStatus) {
-      setWorkflowStatus(feature.workflowStatus);
-    }
+    setWorkflowStatus(feature?.workflowStatus ?? null);
   }, [feature?.workflowStatus]);
 
   // Load existing messages - promoted to useCallback for visibility refetch
@@ -92,19 +94,28 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     loadMessages();
   }, [loadMessages]);
 
-  // Refetch on tab visibility change
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refetchFeature();
-        loadMessages();
-      }
-    };
+  const resyncFeatureChat = useCallback(async () => {
+    const now = Date.now();
+    // Prevent duplicate refetches from back-to-back stale callbacks
+    if (resyncInFlightRef.current || now - lastResyncAtRef.current < 750) {
+      return;
+    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    resyncInFlightRef.current = true;
+    try {
+      const [latestFeature] = await Promise.all([refetchFeature(), loadMessages()]);
+
+      if (latestFeature) {
+        // Directly reconcile local state from server response so we don't depend on
+        // feature.workflowStatus change detection (e.g. COMPLETED -> COMPLETED).
+        const latestWorkflowStatus = latestFeature.workflowStatus ?? null;
+        setWorkflowStatus(latestWorkflowStatus);
+        setIsLoading(latestWorkflowStatus === WorkflowStatus.IN_PROGRESS);
+      }
+    } finally {
+      lastResyncAtRef.current = Date.now();
+      resyncInFlightRef.current = false;
+    }
   }, [refetchFeature, loadMessages]);
 
   const handleSSEMessage = useCallback((message: ChatMessage) => {
@@ -135,8 +146,21 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
-    onFeatureUpdated: refetchFeature,
+    onFeatureUpdated: () => {
+      void resyncFeatureChat();
+    },
+    onStaleConnection: () => {
+      void resyncFeatureChat();
+    },
   });
+
+  const getSourceWebsocketID = useCallback(() => {
+    try {
+      return getPusherClient().connection.socket_id || undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   const sendMessage = useCallback(
     async (messageText: string) => {
@@ -152,55 +176,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
 
       try {
-        const res = await fetch(`/api/features/${featureId}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, sourceWebsocketID: getPusherClient().connection.socket_id }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setMessages((msgs) =>
-            msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
-          );
-        } else {
-          setMessages((msgs) =>
-            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-          );
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error("Error sending message:", error);
-        setMessages((msgs) =>
-          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-        );
-        setIsLoading(false);
-      }
-    },
-    [featureId],
-  );
-
-  const handleArtifactAction = useCallback(
-    async (messageId: string, action: { optionResponse: string }) => {
-      const newMessage = createChatMessage({
-        id: generateUniqueId(),
-        message: action.optionResponse,
-        role: ChatRole.USER,
-        status: ChatStatus.SENDING,
-        replyId: messageId,
-      });
-
-      setMessages((msgs) => [...msgs, newMessage]);
-      setIsLoading(true);
-      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
-
-      try {
+        const sourceWebsocketID = getSourceWebsocketID();
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: action.optionResponse,
-            replyId: messageId,
+            message: messageText,
+            ...(sourceWebsocketID ? { sourceWebsocketID } : {}),
           }),
         });
 
@@ -223,7 +205,55 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId],
+    [featureId, getSourceWebsocketID],
+  );
+
+  const handleArtifactAction = useCallback(
+    async (messageId: string, action: { optionResponse: string }) => {
+      const newMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: action.optionResponse,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+        replyId: messageId,
+      });
+
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+      setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+
+      try {
+        const sourceWebsocketID = getSourceWebsocketID();
+        const res = await fetch(`/api/features/${featureId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: action.optionResponse,
+            replyId: messageId,
+            ...(sourceWebsocketID ? { sourceWebsocketID } : {}),
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
+          );
+        } else {
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+          );
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Error sending message:", error);
+        setMessages((msgs) =>
+          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
+        );
+        setIsLoading(false);
+      }
+    },
+    [featureId, getSourceWebsocketID],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
