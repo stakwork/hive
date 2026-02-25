@@ -36,7 +36,7 @@ jobs:
         id: slot
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          SLOT=$(( PR_NUMBER % 3 + 1 ))
+          SLOT=$(( PR_NUMBER % 10 + 1 ))
           echo "slot=$SLOT" >> $GITHUB_OUTPUT
           echo "preview_branch=preview-$SLOT" >> $GITHUB_OUTPUT
           echo "preview_url=hive-preview-$SLOT.sphinx.chat" >> $GITHUB_OUTPUT
