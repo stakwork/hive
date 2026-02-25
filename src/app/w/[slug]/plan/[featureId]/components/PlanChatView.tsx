@@ -7,7 +7,6 @@ import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePushe
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import {
   ChatMessage,
   ChatRole,
@@ -210,11 +209,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {collaborators.length > 0 && (
-        <div className="flex items-center justify-end px-4 py-2 border-b">
-          <CollaboratorAvatars collaborators={collaborators} />
-        </div>
-      )}
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
@@ -223,6 +217,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               onSend={sendMessage}
               onArtifactAction={handleArtifactAction}
               inputDisabled={inputDisabled}
+              collaborators={collaborators}
               isLoading={isLoading}
               workflowStatus={workflowStatus}
               taskTitle={featureTitle}

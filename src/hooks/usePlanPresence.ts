@@ -1,22 +1,12 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getPusherClient, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
-import type { Channel } from "pusher-js";
 
-// Generate a consistent color for a user based on their ID
 function generateUserColor(userId: string): string {
   const colors = [
-    "#FF6B6B", // Red
-    "#4ECDC4", // Teal
-    "#45B7D1", // Blue
-    "#96CEB4", // Green
-    "#FFEAA7", // Yellow
-    "#DFE6E9", // Gray
-    "#74B9FF", // Light Blue
-    "#A29BFE", // Purple
-    "#FD79A8", // Pink
-    "#FDCB6E", // Orange
+    "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+    "#DFE6E9", "#74B9FF", "#A29BFE", "#FD79A8", "#FDCB6E",
   ];
 
   let hash = 0;
@@ -38,109 +28,95 @@ interface UsePlanPresenceReturn {
 /**
  * Hook to manage real-time presence for plan collaboration.
  * Tracks who is currently viewing the same plan and broadcasts join/leave events.
+ *
+ * Initial sync: when we see another user join, we re-broadcast our own join
+ * so they learn about us (they may have joined after we did).
+ *
+ * Leave: uses navigator.sendBeacon so the request survives unmount/tab close.
  */
 export function usePlanPresence({
   featureId,
 }: UsePlanPresenceParams): UsePlanPresenceReturn {
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
-  const channelRef = useRef<Channel | null>(null);
   const hasSentJoin = useRef(false);
-
-  // Generate stable senderId and color from session
-  const senderId = session?.user?.id || "";
-  const senderColor = generateUserColor(senderId);
-
-  // Send join notification
-  const sendJoinNotification = useCallback(async () => {
-    if (!session?.user || hasSentJoin.current) return;
-
-    try {
-      const user: CollaboratorInfo = {
-        odinguserId: session.user.id,
-        name: session.user.name || "Anonymous",
-        image: session.user.image || null,
-        color: senderColor,
-        joinedAt: Date.now(),
-      };
-
-      await fetch(`/api/features/${featureId}/presence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "join", user }),
-      });
-
-      hasSentJoin.current = true;
-    } catch (error) {
-      console.error("Error sending join notification:", error);
-    }
-  }, [featureId, session, senderColor]);
-
-  // Send leave notification
-  const sendLeaveNotification = useCallback(async () => {
-    if (!session?.user) return;
-
-    try {
-      await fetch(`/api/features/${featureId}/presence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "leave" }),
-      });
-    } catch (error) {
-      console.error("Error sending leave notification:", error);
-    }
-  }, [featureId, session]);
 
   useEffect(() => {
     if (!session?.user) return;
 
+    const userId = session.user.id;
+    const userColor = generateUserColor(userId);
+
+    const buildUserPayload = (): CollaboratorInfo => ({
+      odinguserId: userId,
+      name: session.user.name || "Anonymous",
+      image: session.user.image || null,
+      color: userColor,
+      joinedAt: Date.now(),
+    });
+
+    const presenceUrl = `/api/features/${featureId}/presence`;
+
+    const sendJoin = () => {
+      if (hasSentJoin.current) return;
+      fetch(presenceUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+      }).catch((err) => console.error("Error sending join notification:", err));
+      hasSentJoin.current = true;
+    };
+
     const pusherClient = getPusherClient();
     const channelName = getFeatureChannelName(featureId);
     const channel = pusherClient.subscribe(channelName);
-    channelRef.current = channel;
 
-    // Handle user join
     const handleUserJoin = (data: { user: CollaboratorInfo }) => {
+      if (data.user.odinguserId === userId) return;
+
       setCollaborators((prev) => {
-        // Deduplicate by odinguserId
         const exists = prev.some((c) => c.odinguserId === data.user.odinguserId);
         if (exists) return prev;
         return [...prev, data.user];
       });
+
+      if (hasSentJoin.current) {
+        fetch(presenceUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+        }).catch((err) => console.error("Error re-broadcasting join:", err));
+      }
     };
 
-    // Handle user leave
     const handleUserLeave = (data: { userId: string }) => {
       setCollaborators((prev) =>
         prev.filter((c) => c.odinguserId !== data.userId)
       );
     };
 
-    // Bind events
     channel.bind(PUSHER_EVENTS.PLAN_USER_JOIN, handleUserJoin);
     channel.bind(PUSHER_EVENTS.PLAN_USER_LEAVE, handleUserLeave);
 
-    // Send join notification
-    sendJoinNotification();
+    sendJoin();
 
-    // Cleanup on unmount
+    const sendLeaveBeacon = () => {
+      navigator.sendBeacon(
+        presenceUrl,
+        new Blob([JSON.stringify({ type: "leave" })], { type: "application/json" }),
+      );
+    };
+
+    window.addEventListener("beforeunload", sendLeaveBeacon);
+
     return () => {
-      if (channelRef.current) {
-        channelRef.current.unbind_all();
-        pusherClient.unsubscribe(channelName);
-        channelRef.current = null;
-      }
-      sendLeaveNotification();
+      window.removeEventListener("beforeunload", sendLeaveBeacon);
+      channel.unbind_all();
+      pusherClient.unsubscribe(channelName);
+      sendLeaveBeacon();
       hasSentJoin.current = false;
     };
-  }, [featureId, session, sendJoinNotification, sendLeaveNotification]);
+  }, [featureId, session]);
 
-  // Filter out current user from collaborators
-  const otherCollaborators = collaborators.filter(
-    (c) => c.odinguserId !== senderId
-  );
-
-  return {
-    collaborators: otherCollaborators,
-  };
+  return { collaborators };
 }
