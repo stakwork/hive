@@ -341,6 +341,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   onFeatureUpdate={setFeature}
                   controlledTab={activeTab}
                   onControlledTabChange={handleTabChange}
+                  isPlanInProgress={workflowStatus === WorkflowStatus.IN_PROGRESS}
                 />
               </div>
             </ResizablePanel>
