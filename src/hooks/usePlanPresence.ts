@@ -40,6 +40,7 @@ export function usePlanPresence({
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
   const hasSentJoin = useRef(false);
+  const knownUserIds = useRef(new Set<string>());
 
   useEffect(() => {
     if (!session?.user) return;
@@ -71,8 +72,10 @@ export function usePlanPresence({
     const channelName = getFeatureChannelName(featureId);
     const channel = pusherClient.subscribe(channelName);
 
-    const handleUserJoin = (data: { user: CollaboratorInfo }) => {
+    const handleUserJoin = (data: { user: CollaboratorInfo; rebroadcast?: boolean }) => {
       if (data.user.odinguserId === userId) return;
+
+      const isNew = !knownUserIds.current.has(data.user.odinguserId);
 
       setCollaborators((prev) => {
         const exists = prev.some((c) => c.odinguserId === data.user.odinguserId);
@@ -80,16 +83,22 @@ export function usePlanPresence({
         return [...prev, data.user];
       });
 
-      if (hasSentJoin.current) {
+      if (isNew) {
+        knownUserIds.current.add(data.user.odinguserId);
+      }
+
+      // Re-broadcast only for genuinely new users whose join is not itself a rebroadcast
+      if (hasSentJoin.current && isNew && !data.rebroadcast) {
         fetch(presenceUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+          body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
         }).catch((err) => console.error("Error re-broadcasting join:", err));
       }
     };
 
     const handleUserLeave = (data: { userId: string }) => {
+      knownUserIds.current.delete(data.userId);
       setCollaborators((prev) =>
         prev.filter((c) => c.odinguserId !== data.userId)
       );
@@ -115,6 +124,7 @@ export function usePlanPresence({
       pusherClient.unsubscribe(channelName);
       sendLeaveBeacon();
       hasSentJoin.current = false;
+      knownUserIds.current.clear();
     };
   }, [featureId, session]);
 
