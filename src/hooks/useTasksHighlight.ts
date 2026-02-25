@@ -254,19 +254,25 @@ export const useTasksHighlight = ({
   useEffect(() => {
     if (!enabled || !activeWorkspaceSlug) return;
 
-    const pusher = getPusherClient();
-    const channelName = getWorkspaceChannelName(activeWorkspaceSlug);
-    const channel = pusher.subscribe(channelName);
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
 
     const handleRunUpdate = (data: StakworkRunUpdateEvent) => {
       onRunUpdateRef.current?.(data);
       fetchInProgressTasksRef.current();
     };
 
-    channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
+    try {
+      const pusher = getPusherClient();
+      const channelName = getWorkspaceChannelName(activeWorkspaceSlug);
+      channel = pusher.subscribe(channelName);
+      channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
+    } catch {
+      // Pusher env vars may not be configured (e.g. in E2E / test environments)
+      return;
+    }
 
     return () => {
-      channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
+      channel?.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
     };
   }, [enabled, activeWorkspaceSlug]);
 
