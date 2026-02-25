@@ -96,7 +96,7 @@ describe("Workspace API - Integration Tests", () => {
         },
       },
       {
-        name: "rejects duplicate slugs",
+        name: "auto-suffixes duplicate slugs",
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("duplicate");
@@ -110,9 +110,10 @@ describe("Workspace API - Integration Tests", () => {
         requestData: {
           name: "Duplicate Workspace",
         },
-        expectedStatus: 400,
-        assertions: async (response: Response) => {
-          await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 400);
+        expectedStatus: 201,
+        assertions: async (response: Response, context: any) => {
+          const data = await expectSuccess(response, 201);
+          expect(data.workspace.slug).toBe(`${context.slug}-1`);
         },
       },
     ])("$name", async ({ setup, requestData, assertions }) => {
