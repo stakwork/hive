@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
@@ -12,6 +13,7 @@ import {
   ChatRole,
   ChatStatus,
   WorkflowStatus,
+  ArtifactType,
   createChatMessage,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
@@ -22,6 +24,8 @@ function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
 interface PlanChatViewProps {
   featureId: string;
   workspaceSlug: string;
@@ -30,10 +34,48 @@ interface PlanChatViewProps {
 
 export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Resolve initial tab state: URL param → localStorage → default
+  const resolveInitialTab = useCallback((): ArtifactType => {
+    // Priority 1: URL param
+    const tabParam = searchParams?.get("tab");
+    if (tabParam) {
+      const uppercased = tabParam.toUpperCase() as ArtifactType;
+      if (VALID_PLAN_TABS.includes(uppercased)) {
+        return uppercased;
+      }
+    }
+
+    // Priority 2: localStorage (client-side only)
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(`plan_tab_${featureId}`);
+      if (stored && VALID_PLAN_TABS.includes(stored as ArtifactType)) {
+        return stored as ArtifactType;
+      }
+    }
+
+    // Priority 3: default
+    return "PLAN";
+  }, [searchParams, featureId]);
+
+  const [activeTab, setActiveTab] = useState<ArtifactType>(resolveInitialTab);
+
+  const handleTabChange = useCallback(
+    (tab: ArtifactType) => {
+      setActiveTab(tab);
+      router.replace(`?tab=${tab.toLowerCase()}`, { scroll: false });
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`plan_tab_${featureId}`, tab);
+      }
+    },
+    [featureId, router]
+  );
 
   // Real-time presence tracking
   const { collaborators } = usePlanPresence({ featureId });
@@ -297,6 +339,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   feature={feature}
                   featureId={featureId}
                   onFeatureUpdate={setFeature}
+                  controlledTab={activeTab}
+                  onControlledTabChange={handleTabChange}
                 />
               </div>
             </ResizablePanel>
