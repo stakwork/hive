@@ -93,11 +93,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
     }
     if (!finalSlug) {
-      finalSlug = await ensureUniqueSlug(repoName);
+      finalSlug = repoName;
     }
     if (!finalName) {
       finalName = repoName.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
     }
+  }
+
+  // Always ensure slug is unique (handles both reserved slugs and duplicates)
+  if (finalSlug) {
+    finalSlug = await ensureUniqueSlug(finalSlug);
   }
 
   if (!finalName || !finalSlug) {
