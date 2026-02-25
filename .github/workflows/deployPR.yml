@@ -210,7 +210,8 @@ jobs:
             --prebuilt \
             --scope=${{ secrets.VERCEL_ORG_ID }} \
             --token=${{ secrets.VERCEL_TOKEN }} \
-            --env "DATABASE_URL=$DATABASE_URL" \
+          --env "DATABASE_URL=$DATABASE_URL" \
+          --env "PREVIEW_LINK_BRANCH=${{ github.event.pull_request.head.ref }}" \
             --yes
           )
 
