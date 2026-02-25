@@ -148,8 +148,8 @@ export default function TaskChatPage() {
   });
   const hasReceivedContentRef = useRef(false);
 
-  // Handle incoming SSE messages
-  const handleSSEMessage = useCallback((message: ChatMessage) => {
+  // Deduplicate: the sender already has this message locally after the temp-to-real ID swap
+  const handleNewMessage = useCallback((message: ChatMessage) => {
     setMessages((prev) => {
       const exists = prev.some((m) => m.id === message.id);
       if (exists) return prev;
@@ -249,7 +249,7 @@ export default function TaskChatPage() {
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
-    onMessage: handleSSEMessage,
+    onMessage: handleNewMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
     onPRStatusChange: handlePRStatusChange,
@@ -1294,9 +1294,11 @@ export default function TaskChatPage() {
           );
         }
 
-        // Swap temp ID for real DB ID so Pusher dedup works, but keep same object shape to avoid re-animation
+        // Replace temp ID with real DB ID so Pusher dedup can match
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, id: result.message.id, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) =>
+            msg.id === newMessage.id ? { ...msg, id: result.message.id, status: ChatStatus.SENT } : msg,
+          ),
         );
       } catch (error) {
         console.error("Error sending message:", error);

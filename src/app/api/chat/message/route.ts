@@ -282,17 +282,11 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     } as ChatMessage;
 
-    console.log("clientMessage", clientMessage);
-
-    // Broadcast user message to Pusher
+    // Broadcast user message to other connected clients
     try {
-      await pusherServer.trigger(
-        getTaskChannelName(taskId),
-        PUSHER_EVENTS.NEW_MESSAGE,
-        chatMessage.id
-      );
+      await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
     } catch (error) {
-      console.error('Error broadcasting user message to Pusher (task):', error);
+      console.error("Error broadcasting user message to Pusher (task):", error);
     }
 
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
