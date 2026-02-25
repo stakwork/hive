@@ -717,7 +717,9 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
     const type = BG_COLOR_TO_TYPE[bg] ?? "service";
     const compId = (rect.id as string);
     rectIdMap.set(compId, compId);
-    components.push({ id: compId, name, type });
+    const strokeColor = (rect.strokeColor as string) || undefined;
+    const bgColor = (rect.backgroundColor as string) || undefined;
+    components.push({ id: compId, name, type, color: strokeColor, backgroundColor: bgColor });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -784,7 +786,12 @@ export function serializeDiagramContext(
 
   lines.push("Components:");
   for (const c of parsed.components) {
-    lines.push(`- "${c.name}" (${c.type})`);
+    const colors = [
+      c.color ? `color: ${c.color}` : "",
+      c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
+    ].filter(Boolean).join(", ");
+    const colorInfo = colors ? `, ${colors}` : "";
+    lines.push(`- "${c.name}" (${c.type}${colorInfo})`);
   }
 
   if (parsed.connections.length > 0) {
