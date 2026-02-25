@@ -30,6 +30,12 @@ vi.mock("@/hooks/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
+vi.mock("@/hooks/usePlanPresence", () => ({
+  usePlanPresence: () => ({
+    collaborators: [],
+  }),
+}));
+
 vi.mock("@/components/ui/resizable", () => ({
   ResizablePanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -56,40 +62,15 @@ describe("PlanChatView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
-
-    // Mock successful message fetch
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        messages: [
-          {
-            id: "test-message-id",
-            message: "What is your target audience?",
-            role: ChatRole.ASSISTANT,
-            status: ChatStatus.SENT,
-            createdAt: new Date().toISOString(),
-            artifacts: [
-              {
-                id: "artifact-1",
-                type: "CLARIFYING_QUESTIONS",
-                content: { questions: ["Q1", "Q2"] },
-              },
-            ],
-          },
-        ],
-      }),
-    });
   });
 
   it("should pass replyId when handleArtifactAction is called", async () => {
     mockFetch
       .mockResolvedValueOnce({
-        // First call: load messages
         ok: true,
-        json: async () => ({ messages: [] }),
+        json: async () => ({ data: [] }),
       })
       .mockResolvedValueOnce({
-        // Second call: send message with replyId
         ok: true,
         json: async () => ({
           message: {
@@ -105,16 +86,13 @@ describe("PlanChatView", () => {
 
     render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
-    // Wait for initial load
     await waitFor(() => {
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
     });
 
-    // Trigger artifact action
     const submitButton = screen.getByTestId("artifact-action-button");
     await userEvent.click(submitButton);
 
-    // Verify fetch was called with replyId
     await waitFor(() => {
       const sendMessageCall = mockFetch.mock.calls.find(
         (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
@@ -129,78 +107,4 @@ describe("PlanChatView", () => {
     });
   });
 
-  it("should set replyId on optimistic user message", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        // First call: load messages
-        ok: true,
-        json: async () => ({ messages: [] }),
-      })
-      .mockResolvedValueOnce({
-        // Second call: send message
-        ok: true,
-        json: async () => ({
-          message: {
-            id: "new-message-id",
-            message: "Test answer",
-            role: ChatRole.USER,
-            status: ChatStatus.SENT,
-            replyId: "test-message-id",
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
-
-    render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
-    });
-
-    const submitButton = screen.getByTestId("artifact-action-button");
-    await userEvent.click(submitButton);
-
-    // The component should create an optimistic message with replyId
-    // This is verified indirectly by checking the POST body includes replyId
-    await waitFor(() => {
-      const sendMessageCall = mockFetch.mock.calls.find(
-        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
-      );
-      expect(sendMessageCall).toBeDefined();
-    });
-  });
-
-  it("should not include replyId when sending regular messages", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ messages: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          message: {
-            id: "new-message-id",
-            message: "Regular message",
-            role: ChatRole.USER,
-            status: ChatStatus.SENT,
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
-
-    const { rerender } = render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
-    });
-
-    // Mock a regular message send (not via artifact action)
-    // This would be triggered by ChatArea's onSend, which calls handleSend
-    // Since we can't easily trigger it in this test, we verify the fetch pattern
-    
-    // When a regular message is sent (no replyId), the body should not contain replyId
-    // This is the default behavior when sendMessage is called without options
-    expect(true).toBe(true); // This test validates the implementation pattern
-  });
 });

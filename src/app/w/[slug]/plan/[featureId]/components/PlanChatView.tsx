@@ -122,16 +122,12 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (
-      messageText: string,
-      attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>,
-    ) => {
+    async (messageText: string) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
-        attachments,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -142,10 +138,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: messageText,
-            attachments,
-          }),
+          body: JSON.stringify({ message: messageText }),
         });
 
         if (res.ok) {
@@ -170,15 +163,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId],
   );
 
-  // Separate function for sending reply messages (e.g., from clarifying questions)
-  const sendReplyMessage = useCallback(
-    async (messageText: string, replyId: string) => {
+  const handleArtifactAction = useCallback(
+    async (messageId: string, action: { optionResponse: string }) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
-        message: messageText,
+        message: action.optionResponse,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
-        replyId,
+        replyId: messageId,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -190,8 +182,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: messageText,
-            replyId,
+            message: action.optionResponse,
+            replyId: messageId,
           }),
         });
 
@@ -207,7 +199,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setIsLoading(false);
         }
       } catch (error) {
-        console.error("Error sending reply message:", error);
+        console.error("Error sending message:", error);
         setMessages((msgs) =>
           msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
         );
@@ -215,13 +207,6 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       }
     },
     [featureId],
-  );
-
-  const handleArtifactAction = useCallback(
-    async (messageId: string, action: { optionResponse: string }) => {
-      await sendReplyMessage(action.optionResponse, messageId);
-    },
-    [sendReplyMessage],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);

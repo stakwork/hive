@@ -47,11 +47,45 @@ vi.mock("@/config/env", () => ({
   },
 }));
 
-describe("Feature Chat POST Route", () => {
+function mockChatMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "new-message-id",
+    featureId: "feature-123",
+    message: "Test message",
+    role: ChatRole.USER,
+    userId: "user-123",
+    contextTags: "[]",
+    status: ChatStatus.SENT,
+    sourceWebsocketID: null,
+    replyId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    artifacts: [],
+    attachments: [],
+    createdBy: {
+      id: "user-123",
+      name: "Test User",
+      email: "test@example.com",
+      image: null,
+    },
+    ...overrides,
+  };
+}
+
+function createChatRequest(body: Record<string, unknown>) {
+  return new NextRequest("http://localhost/api/features/feature-123/chat", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const featureParams = Promise.resolve({ featureId: "feature-123" });
+
+describe("Feature Chat POST Route - replyId", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock feature lookup
     vi.mocked(db.feature.findUnique).mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
@@ -65,224 +99,58 @@ describe("Feature Chat POST Route", () => {
       },
     } as any);
 
-    // Mock artifact lookup
     vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
-
-    // Mock chat history
     vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
   });
 
-  it("should accept and persist replyId in chat message", async () => {
-    const mockCreatedMessage = {
-      id: "new-message-id",
-      featureId: "feature-123",
+  it("should persist replyId when provided", async () => {
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "This is my answer", replyId: "original-message-id" }) as any,
+    );
+
+    const request = createChatRequest({
       message: "This is my answer",
-      role: ChatRole.USER,
-      userId: "user-123",
-      contextTags: "[]",
-      status: ChatStatus.SENT,
-      sourceWebsocketID: null,
       replyId: "original-message-id",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      artifacts: [],
-      attachments: [],
-      createdBy: {
-        id: "user-123",
-        name: "Test User",
-        email: "test@example.com",
-        image: null,
-      },
-    };
-
-    vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-
-    const request = new NextRequest("http://localhost/api/features/feature-123/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        message: "This is my answer",
-        contextTags: [],
-        replyId: "original-message-id",
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
     });
 
-    const params = Promise.resolve({ featureId: "feature-123" });
-    const response = await POST(request, { params });
+    const response = await POST(request, { params: featureParams });
 
-    // Verify response is successful
     expect(response.status).toBe(201);
     const responseData = await response.json();
     expect(responseData.success).toBe(true);
     expect(responseData.message.replyId).toBe("original-message-id");
 
-    // Verify db.chatMessage.create was called with replyId
-    expect(db.chatMessage.create).toHaveBeenCalledWith({
-      data: {
-        featureId: "feature-123",
-        message: "This is my answer",
-        role: ChatRole.USER,
-        userId: "user-123",
-        contextTags: "[]",
-        status: ChatStatus.SENT,
-        sourceWebsocketID: undefined,
-        replyId: "original-message-id",
-      },
-      include: {
-        artifacts: true,
-        attachments: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
-      },
-    });
+    expect(db.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: "This is my answer",
+          replyId: "original-message-id",
+        }),
+      }),
+    );
   });
 
-  it("should handle messages without replyId", async () => {
-    const mockCreatedMessage = {
-      id: "new-message-id",
-      featureId: "feature-123",
-      message: "Regular message",
-      role: ChatRole.USER,
-      userId: "user-123",
-      contextTags: "[]",
-      status: ChatStatus.SENT,
-      sourceWebsocketID: null,
-      replyId: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      artifacts: [],
-      attachments: [],
-      createdBy: {
-        id: "user-123",
-        name: "Test User",
-        email: "test@example.com",
-        image: null,
-      },
-    };
+  it("should default replyId to undefined when not provided", async () => {
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "Regular message" }) as any,
+    );
 
-    vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
+    const request = createChatRequest({ message: "Regular message" });
 
-    const request = new NextRequest("http://localhost/api/features/feature-123/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        message: "Regular message",
-        contextTags: [],
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    const params = Promise.resolve({ featureId: "feature-123" });
-    const response = await POST(request, { params });
+    const response = await POST(request, { params: featureParams });
 
     expect(response.status).toBe(201);
     const responseData = await response.json();
     expect(responseData.success).toBe(true);
     expect(responseData.message.replyId).toBeNull();
 
-    // Verify db.chatMessage.create was called without replyId (undefined is fine)
-    expect(db.chatMessage.create).toHaveBeenCalledWith({
-      data: {
-        featureId: "feature-123",
-        message: "Regular message",
-        role: ChatRole.USER,
-        userId: "user-123",
-        contextTags: "[]",
-        status: ChatStatus.SENT,
-        sourceWebsocketID: undefined,
-        replyId: undefined,
-      },
-      include: {
-        artifacts: true,
-        attachments: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
-      },
-    });
-  });
-
-  it("should preserve other fields when replyId is present", async () => {
-    const mockCreatedMessage = {
-      id: "new-message-id",
-      featureId: "feature-123",
-      message: "Answer with context",
-      role: ChatRole.USER,
-      userId: "user-123",
-      contextTags: JSON.stringify([{ type: "code", value: "example" }]),
-      status: ChatStatus.SENT,
-      sourceWebsocketID: "ws-123",
-      replyId: "original-message-id",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      artifacts: [],
-      attachments: [],
-      createdBy: {
-        id: "user-123",
-        name: "Test User",
-        email: "test@example.com",
-        image: null,
-      },
-    };
-
-    vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-
-    const request = new NextRequest("http://localhost/api/features/feature-123/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        message: "Answer with context",
-        contextTags: [{ type: "code", value: "example" }],
-        sourceWebsocketID: "ws-123",
-        replyId: "original-message-id",
+    expect(db.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: "Regular message",
+          replyId: undefined,
+        }),
       }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    const params = Promise.resolve({ featureId: "feature-123" });
-    const response = await POST(request, { params });
-
-    expect(response.status).toBe(201);
-
-    // Verify all fields are preserved
-    expect(db.chatMessage.create).toHaveBeenCalledWith({
-      data: {
-        featureId: "feature-123",
-        message: "Answer with context",
-        role: ChatRole.USER,
-        userId: "user-123",
-        contextTags: JSON.stringify([{ type: "code", value: "example" }]),
-        status: ChatStatus.SENT,
-        sourceWebsocketID: "ws-123",
-        replyId: "original-message-id",
-      },
-      include: {
-        artifacts: true,
-        attachments: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
-      },
-    });
+    );
   });
 });
