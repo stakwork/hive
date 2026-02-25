@@ -42,16 +42,22 @@ export function usePlanPresence({
   const hasSentJoin = useRef(false);
   const knownUserIds = useRef(new Set<string>());
 
-  useEffect(() => {
-    if (!session?.user) return;
+  // Stable ref for session so the effect doesn't re-run on token refreshes
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
 
-    const userId = session.user.id;
+  // Derive a stable primitive for the dependency array
+  const userId = session?.user?.id;
+
+  useEffect(() => {
+    if (!userId || !sessionRef.current?.user) return;
+
     const userColor = generateUserColor(userId);
 
     const buildUserPayload = (): CollaboratorInfo => ({
       odinguserId: userId,
-      name: session.user.name || "Anonymous",
-      image: session.user.image || null,
+      name: sessionRef.current?.user?.name || "Anonymous",
+      image: sessionRef.current?.user?.image || null,
       color: userColor,
       joinedAt: Date.now(),
     });
@@ -126,7 +132,7 @@ export function usePlanPresence({
       hasSentJoin.current = false;
       knownUserIds.current.clear();
     };
-  }, [featureId, session]);
+  }, [featureId, userId]);
 
   return { collaborators };
 }
