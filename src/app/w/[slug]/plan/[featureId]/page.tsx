@@ -111,6 +111,13 @@ function FeatureDetailClassicView() {
     fetchFn: fetchFeature,
   });
 
+  // Redirect to plan list if feature not found
+  useEffect(() => {
+    if (!loading && (error || !feature)) {
+      router.push(getBackPath());
+    }
+  }, [loading, error, feature, router, getBackPath]);
+
   // Fetch pending StakworkRuns for this feature (for tab indicators)
   const fetchPendingRuns = useCallback(async () => {
     if (!workspaceId || !featureId) return;
@@ -761,23 +768,9 @@ function FeatureDetailClassicView() {
     );
   }
 
+  // Redirecting to list page (handled by useEffect above)
   if (error || !feature) {
-    return (
-      <div className="space-y-6">
-        <Button variant="ghost" size="sm" onClick={() => router.push(getBackPath())}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-red-600">Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">{error || "Feature not found"}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return null;
   }
 
   return (

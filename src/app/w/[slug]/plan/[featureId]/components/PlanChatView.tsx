@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
@@ -29,6 +30,7 @@ interface PlanChatViewProps {
 }
 
 export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
+  const router = useRouter();
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,10 +51,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    loading,
+    error,
   } = useDetailResource<FeatureDetail>({
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Redirect to plan list if feature not found
+  useEffect(() => {
+    if (!loading && error) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    }
+  }, [loading, error, router, workspaceSlug]);
 
   const refetchFeature = useCallback(async () => {
     try {

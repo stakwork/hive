@@ -6,6 +6,14 @@ import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanCha
 import { ChatRole, ChatStatus } from "@/lib/chat";
 
 // Mock dependencies
+const mockPush = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     workspace: { id: "workspace-1", slug: "test-workspace" },
@@ -17,13 +25,15 @@ vi.mock("@/hooks/usePusherConnection", () => ({
   usePusherConnection: vi.fn(),
 }));
 
+const mockUseDetailResource = vi.fn(() => ({
+  data: null,
+  setData: vi.fn(),
+  loading: false,
+  error: null,
+}));
+
 vi.mock("@/hooks/useDetailResource", () => ({
-  useDetailResource: () => ({
-    data: null,
-    setData: vi.fn(),
-    isLoading: false,
-    error: null,
-  }),
+  useDetailResource: () => mockUseDetailResource(),
 }));
 
 vi.mock("@/hooks/useIsMobile", () => ({
@@ -104,6 +114,27 @@ describe("PlanChatView", () => {
         message: "Test answer",
         replyId: "test-message-id",
       });
+    });
+  });
+
+  it("should redirect to plan list when feature not found", async () => {
+    // Mock useDetailResource to return error state
+    mockUseDetailResource.mockReturnValueOnce({
+      data: null,
+      setData: vi.fn(),
+      loading: false,
+      error: "Not found",
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [] }),
+    });
+
+    render(<PlanChatView featureId="bad-id" workspaceSlug="test-workspace" workspaceId="ws-1" />);
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/plan");
     });
   });
 

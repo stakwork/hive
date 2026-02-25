@@ -270,6 +270,11 @@ export default function TaskChatPage() {
       setIsLoading(true);
       const response = await fetch(`/api/tasks/${taskId}/messages`);
 
+      if (response.status === 404) {
+        router.push(`/w/${slug}/tasks`);
+        return; // early return — no toast, no further processing
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to load messages: ${response.statusText}`);
       }
