@@ -19,7 +19,7 @@ export interface ParsedComponent {
   name: string;
   type: "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
   color?: string | null;
-  strokeColor?: string | null;
+  backgroundColor?: string | null;
 }
 
 export interface ParsedConnection {
@@ -451,8 +451,8 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const textId = generateId();
   const timestamp = Date.now();
   const defaults = getComponentColors(component.type);
-  const strokeColor = component.strokeColor ?? defaults.strokeColor;
-  const backgroundColor = component.color ?? defaults.backgroundColor;
+  const strokeColor = component.color ?? defaults.strokeColor;
+  const backgroundColor = component.backgroundColor ?? defaults.backgroundColor;
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, 16);
 
@@ -717,9 +717,9 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
     const type = BG_COLOR_TO_TYPE[bg] ?? "service";
     const compId = (rect.id as string);
     rectIdMap.set(compId, compId);
-    const color = (rect.backgroundColor as string) || undefined;
     const strokeColor = (rect.strokeColor as string) || undefined;
-    components.push({ id: compId, name, type, color, strokeColor });
+    const bgColor = (rect.backgroundColor as string) || undefined;
+    components.push({ id: compId, name, type, color: strokeColor, backgroundColor: bgColor });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -788,7 +788,7 @@ export function serializeDiagramContext(
   for (const c of parsed.components) {
     const colors = [
       c.color ? `color: ${c.color}` : "",
-      c.strokeColor ? `strokeColor: ${c.strokeColor}` : "",
+      c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
     ].filter(Boolean).join(", ");
     const colorInfo = colors ? `, ${colors}` : "";
     lines.push(`- "${c.name}" (${c.type}${colorInfo})`);
