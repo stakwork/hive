@@ -282,14 +282,9 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     } as ChatMessage;
 
-    // Broadcast user message to other connected clients (exclude sender to prevent duplicates)
+    // Broadcast user message to other connected clients
     try {
-      await pusherServer.trigger(
-        getTaskChannelName(taskId),
-        PUSHER_EVENTS.NEW_MESSAGE,
-        chatMessage.id,
-        sourceWebsocketID ? { socket_id: sourceWebsocketID } : {},
-      );
+      await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
     } catch (error) {
       console.error("Error broadcasting user message to Pusher (task):", error);
     }

@@ -16,7 +16,6 @@ import {
   ArtifactType,
   createChatMessage,
 } from "@/lib/chat";
-import { getPusherClient } from "@/lib/pusher";
 import { PlanSection, PlanData } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
 
@@ -197,7 +196,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, sourceWebsocketID: getPusherClient().connection.socket_id }),
+          body: JSON.stringify({ message: messageText }),
         });
 
         if (res.ok) {

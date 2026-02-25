@@ -215,14 +215,9 @@ export async function POST(
       })) as Artifact[],
     };
 
-    // Broadcast user message to other connected clients (exclude sender to prevent duplicates)
+    // Broadcast user message to other connected clients
     try {
-      await pusherServer.trigger(
-        getFeatureChannelName(featureId),
-        PUSHER_EVENTS.NEW_MESSAGE,
-        chatMessage.id,
-        sourceWebsocketID ? { socket_id: sourceWebsocketID } : {},
-      );
+      await pusherServer.trigger(getFeatureChannelName(featureId), PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
     } catch (error) {
       console.error("Error broadcasting user message to Pusher (feature):", error);
     }
