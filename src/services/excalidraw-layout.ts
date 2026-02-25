@@ -172,6 +172,65 @@ const LAYER_PRIORITY: Record<string, number> = {
   external: 20,
 };
 
+// --- Layer constraint validation ---
+
+/**
+ * Validate layer constraints against graph edges to prevent ELK crashes.
+ * FIRST is invalid if a node has incoming edges from non-FIRST nodes.
+ * LAST is invalid if a node has outgoing edges to non-LAST nodes.
+ */
+function getValidLayerConstraints(diagram: ParsedDiagram): Map<string, string> {
+  const typeById = new Map<string, string>();
+  for (const c of diagram.components) {
+    typeById.set(c.id, c.type);
+  }
+
+  // Build incoming/outgoing edge maps
+  const incoming = new Map<string, Set<string>>(); // nodeId → set of source nodeIds
+  const outgoing = new Map<string, Set<string>>(); // nodeId → set of target nodeIds
+  for (const conn of diagram.connections) {
+    if (!incoming.has(conn.to)) incoming.set(conn.to, new Set());
+    incoming.get(conn.to)!.add(conn.from);
+    if (!outgoing.has(conn.from)) outgoing.set(conn.from, new Set());
+    outgoing.get(conn.from)!.add(conn.to);
+  }
+
+  const result = new Map<string, string>();
+  for (const c of diagram.components) {
+    const constraint = LAYER_ORDER[c.type] || "";
+    if (constraint === "FIRST") {
+      // Invalid if any incoming edge comes from a non-FIRST node
+      const sources = incoming.get(c.id);
+      if (sources) {
+        for (const srcId of sources) {
+          const srcType = typeById.get(srcId);
+          if (!srcType || LAYER_ORDER[srcType] !== "FIRST") {
+            result.set(c.id, "");
+            break;
+          }
+        }
+      }
+    } else if (constraint === "LAST") {
+      // Invalid if any outgoing edge goes to a non-LAST node
+      const targets = outgoing.get(c.id);
+      if (targets) {
+        for (const tgtId of targets) {
+          const tgtType = typeById.get(tgtId);
+          if (!tgtType || LAYER_ORDER[tgtType] !== "LAST") {
+            result.set(c.id, "");
+            break;
+          }
+        }
+      }
+    }
+    if (!result.has(c.id)) {
+      result.set(c.id, constraint);
+    }
+  }
+
+  return result;
+}
+
 // --- ELK layout ---
 
 function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
@@ -236,6 +295,7 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
   }
 
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
+  const validConstraints = useLayerConstraints ? getValidLayerConstraints(diagram) : null;
 
   // Build per-node port lists so multiple edges don't overlap.
   // Each connection endpoint gets its own port on the node.
@@ -278,8 +338,8 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
         "elk.portConstraints": "FIXED_SIDE",
       };
 
-      if (useLayerConstraints) {
-        const constraint = LAYER_ORDER[c.type] || "";
+      if (useLayerConstraints && validConstraints) {
+        const constraint = validConstraints.get(c.id) || "";
         const priority = LAYER_PRIORITY[c.type] ?? 50;
         layoutOptions["elk.layered.priority.direction"] = String(priority);
         if (constraint) {
