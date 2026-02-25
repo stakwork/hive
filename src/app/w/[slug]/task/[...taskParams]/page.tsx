@@ -1294,10 +1294,9 @@ export default function TaskChatPage() {
           );
         }
 
-        // Update the temporary message status instead of replacing entirely
-        // This prevents re-animation since React sees it as the same message
+        // Swap temp ID for real DB ID so Pusher dedup works, but keep same object shape to avoid re-animation
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, id: result.message.id, status: ChatStatus.SENT } : msg)),
         );
       } catch (error) {
         console.error("Error sending message:", error);
