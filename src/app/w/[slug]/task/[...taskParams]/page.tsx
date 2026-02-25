@@ -150,7 +150,11 @@ export default function TaskChatPage() {
 
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      const exists = prev.some((m) => m.id === message.id);
+      if (exists) return prev;
+      return [...prev, message];
+    });
 
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts

@@ -8,7 +8,6 @@ import { callStakworkAPI } from "@/services/task-workflow";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
