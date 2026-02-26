@@ -40,6 +40,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const activeTab = isControlled ? controlledTab : internalTab;
   const setActiveTab = isControlled && onControlledTabChange ? onControlledTabChange : setInternalTab;
   const [isApiCalling, setIsApiCalling] = useState(false);
+  const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
 
   const handlePlanSave = useCallback(async (updates: Record<string, unknown>) => {
     if (!featureId) return;
@@ -121,7 +122,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
   const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
-  const showTasksTab = hasTasks || isGenerating;
+  const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
 
   // Clear the API-calling flag once the run status has taken over
   useEffect(() => {
@@ -130,10 +131,18 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     }
   }, [isApiCalling, isRunInProgress]);
 
+  // Reset the initiated generation flag when generation is definitively done
+  useEffect(() => {
+    if (hasTasks || isRunFailed) {
+      setHasInitiatedGeneration(false);
+    }
+  }, [hasTasks, isRunFailed]);
+
   const handleGenerateTasks = useCallback(async () => {
     if (!featureId || !workspaceId || isGenerating) return;
 
     setIsApiCalling(true);
+    setHasInitiatedGeneration(true);
     
     // Switch to TASKS tab in both controlled and uncontrolled modes
     if (isControlled && onControlledTabChange) {
@@ -222,15 +231,17 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   }, [planData, hasFeature, showTasksTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
+  // Guard: don't reset during active generation to prevent TASKS tab from disappearing
   useEffect(() => {
     if (availableTabs.length > 0 && (!activeTab || !availableTabs.includes(activeTab))) {
+      if (hasInitiatedGeneration) return; // Prevent fallback during generation handoff
       if (isControlled && onControlledTabChange) {
         onControlledTabChange(availableTabs[0]);
       } else {
         setInternalTab(availableTabs[0]);
       }
     }
-  }, [availableTabs, activeTab, isControlled, onControlledTabChange]);
+  }, [availableTabs, activeTab, isControlled, onControlledTabChange, hasInitiatedGeneration]);
 
   if (availableTabs.length === 0) {
     return null;
@@ -304,6 +315,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
                   feature={feature!}
                   onUpdate={onFeatureUpdate!}
                   hideControls
+                  isGenerating={isGenerating}
                 />
               </div>
             </div>
