@@ -84,7 +84,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [copiedNotation, setCopiedNotation] = useState(false);
@@ -130,6 +130,21 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       params.set("prompt", promptId.toString());
     } else {
       params.delete("prompt");
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [isFullpage, pathname, router, searchParams]);
+
+  // Navigate to a specific page and update URL
+  const goToPage = useCallback((n: number) => {
+    setPage(n);
+    if (!isFullpage) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (n <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", n.toString());
     }
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
@@ -249,7 +264,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setPage(1);
+    goToPage(1);
   };
 
   // Update URL when debounced search changes
@@ -352,7 +367,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         handleBackToList();
         // Refresh the list to show the new prompt
         fetchPrompts(1);
-        setPage(1);
+        goToPage(1);
       } else {
         throw new Error("Failed to create prompt");
       }
@@ -1054,7 +1069,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage(Math.max(1, page - 1))}
               disabled={page === 1 || isLoading}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1062,7 +1077,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage(Math.min(totalPages, page + 1))}
               disabled={page === totalPages || isLoading}
             >
               <ChevronRight className="h-4 w-4" />
