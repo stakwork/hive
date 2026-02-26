@@ -1321,9 +1321,17 @@ export default function TaskChatPage() {
         // This allows Pusher deduplication to work correctly
         if (result.message) {
           setMessages((msgs) =>
-            msgs.map((msg) =>
-              msg.id === newMessage.id ? { ...result.message, status: ChatStatus.SENT } : msg
-            )
+            msgs.map((msg) => {
+              if (msg.id !== newMessage.id) return msg;
+              // Preserve client-side ephemeral artifacts (e.g. WORKFLOW) when replacing with server response
+              const serverIds = new Set((result.message.artifacts || []).map((a: Artifact) => a.id));
+              const ephemeral = (msg.artifacts || []).filter((a: Artifact) => !serverIds.has(a.id));
+              return {
+                ...result.message,
+                status: ChatStatus.SENT,
+                artifacts: [...(result.message.artifacts || []), ...ephemeral],
+              };
+            })
           );
         } else {
           // Fallback: just update status if message not returned
