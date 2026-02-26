@@ -515,6 +515,50 @@ describe("callStakworkAPI", () => {
     });
   });
 
+  describe("Environment Variable Injection", () => {
+    test("includes model when PLAN_MODE_MODEL is set", async () => {
+      const originalModel = process.env.PLAN_MODE_MODEL;
+      process.env.PLAN_MODE_MODEL = "claude-3-5-sonnet";
+
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams({ mode: "plan_mode" }));
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1]?.body as string);
+
+      expect(body.workflow_params.set_var.attributes.vars.model).toBe(
+        "claude-3-5-sonnet"
+      );
+
+      // Restore
+      if (originalModel === undefined) {
+        delete process.env.PLAN_MODE_MODEL;
+      } else {
+        process.env.PLAN_MODE_MODEL = originalModel;
+      }
+    });
+
+    test("does not include model when PLAN_MODE_MODEL is unset", async () => {
+      const originalModel = process.env.PLAN_MODE_MODEL;
+      delete process.env.PLAN_MODE_MODEL;
+
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams({ mode: "plan_mode" }));
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1]?.body as string);
+
+      expect(body.workflow_params.set_var.attributes.vars.model).toBeUndefined();
+
+      // Restore
+      if (originalModel !== undefined) {
+        process.env.PLAN_MODE_MODEL = originalModel;
+      }
+    });
+  });
+
   describe("Edge Cases", () => {
     test("handles empty contextTags array", async () => {
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
