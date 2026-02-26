@@ -345,6 +345,13 @@ export async function triggerPodRepair(
     .filter((r) => r.triggerPodRepair === false)
     .map((r) => r.name);
 
+  // Augment message with exclusion instructions
+  let enhancedMessage = message || "";
+  if (excludedRepos.length > 0) {
+    const exclusionNote = `\n\nIMPORTANT: DO NOT try to make a service from these repos: ${excludedRepos.join(", ")}. These repositories should not be configured as services in the pod.`;
+    enhancedMessage = enhancedMessage ? `${enhancedMessage}${exclusionNote}` : exclusionNote.trim();
+  }
+
   // Create StakworkRun record
   const run = await db.stakworkRun.create({
     data: {
@@ -383,7 +390,7 @@ export async function triggerPodRepair(
               attemptNumber: history.length + 1,
               history,
               failedServices,
-              message: message || null,
+              message: enhancedMessage || null,
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
               containerFiles: containerConfig?.containerFiles || null,
