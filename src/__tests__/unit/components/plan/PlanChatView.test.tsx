@@ -44,13 +44,22 @@ vi.mock("@/hooks/useWorkspace", () => ({
   }),
 }));
 
+const mockUsePusherConnection = vi.fn();
 vi.mock("@/hooks/usePusherConnection", () => ({
-  usePusherConnection: vi.fn(),
+  usePusherConnection: (config: any) => mockUsePusherConnection(config),
 }));
 
+const mockSetData = vi.fn();
 const mockUseDetailResource = vi.fn(() => ({
-  data: null,
-  setData: vi.fn(),
+  data: {
+    id: "feature-123",
+    title: "Test Feature",
+    brief: null,
+    requirements: null,
+    architecture: null,
+    userStories: [],
+  },
+  setData: mockSetData,
   updateData: vi.fn(),
   loading: false,
   error: null,
@@ -635,4 +644,7 @@ describe("PlanChatView", () => {
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
     });
   });
+
+  // Section Highlights feature is comprehensively tested in sectionHighlights.test.ts
+  // The integration is smoke-tested by ensuring PlanChatView renders without errors
 });
