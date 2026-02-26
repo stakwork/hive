@@ -8,7 +8,7 @@ import { Monitor, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
-import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
+import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
@@ -31,9 +31,10 @@ interface ArtifactsPanelProps {
   onFeatureUpdate?: (feature: FeatureDetail) => void;
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
+  sectionHighlights?: SectionHighlights | null;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange, sectionHighlights }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
@@ -324,6 +325,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
                 savedField={savedField}
                 saving={saving}
                 saved={saved}
+                sectionHighlights={sectionHighlights}
               />
             </div>
           )}
