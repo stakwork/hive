@@ -256,10 +256,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   );
 
   const handleArtifactAction = useCallback(
-    async (messageId: string, action: { optionResponse: string }) => {
+    async (messageId: string, action: { optionResponse: string } | { actionType?: string; optionLabel?: string; optionResponse: string }, _webhook?: string) => {
+      const text = 'optionResponse' in action ? action.optionResponse : '';
       const newMessage = createChatMessage({
         id: generateUniqueId(),
-        message: action.optionResponse,
+        message: text,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
         replyId: messageId,
@@ -342,6 +343,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const featureTitle = feature?.title || null;
 
+  // Check if plan is complete (has tasks)
+  const isPlanComplete = !!(
+    feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0
+  );
+
   const inputDisabled =
     isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
 
@@ -374,6 +380,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               isChainVisible={isChainVisible}
               lastLogLine={lastLogLine}
               logs={logs}
+              isPlanComplete={isPlanComplete}
             />
           </div>
         </ResizablePanel>

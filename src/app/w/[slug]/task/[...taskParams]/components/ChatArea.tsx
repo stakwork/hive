@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus, ChatRole } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
@@ -48,6 +48,7 @@ interface ChatAreaProps {
   featureTitle?: string | null;
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
+  isPlanComplete?: boolean;
 }
 
 export function ChatArea({
@@ -78,6 +79,7 @@ export function ChatArea({
   featureTitle,
   collaborators,
   onOpenBountyRequest,
+  isPlanComplete = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,17 @@ export function ChatArea({
 
   // Check if any message has a PULL_REQUEST artifact
   const hasPrArtifact = messages.some((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
+
+  // Identify the last unanswered ASSISTANT message
+  const lastUnansweredAssistantId = useMemo(() => {
+    const assistantMsgs = messages.filter(
+      (m) => !m.replyId && m.role === ChatRole.ASSISTANT
+    );
+    if (!assistantMsgs.length) return null;
+    const last = assistantMsgs[assistantMsgs.length - 1];
+    const hasReply = messages.some((m) => m.replyId === last.id);
+    return hasReply ? null : last.id;
+  }, [messages]);
 
   // Handle scroll events to detect user scrolling
   useEffect(() => {
@@ -148,6 +161,8 @@ export function ChatArea({
       initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
+      data-testid="chat-area"
+      data-is-plan-complete={isPlanComplete.toString()}
     >
       {/* Task Title Header */}
       {taskTitle && (
@@ -251,6 +266,8 @@ export function ChatArea({
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
+                isLatestAwaitingReply={msg.id === lastUnansweredAssistantId && !inputDisabled}
+                isPlanComplete={isPlanComplete}
               />
             );
           })}

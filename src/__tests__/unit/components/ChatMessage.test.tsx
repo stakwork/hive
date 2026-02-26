@@ -851,4 +851,113 @@ describe('ChatMessage', () => {
       expect(screen.queryByText('User One')).not.toBeInTheDocument();
     });
   });
+
+  describe('Quick Reply Chip', () => {
+    it('renders "Looks good →" chip when isLatestAwaitingReply=true, isPlanComplete=false, role is ASSISTANT', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'What do you think?',
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+          isLatestAwaitingReply={true}
+          isPlanComplete={false}
+        />
+      );
+
+      const chip = screen.getByRole('button', { name: /looks good/i });
+      expect(chip).toBeInTheDocument();
+      expect(chip).toHaveTextContent('Looks good →');
+    });
+
+    it('does not render chip when isLatestAwaitingReply=false', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'What do you think?',
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+          isLatestAwaitingReply={false}
+          isPlanComplete={false}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /looks good/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render chip when isPlanComplete=true', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'What do you think?',
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+          isLatestAwaitingReply={true}
+          isPlanComplete={true}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /looks good/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render chip when role is USER', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message',
+        createdBy: {
+          id: 'user-123',
+          name: 'John Doe',
+          email: 'john@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+          isLatestAwaitingReply={true}
+          isPlanComplete={false}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /looks good/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking chip calls onArtifactAction with correct args', () => {
+      const message = createTestMessage({
+        id: 'msg-123',
+        role: ChatRole.ASSISTANT,
+        message: 'What do you think?',
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+          isLatestAwaitingReply={true}
+          isPlanComplete={false}
+        />
+      );
+
+      const chip = screen.getByRole('button', { name: /looks good/i });
+      fireEvent.click(chip);
+
+      expect(mockOnArtifactAction).toHaveBeenCalledWith(
+        'msg-123',
+        { actionType: 'button', optionLabel: 'Looks good', optionResponse: 'Looks good' },
+        ''
+      );
+    });
+  });
 });
