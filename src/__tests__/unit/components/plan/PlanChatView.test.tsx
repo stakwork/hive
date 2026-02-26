@@ -51,6 +51,7 @@ vi.mock("@/hooks/usePusherConnection", () => ({
 const mockUseDetailResource = vi.fn(() => ({
   data: null,
   setData: vi.fn(),
+  updateData: vi.fn(),
   loading: false,
   error: null,
 }));
@@ -495,6 +496,7 @@ describe("PlanChatView", () => {
   describe("Feature title updates", () => {
     it("should update feature title when onFeatureTitleUpdate is called", async () => {
       const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
       mockUseDetailResource.mockReturnValue({
         data: {
           id: "feature-123",
@@ -506,6 +508,7 @@ describe("PlanChatView", () => {
           userStories: null,
         },
         setData: mockSetData,
+        updateData: mockUpdateData,
         loading: false,
         error: null,
       });
@@ -551,39 +554,19 @@ describe("PlanChatView", () => {
         });
       });
 
-      // Verify setData was called with a function
+      // Verify updateData was called with the new title
       await waitFor(() => {
-        expect(mockSetData).toHaveBeenCalled();
-      });
-
-      // Call the updater function and verify it returns the updated object
-      const updaterFn = mockSetData.mock.calls[0][0];
-      const result = updaterFn({
-        id: "feature-123",
-        workspaceId: "workspace-1",
-        title: "Original Title",
-        brief: "Test brief",
-        requirements: null,
-        architecture: null,
-        userStories: null,
-      });
-      
-      expect(result).toEqual({
-        id: "feature-123",
-        workspaceId: "workspace-1",
-        title: "Updated Title",
-        brief: "Test brief",
-        requirements: null,
-        architecture: null,
-        userStories: null,
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
       });
     });
 
     it("should not update if feature data is null", async () => {
       const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
       mockUseDetailResource.mockReturnValue({
         data: null,
         setData: mockSetData,
+        updateData: mockUpdateData,
         loading: false,
         error: null,
       });
@@ -621,14 +604,13 @@ describe("PlanChatView", () => {
         });
       });
 
-      // Verify setData was called but returns null (since prev is null)
+      // Verify updateData was called (even though data is null, the callback still fires)
       await waitFor(() => {
-        expect(mockSetData).toHaveBeenCalled();
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
       });
 
-      const updaterFn = mockSetData.mock.calls[0][0];
-      const result = updaterFn(null);
-      expect(result).toBeNull();
+      // Verify setData was NOT called (because updateData does nothing when data is null)
+      expect(mockSetData).not.toHaveBeenCalled();
     });
   });
 
