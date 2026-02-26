@@ -14,7 +14,7 @@ import {
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
-import { processScreenshotUpload } from "@/lib/screenshot-upload";
+import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 
 export const fetchCache = "force-no-store";
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       sourceWebsocketID,
       artifacts = [] as ArtifactRequest[],
       screenshots = [] as string[],
+      recordings = [] as string[],
     } = body;
 
     let taskMode: string | undefined;
@@ -339,6 +340,27 @@ export async function POST(request: NextRequest) {
           chatMessage.attachments.push(attachment);
         } catch (screenshotError) {
           console.error("Failed to process screenshot attachment:", screenshotError);
+        }
+      }
+    }
+
+    // Process recording attachments from URLs
+    if (recordings.length > 0 && task?.workspaceId) {
+      for (const url of recordings) {
+        try {
+          const { s3Key, buffer, hash } = await processRecordingUpload(url, task.workspaceId);
+          const attachment = await db.attachment.create({
+            data: {
+              messageId: chatMessage.id,
+              path: s3Key,
+              filename: `recording-${hash}.webm`,
+              mimeType: "video/webm",
+              size: buffer.length,
+            },
+          });
+          chatMessage.attachments.push(attachment);
+        } catch (recordingError) {
+          console.error("Failed to process recording attachment:", recordingError);
         }
       }
     }
