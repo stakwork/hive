@@ -57,9 +57,9 @@ const TASK_SELECT = {
 } as const;
 
 function getErrorStatus(message: string): number {
-  if (message.includes("not found") || message.includes("Feature not found")) return 404;
-  if (message.includes("denied")) return 403;
   if (message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found")) return 400;
+  if (message.includes("denied")) return 403;
+  if (message.includes("not found") || message.includes("Feature not found")) return 404;
   return 500;
 }
 
