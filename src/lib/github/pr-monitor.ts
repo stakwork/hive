@@ -858,17 +858,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             attempts: currentAttempts,
             maxAttempts: PR_FIX_MAX_ATTEMPTS,
           });
-        } else if (stateChanged || !pr.progress?.resolution) {
-          // Initialize/update resolution tracking for new problem
-          progress.resolution = {
-            status: pr.podId ? "in_progress" : "notified",
-            attempts: currentAttempts + 1,
-            lastAttemptAt: new Date().toISOString(),
-          };
         }
-
-        // Update artifact
-        await updatePRArtifactProgress(pr.artifactId, progress);
 
         // Notify via Pusher and create chat message
         log.info("Notifying PR status change", {
@@ -886,13 +876,15 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
           (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
           (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
 
-        // If pod is available and this is a new problem, trigger an automatic fix
+        // If pod is available, trigger an automatic fix
         // The triggerFix function auto-detects whether to use agent mode or live mode
-        // Only trigger if: fix enabled for this state, not gave_up, state changed, and cooldown elapsed
+        // Trigger if: fix enabled, pod available, cooldown elapsed, not gave_up,
+        // and either state changed OR no existing resolution (stale was cleared / never dispatched)
+        const canAttemptFix = stateChanged || !pr.progress?.resolution || isStaleInProgress;
         const shouldTriggerFix =
           isFixEnabledForState &&
           pr.podId &&
-          stateChanged &&
+          canAttemptFix &&
           cooldownElapsed &&
           progress.resolution?.status !== "gave_up";
 
@@ -904,15 +896,35 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             state: result.state,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
-            attempt: progress.resolution?.attempts,
+            attempt: currentAttempts + 1,
             maxAttempts: PR_FIX_MAX_ATTEMPTS,
           });
 
           const triggerResult = await triggerFix(pr.taskId, fixPrompt);
           if (triggerResult.success) {
             stats.agentTriggered++;
+            // Only mark resolution as in_progress if the fix was actually dispatched
+            progress.resolution = {
+              status: "in_progress",
+              attempts: currentAttempts + 1,
+              lastAttemptAt: new Date().toISOString(),
+            };
+          } else {
+            log.info("Fix trigger did not dispatch, will retry next run", {
+              taskId: pr.taskId,
+              prNumber: result.prNumber,
+              error: triggerResult.error,
+            });
+            // Don't set resolution — leave it unset so next cron run retries
           }
-        } else if (pr.podId && stateChanged && !isFixEnabledForState) {
+        } else if (!pr.podId && (stateChanged || !pr.progress?.resolution)) {
+          // No pod available — just mark as notified
+          progress.resolution = {
+            status: "notified",
+            attempts: currentAttempts,
+            lastAttemptAt: lastAttemptAt,
+          };
+        } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
           log.info("Skipping PR fix - fix type disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
@@ -920,7 +932,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             conflictFixEnabled: pr.prMonitorConfig.prConflictFixEnabled,
             ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
           });
-        } else if (pr.podId && stateChanged && !cooldownElapsed) {
+        } else if (pr.podId && canAttemptFix && !cooldownElapsed) {
           log.info("Skipping PR fix due to cooldown", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
@@ -928,6 +940,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             cooldownMs: PR_FIX_COOLDOWN_MS,
           });
         }
+
+        // Update artifact
+        await updatePRArtifactProgress(pr.artifactId, progress);
       } else {
         // Track checking (CI pending) vs truly healthy
         if (result.state === "checking") {
