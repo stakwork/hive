@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { diffWords } from "diff";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
@@ -22,11 +23,57 @@ import { getPusherClient } from "@/lib/pusher";
 import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
 
-function generateUniqueId() {
+function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
+const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
+
+function getUserStoriesText(feature: FeatureDetail): string | null {
+  const stories = feature.userStories ?? [];
+  if (stories.length === 0) return null;
+  if (stories.length === 1) return stories[0].title;
+  return stories.map((s) => s.title).join("\n");
+}
+
+function getSectionValue(feature: FeatureDetail, key: string): string | null {
+  if (key === "user-stories") return getUserStoriesText(feature);
+  return (feature[key as keyof FeatureDetail] as string) ?? null;
+}
+
+function computeDiffTokens(prevVal: string, nextVal: string): DiffToken[] {
+  const parts = diffWords(prevVal, nextVal);
+  return parts.flatMap((part) => {
+    if (part.removed) return [];
+    return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
+      word,
+      isNew: !!part.added,
+    }));
+  });
+}
+
+export function computeSectionHighlights(
+  prev: FeatureDetail,
+  next: FeatureDetail
+): SectionHighlights | null {
+  const highlights: SectionHighlights = {};
+
+  for (const key of PLAN_SECTION_KEYS) {
+    const prevVal = getSectionValue(prev, key);
+    const nextVal = getSectionValue(next, key);
+
+    if (!nextVal) continue;
+    if (!prevVal) {
+      highlights[key] = { type: "new" };
+    } else if (prevVal !== nextVal) {
+      highlights[key] = { type: "diff", tokens: computeDiffTokens(prevVal, nextVal) };
+    }
+  }
+
+  return Object.keys(highlights).length > 0 ? highlights : null;
+}
 
 interface PlanChatViewProps {
   featureId: string;
@@ -126,51 +173,23 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const refetchFeature = useCallback(async () => {
     try {
       const result = await fetchFeature(featureId);
-      if (result.success && result.data) {
-        const prev = prevFeatureRef.current;
-        const next = result.data;
+      if (!result.success || !result.data) return;
 
-        if (prev) {
-          const highlights: SectionHighlights = {};
-          const prevStories = prev.userStories?.map((s: { title: string }) => s.title).join('\n') ?? null;
-          const nextStories = next.userStories?.map((s: { title: string }) => s.title).join('\n') ?? null;
+      const next = result.data;
+      const prev = prevFeatureRef.current;
 
-          const fields: Array<[string, string | null, string | null]> = [
-            ['brief', prev.brief ?? null, next.brief ?? null],
-            ['requirements', prev.requirements ?? null, next.requirements ?? null],
-            ['architecture', prev.architecture ?? null, next.architecture ?? null],
-            ['user-stories', prevStories, nextStories],
-          ];
-
-          for (const [key, prevVal, nextVal] of fields) {
-            if (!nextVal) continue;
-            if (!prevVal && nextVal) {
-              highlights[key] = { type: 'new' };
-            } else if (prevVal && nextVal && prevVal !== nextVal) {
-              const { diffWords } = await import('diff');
-              const parts = diffWords(prevVal, nextVal);
-              const tokens: DiffToken[] = parts.flatMap((part) => {
-                if (part.removed) return [];
-                return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-                  word,
-                  isNew: !!part.added,
-                }));
-              });
-              highlights[key] = { type: 'diff', tokens };
-            }
-          }
-
-          if (Object.keys(highlights).length > 0) {
-            setSectionHighlights(highlights);
-            setTimeout(() => setSectionHighlights(null), 3000);
-          }
+      if (prev) {
+        const highlights = computeSectionHighlights(prev, next);
+        if (highlights) {
+          setSectionHighlights(highlights);
+          setTimeout(() => setSectionHighlights(null), 3000);
         }
-
-        prevFeatureRef.current = next;
-        setFeature(next);
       }
-    } catch (error) {
-      console.error("Error fetching feature:", error);
+
+      prevFeatureRef.current = next;
+      setFeature(next);
+    } catch (err) {
+      console.error("Error fetching feature:", err);
     }
   }, [featureId, fetchFeature, setFeature]);
 
