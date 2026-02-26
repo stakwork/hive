@@ -225,6 +225,14 @@ export default function TaskChatPage() {
     );
   }, []);
 
+  // Set document title based on task title
+  useEffect(() => {
+    document.title = taskTitle ?? "Hive";
+    return () => {
+      document.title = "Hive";
+    };
+  }, [taskTitle]);
+
   const handleBountyStatusChange = useCallback((event: BountyStatusChangeEvent) => {
     setMessages((prev) =>
       prev.map((msg) => {

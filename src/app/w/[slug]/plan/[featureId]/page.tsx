@@ -158,6 +158,14 @@ function FeatureDetailClassicView() {
     fetchPendingRuns();
   }, [fetchPendingRuns]);
 
+  // Set document title based on feature title
+  useEffect(() => {
+    document.title = feature?.title ?? "Hive";
+    return () => {
+      document.title = "Hive";
+    };
+  }, [feature?.title]);
+
   // Clear focused field when clicking outside text inputs
   useEffect(() => {
     const handleFocusOut = (e: FocusEvent) => {
