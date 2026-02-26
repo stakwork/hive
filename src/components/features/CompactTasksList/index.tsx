@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Play, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   const tasks = useMemo(() => {
     return [...((defaultPhase?.tasks || []) as TaskWithPrArtifact[])].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [defaultPhase?.tasks]);
 
@@ -325,12 +325,19 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             ? task.deployedToProductionAt
             : task.deployedToStagingAt;
 
+          const getTaskRoute = (task: TaskWithPrArtifact) => {
+            if (task.status === 'IN_PROGRESS' || task.status === 'DONE') {
+              return `/w/${workspaceSlug}/task/${task.id}`;
+            }
+            return `/w/${workspaceSlug}/tickets/${task.id}`;
+          };
+
           const actionMenuItems: ActionMenuItem[] = [
             {
               label: "View Task",
               icon: ExternalLink,
               variant: "default" as const,
-              onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}`),
+              onClick: () => router.push(getTaskRoute(task)),
             },
             {
               label: "Delete",
@@ -348,7 +355,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             <div
               key={task.id}
               className="rounded-md border px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors"
-              onClick={() => router.push(`/w/${workspaceSlug}/task/${task.id}`)}
+              onClick={() => router.push(getTaskRoute(task))}
             >
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[task.status] || "bg-zinc-400"}`} />
