@@ -26,6 +26,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
           npm install --global prisma@6
           npm ci
 
@@ -161,6 +163,21 @@ jobs:
             echo "❌ Failed to get connection URI: $URI_RESPONSE"
             exit 1
           fi
+
+          # Verify actual DB connectivity before proceeding
+          echo "Verifying database connectivity..."
+          for i in {1..20}; do
+            if psql "$CONNECTION_URI" -c "SELECT 1;" > /dev/null 2>&1; then
+              echo "✅ Database connection verified"
+              break
+            fi
+            if [ $i -eq 20 ]; then
+              echo "❌ Database connection failed after 20 attempts"
+              exit 1
+            fi
+            echo "Waiting for database connectivity... ($i)"
+            sleep 5
+          done
 
           # Pass URI to next steps (delimiter format for special chars in password)
           echo "connection_uri<<EOF" >> $GITHUB_OUTPUT
