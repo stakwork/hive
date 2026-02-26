@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import { ChatRole, ChatStatus } from "@/lib/chat";
 
-
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
 const mockPush = vi.fn();
@@ -63,7 +62,7 @@ const mockUseDetailResource = vi.fn((): any => ({
   setData: mockSetData,
   updateData: vi.fn(),
   loading: false,
-  error: null,
+  error: null as string | null,
 }));
 
 vi.mock("@/hooks/useDetailResource", () => ({
@@ -265,6 +264,59 @@ describe("PlanChatView", () => {
       const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
       expect(lastCall.controlledTab).toBe("PLAN");
     });
+
+    it("should read from window.location.search on hard refresh when searchParams returns null", async () => {
+      // Simulate hard refresh: searchParams returns null but window.location.search has ?tab=tasks
+      mockGet.mockReturnValue(null);
+      
+      // Mock window.location.search
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: { ...originalLocation, search: "?tab=tasks" }
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+
+      // Restore window.location
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: originalLocation
+      });
+    });
+
+    it("should sync activeTab when searchParams changes after hydration", async () => {
+      // Initially no tab param
+      mockGet.mockReturnValue(null);
+
+      const { rerender } = render(
+        <PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />
+      );
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      let lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+
+      // Simulate searchParams changing (e.g., browser navigation)
+      mockGet.mockReturnValue("tasks");
+
+      rerender(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+        expect(lastCall.controlledTab).toBe("TASKS");
+      });
+    });
   });
 
   describe("Tab change handler", () => {
@@ -396,6 +448,7 @@ describe("PlanChatView", () => {
     mockUseDetailResource.mockReturnValueOnce({
       data: null,
       setData: vi.fn(),
+      updateData: vi.fn(),
       loading: false,
       error: "Not found",
     });
@@ -514,12 +567,21 @@ describe("PlanChatView", () => {
       mockUseDetailResource.mockReturnValue({
         data: {
           id: "feature-123",
-          workspaceId: "workspace-1",
           title: "Original Title",
           brief: "Test brief",
           requirements: null,
           architecture: null,
-          userStories: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "IN_PROGRESS",
+          priority: "MEDIUM",
+          workflowStatus: "IN_PROGRESS",
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
         setData: mockSetData,
         updateData: mockUpdateData,
