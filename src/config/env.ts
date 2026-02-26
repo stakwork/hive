@@ -50,6 +50,7 @@ export const optionalEnvVars = {
   STAKWORK_BOUNTY_WORKFLOW_ID: process.env.STAKWORK_BOUNTY_WORKFLOW_ID,
   STAKWORK_DIAGRAM_WORKFLOW_ID: process.env.STAKWORK_DIAGRAM_WORKFLOW_ID,
   STAKWORK_PLAN_MODE_WORKFLOW_ID: process.env.STAKWORK_PLAN_MODE_WORKFLOW_ID,
+  PLAN_MODE_MODEL: process.env.PLAN_MODE_MODEL,
   POOL_MANAGER_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
