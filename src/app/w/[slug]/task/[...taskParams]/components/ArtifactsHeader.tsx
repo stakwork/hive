@@ -13,7 +13,6 @@ interface ArtifactButton {
   label: string;
 }
 
-// Visual artifacts (left side)
 const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "PLAN", icon: ClipboardList, label: "Plan" },
   { type: "TASKS", icon: ListChecks, label: "Tasks" },
@@ -22,12 +21,13 @@ const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "WORKFLOW", icon: Network, label: "Workflow" },
 ];
 
-// Code artifacts (right side)
 const CODE_ARTIFACTS: ArtifactButton[] = [
   { type: "CODE", icon: FileCode, label: "Code / Files" },
   { type: "DIFF", icon: Code2, label: "Changes" },
   { type: "IDE", icon: Terminal, label: "IDE" },
 ];
+
+const LABELED_TABS = new Set<ArtifactType>(["PLAN", "TASKS"]);
 
 interface ArtifactsHeaderProps {
   availableArtifacts: ArtifactType[];
@@ -41,6 +41,23 @@ export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifact
     if (!availableArtifacts.includes(type)) return null;
 
     const isActive = activeArtifact === type;
+    const showLabel = LABELED_TABS.has(type);
+
+    if (showLabel) {
+      return (
+        <button
+          key={type}
+          onClick={() => onArtifactChange(type)}
+          className={cn(
+            "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors",
+            isActive ? "bg-foreground/5" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          )}
+        >
+          <Icon className="w-3.5 h-3.5" />
+          <span>{label}</span>
+        </button>
+      );
+    }
 
     return (
       <TooltipProvider key={type}>

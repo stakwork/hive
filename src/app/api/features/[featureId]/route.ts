@@ -3,6 +3,65 @@ import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import { extractPrArtifact } from "@/lib/helpers/tasks";
+import { TaskStatus } from "@prisma/client";
+
+const TASK_SELECT = {
+  id: true,
+  title: true,
+  description: true,
+  status: true,
+  priority: true,
+  order: true,
+  featureId: true,
+  phaseId: true,
+  deleted: true,
+  createdAt: true,
+  updatedAt: true,
+  systemAssigneeType: true,
+  dependsOnTaskIds: true,
+  bountyCode: true,
+  autoMerge: true,
+  deploymentStatus: true,
+  deployedToStagingAt: true,
+  deployedToProductionAt: true,
+  assignee: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+    },
+  },
+  repository: {
+    select: {
+      id: true,
+      name: true,
+      repositoryUrl: true,
+    },
+  },
+  chatMessages: {
+    select: {
+      artifacts: {
+        where: { type: "PULL_REQUEST" as const },
+        select: {
+          id: true,
+          type: true,
+          content: true,
+        },
+        orderBy: { createdAt: "desc" as const },
+        take: 1,
+      },
+    },
+  },
+} as const;
+
+function getErrorStatus(message: string): number {
+  if (message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found")) return 400;
+  if (message.includes("denied")) return 403;
+  if (message.includes("not found") || message.includes("Feature not found")) return 404;
+  return 500;
+}
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +70,6 @@ export async function GET(
   try {
     const { featureId } = await params;
 
-    // Look up feature's workspaceId for API token auth
     const featureLookup = await db.feature.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
@@ -19,21 +77,14 @@ export async function GET(
     const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    // Get sort parameter from query string, default to updatedAt
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get("sortBy") || "updatedAt";
-
-    // Validate sortBy parameter
     const validSortFields = ["createdAt", "updatedAt", "order"];
     const sortField = validSortFields.includes(sortBy) ? sortBy : "updatedAt";
-
-    // Determine sort order based on field
     const sortOrder = sortField === "order" ? "asc" : "desc";
 
     const feature = await db.feature.findUnique({
-      where: {
-        id: featureId,
-      },
+      where: { id: featureId },
       include: {
         workspace: {
           select: {
@@ -105,93 +156,16 @@ export async function GET(
           },
           include: {
             tasks: {
-              where: {
-                deleted: false,
-              },
-              orderBy: {
-                [sortField]: sortOrder,
-              },
-              select: {
-                id: true,
-                title: true,
-                description: true,
-                status: true,
-                priority: true,
-                order: true,
-                featureId: true,
-                phaseId: true,
-                deleted: true,
-                createdAt: true,
-                updatedAt: true,
-                systemAssigneeType: true,
-                dependsOnTaskIds: true,
-                bountyCode: true,
-                autoMerge: true,
-                deploymentStatus: true,
-                deployedToStagingAt: true,
-                deployedToProductionAt: true,
-                assignee: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    image: true,
-                  },
-                },
-                repository: {
-                  select: {
-                    id: true,
-                    name: true,
-                    repositoryUrl: true,
-                  },
-                },
-              },
+              where: { deleted: false },
+              orderBy: { [sortField]: sortOrder },
+              select: TASK_SELECT,
             },
           },
         },
         tasks: {
-          where: {
-            phaseId: null,
-            deleted: false,
-          },
-          orderBy: {
-            [sortField]: sortOrder,
-          },
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            priority: true,
-            order: true,
-            featureId: true,
-            phaseId: true,
-            deleted: true,
-            createdAt: true,
-            updatedAt: true,
-            systemAssigneeType: true,
-            dependsOnTaskIds: true,
-            bountyCode: true,
-            autoMerge: true,
-            deploymentStatus: true,
-            deployedToStagingAt: true,
-            deployedToProductionAt: true,
-            assignee: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                image: true,
-              },
-            },
-            repository: {
-              select: {
-                id: true,
-                name: true,
-                repositoryUrl: true,
-              },
-            },
-          },
+          where: { phaseId: null, deleted: false },
+          orderBy: { [sortField]: sortOrder },
+          select: TASK_SELECT,
         },
       },
     });
@@ -203,7 +177,6 @@ export async function GET(
       );
     }
 
-    // Check if user is workspace owner or member
     const isOwner = feature.workspace.ownerId === userOrResponse.id;
     const isMember = feature.workspace.members.length > 0;
 
@@ -211,30 +184,31 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Transform system assignees to virtual user objects
+    const processTasks = async (tasks: typeof feature.phases[0]["tasks"]) => {
+      return Promise.all(
+        tasks.map(async (task) => {
+          const prArtifact = await extractPrArtifact(task, userOrResponse.id);
+          if (prArtifact?.content?.status === "DONE") {
+            task.status = TaskStatus.DONE;
+          }
+          const { chatMessages: _, ...taskWithoutMessages } = task;
+          const assignee = task.systemAssigneeType && !task.assignee
+            ? getSystemAssigneeUser(task.systemAssigneeType)
+            : task.assignee;
+          return { ...taskWithoutMessages, assignee, prArtifact };
+        })
+      );
+    };
+
     const transformedFeature = {
       ...feature,
-      phases: feature.phases.map(phase => ({
-        ...phase,
-        tasks: phase.tasks.map(task => {
-          if (task.systemAssigneeType && !task.assignee) {
-            return {
-              ...task,
-              assignee: getSystemAssigneeUser(task.systemAssigneeType),
-            };
-          }
-          return task;
-        }),
-      })),
-      tasks: feature.tasks.map(task => {
-        if (task.systemAssigneeType && !task.assignee) {
-          return {
-            ...task,
-            assignee: getSystemAssigneeUser(task.systemAssigneeType),
-          };
-        }
-        return task;
-      }),
+      phases: await Promise.all(
+        feature.phases.map(async (phase) => ({
+          ...phase,
+          tasks: await processTasks(phase.tasks),
+        }))
+      ),
+      tasks: await processTasks(feature.tasks as typeof feature.phases[0]["tasks"]),
     };
 
     return NextResponse.json(
@@ -280,11 +254,7 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating feature:", error);
     const message = error instanceof Error ? error.message : "Failed to update feature";
-    const status = message.includes("Feature not found") ? 404 :
-                   message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found") ? 400 : 500;
-
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: getErrorStatus(message) });
   }
 }
 
@@ -314,9 +284,6 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting feature:", error);
     const message = error instanceof Error ? error.message : "Failed to delete feature";
-    const status = message.includes("not found") ? 404 :
-                   message.includes("denied") ? 403 : 500;
-
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: getErrorStatus(message) });
   }
 }
