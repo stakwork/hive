@@ -32,6 +32,7 @@ interface PendingImage {
 interface ChatInputProps {
   onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
   disabled?: boolean;
+  placeholder?: string;
   isLoading?: boolean;
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
@@ -49,6 +50,7 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
+  placeholder,
   isLoading = false,
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
@@ -415,6 +417,12 @@ export function ChatInput({
     );
   }
 
+  // Resolve placeholder
+  let resolvedPlaceholder = placeholder ?? "Type your message...";
+  if (isListening) {
+    resolvedPlaceholder = "Listening...";
+  }
+
   return (
     <div className={cn(
       isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
@@ -548,7 +556,7 @@ export function ChatInput({
 
         <Textarea
           ref={textareaRef}
-          placeholder={isListening ? "Listening..." : "Type your message..."}
+          placeholder={resolvedPlaceholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
