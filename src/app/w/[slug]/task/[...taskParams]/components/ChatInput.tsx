@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
+import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, Image as ImageIcon, X, Loader2, RefreshCw, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,7 @@ interface ChatInputProps {
   taskId?: string;
   featureId?: string;
   onOpenBountyRequest?: () => void;
+  awaitingFeedback?: boolean;
 }
 
 export function ChatInput({
@@ -61,6 +62,7 @@ export function ChatInput({
   taskId,
   featureId,
   onOpenBountyRequest,
+  awaitingFeedback = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -431,6 +433,15 @@ export function ChatInput({
             <WorkflowStatusBadge status={workflowStatus} />
           </>
         )}
+        {awaitingFeedback && workflowStatus === WorkflowStatus.COMPLETED && (
+          <>
+            <span>|</span>
+            <div className="flex items-center gap-1.5 text-sm text-amber-600">
+              <MessageSquare className="h-3 w-3" />
+              <span>Awaiting your response</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Debug attachment display */}
@@ -548,7 +559,7 @@ export function ChatInput({
 
         <Textarea
           ref={textareaRef}
-          placeholder={isListening ? "Listening..." : "Type your message..."}
+          placeholder={isListening ? "Listening..." : awaitingFeedback ? "Type your response..." : "Type your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

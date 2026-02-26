@@ -40,6 +40,7 @@ interface ChatAreaProps {
   showPreview?: boolean;
   onTogglePreview?: () => void;
   taskMode?: string;
+  awaitingFeedback?: boolean;
   taskId?: string | null;
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
@@ -70,6 +71,7 @@ export function ChatArea({
   showPreview = false,
   onTogglePreview,
   taskMode,
+  awaitingFeedback = false,
   taskId,
   podId,
   onReleasePod,
@@ -307,6 +309,7 @@ export function ChatArea({
         featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        awaitingFeedback={awaitingFeedback}
       />
 
       {onReleasePod && (

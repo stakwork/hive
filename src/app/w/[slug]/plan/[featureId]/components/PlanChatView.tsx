@@ -135,6 +135,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
   }, [featureId]);
 
+<<<<<<< HEAD
   // Initial load
   useEffect(() => {
     loadMessages();
@@ -154,6 +155,16 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [refetchFeature, loadMessages]);
+=======
+  // Determine if awaiting user feedback
+  const awaitingFeedback = useMemo(() => {
+    if (isLoading) return false;
+    // Only show when workflow is completed or not started (null)
+    if (workflowStatus !== null && workflowStatus !== WorkflowStatus.COMPLETED) return false;
+    if (messages.length === 0) return false;
+    return messages[messages.length - 1].role === ChatRole.ASSISTANT;
+  }, [messages, workflowStatus, isLoading]);
+>>>>>>> 2f8a48afc (Generated with Hive: add awaitingFeedback indicator to PlanChatView and ChatInput)
 
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
@@ -347,6 +358,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               isChainVisible={isChainVisible}
               lastLogLine={lastLogLine}
               logs={logs}
+              awaitingFeedback={awaitingFeedback}
             />
           </div>
         </ResizablePanel>
