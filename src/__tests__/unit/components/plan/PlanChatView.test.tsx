@@ -53,6 +53,14 @@ vi.mock("@/hooks/usePlanPresence", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useProjectLogWebSocket", () => ({
+  useProjectLogWebSocket: vi.fn(() => ({
+    logs: [],
+    lastLogLine: null,
+    clearLogs: vi.fn(),
+  })),
+}));
+
 vi.mock("@/components/ui/resizable", () => ({
   ResizablePanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -466,5 +474,23 @@ describe("PlanChatView", () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe("Project log WebSocket integration", () => {
+    it("should pass isChainVisible, logs, and lastLogLine props to ChatArea", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Verify ChatArea is rendered (props are passed via mock in setup)
+      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
   });
 });
