@@ -30,7 +30,14 @@ export function useControlKeyHold({
     let isHolding = false;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === key && !e.repeat && !isHolding) {
+      if (
+        e.key === key &&
+        !e.repeat &&
+        !isHolding &&
+        !e.shiftKey &&
+        !e.altKey &&
+        !e.metaKey
+      ) {
         holdTimer = setTimeout(() => {
           isHolding = true;
           onStartRef.current();
