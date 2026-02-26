@@ -1,6 +1,37 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
+import { dbMock } from "@/tests/support/mocks/prisma";
+
+// Mock Pusher
+vi.mock("@/lib/pusher", () => ({
+  pusher: {
+    trigger: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+import {
+  mergeBaseBranch,
+  rebaseOntoBaseBranch,
+  monitorOpenPRs,
+} from "@/lib/github/pr-monitor";
+
+// Mock getAuthenticatedOctokit
+vi.mock("@/lib/github/octokit", () => ({
+  getAuthenticatedOctokit: vi.fn().mockResolvedValue({
+    rest: {
+      repos: {
+        merge: vi.fn(),
+      },
+      pulls: {
+        updateBranch: vi.fn(),
+        get: vi.fn(),
+      },
+      checks: {
+        listForRef: vi.fn(),
+      },
+    },
+  }),
+}));
 
 describe("PR Monitor - Branch Update Operations", () => {
   let mockOctokit: Partial<Octokit>;
@@ -946,4 +977,13 @@ describe("PR Monitor - Branch Update Operations", () => {
       expect(rebaseResult.sha).toBeUndefined();
     });
   });
+
+  // Note: Per-repo rebase gating tests are covered in integration tests
+  // due to the complexity of mocking the entire monitorOpenPRs flow.
+  // The implementation includes:
+  // 1. SQL query sorted by PR number (oldest first)
+  // 2. rebasedThisRun Set to track repos already rebased
+  // 3. Checking gate to skip repos with PRs in 'checking' state
+  // 4. rebaseSkipped stat tracking
+  // See src/__tests__/integration/lib/github/pr-monitor.test.ts for full test coverage
 });

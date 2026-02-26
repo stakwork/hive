@@ -460,6 +460,42 @@ export interface PRMonitorConfig {
 }
 
 /**
+ * Extract PR number from GitHub PR URL
+ * @param url - GitHub PR URL (e.g., "https://github.com/owner/repo/pull/123")
+ * @returns PR number or null if URL is invalid
+ */
+function extractPRNumber(url: string): number | null {
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Check if a repo should skip rebase due to gating rules
+ * Only applies to PRs with autoMerge enabled
+ */
+function shouldSkipRebase(
+  repoKey: string,
+  openPRs: Array<{ prUrl: string; autoMerge?: boolean; progress?: PullRequestProgress }>,
+  rebasedThisRun: Set<string>
+): boolean {
+  // Already rebased this run
+  if (rebasedThisRun.has(repoKey)) {
+    return true;
+  }
+
+  // Check if repo has another autoMerge PR in 'checking' state
+  return openPRs.some((other) => {
+    const parsed = parsePRUrl(other.prUrl);
+    return (
+      parsed &&
+      `${parsed.owner}/${parsed.repo}` === repoKey &&
+      other.autoMerge === true &&
+      other.progress?.state === "checking"
+    );
+  });
+}
+
+/**
  * Find open PR artifacts that need monitoring
  *
  * Uses raw SQL for efficient JSON filtering to avoid loading all PR artifacts.
@@ -478,6 +514,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     ownerId: string;
     podId: string | null;
     progress: PullRequestProgress | undefined;
+    autoMerge: boolean | undefined;
     prMonitorConfig: PRMonitorConfig;
   }>
 > {
@@ -552,7 +589,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     LIMIT ${limit}
   `;
 
-  return artifacts.map((artifact) => ({
+  // Map and sort by PR number in JavaScript (oldest PR first per repo)
+  const prs = artifacts.map((artifact) => ({
     artifactId: artifact.id,
     taskId: artifact.task_id,
     prUrl: artifact.content.url,
@@ -560,6 +598,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     ownerId: artifact.owner_id,
     podId: artifact.pod_id,
     progress: artifact.content.progress,
+    autoMerge: artifact.content.autoMerge,
     prMonitorConfig: {
       prMonitorEnabled: artifact.pr_monitor_enabled,
       prConflictFixEnabled: artifact.pr_conflict_fix_enabled,
@@ -568,6 +607,21 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       prUseRebaseForUpdates: artifact.pr_use_rebase_for_updates,
     },
   }));
+
+  // Sort by PR number (extracted from URL) - oldest first
+  prs.sort((a, b) => {
+    const prNumberA = extractPRNumber(a.prUrl);
+    const prNumberB = extractPRNumber(b.prUrl);
+    
+    // Put PRs with invalid URLs at the end
+    if (prNumberA === null && prNumberB === null) return 0;
+    if (prNumberA === null) return 1;
+    if (prNumberB === null) return -1;
+    
+    return prNumberA - prNumberB;
+  });
+
+  return prs;
 }
 
 /**
@@ -640,6 +694,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   errors: number;
   agentTriggered: number;
   notified: number;
+  rebaseSkipped: number;
 }> {
   const stats = {
     checked: 0,
@@ -652,6 +707,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     errors: 0,
     agentTriggered: 0,
     notified: 0,
+    rebaseSkipped: 0,
   };
 
   // Query is already limited at the DB level for efficiency
@@ -661,6 +717,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     maxPRs,
     prUrls: openPRs.slice(0, 5).map((p) => p.prUrl), // Log first 5 URLs for debugging
   });
+
+  // Track repos that have already been rebased this run to enforce one-rebase-per-repo-per-run
+  const rebasedThisRun = new Set<string>(); // "owner/repo" keys
 
   for (const pr of openPRs) {
     try {
@@ -773,20 +832,41 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
       if (result.state === "out_of_date") {
         stats.outOfDate++;
 
+        const repoKey = `${result.owner}/${result.repo}`;
+
         // Check if out-of-date fix is enabled for this workspace
         if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
           log.info("PR is out of date but auto-fix disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
+            repo: repoKey,
           });
           await updatePRArtifactProgress(pr.artifactId, progress);
+        } else if (!pr.autoMerge) {
+          // Skip rebase for PRs without autoMerge flag - just update progress
+          log.info("PR is out of date but autoMerge not enabled for this PR", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            repo: repoKey,
+          });
+          await updatePRArtifactProgress(pr.artifactId, progress);
+        } else if (shouldSkipRebase(repoKey, openPRs, rebasedThisRun)) {
+          // Gate: skip if repo already has a checking PR or was rebased this run
+          log.info("Skipping rebase: repo already checking or rebased this run", {
+            repoKey,
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+          });
+          stats.rebaseSkipped++;
+          await updatePRArtifactProgress(pr.artifactId, progress);
+          continue;
         } else {
+
           const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
           log.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
+            repo: repoKey,
             headBranch: result.headBranch,
             baseBranch: result.baseBranch,
             useRebase,
@@ -822,6 +902,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             progress.state = "checking";
             progress.problemDetails = undefined;
             await updatePRArtifactProgress(pr.artifactId, progress);
+
+            // Record successful rebase to prevent further rebases for this repo this run
+            rebasedThisRun.add(repoKey);
           } else {
             // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
             log.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
@@ -831,6 +914,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
               strategy: useRebase ? 'rebase' : 'merge',
             });
             await updatePRArtifactProgress(pr.artifactId, progress);
+            // Note: Do NOT add to rebasedThisRun on failure, so next cron run can retry
           }
         }
       } else if (needsAgentFix) {
