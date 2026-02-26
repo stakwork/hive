@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
@@ -19,7 +19,7 @@ import {
   createChatMessage,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData } from "./PlanArtifact";
+import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
 
 function generateUniqueId() {
@@ -45,6 +45,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isChainVisible, setIsChainVisible] = useState(false);
+  const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
+  const prevFeatureRef = useRef<FeatureDetail | null>(null);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -107,6 +109,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     fetchFn: fetchFeature,
   });
 
+  // Initialize prevFeatureRef on first load
+  useEffect(() => {
+    if (feature && !prevFeatureRef.current) {
+      prevFeatureRef.current = feature;
+    }
+  }, [feature]);
+
   // Redirect to plan list if feature not found
   useEffect(() => {
     if (!loading && error) {
@@ -118,7 +127,47 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     try {
       const result = await fetchFeature(featureId);
       if (result.success && result.data) {
-        setFeature(result.data);
+        const prev = prevFeatureRef.current;
+        const next = result.data;
+
+        if (prev) {
+          const highlights: SectionHighlights = {};
+          const prevStories = prev.userStories?.map(s => s.title).join('\n') ?? null;
+          const nextStories = next.userStories?.map(s => s.title).join('\n') ?? null;
+
+          const fields: Array<[string, string | null, string | null]> = [
+            ['brief', prev.brief ?? null, next.brief ?? null],
+            ['requirements', prev.requirements ?? null, next.requirements ?? null],
+            ['architecture', prev.architecture ?? null, next.architecture ?? null],
+            ['user-stories', prevStories, nextStories],
+          ];
+
+          for (const [key, prevVal, nextVal] of fields) {
+            if (!nextVal) continue;
+            if (!prevVal && nextVal) {
+              highlights[key] = { type: 'new' };
+            } else if (prevVal && nextVal && prevVal !== nextVal) {
+              const { diffWords } = await import('diff');
+              const parts = diffWords(prevVal, nextVal);
+              const tokens: DiffToken[] = parts.flatMap((part) => {
+                if (part.removed) return [];
+                return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
+                  word,
+                  isNew: !!part.added,
+                }));
+              });
+              highlights[key] = { type: 'diff', tokens };
+            }
+          }
+
+          if (Object.keys(highlights).length > 0) {
+            setSectionHighlights(highlights);
+            setTimeout(() => setSectionHighlights(null), 3000);
+          }
+        }
+
+        prevFeatureRef.current = next;
+        setFeature(next);
       }
     } catch (error) {
       console.error("Error fetching feature:", error);
@@ -325,7 +374,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId, session, clearLogs],
   );
 
-  const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
+  const allArtifacts = useMemo(() => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []), [messages]);
 
   const planData: PlanData = useMemo(() => {
     const stories = feature?.userStories ?? [];
@@ -401,6 +450,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   onFeatureUpdate={setFeature}
                   controlledTab={activeTab}
                   onControlledTabChange={handleTabChange}
+                  sectionHighlights={sectionHighlights}
                 />
               </div>
             </ResizablePanel>

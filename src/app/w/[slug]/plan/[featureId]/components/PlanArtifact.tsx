@@ -20,12 +20,19 @@ export interface PlanData {
   sections: PlanSection[];
 }
 
+export type DiffToken = { word: string; isNew: boolean };
+export type SectionHighlight =
+  | { type: "new" }
+  | { type: "diff"; tokens: DiffToken[] };
+export type SectionHighlights = Record<string, SectionHighlight>;
+
 interface PlanArtifactPanelProps {
   planData: PlanData;
   onSectionSave?: (field: string, value: string) => Promise<void>;
   savedField?: string | null;
   saving?: boolean;
   saved?: boolean;
+  sectionHighlights?: SectionHighlights | null;
 }
 
 const SECTION_META: Record<
@@ -60,12 +67,14 @@ function EditableSection({
   savedField,
   saving,
   saved,
+  highlight,
 }: {
   section: PlanSection;
   onSave?: (key: string, content: string) => void;
   savedField: string | null;
   saving: boolean;
   saved: boolean;
+  highlight?: SectionHighlight | null;
 }) {
   const hasContent = !!section.content;
   const [editing, setEditing] = useState(false);
@@ -144,8 +153,37 @@ function EditableSection({
           />
         </div>
       ) : hasContent ? (
-        /* Filled state - render markdown */
-        <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
+        /* Filled state - render markdown with optional highlights */
+        highlight?.type === "new" ? (
+          <motion.div
+            initial={{ boxShadow: "0 0 14px rgba(16,185,129,0.35)", outline: "2px solid rgba(16,185,129,0.5)" }}
+            animate={{ boxShadow: "0 0 0px rgba(16,185,129,0)", outline: "2px solid rgba(16,185,129,0)" }}
+            transition={{ duration: 3, ease: "easeOut" }}
+            className="rounded-lg"
+          >
+            <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
+          </motion.div>
+        ) : highlight?.type === "diff" ? (
+          <div className="text-sm leading-relaxed">
+            {highlight.tokens.map((token, i) =>
+              token.isNew ? (
+                <motion.span
+                  key={i}
+                  initial={{ backgroundColor: "rgba(52, 211, 153, 0.3)" }}
+                  animate={{ backgroundColor: "rgba(52, 211, 153, 0)" }}
+                  transition={{ duration: 3, ease: "easeOut" }}
+                  className="rounded-sm px-0.5"
+                >
+                  {token.word}
+                </motion.span>
+              ) : (
+                <span key={i}>{token.word}</span>
+              )
+            )}
+          </div>
+        ) : (
+          <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
+        )
       ) : isEditable ? (
         /* Empty editable state - inviting click target */
         <button
@@ -180,6 +218,7 @@ export function PlanArtifactPanel({
   savedField = null,
   saving = false,
   saved = false,
+  sectionHighlights = null,
 }: PlanArtifactPanelProps) {
   const { sections } = planData;
 
@@ -203,6 +242,7 @@ export function PlanArtifactPanel({
                   savedField={savedField}
                   saving={saving}
                   saved={saved}
+                  highlight={sectionHighlights?.[section.key] ?? null}
                 />
               </motion.div>
             ))}
