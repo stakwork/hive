@@ -399,4 +399,88 @@ describe("ChatInput - Task Mode", () => {
       expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nLine 3", undefined);
     });
   });
+
+  describe("Awaiting Feedback Indicator", () => {
+    test("renders indicator when awaitingFeedback is true and workflowStatus is COMPLETED", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={true}
+          workflowStatus={WorkflowStatus.COMPLETED}
+        />
+      );
+
+      expect(screen.getByText("Awaiting your response")).toBeInTheDocument();
+    });
+
+    test("does not render indicator when awaitingFeedback is false", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={false}
+          workflowStatus={WorkflowStatus.COMPLETED}
+        />
+      );
+
+      expect(screen.queryByText("Awaiting your response")).not.toBeInTheDocument();
+    });
+
+    test("does not render indicator when workflowStatus is IN_PROGRESS", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={true}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+        />
+      );
+
+      expect(screen.queryByText("Awaiting your response")).not.toBeInTheDocument();
+    });
+
+    test("does not render indicator when workflowStatus is null", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={true}
+          workflowStatus={null}
+        />
+      );
+
+      expect(screen.queryByText("Awaiting your response")).not.toBeInTheDocument();
+    });
+
+    test("shows 'Type your response...' placeholder when awaitingFeedback is true", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={true}
+          workflowStatus={WorkflowStatus.COMPLETED}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea).toHaveAttribute("placeholder", "Type your response...");
+    });
+
+    test("shows default 'Type your message...' placeholder when awaitingFeedback is false", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          awaitingFeedback={false}
+          workflowStatus={WorkflowStatus.COMPLETED}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea).toHaveAttribute("placeholder", "Type your message...");
+    });
+
+    test("defaults awaitingFeedback to false when not provided", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.COMPLETED} />);
+
+      expect(screen.queryByText("Awaiting your response")).not.toBeInTheDocument();
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea).toHaveAttribute("placeholder", "Type your message...");
+    });
+  });
 });

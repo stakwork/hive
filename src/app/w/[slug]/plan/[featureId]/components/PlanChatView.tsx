@@ -166,6 +166,15 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     };
   }, [refetchFeature, loadMessages]);
 
+  // Determine if awaiting user feedback
+  const awaitingFeedback = useMemo(() => {
+    if (isLoading) return false;
+    // Only show when workflow is completed or not started (null)
+    if (workflowStatus !== null && workflowStatus !== WorkflowStatus.COMPLETED) return false;
+    if (messages.length === 0) return false;
+    return messages[messages.length - 1].role === ChatRole.ASSISTANT;
+  }, [messages, workflowStatus, isLoading]);
+
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
       const exists = msgs.some((m) => m.id === message.id);
@@ -374,6 +383,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               isChainVisible={isChainVisible}
               lastLogLine={lastLogLine}
               logs={logs}
+              awaitingFeedback={awaitingFeedback}
             />
           </div>
         </ResizablePanel>
