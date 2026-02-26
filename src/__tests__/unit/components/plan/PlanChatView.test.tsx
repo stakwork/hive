@@ -4,7 +4,7 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import { ChatRole, ChatStatus } from "@/lib/chat";
-import { usePusherConnection } from "@/hooks/usePusherConnection";
+
 
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
@@ -530,7 +530,7 @@ describe("PlanChatView", () => {
       let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
 
       // Mock usePusherConnection to capture the callback
-      vi.mocked(usePusherConnection).mockImplementation((options) => {
+      mockUsePusherConnection.mockImplementation((options: any) => {
         capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
         return {
           isConnected: true,
@@ -553,7 +553,7 @@ describe("PlanChatView", () => {
       });
 
       // Verify that usePusherConnection was called with onFeatureTitleUpdate
-      expect(usePusherConnection).toHaveBeenCalledWith(
+      expect(mockUsePusherConnection).toHaveBeenCalledWith(
         expect.objectContaining({
           featureId: "feature-123",
           onFeatureTitleUpdate: expect.any(Function),
@@ -588,7 +588,7 @@ describe("PlanChatView", () => {
       let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
 
       // Mock usePusherConnection to capture the callback
-      vi.mocked(usePusherConnection).mockImplementation((options) => {
+      mockUsePusherConnection.mockImplementation((options: any) => {
         capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
         return {
           isConnected: true,
