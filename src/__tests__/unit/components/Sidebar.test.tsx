@@ -19,13 +19,16 @@ vi.mock('@/components/NavUser', () => ({
 vi.mock('@/components/WorkspaceSwitcher', () => ({
   WorkspaceSwitcher: () => <div data-testid="workspace-switcher">WorkspaceSwitcher</div>,
 }));
+vi.mock('@/components/BugReportSlideout', () => ({
+  BugReportSlideout: () => <div data-testid="bug-report-slideout">BugReportSlideout</div>,
+}));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/w/test-workspace',
-  useRouter: () => ({
-    push: vi.fn(),
-    replace: vi.fn(),
-    back: vi.fn(),
-  }),
+}));
+vi.mock('next/link', () => ({
+  default: ({ children, href, ...props }: { children?: React.ReactNode; href: string; [key: string]: unknown }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
 }));
 
 // Mock shadcn UI components to avoid JSX transform issues
@@ -44,23 +47,150 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetTrigger: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
-/**
- * TESTS DISABLED: Component rendering tests for Sidebar require extensive mocking of shadcn/ui 
- * components and complex dependency chains. The Sidebar component has many deeply nested UI 
- * components (Sheet, Button, Badge, Separator, etc.) that cause "React is not defined" errors 
- * in the test environment despite proper mocking attempts.
- * 
- * The production code change (using runningVms instead of usedVms + unusedVms) is verified by:
- * 1. Manual testing of the UI (acceptance criteria)
- * 2. Integration tests in src/__tests__/integration/api/pool-status.test.ts which verify 
- *    the API structure includes runningVms
- * 3. Code review of the calculation logic change (line 289 in Sidebar.tsx)
- * 
- * To properly test this component, consider:
- * - Extracting the calculation logic into a separate testable function
- * - Using shallow rendering or component testing tools better suited for complex component trees
- * - Testing the useMemo calculation logic in isolation rather than full component rendering
- */
+describe('Sidebar - Navigation Links', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    // Mock useFeatureFlag to return false by default
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    
+    // Mock usePoolStatus to return null by default
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it('should render top-level navigation items as <a> elements with correct hrefs', () => {
+    const mockWorkspace = {
+      id: 'workspace-1',
+      name: 'Test Workspace',
+      slug: 'test-workspace',
+      poolState: 'COMPLETE',
+    };
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Both mobile and desktop sidebars are rendered, so we get all matching elements
+    const graphLinks = screen.getAllByTestId('nav-graph');
+    expect(graphLinks.length).toBeGreaterThan(0);
+    
+    // Check the first one (desktop sidebar)
+    // Graph has href="/" which becomes "/w/test-workspace/" 
+    const graphLink = graphLinks[0].querySelector('a');
+    expect(graphLink).toHaveAttribute('href', '/w/test-workspace/');
+
+    // Verify Capacity link
+    const capacityLinks = screen.getAllByTestId('nav-capacity');
+    const capacityLink = capacityLinks[0].querySelector('a');
+    expect(capacityLink).toHaveAttribute('href', '/w/test-workspace/capacity');
+  });
+
+  it('should render child navigation items as <a> elements with correct hrefs', async () => {
+    const user = userEvent.setup();
+    const mockWorkspace = {
+      id: 'workspace-1',
+      name: 'Test Workspace',
+      slug: 'test-workspace',
+      poolState: 'COMPLETE',
+    };
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Expand Build section (click first one - desktop sidebar)
+    const buildButtons = screen.getAllByTestId('nav-build');
+    await user.click(buildButtons[0]);
+
+    // Verify child links
+    await waitFor(() => {
+      const tasksLinks = screen.getAllByTestId('nav-tasks');
+      expect(tasksLinks[0]).toHaveAttribute('href', '/w/test-workspace/tasks');
+
+      const planLinks = screen.getAllByTestId('nav-plan');
+      expect(planLinks[0]).toHaveAttribute('href', '/w/test-workspace/plan');
+
+      const whiteboardsLinks = screen.getAllByTestId('nav-whiteboards');
+      expect(whiteboardsLinks[0]).toHaveAttribute('href', '/w/test-workspace/whiteboards');
+    });
+  });
+
+  it('should render Settings as <a> element with correct href', () => {
+    const mockWorkspace = {
+      id: 'workspace-1',
+      name: 'Test Workspace',
+      slug: 'test-workspace',
+      poolState: 'COMPLETE',
+    };
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const settingsButtons = screen.getAllByTestId('settings-button');
+    const settingsLink = settingsButtons[0].querySelector('a');
+    expect(settingsLink).toHaveAttribute('href', '/w/test-workspace/settings');
+  });
+
+  it('should support Cmd+Click to open links in new tab', () => {
+    const mockWorkspace = {
+      id: 'workspace-1',
+      name: 'Test Workspace',
+      slug: 'test-workspace',
+      poolState: 'COMPLETE',
+    };
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // All navigation items should be proper <a> tags that support browser navigation
+    const graphLinks = screen.getAllByTestId('nav-graph');
+    const graphLink = graphLinks[0].querySelector('a');
+    expect(graphLink?.tagName).toBe('A');
+    expect(graphLink).toHaveAttribute('href');
+  });
+});
+
 describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component rendering)', () => {
   const mockUser = {
     name: 'Test User',

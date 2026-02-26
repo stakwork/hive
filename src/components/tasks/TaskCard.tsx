@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
@@ -24,18 +24,13 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
-  const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const handleClick = () => {
-    // TODO tasks with a featureId should navigate to the feature page with tasks tab
-    if (task.status === "TODO" && task.featureId) {
-      router.push(`/w/${workspaceSlug}/plan/${task.featureId}?tab=tasks`);
-    } else {
-      router.push(`/w/${workspaceSlug}/task/${task.id}`);
-    }
-  };
+  // Derive task href from conditional logic
+  const taskHref = task.status === "TODO" && task.featureId
+    ? `/w/${workspaceSlug}/plan/${task.featureId}?tab=tasks`
+    : `/w/${workspaceSlug}/task/${task.id}`;
 
   const handleArchiveToggle = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent navigation when clicking archive button
@@ -86,17 +81,17 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
   };
 
   return (
-    <motion.div
-      layout
-      data-testid="task-card"
-      data-task-id={task.id}
-      className="relative p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors group"
-      onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      whileHover={{ scale: 1.005 }}
-      transition={{ duration: 0.15 }}
-    >
+    <Link href={taskHref} className="block">
+      <motion.div
+        layout
+        data-testid="task-card"
+        data-task-id={task.id}
+        className="relative p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors group"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        whileHover={{ scale: 1.005 }}
+        transition={{ duration: 0.15 }}
+      >
       {/* Title row */}
       <div className="mb-2 pr-10">
         <AnimatePresence mode="wait">
@@ -284,6 +279,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           </TooltipProvider>
         )}
       </div>
-    </motion.div>
+      </motion.div>
+    </Link>
   );
 }
