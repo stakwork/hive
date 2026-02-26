@@ -26,10 +26,6 @@ vi.mock("pusher-js", () => ({
 
 // Mock Next.js navigation
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-    refresh: vi.fn(),
-  }),
   usePathname: () => "/w/test-workspace/tasks",
 }));
 
@@ -81,6 +77,55 @@ describe("TaskCard - Deployment Badge Integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("Navigation Links", () => {
+    it("renders with correct href for task with featureId and TODO status", () => {
+      const todoTask = {
+        ...mockTaskBase,
+        status: "TODO" as const,
+        featureId: "feature-123",
+      };
+
+      const { container } = render(<TaskCard task={todoTask} />);
+      const link = container.querySelector('a');
+      
+      expect(link).toBeInTheDocument();
+      const href = link?.getAttribute('href');
+      expect(href).toContain('/w/');
+      expect(href).toContain('/plan/feature-123?tab=tasks');
+    });
+
+    it("renders with correct href for task without featureId", () => {
+      const task = {
+        ...mockTaskBase,
+        featureId: null,
+      };
+
+      const { container } = render(<TaskCard task={task} />);
+      const link = container.querySelector('a');
+      
+      expect(link).toBeInTheDocument();
+      const href = link?.getAttribute('href');
+      expect(href).toContain('/w/');
+      expect(href).toContain('/task/task-1');
+    });
+
+    it("renders with correct href for non-TODO task even with featureId", () => {
+      const doneTask = {
+        ...mockTaskBase,
+        status: "DONE" as const,
+        featureId: "feature-123",
+      };
+
+      const { container } = render(<TaskCard task={doneTask} />);
+      const link = container.querySelector('a');
+      
+      expect(link).toBeInTheDocument();
+      const href = link?.getAttribute('href');
+      expect(href).toContain('/w/');
+      expect(href).toContain('/task/task-1');
+    });
   });
 
   describe("Badge Visibility", () => {

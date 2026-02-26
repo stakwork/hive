@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar, User, Bell } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeOrDate } from "@/lib/date-utils";
@@ -18,20 +18,15 @@ interface FeatureCardProps {
 }
 
 export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
-  const router = useRouter();
   const needsReview = feature._count.stakworkRuns > 0;
 
-  const handleClick = () => {
-    router.push(`/w/${workspaceSlug}/plan/${feature.id}`);
-  };
-
   return (
-    <div
-      data-testid="feature-card"
-      data-feature-id={feature.id}
-      className="p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
-      onClick={handleClick}
-    >
+    <Link href={`/w/${workspaceSlug}/plan/${feature.id}`} className="block">
+      <div
+        data-testid="feature-card"
+        data-feature-id={feature.id}
+        className="p-3 border rounded-lg hover:bg-muted transition-colors"
+      >
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h4 className="text-sm font-medium line-clamp-1 min-w-0">{feature.title}</h4>
@@ -81,6 +76,7 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
           <span>{formatRelativeOrDate(feature.createdAt)}</span>
         </div>
       </div>
-    </div>
+      </div>
+    </Link>
   );
 }
