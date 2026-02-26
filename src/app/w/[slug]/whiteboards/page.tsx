@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Loader2, PenLine, Link2 } from "lucide-react";
@@ -157,44 +158,48 @@ export default function WhiteboardsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {whiteboards.map((wb) => (
-            <Card
+            <Link
               key={wb.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors group"
-              onClick={() => router.push(`/w/${slug}/whiteboards/${wb.id}`)}
+              href={`/w/${slug}/whiteboards/${wb.id}`}
+              className="block"
             >
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                <div className="space-y-1">
-                  <CardTitle className="text-base">{wb.name}</CardTitle>
-                  <CardDescription className="text-xs">
-                    Updated {formatDate(wb.updatedAt)}
-                  </CardDescription>
-                  {wb.feature && (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs mt-1 cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/w/${slug}/plan/${wb.feature!.id}?tab=architecture`);
-                      }}
-                    >
-                      <Link2 className="w-3 h-3 mr-1" />
-                      {wb.feature.title}
-                    </Badge>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(wb.id);
-                  }}
-                >
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              </CardHeader>
-            </Card>
+              <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base">{wb.name}</CardTitle>
+                    <CardDescription className="text-xs">
+                      Updated {formatDate(wb.updatedAt)}
+                    </CardDescription>
+                    {wb.feature && (
+                      <Link
+                        href={`/w/${slug}/plan/${wb.feature.id}?tab=architecture`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-block"
+                      >
+                        <Badge
+                          variant="secondary"
+                          className="text-xs mt-1 cursor-pointer"
+                        >
+                          <Link2 className="w-3 h-3 mr-1" />
+                          {wb.feature.title}
+                        </Badge>
+                      </Link>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(wb.id);
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </CardHeader>
+              </Card>
+            </Link>
           ))}
         </div>
       )}
