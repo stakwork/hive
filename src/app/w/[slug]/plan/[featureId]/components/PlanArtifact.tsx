@@ -61,6 +61,105 @@ const SECTION_META: Record<
   },
 };
 
+interface SectionContentProps {
+  editing: boolean;
+  hasContent: boolean;
+  isEditable: boolean;
+  section: PlanSection;
+  meta: (typeof SECTION_META)[string] | undefined;
+  highlight?: SectionHighlight | null;
+  draft: string;
+  setDraft: (value: string) => void;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  finishEditing: () => void;
+  startEditing: () => void;
+}
+
+function SectionContent({
+  editing,
+  hasContent,
+  isEditable,
+  section,
+  meta,
+  highlight,
+  draft,
+  setDraft,
+  textareaRef,
+  finishEditing,
+  startEditing,
+}: SectionContentProps): React.ReactNode {
+  if (editing) {
+    return (
+      <div className="relative">
+        <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={finishEditing}
+            className="pointer-events-auto h-7 w-7 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-1.5 mr-1.5"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <Textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={finishEditing}
+          placeholder={meta?.placeholder}
+          className="resize-y font-mono text-sm min-h-[120px] pr-10"
+        />
+      </div>
+    );
+  }
+
+  if (hasContent && highlight?.type === "diff") {
+    return (
+      <div className="text-sm leading-relaxed whitespace-pre-wrap">
+        {highlight.tokens.map((token, i) => (
+          <span
+            key={i}
+            className={token.isNew ? "highlight-underline" : undefined}
+          >
+            {token.word}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (hasContent) {
+    return <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>;
+  }
+
+  if (isEditable) {
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="w-full text-left rounded-lg border border-dashed border-border/60 hover:border-emerald-500/40 bg-muted/20 hover:bg-emerald-500/[0.03] transition-all duration-200 cursor-text group/empty"
+      >
+        <div className="px-4 py-4">
+          <p className="text-sm text-muted-foreground/50 group-hover/empty:text-muted-foreground/70 transition-colors leading-relaxed">
+            {meta?.hint || `Add ${section.label.toLowerCase()}...`}
+          </p>
+          <p className="text-xs text-muted-foreground/30 group-hover/empty:text-muted-foreground/50 transition-colors mt-1.5">
+            Click to start writing
+          </p>
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-border/40 bg-muted/10 px-4 py-4">
+      <p className="text-sm text-muted-foreground/30 italic">
+        No {section.label.toLowerCase()} yet
+      </p>
+    </div>
+  );
+}
+
 function EditableSection({
   section,
   onSave,
@@ -110,6 +209,12 @@ function EditableSection({
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {section.label}
         </h3>
+        {highlight && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 animate-[highlight-badge_3s_ease-out_forwards]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[highlight-dot_3s_ease-out_forwards]" />
+            Updated
+          </span>
+        )}
         {isEditable && !editing && (
           <SaveIndicator
             field={section.key}
@@ -130,84 +235,19 @@ function EditableSection({
         )}
       </div>
 
-      {/* Editing state */}
-      {editing ? (
-        <div className="relative">
-          <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={finishEditing}
-              className="pointer-events-auto h-7 w-7 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-1.5 mr-1.5"
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <Textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={finishEditing}
-            placeholder={meta?.placeholder}
-            className="resize-y font-mono text-sm min-h-[120px] pr-10"
-          />
-        </div>
-      ) : hasContent ? (
-        /* Filled state - render markdown with optional highlights */
-        highlight?.type === "new" ? (
-          <motion.div
-            initial={{ boxShadow: "0 0 14px rgba(16,185,129,0.35)", outline: "2px solid rgba(16,185,129,0.5)" }}
-            animate={{ boxShadow: "0 0 0px rgba(16,185,129,0)", outline: "2px solid rgba(16,185,129,0)" }}
-            transition={{ duration: 3, ease: "easeOut" }}
-            className="rounded-lg"
-          >
-            <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
-          </motion.div>
-        ) : highlight?.type === "diff" ? (
-          <div className="text-sm leading-relaxed">
-            {highlight.tokens.map((token, i) =>
-              token.isNew ? (
-                <motion.span
-                  key={i}
-                  initial={{ backgroundColor: "rgba(52, 211, 153, 0.3)" }}
-                  animate={{ backgroundColor: "rgba(52, 211, 153, 0)" }}
-                  transition={{ duration: 3, ease: "easeOut" }}
-                  className="rounded-sm px-0.5"
-                >
-                  {token.word}
-                </motion.span>
-              ) : (
-                <span key={i}>{token.word}</span>
-              )
-            )}
-          </div>
-        ) : (
-          <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
-        )
-      ) : isEditable ? (
-        /* Empty editable state - inviting click target */
-        <button
-          type="button"
-          onClick={startEditing}
-          className="w-full text-left rounded-lg border border-dashed border-border/60 hover:border-emerald-500/40 bg-muted/20 hover:bg-emerald-500/[0.03] transition-all duration-200 cursor-text group/empty"
-        >
-          <div className="px-4 py-4">
-            <p className="text-sm text-muted-foreground/50 group-hover/empty:text-muted-foreground/70 transition-colors leading-relaxed">
-              {meta?.hint || `Add ${section.label.toLowerCase()}...`}
-            </p>
-            <p className="text-xs text-muted-foreground/30 group-hover/empty:text-muted-foreground/50 transition-colors mt-1.5">
-              Click to start writing
-            </p>
-          </div>
-        </button>
-      ) : (
-        /* Empty read-only state */
-        <div className="rounded-lg border border-dashed border-border/40 bg-muted/10 px-4 py-4">
-          <p className="text-sm text-muted-foreground/30 italic">
-            No {section.label.toLowerCase()} yet
-          </p>
-        </div>
-      )}
+      <SectionContent
+        editing={editing}
+        hasContent={hasContent}
+        isEditable={isEditable}
+        section={section}
+        meta={meta}
+        highlight={highlight}
+        draft={draft}
+        setDraft={setDraft}
+        textareaRef={textareaRef}
+        finishEditing={finishEditing}
+        startEditing={startEditing}
+      />
     </div>
   );
 }

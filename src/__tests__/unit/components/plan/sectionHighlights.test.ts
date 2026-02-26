@@ -1,191 +1,149 @@
-import { describe, it, expect } from 'vitest';
-import { diffWords } from 'diff';
-import type { DiffToken, SectionHighlight } from '@/app/w/[slug]/plan/[featureId]/components/PlanArtifact';
+import { describe, it, expect } from "vitest";
+import { computeSectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
+import type { FeatureDetail } from "@/types/roadmap";
 
-describe('Section Highlights Logic', () => {
+function mockFeature(overrides: Partial<FeatureDetail> = {}): FeatureDetail {
+  return {
+    id: "feat-1",
+    title: "Test",
+    brief: null,
+    requirements: null,
+    architecture: null,
+    personas: null,
+    diagramUrl: null,
+    diagramS3Key: null,
+    status: "DRAFT",
+    priority: null,
+    workflowStatus: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    assignee: null,
+    userStories: [],
+    phases: [],
+    ...overrides,
+  } as FeatureDetail;
+}
+
+describe("computeSectionHighlights", () => {
   describe('type: "new" highlight', () => {
-    it('should produce "new" highlight when prevVal is null and nextVal has content', () => {
-      const prevVal = null;
-      const nextVal = 'This is new content';
+    it("should produce 'new' highlight when a section goes from null to having content", () => {
+      const prev = mockFeature({ brief: null });
+      const next = mockFeature({ brief: "This is new content" });
 
-      let highlight: SectionHighlight | null = null;
+      const result = computeSectionHighlights(prev, next);
 
-      if (!prevVal && nextVal) {
-        highlight = { type: 'new' };
-      }
-
-      expect(highlight).toEqual({ type: 'new' });
+      expect(result?.brief).toEqual({ type: "new" });
     });
 
-    it('should produce "new" highlight when prevVal is empty string and nextVal has content', () => {
-      const prevVal = '';
-      const nextVal = 'This is new content';
+    it("should not produce any highlights when nextVal is null", () => {
+      const prev = mockFeature({ brief: null });
+      const next = mockFeature({ brief: null });
 
-      let highlight: SectionHighlight | null = null;
+      const result = computeSectionHighlights(prev, next);
 
-      if (!prevVal && nextVal) {
-        highlight = { type: 'new' };
-      }
-
-      expect(highlight).toEqual({ type: 'new' });
-    });
-
-    it('should not produce highlight when nextVal is null', () => {
-      const prevVal = null;
-      const nextVal = null;
-
-      let highlight: SectionHighlight | null = null;
-
-      if (!nextVal) {
-        // Skip
-      } else if (!prevVal && nextVal) {
-        highlight = { type: 'new' };
-      }
-
-      expect(highlight).toBeNull();
+      expect(result).toBeNull();
     });
   });
 
   describe('type: "diff" highlight', () => {
-    it('should produce "diff" highlight when both prevVal and nextVal exist and differ', () => {
-      const prevVal = 'Hello world';
-      const nextVal = 'Hello beautiful world';
+    it("should produce 'diff' highlight when content changes", () => {
+      const prev = mockFeature({ brief: "Hello world" });
+      const next = mockFeature({ brief: "Hello beautiful world" });
 
-      let highlight: SectionHighlight | null = null;
+      const result = computeSectionHighlights(prev, next);
 
-      if (!nextVal) {
-        // Skip
-      } else if (!prevVal && nextVal) {
-        highlight = { type: 'new' };
-      } else if (prevVal && nextVal && prevVal !== nextVal) {
-        const parts = diffWords(prevVal, nextVal);
-        const tokens: DiffToken[] = parts.flatMap((part) => {
-          if (part.removed) return [];
-          return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-            word,
-            isNew: !!part.added,
-          }));
-        });
-        highlight = { type: 'diff', tokens };
-      }
-
-      expect(highlight).toBeTruthy();
-      expect(highlight?.type).toBe('diff');
-      if (highlight?.type === 'diff') {
-        expect(highlight.tokens.length).toBeGreaterThan(0);
+      expect(result?.brief?.type).toBe("diff");
+      if (result?.brief?.type === "diff") {
+        expect(result.brief.tokens.length).toBeGreaterThan(0);
       }
     });
 
-    it('should not produce highlight when values are identical', () => {
-      const prevVal = 'Hello world';
-      const nextVal = 'Hello world';
+    it("should not produce highlights when values are identical", () => {
+      const prev = mockFeature({ brief: "Hello world" });
+      const next = mockFeature({ brief: "Hello world" });
 
-      let highlight: SectionHighlight | null = null;
+      const result = computeSectionHighlights(prev, next);
 
-      if (!nextVal) {
-        // Skip
-      } else if (!prevVal && nextVal) {
-        highlight = { type: 'new' };
-      } else if (prevVal && nextVal && prevVal !== nextVal) {
-        const parts = diffWords(prevVal, nextVal);
-        const tokens: DiffToken[] = parts.flatMap((part) => {
-          if (part.removed) return [];
-          return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-            word,
-            isNew: !!part.added,
-          }));
-        });
-        highlight = { type: 'diff', tokens };
-      }
-
-      expect(highlight).toBeNull();
+      expect(result).toBeNull();
     });
   });
 
-  describe('diffWords tokens', () => {
-    it('should correctly mark added words as isNew: true', () => {
-      const prevVal = 'Hello world';
-      const nextVal = 'Hello beautiful world';
+  describe("diff token details", () => {
+    it("should mark added words as isNew: true", () => {
+      const prev = mockFeature({ brief: "Hello world" });
+      const next = mockFeature({ brief: "Hello beautiful world" });
 
-      const parts = diffWords(prevVal, nextVal);
-      const tokens: DiffToken[] = parts.flatMap((part) => {
-        if (part.removed) return [];
-        return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-          word,
-          isNew: !!part.added,
-        }));
-      });
+      const result = computeSectionHighlights(prev, next);
+      expect(result?.brief?.type).toBe("diff");
+      if (result?.brief?.type !== "diff") return;
 
-      // Find the "beautiful" token
-      const beautifulToken = tokens.find((t) => t.word === 'beautiful');
-      expect(beautifulToken).toBeDefined();
-      expect(beautifulToken?.isNew).toBe(true);
-
-      // "Hello" and "world" should be marked as not new
-      const helloToken = tokens.find((t) => t.word === 'Hello');
-      expect(helloToken?.isNew).toBe(false);
-
-      const worldToken = tokens.find((t) => t.word === 'world');
-      expect(worldToken?.isNew).toBe(false);
+      const { tokens } = result.brief;
+      expect(tokens.find((t) => t.word === "beautiful")?.isNew).toBe(true);
+      expect(tokens.find((t) => t.word === "Hello")?.isNew).toBe(false);
+      expect(tokens.find((t) => t.word === "world")?.isNew).toBe(false);
     });
 
-    it('should mark unchanged words as isNew: false', () => {
-      const prevVal = 'Hello world';
-      const nextVal = 'Hello beautiful world';
+    it("should exclude removed words from tokens", () => {
+      const prev = mockFeature({ brief: "Hello old world" });
+      const next = mockFeature({ brief: "Hello new world" });
 
-      const parts = diffWords(prevVal, nextVal);
-      const tokens: DiffToken[] = parts.flatMap((part) => {
-        if (part.removed) return [];
-        return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-          word,
-          isNew: !!part.added,
-        }));
-      });
+      const result = computeSectionHighlights(prev, next);
+      expect(result?.brief?.type).toBe("diff");
+      if (result?.brief?.type !== "diff") return;
 
-      const unchangedTokens = tokens.filter((t) => !t.isNew && t.word.trim().length > 0);
-      expect(unchangedTokens.length).toBeGreaterThan(0);
-      expect(unchangedTokens.every((t) => ['Hello', 'world'].includes(t.word))).toBe(true);
+      const { tokens } = result.brief;
+      expect(tokens.find((t) => t.word === "old")).toBeUndefined();
+      expect(tokens.find((t) => t.word === "new")?.isNew).toBe(true);
     });
 
-    it('should exclude removed words from tokens', () => {
-      const prevVal = 'Hello old world';
-      const nextVal = 'Hello new world';
+    it("should include whitespace tokens", () => {
+      const prev = mockFeature({ brief: "Hello world" });
+      const next = mockFeature({ brief: "Hello beautiful world" });
 
-      const parts = diffWords(prevVal, nextVal);
-      const tokens: DiffToken[] = parts.flatMap((part) => {
-        if (part.removed) return [];
-        return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-          word,
-          isNew: !!part.added,
-        }));
-      });
+      const result = computeSectionHighlights(prev, next);
+      expect(result?.brief?.type).toBe("diff");
+      if (result?.brief?.type !== "diff") return;
 
-      // "old" should not appear in tokens
-      const oldToken = tokens.find((t) => t.word === 'old');
-      expect(oldToken).toBeUndefined();
-
-      // "new" should appear and be marked as new
-      const newToken = tokens.find((t) => t.word === 'new');
-      expect(newToken).toBeDefined();
-      expect(newToken?.isNew).toBe(true);
-    });
-
-    it('should handle whitespace correctly in tokens', () => {
-      const prevVal = 'Hello world';
-      const nextVal = 'Hello beautiful world';
-
-      const parts = diffWords(prevVal, nextVal);
-      const tokens: DiffToken[] = parts.flatMap((part) => {
-        if (part.removed) return [];
-        return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
-          word,
-          isNew: !!part.added,
-        }));
-      });
-
-      // Should include whitespace tokens
-      const whitespaceTokens = tokens.filter((t) => t.word.match(/^\s+$/));
+      const whitespaceTokens = result.brief.tokens.filter((t) => /^\s+$/.test(t.word));
       expect(whitespaceTokens.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("user stories section", () => {
+    it("should detect new user stories", () => {
+      const prev = mockFeature({ userStories: [] });
+      const next = mockFeature({
+        userStories: [{ id: "s1", title: "As a user, I want to log in", order: 0, completed: false, createdAt: new Date(), updatedAt: new Date() }],
+      } as Partial<FeatureDetail>);
+
+      const result = computeSectionHighlights(prev, next);
+
+      expect(result?.["user-stories"]).toEqual({ type: "new" });
+    });
+
+    it("should detect changed user stories", () => {
+      const prev = mockFeature({
+        userStories: [{ id: "s1", title: "Story A", order: 0, completed: false, createdAt: new Date(), updatedAt: new Date() }],
+      } as Partial<FeatureDetail>);
+      const next = mockFeature({
+        userStories: [{ id: "s1", title: "Story B", order: 0, completed: false, createdAt: new Date(), updatedAt: new Date() }],
+      } as Partial<FeatureDetail>);
+
+      const result = computeSectionHighlights(prev, next);
+
+      expect(result?.["user-stories"]?.type).toBe("diff");
+    });
+  });
+
+  describe("multiple sections", () => {
+    it("should detect highlights across multiple sections at once", () => {
+      const prev = mockFeature({ brief: null, requirements: "Old reqs" });
+      const next = mockFeature({ brief: "New brief", requirements: "Updated reqs" });
+
+      const result = computeSectionHighlights(prev, next);
+
+      expect(result?.brief).toEqual({ type: "new" });
+      expect(result?.requirements?.type).toBe("diff");
     });
   });
 });

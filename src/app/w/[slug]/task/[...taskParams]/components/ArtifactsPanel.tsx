@@ -34,7 +34,23 @@ interface ArtifactsPanelProps {
   sectionHighlights?: SectionHighlights | null;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange, sectionHighlights }: ArtifactsPanelProps) {
+export function ArtifactsPanel({
+  artifacts,
+  workspaceId,
+  taskId,
+  podId,
+  onDebugMessage,
+  isMobile = false,
+  onTogglePreview,
+  onStepSelect,
+  planData,
+  feature,
+  featureId,
+  onFeatureUpdate,
+  controlledTab,
+  onControlledTabChange,
+  sectionHighlights,
+}: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
