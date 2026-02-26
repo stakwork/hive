@@ -335,6 +335,23 @@ export async function triggerPodRepair(
   // Get container configuration
   const containerConfig = await getSwarmContainerConfig(workspaceId);
 
+  // Get repositories and build exclusion list
+  const repositories = await db.repository.findMany({
+    where: { workspaceId },
+    select: { name: true, triggerPodRepair: true },
+  });
+  
+  const excludedRepos = repositories
+    .filter((r) => r.triggerPodRepair === false)
+    .map((r) => r.name);
+
+  // Augment message with exclusion instructions
+  let enhancedMessage = message || "";
+  if (excludedRepos.length > 0) {
+    const exclusionNote = `\n\nIMPORTANT: DO NOT try to make a service from these repos: ${excludedRepos.join(", ")}. These repositories should not be configured as services in the pod.`;
+    enhancedMessage = enhancedMessage ? `${enhancedMessage}${exclusionNote}` : exclusionNote.trim();
+  }
+
   // Create StakworkRun record
   const run = await db.stakworkRun.create({
     data: {
@@ -373,10 +390,11 @@ export async function triggerPodRepair(
               attemptNumber: history.length + 1,
               history,
               failedServices,
-              message: message || null,
+              message: enhancedMessage || null,
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
               containerFiles: containerConfig?.containerFiles || null,
+              excludedRepos: excludedRepos.length > 0 ? excludedRepos : null,
               tokenReference: getStakworkTokenReference(),
             },
           },
