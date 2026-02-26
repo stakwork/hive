@@ -9,9 +9,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { serializeDiagramContext } from "@/services/excalidraw-layout";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState } from "@excalidraw/excalidraw/types";
+import type { LayoutAlgorithm, ParsedDiagram } from "@/services/excalidraw-layout";
+import { extractParsedDiagram, relayoutDiagram, serializeDiagramContext } from "@/services/excalidraw-layout";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { ChevronLeft, ChevronRight, Loader2, Mic, MicOff, Send } from "lucide-react";
@@ -43,9 +53,11 @@ export function WhiteboardChatPanel({
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [layout, setLayout] = useState<LayoutAlgorithm>("layered");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
   const preVoiceInputRef = useRef("");
+  const parsedDiagramRef = useRef<ParsedDiagram | null>(null);
 
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
@@ -118,12 +130,17 @@ export function WhiteboardChatPanel({
 
         // Reload whiteboard and scroll to fit
         await onReloadWhiteboard();
-        excalidrawAPI?.scrollToContent(undefined, {
-          fitToViewport: true,
-          viewportZoomFactor: 0.9,
-          animate: true,
-          duration: 300,
-        });
+        if (excalidrawAPI) {
+          parsedDiagramRef.current = extractParsedDiagram(
+            excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+          );
+          excalidrawAPI.scrollToContent(undefined, {
+            fitToViewport: true,
+            viewportZoomFactor: 0.9,
+            animate: true,
+            duration: 300,
+          });
+        }
       }
     );
 
@@ -164,7 +181,7 @@ export function WhiteboardChatPanel({
       const res = await fetch(`/api/whiteboards/${whiteboardId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmedInput, layout: "layered", diagramContext }),
+        body: JSON.stringify({ content: trimmedInput, layout, diagramContext }),
       });
 
       if (res.status === 409) {
@@ -194,7 +211,31 @@ export function WhiteboardChatPanel({
       toast.error("Failed to send message");
       setGenerating(false);
     }
-  }, [input, generating, whiteboardId, excalidrawAPI, isListening, stopListening, resetTranscript]);
+  }, [input, generating, whiteboardId, excalidrawAPI, isListening, stopListening, resetTranscript, layout]);
+
+  const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
+    setLayout(newLayout);
+    const diagram = parsedDiagramRef.current;
+    if (!diagram || !excalidrawAPI) return;
+
+    try {
+      const data = await relayoutDiagram(diagram, newLayout);
+      excalidrawAPI.updateScene({
+        elements: data.elements as unknown as readonly ExcalidrawElement[],
+        appState: data.appState as unknown as AppState,
+      });
+      setTimeout(() => {
+        excalidrawAPI.scrollToContent(undefined, {
+          fitToViewport: true,
+          viewportZoomFactor: 0.9,
+          animate: true,
+          duration: 300,
+        });
+      }, 100);
+    } catch (err) {
+      console.error("Error re-laying out diagram:", err);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -224,15 +265,26 @@ export function WhiteboardChatPanel({
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
         <h3 className="font-medium text-sm">Chat</h3>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsCollapsed(true)}
-          title="Collapse chat"
-          className="h-6 w-6"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={layout} onValueChange={(v) => handleLayoutChange(v as LayoutAlgorithm)}>
+            <SelectTrigger className="w-[130px] h-6 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="layered">Hierarchical</SelectItem>
+              <SelectItem value="force">Force</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsCollapsed(true)}
+            title="Collapse chat"
+            className="h-6 w-6"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Messages */}

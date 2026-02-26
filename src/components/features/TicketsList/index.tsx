@@ -38,6 +38,7 @@ interface TicketsListProps {
   onUpdate: (feature: FeatureDetail) => void;
   onDecisionMade?: () => void;
   hideControls?: boolean;
+  isGenerating?: boolean;
 }
 
 interface GeneratedTask {
@@ -58,7 +59,7 @@ interface GeneratedContent {
   phases: GeneratedPhase[];
 }
 
-export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hideControls = false }: TicketsListProps) {
+export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hideControls = false, isGenerating = false }: TicketsListProps) {
   const router = useRouter();
   const { slug: workspaceSlug, id: workspaceId, workspace } = useWorkspace();
 
@@ -796,7 +797,12 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
       )}
 
       {/* Task View */}
-      {activeView === "table" ? (
+      {tickets.length === 0 && isGenerating ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <Spinner className="h-6 w-6" />
+          <p className="text-sm">Generating tasks&hellip;</p>
+        </div>
+      ) : activeView === "table" ? (
         <RoadmapTasksTable
           phaseId={defaultPhase.id}
           workspaceSlug={workspaceSlug || ""}
