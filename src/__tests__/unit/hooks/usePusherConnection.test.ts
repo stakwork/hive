@@ -16,6 +16,7 @@ vi.mock("@/lib/pusher", () => ({
   getPusherClient: vi.fn(),
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
   getWorkspaceChannelName: vi.fn((workspaceSlug: string) => `workspace-${workspaceSlug}`),
+  getFeatureChannelName: vi.fn((featureId: string) => `feature-${featureId}`),
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
     CONNECTION_COUNT: "connection-count",
@@ -23,6 +24,7 @@ vi.mock("@/lib/pusher", () => ({
     RECOMMENDATIONS_UPDATED: "recommendations-updated",
     TASK_TITLE_UPDATE: "task-title-update",
     WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
+    FEATURE_TITLE_UPDATE: "feature-title-update",
   },
 }));
 
@@ -378,6 +380,33 @@ describe("usePusherConnection Hook", () => {
       taskTitleCallback?.(mockUpdate);
 
       expect(onTaskTitleUpdate).toHaveBeenCalledWith(mockUpdate);
+    });
+
+    test("should call onFeatureTitleUpdate callback when FEATURE_TITLE_UPDATE event is received", () => {
+      const featureId = "feature-123";
+      const onFeatureTitleUpdate = vi.fn();
+      const mockUpdate = {
+        featureId,
+        newTitle: "Updated Feature Title",
+      };
+
+      renderHook(() => usePusherConnection({ 
+        featureId, 
+        enabled: true,
+        onFeatureTitleUpdate,
+      }));
+
+      // Get the FEATURE_TITLE_UPDATE callback
+      const featureTitleCallback = mockChannel.bind.mock.calls.find(
+        (call) => call[0] === MOCK_PUSHER_EVENTS.FEATURE_TITLE_UPDATE
+      )?.[1];
+      
+      expect(featureTitleCallback).toBeDefined();
+
+      // Simulate feature title update
+      featureTitleCallback?.(mockUpdate);
+
+      expect(onFeatureTitleUpdate).toHaveBeenCalledWith(mockUpdate);
     });
 
     test("should call onRecommendationsUpdated callback when RECOMMENDATIONS_UPDATED event is received", () => {

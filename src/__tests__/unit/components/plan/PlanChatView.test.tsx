@@ -4,6 +4,7 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import { ChatRole, ChatStatus } from "@/lib/chat";
+import { usePusherConnection } from "@/hooks/usePusherConnection";
 
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
@@ -50,6 +51,7 @@ vi.mock("@/hooks/usePusherConnection", () => ({
 const mockUseDetailResource = vi.fn(() => ({
   data: null,
   setData: vi.fn(),
+  updateData: vi.fn(),
   loading: false,
   error: null,
 }));
@@ -489,6 +491,127 @@ describe("PlanChatView", () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe("Feature title updates", () => {
+    it("should update feature title when onFeatureTitleUpdate is called", async () => {
+      const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          workspaceId: "workspace-1",
+          title: "Original Title",
+          brief: "Test brief",
+          requirements: null,
+          architecture: null,
+          userStories: null,
+        },
+        setData: mockSetData,
+        updateData: mockUpdateData,
+        loading: false,
+        error: null,
+      });
+
+      let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
+
+      // Mock usePusherConnection to capture the callback
+      vi.mocked(usePusherConnection).mockImplementation((options) => {
+        capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
+        return {
+          isConnected: true,
+          connectionId: "test-connection",
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          error: null,
+        };
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Verify that usePusherConnection was called with onFeatureTitleUpdate
+      expect(usePusherConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          featureId: "feature-123",
+          onFeatureTitleUpdate: expect.any(Function),
+        })
+      );
+
+      // Simulate receiving a feature title update
+      act(() => {
+        capturedOnFeatureTitleUpdate?.({
+          featureId: "feature-123",
+          newTitle: "Updated Title",
+        });
+      });
+
+      // Verify updateData was called with the new title
+      await waitFor(() => {
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
+      });
+    });
+
+    it("should not update if feature data is null", async () => {
+      const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
+      mockUseDetailResource.mockReturnValue({
+        data: null,
+        setData: mockSetData,
+        updateData: mockUpdateData,
+        loading: false,
+        error: null,
+      });
+
+      let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
+
+      // Mock usePusherConnection to capture the callback
+      vi.mocked(usePusherConnection).mockImplementation((options) => {
+        capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
+        return {
+          isConnected: true,
+          connectionId: "test-connection",
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          error: null,
+        };
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Simulate receiving a feature title update when data is null
+      act(() => {
+        capturedOnFeatureTitleUpdate?.({
+          featureId: "feature-123",
+          newTitle: "Updated Title",
+        });
+      });
+
+      // Verify updateData was called (even though data is null, the callback still fires)
+      await waitFor(() => {
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
+      });
+
+      // Verify setData was NOT called (because updateData does nothing when data is null)
+      expect(mockSetData).not.toHaveBeenCalled();
+    });
   });
 
   describe("Project log WebSocket integration", () => {
