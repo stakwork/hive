@@ -7,13 +7,17 @@ interface PRStatusBadgeProps {
 }
 
 export function PRStatusBadge({ url, status }: PRStatusBadgeProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className="inline-flex"
+    <button
+      onClick={handleClick}
+      className="inline-flex cursor-pointer"
+      type="button"
     >
       <Badge
         variant="secondary"
@@ -50,6 +54,6 @@ export function PRStatusBadge({ url, status }: PRStatusBadgeProps) {
             : "Merged"}
         <ExternalLink className="w-3 h-3 ml-0.5" />
       </Badge>
-    </a>
+    </button>
   );
 }
