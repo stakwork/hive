@@ -146,10 +146,44 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
   }, [featureId]);
 
+  // Mock messages for testing quick-reply chip (add ?mock=true to URL)
+  const useMockMessages = searchParams?.get("mock") === "true";
+
   // Initial load
   useEffect(() => {
+    if (useMockMessages) {
+      setMessages([
+        createChatMessage({
+          id: "mock-1",
+          message: "Can you build out the auth flow for this feature?",
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+        }),
+        createChatMessage({
+          id: "mock-2",
+          message: "I've analyzed the requirements and drafted a plan with OAuth2 + session-based auth. The architecture uses NextAuth.js with GitHub provider, JWT tokens for API routes, and middleware-level protection.\n\nHere's what I'll implement:\n1. GitHub OAuth login flow\n2. Session middleware for protected routes\n3. Role-based access control hooks\n\nDoes this approach work for you?",
+          role: ChatRole.ASSISTANT,
+          status: ChatStatus.SENT,
+        }),
+        createChatMessage({
+          id: "mock-3",
+          message: "Yes, go ahead with that approach",
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          replyId: "mock-2",
+        }),
+        createChatMessage({
+          id: "mock-4",
+          message: "I've completed the implementation. Here's a summary of what was built:\n\n- **OAuth flow**: GitHub provider configured with proper scopes\n- **Session middleware**: Protects all `/api/` and `/w/` routes\n- **RBAC hooks**: `useWorkspaceAccess()` with role hierarchy\n- **Token encryption**: AES-256-GCM for stored tokens\n\nAll tests are passing. Ready for review.",
+          role: ChatRole.ASSISTANT,
+          status: ChatStatus.SENT,
+        }),
+      ]);
+      setInitialLoadDone(true);
+      return;
+    }
     loadMessages();
-  }, [loadMessages]);
+  }, [loadMessages, useMockMessages]);
 
   // Refetch on tab visibility change
   useEffect(() => {
@@ -343,9 +377,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const featureTitle = feature?.title || null;
 
-  // Check if plan is complete (has tasks)
+  // Hide quick-reply chip once architecture is set or tasks exist
   const isPlanComplete = !!(
-    feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0
+    feature?.architecture ||
+    (feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0)
   );
 
   const inputDisabled =
