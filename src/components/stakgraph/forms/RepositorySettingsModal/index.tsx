@@ -92,8 +92,8 @@ export function RepositorySettingsModal({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Pod Repair Toggle - Disabled until pod recreation race condition is resolved (FIXME) */}
-          {false && isNewRepository && (
+          {/* Pod Repair Toggle - Only shown for new repositories */}
+          {isNewRepository && (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <RefreshCw className="h-5 w-5 text-muted-foreground" />
