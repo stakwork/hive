@@ -132,8 +132,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
         if (prev) {
           const highlights: SectionHighlights = {};
-          const prevStories = prev.userStories?.map(s => s.title).join('\n') ?? null;
-          const nextStories = next.userStories?.map(s => s.title).join('\n') ?? null;
+          const prevStories = prev.userStories?.map((s: { title: string }) => s.title).join('\n') ?? null;
+          const nextStories = next.userStories?.map((s: { title: string }) => s.title).join('\n') ?? null;
 
           const fields: Array<[string, string | null, string | null]> = [
             ['brief', prev.brief ?? null, next.brief ?? null],
