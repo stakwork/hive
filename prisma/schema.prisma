@@ -473,6 +473,7 @@ model Repository {
   docsEnabled          Boolean @default(true) @map("docs_enabled")
   mocksEnabled         Boolean @default(true) @map("mocks_enabled")
   embeddingsEnabled    Boolean @default(true) @map("embeddings_enabled")
+  triggerPodRepair     Boolean @default(false) @map("trigger_pod_repair")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
