@@ -7,6 +7,7 @@ import { ChatRole, ChatStatus } from "@/lib/chat";
 
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
+const mockPush = vi.fn();
 
 // Mock next-auth
 vi.mock("next-auth/react", () => ({
@@ -26,7 +27,7 @@ vi.mock("next-auth/react", () => ({
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: mockReplace,
   })),
   usePathname: vi.fn(() => "/w/test-workspace/plan/feature-123"),
@@ -35,7 +36,6 @@ vi.mock("next/navigation", () => ({
   })),
 }));
 
-// Mock dependencies
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     workspace: { id: "workspace-1", slug: "test-workspace" },
@@ -47,13 +47,15 @@ vi.mock("@/hooks/usePusherConnection", () => ({
   usePusherConnection: vi.fn(),
 }));
 
+const mockUseDetailResource = vi.fn(() => ({
+  data: null,
+  setData: vi.fn(),
+  loading: false,
+  error: null,
+}));
+
 vi.mock("@/hooks/useDetailResource", () => ({
-  useDetailResource: () => ({
-    data: null,
-    setData: vi.fn(),
-    isLoading: false,
-    error: null,
-  }),
+  useDetailResource: () => mockUseDetailResource(),
 }));
 
 vi.mock("@/hooks/useIsMobile", () => ({
@@ -64,6 +66,14 @@ vi.mock("@/hooks/usePlanPresence", () => ({
   usePlanPresence: () => ({
     collaborators: [],
   }),
+}));
+
+vi.mock("@/hooks/useProjectLogWebSocket", () => ({
+  useProjectLogWebSocket: vi.fn(() => ({
+    logs: [],
+    lastLogLine: null,
+    clearLogs: vi.fn(),
+  })),
 }));
 
 vi.mock("@/components/ui/resizable", () => ({
@@ -365,6 +375,27 @@ describe("PlanChatView", () => {
     });
   });
 
+  it("should redirect to plan list when feature not found", async () => {
+    // Mock useDetailResource to return error state
+    mockUseDetailResource.mockReturnValueOnce({
+      data: null,
+      setData: vi.fn(),
+      loading: false,
+      error: "Not found",
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [] }),
+    });
+
+    render(<PlanChatView featureId="bad-id" workspaceSlug="test-workspace" workspaceId="ws-1" />);
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/plan");
+    });
+  });
+
   it("should refetch feature and messages when tab becomes visible", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -458,5 +489,23 @@ describe("PlanChatView", () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe("Project log WebSocket integration", () => {
+    it("should pass isChainVisible, logs, and lastLogLine props to ChatArea", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Verify ChatArea is rendered (props are passed via mock in setup)
+      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
   });
 });

@@ -1,10 +1,7 @@
 "use client";
 
-import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { FeaturesList } from "@/components/features";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -13,15 +10,9 @@ import { Plus } from "lucide-react";
 export default function RoadmapPage() {
   const router = useRouter();
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
-  const featuresListRef = useRef<{ triggerCreate: () => void }>(null);
-  const conversationalPlan = useFeatureFlag(FEATURE_FLAGS.CONVERSATIONAL_PLAN);
 
   const handleNewFeature = () => {
-    if (conversationalPlan) {
-      router.push(`/w/${workspaceSlug}/plan/new`);
-    } else {
-      featuresListRef.current?.triggerCreate();
-    }
+    router.push(`/w/${workspaceSlug}/plan/new`);
   };
 
   return (
@@ -36,7 +27,7 @@ export default function RoadmapPage() {
         }
       />
 
-      <FeaturesList ref={featuresListRef} workspaceId={workspaceId} />
+      <FeaturesList workspaceId={workspaceId} />
     </div>
   );
 }

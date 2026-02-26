@@ -9,6 +9,7 @@ import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePushe
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
+import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import {
   ChatMessage,
   ChatRole,
@@ -34,14 +35,19 @@ interface PlanChatViewProps {
 }
 
 export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
+  const router = useRouter();
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [isChainVisible, setIsChainVisible] = useState(false);
+
+  // Project log WebSocket for live thinking logs
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {
@@ -93,10 +99,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    loading,
+    error,
   } = useDetailResource<FeatureDetail>({
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Redirect to plan list if feature not found
+  useEffect(() => {
+    if (!loading && error) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    }
+  }, [loading, error, router, workspaceSlug]);
 
   const refetchFeature = useCallback(async () => {
     try {
@@ -170,6 +185,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         update.workflowStatus === WorkflowStatus.HALTED
       ) {
         setIsLoading(false);
+        setIsChainVisible(false);
       }
     },
     [],
@@ -215,6 +231,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
+          
+          // Start project log subscription if workflow was triggered
+          if (data.workflow?.project_id) {
+            setProjectId(data.workflow.project_id.toString());
+            setIsChainVisible(true);
+            clearLogs();
+          }
         } else {
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
@@ -229,7 +252,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, session],
+    [featureId, session, clearLogs],
   );
 
   const handleArtifactAction = useCallback(
@@ -269,6 +292,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
+          
+          // Start project log subscription if workflow was triggered
+          if (data.workflow?.project_id) {
+            setProjectId(data.workflow.project_id.toString());
+            setIsChainVisible(true);
+            clearLogs();
+          }
         } else {
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
@@ -283,7 +313,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, session],
+    [featureId, session, clearLogs],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
@@ -341,6 +371,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               featureId={featureId}
               featureTitle={featureTitle}
               taskMode="live"
+              isChainVisible={isChainVisible}
+              lastLogLine={lastLogLine}
+              logs={logs}
             />
           </div>
         </ResizablePanel>
