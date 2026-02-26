@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export async function PUT(
   request: NextRequest,
@@ -60,6 +61,17 @@ export async function PUT(
       data: { title: trimmedTitle },
       select: { id: true, title: true, workspaceId: true },
     });
+
+    // Broadcast title update via Pusher
+    try {
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.FEATURE_TITLE_UPDATE,
+        { featureId, newTitle: trimmedTitle },
+      );
+    } catch (pusherError) {
+      console.error("Failed to broadcast feature title update:", pusherError);
+    }
 
     return NextResponse.json(
       { success: true, data: updatedFeature },

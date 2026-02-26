@@ -53,6 +53,11 @@ export interface DeploymentStatusChangeEvent {
   timestamp: Date;
 }
 
+export interface FeatureTitleUpdateEvent {
+  featureId: string;
+  newTitle: string;
+}
+
 interface UsePusherConnectionOptions {
   taskId?: string | null;
   featureId?: string | null;
@@ -66,6 +71,7 @@ interface UsePusherConnectionOptions {
   onBountyStatusChange?: (update: BountyStatusChangeEvent) => void;
   onDeploymentStatusChange?: (update: DeploymentStatusChangeEvent) => void;
   onFeatureUpdated?: () => void;
+  onFeatureTitleUpdate?: (update: FeatureTitleUpdateEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -92,6 +98,7 @@ export function usePusherConnection({
   onBountyStatusChange,
   onDeploymentStatusChange,
   onFeatureUpdated,
+  onFeatureTitleUpdate,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -108,6 +115,7 @@ export function usePusherConnection({
   const onBountyStatusChangeRef = useRef(onBountyStatusChange);
   const onDeploymentStatusChangeRef = useRef(onDeploymentStatusChange);
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
+  const onFeatureTitleUpdateRef = useRef(onFeatureTitleUpdate);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
 
@@ -119,6 +127,7 @@ export function usePusherConnection({
   onBountyStatusChangeRef.current = onBountyStatusChange;
   onDeploymentStatusChangeRef.current = onDeploymentStatusChange;
   onFeatureUpdatedRef.current = onFeatureUpdated;
+  onFeatureTitleUpdateRef.current = onFeatureTitleUpdate;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -283,6 +292,20 @@ export function usePusherConnection({
           channel.bind(PUSHER_EVENTS.FEATURE_UPDATED, () => {
             if (onFeatureUpdatedRef.current) {
               onFeatureUpdatedRef.current();
+            }
+          });
+
+          // Feature title update events
+          channel.bind(PUSHER_EVENTS.FEATURE_TITLE_UPDATE, (update: FeatureTitleUpdateEvent) => {
+            if (LOGS) {
+              console.log("Received feature title update:", {
+                featureId: update.featureId,
+                newTitle: update.newTitle,
+                channelName,
+              });
+            }
+            if (onFeatureTitleUpdateRef.current) {
+              onFeatureTitleUpdateRef.current(update);
             }
           });
         }
