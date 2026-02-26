@@ -248,6 +248,10 @@ describe("PlanChatView", () => {
         expect(window.localStorage.getItem).toHaveBeenCalledWith("plan_tab_feature-123");
       });
 
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
       const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
       expect(lastCall.controlledTab).toBe("PLAN");
     });
