@@ -62,6 +62,14 @@ vi.mock("@/components/InputDebugAttachment", () => ({
   ),
 }));
 
+vi.mock("@/hooks/useFeatureFlag", () => ({
+  useFeatureFlag: vi.fn(() => false),
+}));
+
+vi.mock("@/lib/utils/detect-code-paste", () => ({
+  detectAndWrapCode: vi.fn((text: string) => text),
+}));
+
 describe("ChatInput - Task Mode", () => {
   const defaultProps = {
     onSend: vi.fn().mockResolvedValue(undefined),

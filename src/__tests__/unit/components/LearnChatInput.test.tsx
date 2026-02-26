@@ -51,6 +51,14 @@ vi.mock("lucide-react", () => ({
   MicOff: () => <span data-testid="mic-off-icon">MicOff</span>,
 }));
 
+vi.mock("@/hooks/useFeatureFlag", () => ({
+  useFeatureFlag: vi.fn(() => false),
+}));
+
+vi.mock("@/lib/utils/detect-code-paste", () => ({
+  detectAndWrapCode: vi.fn((text: string) => text),
+}));
+
 describe("LearnChatInput - Chat/Learn Mode", () => {
   const defaultProps = {
     onSend: vi.fn().mockResolvedValue(undefined),

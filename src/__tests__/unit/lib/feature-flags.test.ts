@@ -293,6 +293,7 @@ describe("canAccessServerFeature", () => {
 describe("FEATURE_FLAGS constants", () => {
   test("should have expected feature flag values", () => {
     expect(FEATURE_FLAGS.CODEBASE_RECOMMENDATION).toBe("CODEBASE_RECOMMENDATION");
+    expect(FEATURE_FLAGS.CHAT_CODE_FORMATTING).toBe("CHAT_CODE_FORMATTING");
   });
 
   test("should be immutable (object modification should not work)", () => {
@@ -310,6 +311,78 @@ describe("FEATURE_FLAGS constants", () => {
 
   test("should have all expected properties", () => {
     expect(FEATURE_FLAGS).toHaveProperty("CODEBASE_RECOMMENDATION");
+    expect(FEATURE_FLAGS).toHaveProperty("CHAT_CODE_FORMATTING");
     expect(Object.keys(FEATURE_FLAGS)).toContain("CODEBASE_RECOMMENDATION");
+    expect(Object.keys(FEATURE_FLAGS)).toContain("CHAT_CODE_FORMATTING");
+  });
+});
+
+describe("CHAT_CODE_FORMATTING feature flag", () => {
+  let originalEnv: typeof process.env;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    delete process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
+  });
+
+  describe("canAccessFeature", () => {
+    test("should return true when feature is enabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "true";
+      
+      const result = canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
+      expect(result).toBe(true);
+    });
+
+    test("should return false when feature is disabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "false";
+      
+      const result = canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
+      expect(result).toBe(false);
+    });
+
+    test("should return false when environment variable is not set", () => {
+      const result = canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
+      expect(result).toBe(false);
+    });
+
+    test("should ignore user role (no role restrictions for this feature)", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "true";
+      
+      expect(canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "VIEWER")).toBe(true);
+      expect(canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "DEVELOPER")).toBe(true);
+      expect(canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "ADMIN")).toBe(true);
+      expect(canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "OWNER")).toBe(true);
+    });
+  });
+
+  describe("canAccessServerFeature", () => {
+    test("should return true when feature is enabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "true";
+      
+      const result = canAccessServerFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
+      expect(result).toBe(true);
+    });
+
+    test("should return false when feature is disabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "false";
+      
+      const result = canAccessServerFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
+      expect(result).toBe(false);
+    });
+
+    test("should have identical behavior to canAccessFeature", () => {
+      process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING = "true";
+      
+      const clientResult = canAccessFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "ADMIN");
+      const serverResult = canAccessServerFeature(FEATURE_FLAGS.CHAT_CODE_FORMATTING, "ADMIN");
+      
+      expect(clientResult).toBe(serverResult);
+      expect(serverResult).toBe(true);
+    });
   });
 });
