@@ -50,7 +50,8 @@ vi.mock("@/hooks/usePusherConnection", () => ({
 }));
 
 const mockSetData = vi.fn();
-const mockUseDetailResource = vi.fn(() => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockUseDetailResource = vi.fn((): any => ({
   data: {
     id: "feature-123",
     title: "Test Feature",
