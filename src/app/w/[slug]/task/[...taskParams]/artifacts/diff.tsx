@@ -53,6 +53,31 @@ import {
 } from "lucide-react";
 import "./DiffArtifact.css";
 
+// Image file extensions supported by the backend
+const IMAGE_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".bmp",
+  ".webp", ".ico", ".svg", ".tiff", ".tif", ".avif",
+]);
+
+/**
+ * Check if a file is an image based on its extension
+ */
+export function isImageFile(fileName: string): boolean {
+  const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * Extract base64 data URI from image diff content
+ */
+export function extractImageDataUri(content: string): string | null {
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('data:image/')) return trimmed;
+  }
+  return null;
+}
+
 interface DiffArtifactPanelProps {
   artifacts: Artifact[];
   viewType?: "split" | "unified";
@@ -71,6 +96,7 @@ interface ParsedFile {
   deletions: number;
   language: string;
   tokens: any;
+  imageDataUri?: string; // present only for image diff entries
 }
 
 const EMPTY_HUNKS: HunkData[] = [];
@@ -148,6 +174,25 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
               tokens: null,
             },
           ];
+        }
+
+        // Handle image files - extract base64 data URI instead of parsing as diff
+        if (isImageFile(diff.file)) {
+          const imageDataUri = extractImageDataUri(diff.content);
+          return [{
+            fileName: diff.file,
+            action: diff.action,
+            repoName: diff.repoName,
+            type: 'modify' as DiffType,
+            hunks: EMPTY_HUNKS,
+            hasError: !imageDataUri,
+            errorMessage: imageDataUri ? undefined : 'Image could not be displayed',
+            additions: 0,
+            deletions: 0,
+            language: '',
+            tokens: null,
+            imageDataUri: imageDataUri ?? undefined,
+          }];
         }
 
         const parsedFiles = parseDiff(diff.content, {
@@ -375,8 +420,19 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                     </div>
                   )}
 
+                  {/* Image content */}
+                  {!file.hasError && file.imageDataUri && (
+                    <div className="p-4 flex justify-center bg-muted/20">
+                      <img
+                        src={file.imageDataUri}
+                        alt={file.fileName}
+                        className="max-w-full max-h-96 object-contain rounded"
+                      />
+                    </div>
+                  )}
+
                   {/* Diff content */}
-                  {!file.hasError && file.hunks.length > 0 && (
+                  {!file.hasError && !file.imageDataUri && file.hunks.length > 0 && (
                     <div className="overflow-x-auto">
                       <Diff
                         viewType={viewType}
@@ -413,7 +469,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                   )}
 
                   {/* Empty hunks */}
-                  {!file.hasError && file.hunks.length === 0 && (
+                  {!file.hasError && !file.imageDataUri && file.hunks.length === 0 && (
                     <div className="p-8 text-center text-muted-foreground text-sm">
                       No changes in this file
                     </div>
