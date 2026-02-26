@@ -21,6 +21,7 @@ import {
 import { getPusherClient } from "@/lib/pusher";
 import { PlanSection, PlanData } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
+import { isClarifyingQuestions } from "@/types/stakwork";
 
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -342,8 +343,37 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const featureTitle = feature?.title || null;
 
+  // Check if there's an unanswered clarifying question artifact
+  const hasUnansweredClarifyingQuestion = useMemo(() => {
+    // Find the last ASSISTANT message with a clarifying question artifact
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role === ChatRole.ASSISTANT && message.artifacts) {
+        const hasClarifyingArtifact = message.artifacts.some(
+          (artifact) => 
+            artifact.type === 'PLAN' && 
+            isClarifyingQuestions(artifact.content)
+        );
+        
+        if (hasClarifyingArtifact) {
+          // Check if any message has replied to this one
+          const hasReply = messages.some((m) => m.replyId === message.id);
+          return !hasReply;
+        }
+      }
+    }
+    return false;
+  }, [messages]);
+
   const inputDisabled =
-    isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
+    isLoading || 
+    workflowStatus === WorkflowStatus.IN_PROGRESS ||
+    hasUnansweredClarifyingQuestion;
+
+  let inputPlaceholder: string | undefined;
+  if (hasUnansweredClarifyingQuestion) {
+    inputPlaceholder = "Answer the questions above to continue";
+  }
 
   if (!initialLoadDone) {
     return (
@@ -363,6 +393,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               onSend={sendMessage}
               onArtifactAction={handleArtifactAction}
               inputDisabled={inputDisabled}
+              inputPlaceholder={inputPlaceholder}
               collaborators={collaborators}
               isLoading={isLoading}
               workflowStatus={workflowStatus}

@@ -24,6 +24,7 @@ interface ChatAreaProps {
   onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
+  inputPlaceholder?: string;
   isLoading?: boolean;
   hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
@@ -55,6 +56,7 @@ export function ChatArea({
   onSend,
   onArtifactAction,
   inputDisabled = false,
+  inputPlaceholder,
   isLoading = false,
   isChainVisible = false,
   lastLogLine = "",
@@ -295,6 +297,7 @@ export function ChatArea({
       <ChatInput
         onSend={onSend}
         disabled={inputDisabled}
+        placeholder={inputPlaceholder}
         isLoading={isLoading}
         pendingDebugAttachment={pendingDebugAttachment}
         onRemoveDebugAttachment={onRemoveDebugAttachment}
