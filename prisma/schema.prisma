@@ -65,6 +65,7 @@ model User {
   lastLoginAt      DateTime? @map("last_login_at")
   poolApiKey       String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
   lightningPubkey  String?   @unique @map("lightning_pubkey") // Lightning Network public key for Sphinx auth
+  sphinxAlias      String?   @map("sphinx_alias") // Sphinx tribe username for @mentions
 
   // Authentication relationships
   accounts   Account[]

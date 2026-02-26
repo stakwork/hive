@@ -483,18 +483,22 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (session.user) {
-        // Add Lightning pubkey to session if user authenticated via Sphinx
+        // Add Lightning pubkey and Sphinx alias to session if user authenticated via Sphinx
         // This needs to happen BEFORE any early returns
         if (userId) {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true },
+              select: { lightningPubkey: true, sphinxAlias: true },
             });
 
             if (userRecord?.lightningPubkey) {
               const decryptedPubkey = encryptionService.decryptField("lightningPubkey", userRecord.lightningPubkey);
               (session.user as { lightningPubkey?: string }).lightningPubkey = decryptedPubkey;
+            }
+
+            if (userRecord?.sphinxAlias) {
+              (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
             }
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
