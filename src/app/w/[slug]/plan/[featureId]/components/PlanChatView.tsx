@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
+import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
@@ -99,6 +99,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    updateData: updateFeature,
     loading,
     error,
   } = useDetailResource<FeatureDetail>({
@@ -191,11 +192,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [],
   );
 
+  const handleFeatureTitleUpdate = useCallback(
+    (update: FeatureTitleUpdateEvent) => {
+      updateFeature({ title: update.newTitle });
+    },
+    [updateFeature],
+  );
+
   usePusherConnection({
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onFeatureUpdated: refetchFeature,
+    onFeatureTitleUpdate: handleFeatureTitleUpdate,
   });
 
   const sendMessage = useCallback(
