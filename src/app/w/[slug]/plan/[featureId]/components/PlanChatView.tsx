@@ -51,28 +51,35 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {
-    // Priority 1: URL param
+    // Priority 1: URL param — read directly from window to survive hard refresh
+    if (typeof window !== "undefined") {
+      const tabParam = new URLSearchParams(window.location.search).get("tab");
+      if (tabParam) {
+        const uppercased = tabParam.toUpperCase() as ArtifactType;
+        if (VALID_PLAN_TABS.includes(uppercased)) return uppercased;
+      }
+    }
+    // Priority 2: localStorage
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(`plan_tab_${featureId}`);
+      if (stored && VALID_PLAN_TABS.includes(stored as ArtifactType)) return stored as ArtifactType;
+    }
+    // Priority 3: default
+    return "PLAN";
+  }, [featureId]);
+
+  const [activeTab, setActiveTab] = useState<ArtifactType>(resolveInitialTab);
+
+  // Sync activeTab when searchParams changes after hydration (e.g. browser navigation)
+  useEffect(() => {
     const tabParam = searchParams?.get("tab");
     if (tabParam) {
       const uppercased = tabParam.toUpperCase() as ArtifactType;
-      if (VALID_PLAN_TABS.includes(uppercased)) {
-        return uppercased;
+      if (VALID_PLAN_TABS.includes(uppercased) && uppercased !== activeTab) {
+        setActiveTab(uppercased);
       }
     }
-
-    // Priority 2: localStorage (client-side only)
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(`plan_tab_${featureId}`);
-      if (stored && VALID_PLAN_TABS.includes(stored as ArtifactType)) {
-        return stored as ArtifactType;
-      }
-    }
-
-    // Priority 3: default
-    return "PLAN";
-  }, [searchParams, featureId]);
-
-  const [activeTab, setActiveTab] = useState<ArtifactType>(resolveInitialTab);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabChange = useCallback(
     (tab: ArtifactType) => {
