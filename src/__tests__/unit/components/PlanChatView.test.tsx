@@ -16,6 +16,20 @@ vi.mock("next/navigation", () => ({
   })),
 }));
 
+// Mock next-auth/react
+vi.mock("next-auth/react", () => ({
+  useSession: vi.fn(() => ({
+    data: {
+      user: {
+        id: "test-user-id",
+        name: "Test User",
+        email: "test@example.com",
+      },
+    },
+    status: "authenticated",
+  })),
+}));
+
 // Mock dependencies
 vi.mock("@/components/chat", () => ({
   ChatArea: vi.fn(({ awaitingFeedback }) => (
