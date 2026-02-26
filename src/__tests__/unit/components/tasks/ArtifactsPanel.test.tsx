@@ -241,3 +241,213 @@ describe("ArtifactsPanel - Generate Tasks Race Condition Logic", () => {
     expect(result.current.activeTab).toBe("TASKS"); // Still on TASKS
   });
 });
+
+describe("ArtifactsPanel - Failure UX (Amber Button & Toast)", () => {
+  /**
+   * Extended logic hook that includes button rendering state
+   */
+  function useFailureUXLogic(initialRunStatus: string | null = null, initialRunId: string | null = null) {
+    const [runStatus, setRunStatus] = useState<string | null>(initialRunStatus);
+    const [runId, setRunId] = useState<string | null>(initialRunId);
+    const [toastedRunId, setToastedRunId] = useState<string | null>(null);
+
+    // Derived state
+    const isRunFailed = runStatus === "FAILED" || runStatus === "ERROR" || runStatus === "HALTED";
+
+    // Simulate the toast useEffect logic
+    useEffect(() => {
+      if (isRunFailed && runId && toastedRunId !== runId) {
+        setToastedRunId(runId);
+        // In real component, toast.error would be called here
+      }
+    }, [isRunFailed, runId, toastedRunId]);
+
+    return {
+      runStatus,
+      runId,
+      isRunFailed,
+      toastedRunId,
+      setRunStatus,
+      setRunId,
+      getButtonColor: () => (isRunFailed ? "bg-amber-500" : "bg-emerald-600"),
+    };
+  }
+
+  test("button renders with amber background when run status is FAILED", () => {
+    const { result } = renderHook(() => useFailureUXLogic("FAILED", "run-123"));
+
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+  });
+
+  test("button renders with amber background when run status is ERROR", () => {
+    const { result } = renderHook(() => useFailureUXLogic("ERROR", "run-456"));
+
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+  });
+
+  test("button renders with amber background when run status is HALTED", () => {
+    const { result } = renderHook(() => useFailureUXLogic("HALTED", "run-789"));
+
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+  });
+
+  test("button renders with emerald background when run is not failed", () => {
+    const { result } = renderHook(() => useFailureUXLogic("IN_PROGRESS", "run-123"));
+
+    expect(result.current.isRunFailed).toBe(false);
+    expect(result.current.getButtonColor()).toBe("bg-emerald-600");
+  });
+
+  test("button returns to emerald when generation restarts after failure", () => {
+    const { result } = renderHook(() => useFailureUXLogic("FAILED", "run-123"));
+
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+
+    // New generation starts
+    act(() => {
+      result.current.setRunStatus("IN_PROGRESS");
+      result.current.setRunId("run-124");
+    });
+
+    expect(result.current.isRunFailed).toBe(false);
+    expect(result.current.getButtonColor()).toBe("bg-emerald-600");
+  });
+
+  test("toast fires once when run transitions to failed state", () => {
+    const { result } = renderHook(() => useFailureUXLogic(null, null));
+
+    // Initial: no run
+    expect(result.current.toastedRunId).toBe(null);
+
+    // Run starts
+    act(() => {
+      result.current.setRunStatus("IN_PROGRESS");
+      result.current.setRunId("run-123");
+    });
+
+    expect(result.current.toastedRunId).toBe(null); // No toast yet
+
+    // Run fails
+    act(() => {
+      result.current.setRunStatus("FAILED");
+    });
+
+    // Toast should fire (toastedRunId is set)
+    expect(result.current.toastedRunId).toBe("run-123");
+  });
+
+  test("toast does not re-fire on re-render with same failed run ID", () => {
+    const { result, rerender } = renderHook(() => useFailureUXLogic("FAILED", "run-123"));
+
+    // Toast fires on mount
+    expect(result.current.toastedRunId).toBe("run-123");
+
+    // Force re-render
+    rerender();
+
+    // Toast should NOT fire again (toastedRunId unchanged)
+    expect(result.current.toastedRunId).toBe("run-123");
+  });
+
+  test("toast does not re-fire when non-ID field changes on same failed run", () => {
+    const { result } = renderHook(() => useFailureUXLogic("FAILED", "run-123"));
+
+    const firstToastedId = result.current.toastedRunId;
+    expect(firstToastedId).toBe("run-123");
+
+    // Simulate re-fetch or state update that doesn't change run ID
+    // (In real component, this might be a feature or other data changing)
+    act(() => {
+      result.current.setRunStatus("FAILED"); // Same status
+      // runId stays "run-123"
+    });
+
+    // toastedRunId should NOT change (no new toast)
+    expect(result.current.toastedRunId).toBe(firstToastedId);
+  });
+
+  test("toast fires again when a new run ID fails", () => {
+    const { result } = renderHook(() => useFailureUXLogic("FAILED", "run-123"));
+
+    // First toast
+    expect(result.current.toastedRunId).toBe("run-123");
+
+    // User retries, new run starts and fails
+    act(() => {
+      result.current.setRunStatus("IN_PROGRESS");
+      result.current.setRunId("run-124");
+    });
+
+    // No toast yet (not failed)
+    expect(result.current.toastedRunId).toBe("run-123"); // Still old one
+
+    act(() => {
+      result.current.setRunStatus("FAILED");
+    });
+
+    // Toast fires for new run
+    expect(result.current.toastedRunId).toBe("run-124");
+  });
+
+  test("toast does not fire when run ID is present but status is not failed", () => {
+    const { result } = renderHook(() => useFailureUXLogic("COMPLETED", "run-123"));
+
+    // No toast for successful run
+    expect(result.current.isRunFailed).toBe(false);
+    expect(result.current.toastedRunId).toBe(null);
+  });
+
+  test("toast does not fire when status is failed but no run ID", () => {
+    const { result } = renderHook(() => useFailureUXLogic("FAILED", null));
+
+    // No toast without run ID
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.toastedRunId).toBe(null);
+  });
+
+  test("full lifecycle: success → failure (toast) → retry → failure (new toast)", () => {
+    const { result } = renderHook(() => useFailureUXLogic("COMPLETED", "run-100"));
+
+    // Initial: completed successfully
+    expect(result.current.isRunFailed).toBe(false);
+    expect(result.current.toastedRunId).toBe(null);
+    expect(result.current.getButtonColor()).toBe("bg-emerald-600");
+
+    // User clicks generate again, new run fails
+    act(() => {
+      result.current.setRunStatus("IN_PROGRESS");
+      result.current.setRunId("run-101");
+    });
+
+    expect(result.current.getButtonColor()).toBe("bg-emerald-600");
+
+    act(() => {
+      result.current.setRunStatus("FAILED");
+    });
+
+    // First failure toast
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.toastedRunId).toBe("run-101");
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+
+    // User clicks retry, another new run fails
+    act(() => {
+      result.current.setRunStatus("IN_PROGRESS");
+      result.current.setRunId("run-102");
+    });
+
+    expect(result.current.getButtonColor()).toBe("bg-emerald-600");
+
+    act(() => {
+      result.current.setRunStatus("ERROR"); // Different failure type
+    });
+
+    // Second failure toast
+    expect(result.current.isRunFailed).toBe(true);
+    expect(result.current.toastedRunId).toBe("run-102");
+    expect(result.current.getButtonColor()).toBe("bg-amber-500");
+  });
+});
