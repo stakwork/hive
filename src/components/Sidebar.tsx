@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -24,7 +25,8 @@ import {
   Workflow,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useState, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -86,7 +88,9 @@ interface SidebarProps {
 interface SidebarContentProps {
   navigationItems: NavigationItem[];
   pathname: string;
-  handleNavigate: (href: string) => void;
+  workspaceSlug: string | null;
+  refreshTaskNotifications: () => void;
+  setIsOpen: (open: boolean) => void;
   tasksWaitingForInputCount: number;
   poolCapacityCount: string | null;
   user: SidebarProps['user'];
@@ -132,7 +136,9 @@ const baseNavigationItems: NavigationItem[] = [
 function SidebarContent({
   navigationItems,
   pathname,
-  handleNavigate,
+  workspaceSlug,
+  refreshTaskNotifications,
+  setIsOpen,
   tasksWaitingForInputCount,
   poolCapacityCount,
   user,
@@ -179,37 +185,33 @@ function SidebarContent({
             const isCapacityItem = item.label === "Capacity";
             const showCapacityBadge = isCapacityItem && poolCapacityCount;
 
+            // Build the href for this navigation item
+            const itemHref = workspaceSlug 
+              ? (item.href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${item.href}`)
+              : '/workspaces';
+
             return (
               <li key={item.href}>
-                <Button
-                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                  variant={isActive ? "secondary" : "ghost"}
-                  className={`w-full justify-start ${
-                    isActive
-                      ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
-                      : "hover:bg-primary/5 dark:hover:bg-primary/10"
-                  }`}
-                  onClick={() => {
-                    if (hasChildren) {
-                      toggleSection(item.label);
-                    } else {
-                      handleNavigate(item.href);
-                    }
-                  }}
-                >
-                  <item.icon className="w-4 h-4 mr-2" />
-                  {item.label}
-                  {showBadge && (
-                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
-                      {tasksWaitingForInputCount}
-                    </Badge>
-                  )}
-                  {showCapacityBadge && (
-                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
-                      {poolCapacityCount}
-                    </Badge>
-                  )}
-                  {hasChildren && (
+                {hasChildren ? (
+                  // Expandable items - use button with onClick to toggle
+                  <Button
+                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-primary/5 dark:hover:bg-primary/10"
+                    onClick={() => toggleSection(item.label)}
+                  >
+                    <item.icon className="w-4 h-4 mr-2" />
+                    {item.label}
+                    {showBadge && (
+                      <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                        {tasksWaitingForInputCount}
+                      </Badge>
+                    )}
+                    {showCapacityBadge && (
+                      <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                        {poolCapacityCount}
+                      </Badge>
+                    )}
                     <span className="ml-auto">
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4" />
@@ -217,8 +219,41 @@ function SidebarContent({
                         <ChevronRight className="w-4 h-4" />
                       )}
                     </span>
-                  )}
-                </Button>
+                  </Button>
+                ) : (
+                  // Non-expandable items - use Link
+                  <Button
+                    asChild
+                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                    variant={isActive ? "secondary" : "ghost"}
+                    className={`w-full justify-start ${
+                      isActive
+                        ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
+                        : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                    }`}
+                  >
+                    <Link
+                      href={itemHref}
+                      onClick={() => {
+                        if (item.href === "/tasks") refreshTaskNotifications();
+                        setIsOpen(false);
+                      }}
+                    >
+                      <item.icon className="w-4 h-4 mr-2" />
+                      {item.label}
+                      {showBadge && (
+                        <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                          {tasksWaitingForInputCount}
+                        </Badge>
+                      )}
+                      {showCapacityBadge && (
+                        <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                          {poolCapacityCount}
+                        </Badge>
+                      )}
+                    </Link>
+                  </Button>
+                )}
                 {/* Render children if expanded */}
                 {hasChildren && (
                   <ul className={`relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4 ${!isExpanded ? 'hidden' : ''}`}>
@@ -226,16 +261,22 @@ function SidebarContent({
                       const isChildActive = isActiveTab(pathname, child.href);
                       const isChildTasksItem = child.label === "Tasks";
                       const showChildBadge = isChildTasksItem && tasksWaitingForInputCount > 0;
+                      const childHref = workspaceSlug ? `/w/${workspaceSlug}${child.href}` : '/workspaces';
+                      
                       return (
                         <li key={child.href} className="py-1">
-                          <button
+                          <Link
+                            href={childHref}
                             data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
                             className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
                               isChildActive
                                 ? "text-foreground font-medium bg-primary/10 dark:bg-primary/20"
                                 : "text-foreground hover:bg-primary/5 dark:hover:bg-primary/10"
                             }`}
-                            onClick={() => handleNavigate(child.href)}
+                            onClick={() => {
+                              if (child.href === "/tasks") refreshTaskNotifications();
+                              setIsOpen(false);
+                            }}
                           >
                             <span className="flex-1">{child.label}</span>
                             {showChildBadge && (
@@ -243,7 +284,7 @@ function SidebarContent({
                                 {tasksWaitingForInputCount}
                               </Badge>
                             )}
-                          </button>
+                          </Link>
                         </li>
                       );
                     })}
@@ -271,13 +312,18 @@ function SidebarContent({
       {/* Settings */}
       <div className="px-4 pb-2">
         <Button
+          asChild
           data-testid="settings-button"
           variant="ghost"
           className="w-full justify-start"
-          onClick={() => handleNavigate("/settings")}
         >
-          <Settings className="w-4 h-4 mr-2" />
-          Settings
+          <Link
+            href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
+            onClick={() => setIsOpen(false)}
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Settings
+          </Link>
         </Button>
       </div>
       <Separator />
@@ -301,7 +347,6 @@ function SidebarContent({
 }
 
 export function Sidebar({ user }: SidebarProps) {
-  const router = useRouter();
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
@@ -359,23 +404,6 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
 
-  const handleNavigate = (href: string) => {
-    // Refresh notification count when user clicks Tasks menu item
-    if (href === "/tasks") {
-      refreshTaskNotifications();
-    }
-
-    if (workspaceSlug) {
-      const fullPath =
-        href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
-      router.push(fullPath);
-    } else {
-      // Fallback to workspaces page if no workspace detected
-      router.push("/workspaces");
-    }
-    setIsOpen(false);
-  };
-
   return (
     <>
       {/* Mobile Sidebar - Hidden on task pages since we have a back button */}
@@ -394,7 +422,9 @@ export function Sidebar({ user }: SidebarProps) {
             <SidebarContent
               navigationItems={navigationItems}
               pathname={pathname}
-              handleNavigate={handleNavigate}
+              workspaceSlug={workspaceSlug}
+              refreshTaskNotifications={refreshTaskNotifications}
+              setIsOpen={setIsOpen}
               tasksWaitingForInputCount={tasksWaitingForInputCount}
               poolCapacityCount={poolCapacityCount}
               user={user}
@@ -412,7 +442,9 @@ export function Sidebar({ user }: SidebarProps) {
           <SidebarContent
             navigationItems={navigationItems}
             pathname={pathname}
-            handleNavigate={handleNavigate}
+            workspaceSlug={workspaceSlug}
+            refreshTaskNotifications={refreshTaskNotifications}
+            setIsOpen={setIsOpen}
             tasksWaitingForInputCount={tasksWaitingForInputCount}
             poolCapacityCount={poolCapacityCount}
             user={user}
