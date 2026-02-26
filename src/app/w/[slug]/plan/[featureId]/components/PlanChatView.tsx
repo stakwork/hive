@@ -34,9 +34,9 @@ interface PlanChatViewProps {
 }
 
 export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
+  const router = useRouter();
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
@@ -97,10 +97,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    loading,
+    error,
   } = useDetailResource<FeatureDetail>({
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Redirect to plan list if feature not found
+  useEffect(() => {
+    if (!loading && error) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    }
+  }, [loading, error, router, workspaceSlug]);
 
   const refetchFeature = useCallback(async () => {
     try {
