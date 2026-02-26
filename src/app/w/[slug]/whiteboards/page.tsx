@@ -171,23 +171,19 @@ export default function WhiteboardsPage() {
                       Updated {formatDate(wb.updatedAt)}
                     </CardDescription>
                     {wb.feature && (
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          window.location.href = `/w/${slug}/plan/${wb.feature.id}?tab=architecture`;
-                        }}
-                        type="button"
-                        className="cursor-pointer"
+                      <Link
+                        href={`/w/${slug}/plan/${wb.feature.id}?tab=architecture`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-block"
                       >
                         <Badge
                           variant="secondary"
-                          className="text-xs mt-1"
+                          className="text-xs mt-1 cursor-pointer"
                         >
                           <Link2 className="w-3 h-3 mr-1" />
                           {wb.feature.title}
                         </Badge>
-                      </button>
+                      </Link>
                     )}
                   </div>
                   <Button
