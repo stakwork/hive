@@ -8,6 +8,21 @@ import { ChatRole, ChatStatus } from "@/lib/chat";
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
 
+// Mock next-auth
+vi.mock("next-auth/react", () => ({
+  useSession: vi.fn(() => ({
+    data: {
+      user: {
+        id: "test-user-id",
+        name: "Test User",
+        email: "test@example.com",
+        image: "https://example.com/avatar.jpg",
+      },
+    },
+    status: "authenticated",
+  })),
+}));
+
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({

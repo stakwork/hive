@@ -933,6 +933,14 @@ export default function TaskChatPage() {
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
       setMessages((msgs) => [...msgs, newMessage]);
       setIsLoading(true);
@@ -1013,6 +1021,14 @@ export default function TaskChatPage() {
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
       setMessages((msgs) => [...msgs, newMessage]);
       setIsLoading(true);
