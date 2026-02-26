@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ArtifactType } from "@/lib/chat";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback, type ReactNode } from "react";
+import React, { useMemo, useEffect, useState, useCallback, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -30,9 +30,10 @@ interface ArtifactsPanelProps {
   onFeatureUpdate?: (feature: FeatureDetail) => void;
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
+  isPlanInProgress?: boolean;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange, isPlanInProgress }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
@@ -173,8 +174,8 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     if (isGenerating) buttonLabel = "Generating...";
     else if (isRunFailed) buttonLabel = "Retry";
 
-    const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating;
-    const needsTooltip = !hasArchitecture && !isRunFailed;
+    const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating || !!isPlanInProgress;
+    const needsTooltip = (!hasArchitecture && !isRunFailed) || !!isPlanInProgress;
 
     const btn = (
       <Button
@@ -198,7 +199,11 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
           <Tooltip>
             <TooltipTrigger asChild>{btn}</TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Architecture required to generate tasks</p>
+              <p>
+                {isPlanInProgress
+                  ? 'AI is still responding — please wait'
+                  : 'Architecture required to generate tasks'}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
