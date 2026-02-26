@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { WAKE_WORD } from "@/lib/constants/voice";
@@ -18,11 +19,14 @@ import { toast } from "sonner";
 import { TranscriptTooltip } from "./TranscriptTooltip";
 
 export default function CallsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { workspace, slug } = useWorkspace();
   const [calls, setCalls] = useState<CallRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [hasMore, setHasMore] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const limit = 10;
@@ -77,6 +81,19 @@ export default function CallsPage() {
       startRecording();
     }
   };
+
+  // Navigate to a specific page and update URL
+  const goToPage = useCallback((n: number) => {
+    setPage(n);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (n <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", n.toString());
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   // Reset flags when recording stops (either manually or automatically)
   useEffect(() => {
@@ -418,7 +435,7 @@ export default function CallsPage() {
                     <Button
                       variant="ghost"
                       size="default"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      onClick={() => goToPage(Math.max(1, page - 1))}
                       disabled={page === 1}
                       className="gap-1 pl-2.5"
                     >
@@ -432,7 +449,7 @@ export default function CallsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => setPage(1)}
+                        onClick={() => goToPage(1)}
                         className={buttonVariants({ variant: "ghost", size: "icon" })}
                       >
                         1
@@ -466,7 +483,7 @@ export default function CallsPage() {
                         <Button
                           variant="ghost"
                           size="default"
-                          onClick={() => setPage((p) => p + 1)}
+                          onClick={() => goToPage(page + 1)}
                           className="gap-1 pr-2.5"
                         >
                           <span>Next</span>
