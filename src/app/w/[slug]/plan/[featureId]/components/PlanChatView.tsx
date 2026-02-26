@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { diffWords } from "diff";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
@@ -19,14 +20,60 @@ import {
   createChatMessage,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData } from "./PlanArtifact";
+import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
 
-function generateUniqueId() {
+function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
+const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
+
+function getUserStoriesText(feature: FeatureDetail): string | null {
+  const stories = feature.userStories ?? [];
+  if (stories.length === 0) return null;
+  if (stories.length === 1) return stories[0].title;
+  return stories.map((s) => s.title).join("\n");
+}
+
+function getSectionValue(feature: FeatureDetail, key: string): string | null {
+  if (key === "user-stories") return getUserStoriesText(feature);
+  return (feature[key as keyof FeatureDetail] as string) ?? null;
+}
+
+function computeDiffTokens(prevVal: string, nextVal: string): DiffToken[] {
+  const parts = diffWords(prevVal, nextVal);
+  return parts.flatMap((part) => {
+    if (part.removed) return [];
+    return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
+      word,
+      isNew: !!part.added,
+    }));
+  });
+}
+
+export function computeSectionHighlights(
+  prev: FeatureDetail,
+  next: FeatureDetail
+): SectionHighlights | null {
+  const highlights: SectionHighlights = {};
+
+  for (const key of PLAN_SECTION_KEYS) {
+    const prevVal = getSectionValue(prev, key);
+    const nextVal = getSectionValue(next, key);
+
+    if (!nextVal) continue;
+    if (!prevVal) {
+      highlights[key] = { type: "new" };
+    } else if (prevVal !== nextVal) {
+      highlights[key] = { type: "diff", tokens: computeDiffTokens(prevVal, nextVal) };
+    }
+  }
+
+  return Object.keys(highlights).length > 0 ? highlights : null;
+}
 
 interface PlanChatViewProps {
   featureId: string;
@@ -45,6 +92,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isChainVisible, setIsChainVisible] = useState(false);
+  const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
+  const prevFeatureRef = useRef<FeatureDetail | null>(null);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -107,6 +156,13 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     fetchFn: fetchFeature,
   });
 
+  // Initialize prevFeatureRef on first load
+  useEffect(() => {
+    if (feature && !prevFeatureRef.current) {
+      prevFeatureRef.current = feature;
+    }
+  }, [feature]);
+
   // Redirect to plan list if feature not found
   useEffect(() => {
     if (!loading && error) {
@@ -117,11 +173,23 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const refetchFeature = useCallback(async () => {
     try {
       const result = await fetchFeature(featureId);
-      if (result.success && result.data) {
-        setFeature(result.data);
+      if (!result.success || !result.data) return;
+
+      const next = result.data;
+      const prev = prevFeatureRef.current;
+
+      if (prev) {
+        const highlights = computeSectionHighlights(prev, next);
+        if (highlights) {
+          setSectionHighlights(highlights);
+          setTimeout(() => setSectionHighlights(null), 3000);
+        }
       }
-    } catch (error) {
-      console.error("Error fetching feature:", error);
+
+      prevFeatureRef.current = next;
+      setFeature(next);
+    } catch (err) {
+      console.error("Error fetching feature:", err);
     }
   }, [featureId, fetchFeature, setFeature]);
 
@@ -325,7 +393,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId, session, clearLogs],
   );
 
-  const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
+  const allArtifacts = useMemo(() => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []), [messages]);
 
   const planData: PlanData = useMemo(() => {
     const stories = feature?.userStories ?? [];
@@ -401,6 +469,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   onFeatureUpdate={setFeature}
                   controlledTab={activeTab}
                   onControlledTabChange={handleTabChange}
+                  sectionHighlights={sectionHighlights}
                 />
               </div>
             </ResizablePanel>
