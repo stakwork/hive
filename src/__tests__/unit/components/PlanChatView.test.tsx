@@ -4,6 +4,18 @@ import { render, waitFor, act } from "@testing-library/react";
 import { PlanChatView } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import { ChatRole, WorkflowStatus } from "@/lib/chat";
 
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  })),
+  usePathname: vi.fn(() => "/w/test-workspace/plan/feature-123"),
+  useSearchParams: vi.fn(() => ({
+    get: vi.fn(() => null),
+  })),
+}));
+
 // Mock dependencies
 vi.mock("@/components/chat", () => ({
   ChatArea: vi.fn(({ awaitingFeedback }) => (
