@@ -8,7 +8,7 @@ import { Monitor, Sparkles, Loader2 } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
-import { TicketsList } from "@/components/features/TicketsList";
+import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -310,11 +310,10 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
           {hasFeature && showTasksTab && (
             <div className="h-full" hidden={activeTab !== "TASKS"}>
               <div className="h-full overflow-auto p-4">
-                <TicketsList
+                <CompactTasksList
                   featureId={featureId!}
                   feature={feature!}
                   onUpdate={onFeatureUpdate!}
-                  hideControls
                   isGenerating={isGenerating}
                 />
               </div>
