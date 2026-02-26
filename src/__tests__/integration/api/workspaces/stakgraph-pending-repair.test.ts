@@ -89,6 +89,7 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
             repositoryUrl: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
+            triggerPodRepair: true,
           },
         ],
         name: "test-swarm",
@@ -132,11 +133,13 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
             repositoryUrl: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
+            triggerPodRepair: true,
           },
           {
             repositoryUrl: "https://github.com/test/repo2",
             branch: "main",
             name: "repo2",
+            triggerPodRepair: true,
           },
         ],
         name: "test-swarm",
@@ -259,6 +262,7 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
             repositoryUrl: "https://github.com/test/newrepo",
             branch: "main",
             name: "newrepo",
+            triggerPodRepair: true,
           },
         ],
         name: "test-swarm",
@@ -326,5 +330,69 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(swarm).toBeTruthy();
     expect(swarm?.pendingRepairTrigger).toBeNull();
     expect(swarm?.podState).toBe(PodState.COMPLETED);
+  });
+
+  it("should NOT set pendingRepairTrigger when triggerPodRepair is false (default)", async () => {
+    const request = createPutRequest(
+      `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
+      {
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/repo1",
+            branch: "main",
+            name: "repo1",
+            // triggerPodRepair omitted (defaults to false)
+          },
+        ],
+        name: "test-swarm",
+        poolName: "test-pool",
+      }
+    );
+
+    const response = await PUT_STAK(request, {
+      params: Promise.resolve({ slug: workspaceSlug }),
+    });
+
+    expect(response.status).toBe(200);
+
+    const swarm = await db.swarm.findFirst({
+      where: { workspaceId },
+      select: { pendingRepairTrigger: true, podState: true },
+    });
+
+    expect(swarm?.pendingRepairTrigger).toBeNull();
+    expect(swarm?.podState).toBe(PodState.COMPLETED); // unchanged
+  });
+
+  it("should set pendingRepairTrigger when triggerPodRepair is true", async () => {
+    const request = createPutRequest(
+      `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
+      {
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/repo1",
+            branch: "main",
+            name: "repo1",
+            triggerPodRepair: true,
+          },
+        ],
+        name: "test-swarm",
+        poolName: "test-pool",
+      }
+    );
+
+    const response = await PUT_STAK(request, {
+      params: Promise.resolve({ slug: workspaceSlug }),
+    });
+
+    expect(response.status).toBe(200);
+
+    const swarm = await db.swarm.findFirst({
+      where: { workspaceId },
+      select: { pendingRepairTrigger: true, podState: true },
+    });
+
+    expect(swarm?.pendingRepairTrigger).toBeTruthy();
+    expect(swarm?.podState).toBe(PodState.NOT_STARTED);
   });
 });

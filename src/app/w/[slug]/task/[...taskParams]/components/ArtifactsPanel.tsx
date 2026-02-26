@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback, type ReactNode } from "react";
+import { useMemo, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Monitor, Sparkles, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
-import { PlanArtifactPanel, PlanData } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
-import { TicketsList } from "@/components/features/TicketsList";
+import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
+import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -30,9 +31,26 @@ interface ArtifactsPanelProps {
   onFeatureUpdate?: (feature: FeatureDetail) => void;
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
+  sectionHighlights?: SectionHighlights | null;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect, planData, feature, featureId, onFeatureUpdate, controlledTab, onControlledTabChange }: ArtifactsPanelProps) {
+export function ArtifactsPanel({
+  artifacts,
+  workspaceId,
+  taskId,
+  podId,
+  onDebugMessage,
+  isMobile = false,
+  onTogglePreview,
+  onStepSelect,
+  planData,
+  feature,
+  featureId,
+  onFeatureUpdate,
+  controlledTab,
+  onControlledTabChange,
+  sectionHighlights,
+}: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
@@ -41,6 +59,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
   const setActiveTab = isControlled && onControlledTabChange ? onControlledTabChange : setInternalTab;
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
+  const toastedRunIdRef = useRef<string | null>(null);
 
   const handlePlanSave = useCallback(async (updates: Record<string, unknown>) => {
     if (!featureId) return;
@@ -138,6 +157,20 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
     }
   }, [hasTasks, isRunFailed]);
 
+  // Fire toast notification once per failed run
+  useEffect(() => {
+    if (
+      isRunFailed &&
+      latestRun?.id &&
+      toastedRunIdRef.current !== latestRun.id
+    ) {
+      toastedRunIdRef.current = latestRun.id;
+      toast.error("Task generation failed", {
+        description: "Something went wrong. Click Retry to try again.",
+      });
+    }
+  }, [isRunFailed, latestRun?.id]);
+
   const handleGenerateTasks = useCallback(async () => {
     if (!featureId || !workspaceId || isGenerating) return;
 
@@ -190,7 +223,11 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
         size="sm"
         onClick={handleGenerateTasks}
         disabled={isDisabled}
-        className="gap-1.5 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed"
+        className={`gap-1.5 h-7 text-xs text-white shadow-sm disabled:opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed ${
+          isRunFailed
+            ? "bg-amber-500 hover:bg-amber-600"
+            : "bg-emerald-600 hover:bg-emerald-700"
+        }`}
       >
         {isGenerating ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -304,17 +341,17 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugM
                 savedField={savedField}
                 saving={saving}
                 saved={saved}
+                sectionHighlights={sectionHighlights}
               />
             </div>
           )}
           {hasFeature && showTasksTab && (
             <div className="h-full" hidden={activeTab !== "TASKS"}>
               <div className="h-full overflow-auto p-4">
-                <TicketsList
+                <CompactTasksList
                   featureId={featureId!}
                   feature={feature!}
                   onUpdate={onFeatureUpdate!}
-                  hideControls
                   isGenerating={isGenerating}
                 />
               </div>
