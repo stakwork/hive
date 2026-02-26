@@ -156,6 +156,7 @@ export async function POST(request: NextRequest) {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            triggerPodRepair: true,
           },
         });
         console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
