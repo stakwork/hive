@@ -646,7 +646,6 @@ describe("PlanChatView", () => {
     });
   });
 
-<<<<<<< HEAD
   describe("Quick Reply Chip", () => {
     it("should not show chip when inputDisabled is true", async () => {
       const mockFeature = {
