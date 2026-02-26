@@ -67,7 +67,6 @@ interface SectionContentProps {
   isEditable: boolean;
   section: PlanSection;
   meta: (typeof SECTION_META)[string] | undefined;
-  highlight?: SectionHighlight | null;
   draft: string;
   setDraft: (value: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -81,7 +80,6 @@ function SectionContent({
   isEditable,
   section,
   meta,
-  highlight,
   draft,
   setDraft,
   textareaRef,
@@ -109,21 +107,6 @@ function SectionContent({
           placeholder={meta?.placeholder}
           className="resize-y font-mono text-sm min-h-[120px] pr-10"
         />
-      </div>
-    );
-  }
-
-  if (hasContent && highlight?.type === "diff") {
-    return (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">
-        {highlight.tokens.map((token, i) => (
-          <span
-            key={i}
-            className={token.isNew ? "highlight-underline" : undefined}
-          >
-            {token.word}
-          </span>
-        ))}
       </div>
     );
   }
@@ -212,7 +195,7 @@ function EditableSection({
         {highlight && (
           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 animate-[highlight-badge_3s_ease-out_forwards]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[highlight-dot_3s_ease-out_forwards]" />
-            Updated
+            {highlight.type === "new" ? "New" : "Edited"}
           </span>
         )}
         {isEditable && !editing && (
@@ -241,7 +224,6 @@ function EditableSection({
         isEditable={isEditable}
         section={section}
         meta={meta}
-        highlight={highlight}
         draft={draft}
         setDraft={setDraft}
         textareaRef={textareaRef}

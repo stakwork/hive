@@ -144,18 +144,6 @@
   100% { opacity: 0; }
 }
 
-@keyframes highlight-underline {
-  0% { text-decoration-color: rgba(52, 211, 153, 0.7); }
-  100% { text-decoration-color: transparent; }
-}
-
-.highlight-underline {
-  text-decoration: underline;
-  text-decoration-color: rgba(52, 211, 153, 0.7);
-  text-underline-offset: 3px;
-  text-decoration-thickness: 2px;
-  animation: highlight-underline 3s ease-out forwards;
-}
 
 /* Hide React Flow attribution */
 .react-flow__attribution {
