@@ -270,6 +270,11 @@ export default function TaskChatPage() {
       setIsLoading(true);
       const response = await fetch(`/api/tasks/${taskId}/messages`);
 
+      if (response.status === 404) {
+        router.push(`/w/${slug}/tasks`);
+        return; // early return — no toast, no further processing
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to load messages: ${response.statusText}`);
       }
@@ -933,6 +938,14 @@ export default function TaskChatPage() {
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
       setMessages((msgs) => [...msgs, newMessage]);
       setIsLoading(true);
@@ -1013,6 +1026,14 @@ export default function TaskChatPage() {
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
       setMessages((msgs) => [...msgs, newMessage]);
       setIsLoading(true);
@@ -1300,9 +1321,17 @@ export default function TaskChatPage() {
         // This allows Pusher deduplication to work correctly
         if (result.message) {
           setMessages((msgs) =>
-            msgs.map((msg) =>
-              msg.id === newMessage.id ? { ...result.message, status: ChatStatus.SENT } : msg
-            )
+            msgs.map((msg) => {
+              if (msg.id !== newMessage.id) return msg;
+              // Preserve client-side ephemeral artifacts (e.g. WORKFLOW) when replacing with server response
+              const serverIds = new Set((result.message.artifacts || []).map((a: Artifact) => a.id));
+              const ephemeral = (msg.artifacts || []).filter((a: Artifact) => !serverIds.has(a.id));
+              return {
+                ...result.message,
+                status: ChatStatus.SENT,
+                artifacts: [...(result.message.artifacts || []), ...ephemeral],
+              };
+            })
           );
         } else {
           // Fallback: just update status if message not returned

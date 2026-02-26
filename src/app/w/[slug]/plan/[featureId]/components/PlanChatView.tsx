@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
@@ -34,9 +35,10 @@ interface PlanChatViewProps {
 }
 
 export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
+  const router = useRouter();
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
@@ -97,10 +99,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    loading,
+    error,
   } = useDetailResource<FeatureDetail>({
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Redirect to plan list if feature not found
+  useEffect(() => {
+    if (!loading && error) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    }
+  }, [loading, error, router, workspaceSlug]);
 
   const refetchFeature = useCallback(async () => {
     try {
@@ -203,6 +214,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         message: messageText,
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -242,7 +261,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, clearLogs],
+    [featureId, session, clearLogs],
   );
 
   const handleArtifactAction = useCallback(
@@ -253,6 +272,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         role: ChatRole.USER,
         status: ChatStatus.SENDING,
         replyId: messageId,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
@@ -295,7 +322,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, clearLogs],
+    [featureId, session, clearLogs],
   );
 
   const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
