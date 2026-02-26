@@ -11,13 +11,12 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Bell, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { FeatureListResponse } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 
 export function NeedsInputDropdownWidget() {
   const { workspace, slug } = useWorkspace();
-  const router = useRouter();
 
   const { data, isLoading, isError } = useQuery<FeatureListResponse>({
     queryKey: ["needs-input-dropdown", workspace?.id],
@@ -53,14 +52,6 @@ export function NeedsInputDropdownWidget() {
 
   const displayCount = count > 9 ? "9+" : count.toString();
 
-  const handleFeatureClick = (featureId: string) => {
-    router.push(`/w/${slug}/plan/${featureId}`);
-  };
-
-  const handleViewAll = () => {
-    router.push(`/w/${slug}/plan?needsAttention=true`);
-  };
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -77,25 +68,28 @@ export function NeedsInputDropdownWidget() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {displayedFeatures.map((feature) => (
-          <DropdownMenuItem
-            key={feature.id}
-            onClick={() => handleFeatureClick(feature.id)}
-            className="flex flex-col items-start gap-0.5 cursor-pointer"
-          >
-            <span className="font-medium truncate w-full">{feature.title}</span>
-            <span className="text-xs text-muted-foreground">
-              {FEATURE_STATUS_LABELS[feature.status]}
-            </span>
+          <DropdownMenuItem key={feature.id} asChild>
+            <Link
+              href={`/w/${slug}/plan/${feature.id}`}
+              className="flex flex-col items-start gap-0.5 cursor-pointer"
+            >
+              <span className="font-medium truncate w-full">{feature.title}</span>
+              <span className="text-xs text-muted-foreground">
+                {FEATURE_STATUS_LABELS[feature.status]}
+              </span>
+            </Link>
           </DropdownMenuItem>
         ))}
         {hasMore && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleViewAll}
-              className="text-center justify-center text-sm text-amber-600 hover:text-amber-700 cursor-pointer"
-            >
-              View all {count} items
+            <DropdownMenuItem asChild>
+              <Link
+                href={`/w/${slug}/plan?needsAttention=true`}
+                className="text-center justify-center text-sm text-amber-600 hover:text-amber-700 cursor-pointer"
+              >
+                View all {count} items
+              </Link>
             </DropdownMenuItem>
           </>
         )}
