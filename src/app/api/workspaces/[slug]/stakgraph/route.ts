@@ -476,6 +476,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             docsEnabled: repo.docsEnabled ?? true,
             mocksEnabled: repo.mocksEnabled ?? true,
             embeddingsEnabled: repo.embeddingsEnabled ?? true,
+            triggerPodRepair: repo.triggerPodRepair ?? false,
           })),
         });
       }

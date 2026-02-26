@@ -335,6 +335,16 @@ export async function triggerPodRepair(
   // Get container configuration
   const containerConfig = await getSwarmContainerConfig(workspaceId);
 
+  // Get repositories and build exclusion list
+  const repositories = await db.repository.findMany({
+    where: { workspaceId },
+    select: { name: true, triggerPodRepair: true },
+  });
+  
+  const excludedRepos = repositories
+    .filter((r) => r.triggerPodRepair === false)
+    .map((r) => r.name);
+
   // Create StakworkRun record
   const run = await db.stakworkRun.create({
     data: {
@@ -377,6 +387,7 @@ export async function triggerPodRepair(
               description: description || null,
               searchApiKey: process.env.EXA_API_KEY,
               containerFiles: containerConfig?.containerFiles || null,
+              excludedRepos: excludedRepos.length > 0 ? excludedRepos : null,
               tokenReference: getStakworkTokenReference(),
             },
           },
