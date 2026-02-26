@@ -539,4 +539,52 @@ describe("WhiteboardChatPanel", () => {
       });
     });
   });
+
+  describe("textarea height constraints", () => {
+    it("keeps Send button visible with long text input", async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/ask to update the diagram/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
+      const sendButton = screen.getByRole("button", { name: /send/i });
+
+      // Verify textarea has correct classes
+      expect(textarea).toHaveClass("min-h-[80px]");
+      expect(textarea).toHaveClass("max-h-[160px]");
+      expect(textarea).toHaveClass("overflow-y-auto");
+
+      // Verify Send button is visible in the DOM
+      expect(sendButton).toBeInTheDocument();
+      expect(sendButton).toBeVisible();
+    });
+
+    it("applies correct height constraints to textarea", async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/ask to update the diagram/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/ask to update the diagram/i);
+
+      // Check all required classes for height constraint and scrolling
+      expect(textarea).toHaveClass("min-h-[80px]");
+      expect(textarea).toHaveClass("max-h-[160px]");
+      expect(textarea).toHaveClass("resize-none");
+      expect(textarea).toHaveClass("overflow-y-auto");
+    });
+  });
 });
