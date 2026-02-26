@@ -945,7 +945,10 @@ export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
     where: { deleted: false },
     select: { slug: true },
   });
-  const slugs = workspaces.map((w) => w.slug.toLowerCase());
+  const slugs = [
+    ...workspaces.map((w) => w.slug.toLowerCase()),
+    ...RESERVED_WORKSPACE_SLUGS,
+  ];
   return nextIndexedName(baseSlug, slugs);
 }
 

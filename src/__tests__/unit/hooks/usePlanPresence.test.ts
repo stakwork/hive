@@ -166,7 +166,7 @@ describe("usePlanPresence", () => {
       });
     });
 
-    it("should re-broadcast own join when another user joins", async () => {
+    it("should re-broadcast own join when a genuinely new user joins (no flag)", async () => {
       renderHook(() => usePlanPresence({ featureId }));
 
       await waitFor(() => {
@@ -201,6 +201,68 @@ describe("usePlanPresence", () => {
       const rebroadcastCall = vi.mocked(global.fetch).mock.calls[0];
       const body = JSON.parse(rebroadcastCall[1]?.body as string);
       expect(body.user.odinguserId).toBe("user-123");
+      expect(body.rebroadcast).toBe(true);
+    });
+
+    it("should not re-broadcast when join has rebroadcast flag", async () => {
+      renderHook(() => usePlanPresence({ featureId }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+      vi.mocked(global.fetch).mockClear();
+
+      const joinCallback = getEventCallback("plan-user-join");
+
+      act(() => {
+        joinCallback?.({
+          user: {
+            odinguserId: "user-456",
+            name: "Other User",
+            image: null,
+            color: "#FF6B6B",
+            joinedAt: Date.now(),
+          },
+          rebroadcast: true,
+        });
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("should not re-broadcast for a duplicate join (user already known)", async () => {
+      renderHook(() => usePlanPresence({ featureId }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+
+      const joinCallback = getEventCallback("plan-user-join");
+
+      const collaborator: CollaboratorInfo = {
+        odinguserId: "user-456",
+        name: "Other User",
+        image: null,
+        color: "#FF6B6B",
+        joinedAt: Date.now(),
+      };
+
+      // First join — triggers re-broadcast
+      act(() => {
+        joinCallback?.({ user: collaborator });
+      });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2); // initial join + re-broadcast
+      });
+      vi.mocked(global.fetch).mockClear();
+
+      // Second join from same user — should NOT re-broadcast
+      act(() => {
+        joinCallback?.({ user: collaborator });
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it("should not re-broadcast for own join events", async () => {

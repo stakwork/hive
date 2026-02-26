@@ -595,6 +595,11 @@ export async function processStakworkRunWebhook(
           ownerId: true,
         },
       },
+      feature: {
+        select: {
+          createdById: true,
+        },
+      },
     },
   });
 
@@ -830,7 +835,7 @@ export async function processStakworkRunWebhook(
           result: serializedResult,
           workspaceId: run.workspaceId,
         },
-        run.workspace.ownerId
+        run.feature?.createdById ?? run.workspace.ownerId
       );
 
       // Broadcast the auto-accept decision

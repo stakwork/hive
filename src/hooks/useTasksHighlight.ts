@@ -8,7 +8,7 @@ import {
 } from "@/lib/pusher";
 import { StakworkRunType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface StakworkRunUpdateEvent {
   runId: string;
@@ -244,75 +244,37 @@ export const useTasksHighlight = ({
     }
   }, [fetchInProgressTasks, enabled]);
 
+  // Stable refs for callbacks so the Pusher effect doesn't re-run on every identity change
+  const onRunUpdateRef = useRef(onRunUpdate);
+  onRunUpdateRef.current = onRunUpdate;
+  const fetchInProgressTasksRef = useRef(fetchInProgressTasks);
+  fetchInProgressTasksRef.current = fetchInProgressTasks;
+
   // Subscribe to Pusher updates
   useEffect(() => {
-    // console.log("[useTasksHighlight] Pusher effect starting", {
-    //   enabled,
-    //   activeWorkspaceSlug,
-    //   hasOnRunUpdate: !!onRunUpdate,
-    // });
+    if (!enabled || !activeWorkspaceSlug) return;
 
-    if (!enabled || !activeWorkspaceSlug) {
-      // console.log("[useTasksHighlight] Pusher effect skipped - not enabled or no workspace slug");
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
+
+    const handleRunUpdate = (data: StakworkRunUpdateEvent) => {
+      onRunUpdateRef.current?.(data);
+      fetchInProgressTasksRef.current();
+    };
+
+    try {
+      const pusher = getPusherClient();
+      const channelName = getWorkspaceChannelName(activeWorkspaceSlug);
+      channel = pusher.subscribe(channelName);
+      channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
+    } catch {
+      // Pusher env vars may not be configured (e.g. in E2E / test environments)
       return;
     }
 
-    try {
-      // console.log("[useTasksHighlight] Getting Pusher client...");
-      const pusher = getPusherClient();
-      // console.log("[useTasksHighlight] Pusher client obtained:", pusher);
-
-      const channelName = getWorkspaceChannelName(activeWorkspaceSlug);
-      // console.log("[useTasksHighlight] Subscribing to channel:", channelName);
-
-      const channel = pusher.subscribe(channelName);
-      // console.log("[useTasksHighlight] Channel subscription created:", channel);
-
-      // Log channel connection state
-      channel.bind('pusher:subscription_succeeded', () => {
-        // console.log("[useTasksHighlight] Channel subscription succeeded:", channelName);
-      });
-
-      channel.bind('pusher:subscription_error', (error: any) => {
-        console.error("[useTasksHighlight] Channel subscription error:", error);
-      });
-
-      const handleRunUpdate = (data: StakworkRunUpdateEvent) => {
-        // console.log("[useTasksHighlight] Received Stakwork run update:", {
-        //   data,
-        //   timestamp: new Date().toISOString(),
-        //   activeWorkspaceSlug,
-        // });
-        onRunUpdate?.(data);
-
-        // Refresh tasks when run updates occur
-        console.log("[useTasksHighlight] Refreshing tasks after run update");
-        fetchInProgressTasks();
-      };
-
-      // console.log("[useTasksHighlight] Binding to event:", PUSHER_EVENTS.STAKWORK_RUN_UPDATE);
-      channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
-
-      // Log all events for debugging
-      channel.bind_global((eventName: string, data: any) => {
-        console.log("[useTasksHighlight] Pusher event received:", {
-          eventName,
-          data,
-          channelName,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
-      // console.log("[useTasksHighlight] Pusher setup complete for workspace:", activeWorkspaceSlug);
-
-    } catch (error) {
-      console.error("[useTasksHighlight] Error setting up Pusher subscription:", {
-        error,
-        activeWorkspaceSlug,
-        enabled,
-      });
-    }
-  }, [enabled, activeWorkspaceSlug, onRunUpdate, fetchInProgressTasks]);
+    return () => {
+      channel?.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
+    };
+  }, [enabled, activeWorkspaceSlug]);
 
   return {
     inProgressTasks,

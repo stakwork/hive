@@ -541,9 +541,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Check if infrastructure-affecting fields have changed BEFORE syncPM2AndServices modifies containerFiles
     // If repositories not provided in settings, use existing repos (don't treat as removal)
     const incomingRepos = settings.repositories ?? allRepos;
+    // Decrypt existing env vars so the comparison is plain text vs plain text
+    // (existingSwarm.environmentVariables is encrypted in the DB)
+    const existingForComparison = existingSwarm
+      ? {
+          ...existingSwarm,
+          environmentVariables: decryptStoredEnvVars(existingSwarm.environmentVariables),
+        }
+      : null;
     const infraChanged = hasInfrastructureChange(
       settings,
-      existingSwarm,
+      existingForComparison,
       incomingRepos,
       allRepos,
     );
@@ -676,6 +684,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // After updating/creating the swarm, sync settings to Pool Manager
     // Only trigger sync if infrastructure fields actually changed (not just metadata like description)
+    console.log(`[Stakgraph PUT] infraChanged=${infraChanged} for ${slug}`);
     if (mergedPoolName && swarmPoolApiKey && swarm && infraChanged) {
       const syncResult2 = await syncPoolManagerSettings({
         workspaceId: workspace.id,
