@@ -83,6 +83,7 @@ const stakgraphSettingsSchema = z.object({
         docsEnabled: z.boolean().optional(),
         mocksEnabled: z.boolean().optional(),
         embeddingsEnabled: z.boolean().optional(),
+        triggerPodRepair: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -450,6 +451,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       docsEnabled?: boolean;
       mocksEnabled?: boolean;
       embeddingsEnabled?: boolean;
+      triggerPodRepair?: boolean;
     }> = [];
 
     // Only process repositories if provided
@@ -701,10 +703,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Set pending repair trigger if new repositories were added
-    if (reposToCreate.length > 0) {
-      const repoNames = reposToCreate.map((r) => r.name).join(", ");
-      const primaryNewRepo = reposToCreate[0];
+    // Set pending repair trigger only for new repositories that explicitly opt in
+    const reposRequestingRepair = reposToCreate.filter((r) => r.triggerPodRepair === true);
+    if (reposRequestingRepair.length > 0) {
+      const repoNames = reposRequestingRepair.map((r) => r.name).join(", ");
+      const primaryNewRepo = reposRequestingRepair[0];
 
       await db.swarm.update({
         where: { id: swarm.id },
