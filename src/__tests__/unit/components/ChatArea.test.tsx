@@ -995,4 +995,146 @@ describe("ChatArea", () => {
       expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
     });
   });
+
+  describe("Back Navigation (handleBackToTasks)", () => {
+    beforeEach(() => {
+      // Reset document.referrer mock before each test
+      Object.defineProperty(document, "referrer", {
+        writable: true,
+        configurable: true,
+        value: "",
+      });
+      Object.defineProperty(window, "location", {
+        writable: true,
+        configurable: true,
+        value: { origin: "http://localhost:3000" },
+      });
+    });
+
+    test("uses router.back() when same-origin referrer is present", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "http://localhost:3000/w/test-workspace/plan/feature-123?tab=tasks",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+        featureId: "feature-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalledTimes(1);
+      expect(router.push).not.toHaveBeenCalled();
+    });
+
+    test("navigates to feature Tasks tab when featureId is present and no referrer", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+        featureId: "feature-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/plan/feature-123?tab=tasks");
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    test("navigates to workspace tasks list when no featureId and no referrer", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+        featureId: null,
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/tasks");
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    test("navigates to feature Tasks tab when featureId is present and referrer is different origin", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "https://different-site.com/some-page",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+        featureId: "feature-456",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/plan/feature-456?tab=tasks");
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    test("uses router.back() when same-origin referrer is present regardless of featureId", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "http://localhost:3000/w/test-workspace/tasks",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+        featureId: null,
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalledTimes(1);
+      expect(router.push).not.toHaveBeenCalled();
+    });
+
+    test("falls back to router.back() when workspaceSlug is not provided", async () => {
+      const user = userEvent.setup();
+      Object.defineProperty(document, "referrer", {
+        value: "",
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: null,
+        featureId: "feature-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalledTimes(1);
+      expect(router.push).not.toHaveBeenCalled();
+    });
+  });
 });
