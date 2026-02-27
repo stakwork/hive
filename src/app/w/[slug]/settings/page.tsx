@@ -28,8 +28,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
   }
 
   // Get workspace information - superadmins can access any workspace
-  const isSuperAdmin = session.user.isSuperAdmin ?? false;
-  const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+  const userIsSuperAdmin = session.user.isSuperAdmin ?? false;
+  const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin: userIsSuperAdmin });
   if (!workspace) {
     notFound();
   }
