@@ -10,7 +10,7 @@ export default function PromptsPage() {
   const { slug } = useWorkspace();
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full">
       <PageHeader
         title="Prompts"
         icon={FileText}
