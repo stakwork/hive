@@ -2,7 +2,7 @@
 
 import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User, X, Image as ImageIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -124,40 +124,72 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           </div>
         )}
 
-        {/* Image attachments */}
+        {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
             <div className="grid grid-cols-2 gap-2 max-w-md">
               {message.attachments.map((attachment) => {
-                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
-                const hasFailed = failedImages.has(attachment.id);
+                const presignedUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
+                const mimeType = attachment.mimeType || "";
                 
-                return (
-                  <div 
-                    key={attachment.id} 
-                    className={cn(
-                      "relative rounded-lg overflow-hidden border",
-                      !hasFailed && "cursor-pointer hover:opacity-90 transition-opacity"
-                    )}
-                    onClick={() => !hasFailed && setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
-                  >
-                    {hasFailed ? (
-                      <div className="w-full h-32 flex flex-col items-center justify-center bg-muted p-4 text-center">
-                        <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
-                        <p className="text-xs text-muted-foreground font-medium">{attachment.filename}</p>
-                        <p className="text-xs text-muted-foreground/70 mt-1">Failed to load image</p>
-                      </div>
-                    ) : (
-                      <img
-                        src={imageUrl}
-                        alt={attachment.filename}
-                        className="w-full h-auto object-cover"
-                        loading="lazy"
-                        onError={() => handleImageError(attachment.id)}
+                // Branch on MIME type
+                if (mimeType.startsWith("image/")) {
+                  // Image attachment - existing behavior
+                  const hasFailed = failedImages.has(attachment.id);
+                  
+                  return (
+                    <div 
+                      key={attachment.id} 
+                      className={cn(
+                        "relative rounded-lg overflow-hidden border",
+                        !hasFailed && "cursor-pointer hover:opacity-90 transition-opacity"
+                      )}
+                      onClick={() => !hasFailed && setEnlargedImage({ url: presignedUrl, alt: attachment.filename })}
+                    >
+                      {hasFailed ? (
+                        <div className="w-full h-32 flex flex-col items-center justify-center bg-muted p-4 text-center">
+                          <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
+                          <p className="text-xs text-muted-foreground font-medium">{attachment.filename}</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">Failed to load image</p>
+                        </div>
+                      ) : (
+                        <img
+                          src={presignedUrl}
+                          alt={attachment.filename}
+                          className="w-full h-auto object-cover"
+                          loading="lazy"
+                          onError={() => handleImageError(attachment.id)}
+                        />
+                      )}
+                    </div>
+                  );
+                } else if (mimeType.startsWith("video/")) {
+                  // Video attachment - native video player
+                  return (
+                    <div key={attachment.id} className="relative rounded-lg overflow-hidden border col-span-2">
+                      <video
+                        src={presignedUrl}
+                        controls
+                        className="w-full rounded-lg max-h-48"
+                        preload="metadata"
                       />
-                    )}
-                  </div>
-                );
+                    </div>
+                  );
+                } else {
+                  // Unknown type - download link
+                  return (
+                    <div key={attachment.id} className="relative rounded-lg overflow-hidden border">
+                      <a
+                        href={presignedUrl}
+                        download={attachment.filename}
+                        className="flex items-center gap-2 text-xs text-muted-foreground p-3 hover:bg-muted"
+                      >
+                        <FileIcon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{attachment.filename}</span>
+                      </a>
+                    </div>
+                  );
+                }
               })}
             </div>
           </div>
