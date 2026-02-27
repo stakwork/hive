@@ -12,7 +12,7 @@ interface VerifyPanelProps {
 }
 
 interface GroupedScreenshots {
-  taskId: string;
+  taskId: string | null;
   taskTitle: string;
   screenshots: Screenshot[];
 }
@@ -31,79 +31,100 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     async function fetchScreenshots() {
       setLoading(true);
 
-      // Collect all task IDs from all phases
-      const taskIds = feature.phases.flatMap((phase) =>
-        phase.tasks.map((task) => task.id)
-      );
+      try {
+        // Fetch all screenshots for this feature in a single request
+        const response = await fetch(
+          `/api/screenshots?workspaceId=${workspaceId}&featureId=${feature.id}`,
+          { credentials: 'include' }
+        );
 
-      if (taskIds.length === 0) {
-        setLoading(false);
-        return;
-      }
+        if (!response.ok) {
+          console.error('Error fetching screenshots:', response.statusText);
+          setLoading(false);
+          return;
+        }
 
-      // Fetch screenshots for all tasks in parallel
-      const results = await Promise.all(
-        taskIds.map(async (taskId) => {
-          try {
-            const response = await fetch(
-              `/api/screenshots?workspaceId=${workspaceId}&taskId=${taskId}`,
-              {
-                credentials: 'include',
-              }
-            );
-            if (!response.ok) return null;
-            const data = await response.json();
-            return {
-              taskId,
-              screenshots: data.screenshots || [],
+        const data = await response.json();
+        const screenshots: any[] = data.screenshots || [];
+
+        // Group screenshots by task
+        const grouped: GroupedScreenshots[] = [];
+        const flat: Screenshot[] = [];
+        const unassignedScreenshots: Screenshot[] = [];
+
+        // Create a map to group screenshots by taskId
+        const screenshotsByTask = new Map<string, any[]>();
+
+        screenshots.forEach((s: any) => {
+          if (s.taskId) {
+            const existing = screenshotsByTask.get(s.taskId) || [];
+            existing.push(s);
+            screenshotsByTask.set(s.taskId, existing);
+          } else {
+            // Screenshots with no taskId
+            const normalized: Screenshot = {
+              id: s.id,
+              actionIndex: s.actionIndex,
+              dataUrl: s.s3Url ?? "",
+              timestamp: s.timestamp,
+              url: s.pageUrl,
+              s3Key: s.s3Key,
+              s3Url: s.s3Url,
+              hash: s.hash,
             };
-          } catch (error) {
-            console.error(`Error fetching screenshots for task ${taskId}:`, error);
-            return null;
+            unassignedScreenshots.push(normalized);
+            flat.push(normalized);
           }
-        })
-      );
-
-      // Group screenshots by task and normalize the data
-      const grouped: GroupedScreenshots[] = [];
-      const flat: Screenshot[] = [];
-
-      results.forEach((result) => {
-        if (!result || result.screenshots.length === 0) return;
-
-        // Find task title
-        const task = feature.phases
-          .flatMap((p) => p.tasks)
-          .find((t) => t.id === result.taskId);
-
-        if (!task) return;
-
-        // Normalize screenshots: map s3Url to dataUrl for ScreenshotModal compatibility
-        const normalizedScreenshots: Screenshot[] = result.screenshots
-          .map((s: any) => ({
-            id: s.id,
-            actionIndex: s.actionIndex,
-            dataUrl: s.s3Url ?? "", // Map s3Url to dataUrl
-            timestamp: s.timestamp,
-            url: s.pageUrl,
-            s3Key: s.s3Key,
-            s3Url: s.s3Url,
-            hash: s.hash,
-          }))
-          .sort((a: { actionIndex: number }, b: { actionIndex: number }) => a.actionIndex - b.actionIndex);
-
-        grouped.push({
-          taskId: result.taskId,
-          taskTitle: task.title,
-          screenshots: normalizedScreenshots,
         });
 
-        flat.push(...normalizedScreenshots);
-      });
+        // Build grouped data for screenshots with taskId
+        screenshotsByTask.forEach((screenshots, taskId) => {
+          // Find task title
+          const task = feature.phases
+            .flatMap((p) => p.tasks)
+            .find((t) => t.id === taskId);
 
-      setGroupedScreenshots(grouped);
-      setAllScreenshots(flat);
-      setLoading(false);
+          if (!task) return;
+
+          // Normalize and sort screenshots
+          const normalizedScreenshots: Screenshot[] = screenshots
+            .map((s: any) => ({
+              id: s.id,
+              actionIndex: s.actionIndex,
+              dataUrl: s.s3Url ?? "",
+              timestamp: s.timestamp,
+              url: s.pageUrl,
+              s3Key: s.s3Key,
+              s3Url: s.s3Url,
+              hash: s.hash,
+            }))
+            .sort((a, b) => a.actionIndex - b.actionIndex);
+
+          grouped.push({
+            taskId,
+            taskTitle: task.title,
+            screenshots: normalizedScreenshots,
+          });
+
+          flat.push(...normalizedScreenshots);
+        });
+
+        // Add unassigned screenshots group if any exist
+        if (unassignedScreenshots.length > 0) {
+          grouped.push({
+            taskId: null,
+            taskTitle: "Feature Screenshots (No Task)",
+            screenshots: unassignedScreenshots.sort((a, b) => a.actionIndex - b.actionIndex),
+          });
+        }
+
+        setGroupedScreenshots(grouped);
+        setAllScreenshots(flat);
+      } catch (error) {
+        console.error('Error fetching screenshots:', error);
+      } finally {
+        setLoading(false);
+      }
     }
 
     fetchScreenshots();
