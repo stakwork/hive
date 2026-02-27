@@ -965,6 +965,12 @@ async function applyAcceptResult(
     case StakworkRunType.TASK_GENERATION: {
       const tasksData = JSON.parse(run.result);
 
+      // Defensive: handle phases being a JSON string instead of a parsed array
+      // (can happen when the Stakwork workflow double-serializes the LLM output)
+      if (typeof tasksData.phases === "string") {
+        tasksData.phases = JSON.parse(tasksData.phases);
+      }
+
       const featureWithPhase = await db.feature.findUnique({
         where: { id: run.featureId },
         include: {
