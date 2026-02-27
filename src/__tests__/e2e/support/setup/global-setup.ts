@@ -11,10 +11,16 @@ export default async function globalSetup() {
 
     const prisma = new PrismaClient({ datasources: { db: { url: BASE_URL } } });
     await prisma.$connect();
-    await prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+    
+    // Drop existing schema if it exists to ensure clean state
+    await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await prisma.$executeRawUnsafe(`CREATE SCHEMA "${schemaName}"`);
+    
     await prisma.$disconnect();
 
-    execSync('npx prisma migrate deploy', {
+    // Use db push instead of migrate deploy for test schemas
+    // This avoids issues with migrations that reference public schema enums
+    execSync('npx prisma db push --skip-generate --accept-data-loss', {
       env: { ...process.env, DATABASE_URL: schemaUrl },
       stdio: 'inherit',
     });
