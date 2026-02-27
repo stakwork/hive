@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Building2, ChevronUp, ChevronDown } from "lucide-react";
 import {
@@ -43,6 +43,39 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     direction: "desc",
   });
   const [logoUrls, setLogoUrls] = useState<Record<string, string>>({});
+
+  // Fetch logos on mount for workspaces that have logoKey
+  useEffect(() => {
+    const fetchLogos = async () => {
+      const workspacesWithLogos = workspaces.filter((ws) => ws.logoKey);
+      
+      const logoPromises = workspacesWithLogos.map(async (workspace) => {
+        try {
+          const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+          if (response.ok) {
+            const data = await response.json();
+            return { slug: workspace.slug, url: data.url };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch logo for ${workspace.slug}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(logoPromises);
+      const newLogoUrls: Record<string, string> = {};
+      
+      results.forEach((result) => {
+        if (result) {
+          newLogoUrls[result.slug] = result.url;
+        }
+      });
+
+      setLogoUrls(newLogoUrls);
+    };
+
+    fetchLogos();
+  }, [workspaces]);
 
   const handleSort = (field: SortField) => {
     setSortState((prev) => {
