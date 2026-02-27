@@ -6,15 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import Link from "next/link";
+import { WorkspacesTable } from "./components/WorkspacesTable";
 
 export default async function AdminDashboard() {
   // Fetch all workspaces
@@ -24,12 +17,26 @@ export default async function AdminDashboard() {
       id: true,
       name: true,
       slug: true,
+      logoKey: true,
       createdAt: true,
       _count: {
-        select: { members: true },
+        select: {
+          members: true,
+          tasks: true,
+        },
+      },
+      swarm: {
+        select: {
+          _count: {
+            select: {
+              pods: {
+                where: { deletedAt: null },
+              },
+            },
+          },
+        },
       },
     },
-    orderBy: { createdAt: "desc" },
   });
 
   return (
@@ -76,45 +83,7 @@ export default async function AdminDashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {workspaces.length === 0 ? (
-            <p className="text-muted-foreground">No workspaces found</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Slug</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspaces.map((workspace) => (
-                  <TableRow key={workspace.id}>
-                    <TableCell className="font-medium">
-                      {workspace.name}
-                    </TableCell>
-                    <TableCell>
-                      <code className="text-xs">{workspace.slug}</code>
-                    </TableCell>
-                    <TableCell>{workspace._count.members + 1}</TableCell>
-                    <TableCell>
-                      {new Date(workspace.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/w/${workspace.slug}/settings`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        Settings →
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <WorkspacesTable workspaces={workspaces} />
         </CardContent>
       </Card>
     </div>

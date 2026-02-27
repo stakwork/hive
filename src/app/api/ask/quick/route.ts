@@ -11,7 +11,7 @@ import { WorkspaceConfig } from "@/lib/ai/types";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 
@@ -335,9 +335,10 @@ async function buildWorkspaceConfigs(
 ): Promise<WorkspaceConfig[]> {
   const encryptionService = EncryptionService.getInstance();
   const configs: WorkspaceConfig[] = [];
+  const isSuperAdmin = await checkIsSuperAdmin(userId);
 
   for (const slug of slugs) {
-    const access = await validateWorkspaceAccess(slug, userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.workspace) {
       throw forbiddenError(`Access denied for workspace: ${slug}`);
     }

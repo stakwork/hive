@@ -19,8 +19,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
+    const isSuperAdmin = (session?.user as any)?.isSuperAdmin ?? false;
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId);
+    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
@@ -51,10 +52,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
+    const isSuperAdmin = (session?.user as any)?.isSuperAdmin ?? false;
     const body = await request.json();
     const validatedData = updateLearnConfigSchema.parse(body);
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId);
+    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }

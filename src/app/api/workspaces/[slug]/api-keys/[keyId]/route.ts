@@ -27,9 +27,10 @@ export async function DELETE(
 
     const { slug, keyId } = await params;
     const userId = (session.user as { id: string }).id;
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
 
     // Check workspace access - need write permission at minimum
-    const access = await validateWorkspaceAccess(slug, userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.canWrite) {
       return NextResponse.json(
         { error: "Forbidden - write access required" },

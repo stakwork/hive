@@ -24,9 +24,10 @@ export async function GET(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
 
     // Check workspace access
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
@@ -77,7 +78,8 @@ export async function POST(
     }
 
     // Check workspace access and admin permissions
-    const access = await validateWorkspaceAccess(slug, userId);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }

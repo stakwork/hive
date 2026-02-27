@@ -11,6 +11,7 @@ const getMockedRequireAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn((req: NextRequest) => ({ user: null })),
   requireAuth: getMockedRequireAuth,
+  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
 }));
 
 describe("Pool Config API", () => {
