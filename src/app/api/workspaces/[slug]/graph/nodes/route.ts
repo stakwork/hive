@@ -78,7 +78,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Get workspace and verify user has access
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
     }
