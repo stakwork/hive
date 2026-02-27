@@ -156,10 +156,10 @@ export function ChatArea({
       {/* Task Title Header */}
       {taskTitle && (
         <div className="px-4 py-3 border-b bg-muted/20">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Back Button */}
-              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0 mt-0.5">
+              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
 
