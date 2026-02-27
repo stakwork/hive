@@ -5,11 +5,12 @@ export const MIDDLEWARE_HEADERS = {
   USER_ID: "x-middleware-user-id",
   USER_EMAIL: "x-middleware-user-email",
   USER_NAME: "x-middleware-user-name",
+  USER_ROLE: "x-middleware-user-role",
   REQUEST_ID: "x-middleware-request-id",
   AUTH_STATUS: "x-middleware-auth-status",
 } as const;
 
-export type RouteAccess = "public" | "webhook" | "system" | "protected";
+export type RouteAccess = "public" | "webhook" | "system" | "superadmin" | "protected";
 export type RouteMatchStrategy = "exact" | "prefix" | "pattern";
 
 export interface RoutePolicy {
@@ -51,6 +52,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/mcp/*", strategy: "pattern", access: "webhook" },
+  { path: "/admin", strategy: "prefix", access: "superadmin" }, // Admin pages
+  { path: "/api/admin", strategy: "prefix", access: "superadmin" }, // Admin API routes
 ] as const;
 
 function normalizePath(pathname: string): string {

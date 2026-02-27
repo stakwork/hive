@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
 import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
 import type { ApiError } from "@/types/errors";
+import { db } from "@/lib/db";
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
@@ -77,6 +78,12 @@ function continueRequest(headers: Headers, authStatus: string) {
   }
 
   response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
+
+  // Copy USER_ROLE to response headers if present
+  const userRole = headers.get(MIDDLEWARE_HEADERS.USER_ROLE);
+  if (userRole) {
+    response.headers.set(MIDDLEWARE_HEADERS.USER_ROLE, userRole);
+  }
 
   return response;
 }
@@ -171,9 +178,35 @@ export async function middleware(request: NextRequest) {
       return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
     } else {
       requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
+      const userId = extractTokenProperty(token, "id");
+      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, userId);
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
+
+      // Enforce superadmin access for admin routes
+      if (routeAccess === "superadmin") {
+        try {
+          const user = await db.user.findUnique({
+            where: { id: userId },
+            select: { role: true },
+          });
+
+          if (user?.role !== "ADMIN") {
+            if (isApiRoute) {
+              return respondWithJson({ error: "Forbidden" }, { status: 403, requestId, authStatus: "forbidden" });
+            }
+            return redirectTo("/", request, { requestId, authStatus: "forbidden" });
+          }
+
+          // Set role header for downstream use
+          requestHeaders.set(MIDDLEWARE_HEADERS.USER_ROLE, user.role);
+        } catch (_error) {
+          if (isApiRoute) {
+            return respondWithJson({ error: "Internal Server Error" }, { status: 500, requestId, authStatus: "error" });
+          }
+          return redirectTo("/", request, { requestId, authStatus: "error" });
+        }
+      }
     }
 
     return continueRequest(requestHeaders, "authenticated");

@@ -3,9 +3,18 @@ import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 const getTokenMock = vi.fn();
+const dbUserFindUniqueMock = vi.fn();
 
 vi.mock("next-auth/jwt", () => ({
   getToken: getTokenMock,
+}));
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    user: {
+      findUnique: dbUserFindUniqueMock,
+    },
+  },
 }));
 
 process.env.NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET ?? "test-secret";
@@ -91,5 +100,129 @@ describe("middleware", () => {
 
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("public");
     expect(response.headers.get(MIDDLEWARE_HEADERS.USER_ID)).toBeNull();
+  });
+
+  describe("superadmin routes", () => {
+    it("redirects /admin page to / when user is not ADMIN", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "user-123",
+        email: "user@example.com",
+        name: "Test User",
+      });
+
+      dbUserFindUniqueMock.mockResolvedValueOnce({
+        role: "USER",
+      });
+
+      const response = await middleware(createRequest("/admin"));
+
+      expect(dbUserFindUniqueMock).toHaveBeenCalledWith({
+        where: { id: "user-123" },
+        select: { role: true },
+      });
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost/");
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("forbidden");
+    });
+
+    it("allows /admin page when user is ADMIN", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "admin-123",
+        email: "admin@example.com",
+        name: "Admin User",
+      });
+
+      dbUserFindUniqueMock.mockResolvedValueOnce({
+        role: "ADMIN",
+      });
+
+      const response = await middleware(createRequest("/admin"));
+
+      expect(dbUserFindUniqueMock).toHaveBeenCalledWith({
+        where: { id: "admin-123" },
+        select: { role: true },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("authenticated");
+      expect(response.headers.get(MIDDLEWARE_HEADERS.USER_ROLE)).toBe("ADMIN");
+    });
+
+    it("returns 403 JSON for /api/admin/* when user is not ADMIN", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "user-123",
+        email: "user@example.com",
+        name: "Test User",
+      });
+
+      dbUserFindUniqueMock.mockResolvedValueOnce({
+        role: "USER",
+      });
+
+      const response = await middleware(createRequest("/api/admin/test"));
+
+      expect(dbUserFindUniqueMock).toHaveBeenCalledWith({
+        where: { id: "user-123" },
+        select: { role: true },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("forbidden");
+      const body = await response.clone().json();
+      expect(body).toEqual({ error: "Forbidden" });
+    });
+
+    it("allows /api/admin/* when user is ADMIN", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "admin-123",
+        email: "admin@example.com",
+        name: "Admin User",
+      });
+
+      dbUserFindUniqueMock.mockResolvedValueOnce({
+        role: "ADMIN",
+      });
+
+      const response = await middleware(createRequest("/api/admin/stats"));
+
+      expect(dbUserFindUniqueMock).toHaveBeenCalledWith({
+        where: { id: "admin-123" },
+        select: { role: true },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("authenticated");
+      expect(response.headers.get(MIDDLEWARE_HEADERS.USER_ROLE)).toBe("ADMIN");
+    });
+
+    it("returns 500 and redirects when DB query fails for admin page", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "user-123",
+        email: "user@example.com",
+        name: "Test User",
+      });
+
+      dbUserFindUniqueMock.mockRejectedValueOnce(new Error("Database error"));
+
+      const response = await middleware(createRequest("/admin"));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost/");
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("error");
+    });
+
+    it("returns 500 JSON when DB query fails for admin API route", async () => {
+      getTokenMock.mockResolvedValueOnce({
+        id: "user-123",
+        email: "user@example.com",
+        name: "Test User",
+      });
+
+      dbUserFindUniqueMock.mockRejectedValueOnce(new Error("Database error"));
+
+      const response = await middleware(createRequest("/api/admin/test"));
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("error");
+      const body = await response.clone().json();
+      expect(body).toEqual({ error: "Internal Server Error" });
+    });
   });
 });

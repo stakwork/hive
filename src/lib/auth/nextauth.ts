@@ -483,13 +483,13 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (session.user) {
-        // Add Lightning pubkey and Sphinx alias to session if user authenticated via Sphinx
+        // Add Lightning pubkey, Sphinx alias, and role to session
         // This needs to happen BEFORE any early returns
         if (userId) {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true, sphinxAlias: true },
+              select: { lightningPubkey: true, sphinxAlias: true, role: true },
             });
 
             if (userRecord?.lightningPubkey) {
@@ -500,6 +500,9 @@ export const authOptions: NextAuthOptions = {
             if (userRecord?.sphinxAlias) {
               (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
             }
+
+            // Surface superadmin role in session
+            (session.user as { isSuperAdmin?: boolean }).isSuperAdmin = userRecord?.role === "ADMIN";
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
               userId,

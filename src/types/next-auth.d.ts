@@ -7,6 +7,7 @@ declare module "next-auth" {
       defaultWorkspaceSlug?: string;
       lightningPubkey?: string;
       sphinxAlias?: string;
+      isSuperAdmin?: boolean;
       github?: {
         username?: string;
         publicRepos?: number;
