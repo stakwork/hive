@@ -58,6 +58,9 @@ export const optionalEnvVars = {
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
+  SPHINX_API_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/sphinx/action`
+    : "https://bots.v2.sphinx.chat/api/action",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "20000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,

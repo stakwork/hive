@@ -1,6 +1,5 @@
 import { logger } from "@/lib/logger";
-
-const SPHINX_API_URL = "https://bots.v2.sphinx.chat/api/action";
+import { config } from "@/config/env";
 
 export interface MergedPR {
   number: number;
@@ -99,19 +98,19 @@ export function formatPRSummaryMessage(
  * Send a message to Sphinx tribe
  */
 export async function sendToSphinx(
-  config: SphinxConfig,
+  sphinxConfig: SphinxConfig,
   message: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const response = await fetch(SPHINX_API_URL, {
+    const response = await fetch(config.SPHINX_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        chat_pubkey: config.chatPubkey,
-        bot_id: config.botId,
-        bot_secret: config.botSecret,
+        chat_pubkey: sphinxConfig.chatPubkey,
+        bot_id: sphinxConfig.botId,
+        bot_secret: sphinxConfig.botSecret,
         content: message,
         action: "broadcast",
       }),

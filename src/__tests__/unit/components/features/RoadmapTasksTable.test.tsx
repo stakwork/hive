@@ -144,6 +144,7 @@ describe("RoadmapTasksTable", () => {
     deploymentStatus: null,
     deployedToStagingAt: null,
     deployedToProductionAt: null,
+    systemAssigneeType: null,
     ...overrides,
   });
 

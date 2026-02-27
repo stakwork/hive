@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Loader2, Plus, Trash2, Table as TableIcon, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -253,12 +254,12 @@ export default function PhaseDetailPage() {
         </Button>
         {phase.feature && (
           <div className="text-sm text-muted-foreground">
-            <span
-              className="hover:underline cursor-pointer"
-              onClick={() => router.push(`/w/${workspaceSlug}/plan/${phase.feature.id}`)}
+            <Link
+              href={`/w/${workspaceSlug}/plan/${phase.feature.id}`}
+              className="hover:underline"
             >
               {phase.feature.title}
-            </span>
+            </Link>
             <span className="mx-2">›</span>
             <span>{phase.name}</span>
           </div>
