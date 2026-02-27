@@ -95,21 +95,18 @@ vi.mock("@/components/ui/resizable", () => ({
 
 const mockArtifactsPanel = vi.fn();
 vi.mock("@/components/chat", () => ({
-<<<<<<< HEAD
-  ChatArea: ({ onArtifactAction, isPlanComplete }: { onArtifactAction: (messageId: string, action: { optionResponse: string }) => void; isPlanComplete?: boolean }) => (
-    <div data-testid="chat-area" data-is-plan-complete={isPlanComplete?.toString()}>
-=======
   ChatArea: ({ 
     onArtifactAction, 
+    isPlanComplete,
     sphinxInviteEnabled, 
     onInvite 
   }: { 
     onArtifactAction: (messageId: string, action: { optionResponse: string }) => void;
+    isPlanComplete?: boolean;
     sphinxInviteEnabled?: boolean;
     onInvite?: () => void;
   }) => (
-    <div data-testid="chat-area">
->>>>>>> origin/master
+    <div data-testid="chat-area" data-is-plan-complete={isPlanComplete?.toString()}>
       <button
         data-testid="artifact-action-button"
         onClick={() => onArtifactAction("test-message-id", { optionResponse: "Test answer" })}
@@ -729,7 +726,6 @@ describe("PlanChatView", () => {
     });
   });
 
-<<<<<<< HEAD
   describe("Quick Reply Chip", () => {
     it("should not show chip when inputDisabled is true", async () => {
       const mockFeature = {
@@ -816,7 +812,21 @@ describe("PlanChatView", () => {
           ok: true,
           json: async () => ({ data: mockFeature }),
         });
-=======
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // The chip visibility logic is tested in ChatMessage.test.tsx
+      // Here we verify that the correct props are passed to ChatArea
+      const chatArea = screen.getByTestId("chat-area");
+      expect(chatArea).toHaveAttribute("data-is-plan-complete", "false");
+    });
+  });
+
   describe("Sphinx invite button visibility", () => {
     beforeEach(() => {
       // Reset fetch mock for each test
@@ -839,21 +849,10 @@ describe("PlanChatView", () => {
           sphinxBotId: "test-bot-id",
           hasBotSecret: true,
         }),
->>>>>>> origin/master
       });
 
       render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
-<<<<<<< HEAD
-      await waitFor(() => {
-        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
-      });
-
-      // The chip visibility logic is tested in ChatMessage.test.tsx
-      // Here we verify that the correct props are passed to ChatArea
-      const chatArea = screen.getByTestId("chat-area");
-      expect(chatArea).toHaveAttribute("data-is-plan-complete", "false");
-=======
       // Wait for the Sphinx status fetch to complete
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
@@ -898,7 +897,6 @@ describe("PlanChatView", () => {
       await waitFor(() => {
         expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
       });
->>>>>>> origin/master
     });
   });
 
