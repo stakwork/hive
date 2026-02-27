@@ -241,7 +241,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             data.sphinxEnabled &&
             data.sphinxChatPubkey &&
             data.sphinxBotId &&
-            data.sphinxBotSecret
+            data.hasBotSecret
           );
           setSphinxReady(isReady);
         }
