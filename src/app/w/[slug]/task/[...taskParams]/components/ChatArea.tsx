@@ -137,10 +137,10 @@ export function ChatArea({
     if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
     } else {
-      // Fallback: plan list for feature chats, task list otherwise
+      // Fallback: feature Tasks tab for feature tasks, task list otherwise
       if (workspaceSlug) {
         const fallbackPath = featureId
-          ? `/w/${workspaceSlug}/plan`
+          ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
           : `/w/${workspaceSlug}/tasks`;
         router.push(fallbackPath);
       } else {

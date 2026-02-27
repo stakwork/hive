@@ -17,6 +17,8 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import type { FeatureDetail } from "@/types/roadmap";
 
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
   workspaceId?: string;
@@ -275,6 +277,9 @@ export function ArtifactsPanel({
   useEffect(() => {
     if (availableTabs.length > 0 && (!activeTab || !availableTabs.includes(activeTab))) {
       if (hasInitiatedGeneration) return; // Prevent fallback during generation handoff
+      // Don't reset a valid controlled tab (e.g. TASKS from URL) just because
+      // the tab isn't available yet — wait for data to load
+      if (isControlled && activeTab && VALID_PLAN_TABS.includes(activeTab as ArtifactType)) return;
       if (isControlled && onControlledTabChange) {
         onControlledTabChange(availableTabs[0]);
       } else {
