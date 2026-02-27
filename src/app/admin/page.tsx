@@ -21,7 +21,9 @@ export default async function AdminDashboard() {
       createdAt: true,
       _count: {
         select: {
-          members: true,
+          members: {
+            where: { leftAt: null },
+          },
           tasks: true,
         },
       },
