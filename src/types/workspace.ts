@@ -78,6 +78,8 @@ export interface WorkspaceMemberUser {
   name: string | null;
   email: string | null;
   image: string | null;
+  lightningPubkey?: string;
+  sphinxAlias?: string;
   github: {
     username: string;
     name: string | null;
