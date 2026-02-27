@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/workflow/prompts/route";
-import { GET as GET_BY_ID, PUT } from "@/app/api/workflow/prompts/[id]/route";
+import { GET as GET_BY_ID, PUT, DELETE } from "@/app/api/workflow/prompts/[id]/route";
 import { GET as GET_VERSIONS } from "@/app/api/workflow/prompts/[id]/versions/route";
 import { GET as GET_VERSION_BY_ID } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/route";
 import {
@@ -2384,6 +2384,350 @@ Be specific and actionable in your recommendations.`;
         params: Promise.resolve({ id: "prompt-error", versionId: "1" }),
       });
       await expectError(response, "Failed to fetch prompt version", 500);
+    });
+  });
+});
+
+describe("DELETE /api/workflow/prompts/[id] Integration Tests", () => {
+  let testUser: { id: string; email: string; name: string };
+  let stakworkWorkspace: { id: string; slug: string };
+  let otherUser: { id: string; email: string; name: string };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockFetch.mockClear();
+    mockGetServerSession.mockReset();
+    mockIsDevelopmentMode.mockReset();
+
+    mockIsDevelopmentMode.mockReturnValue(false);
+
+    testUser = await createTestUser();
+    otherUser = await createTestUser();
+
+    stakworkWorkspace = await createTestWorkspace({
+      ownerId: testUser.id,
+      name: "Stakwork",
+      slug: "stakwork",
+    });
+
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: stakworkWorkspace.id,
+        userId: testUser.id,
+        role: "OWNER",
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("Authentication Tests", () => {
+    test("returns 401 when user is not authenticated", async () => {
+      mockGetServerSession.mockResolvedValueOnce(null);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session has no user", async () => {
+      mockGetServerSession.mockResolvedValueOnce({ user: null } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectUnauthorized(response);
+    });
+
+    test("returns 401 when session user has no id", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { email: "test@example.com" },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectError(response, "Invalid user session", 401);
+    });
+  });
+
+  describe("Authorization Tests", () => {
+    test("returns 403 when user is not a member of stakwork workspace", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      await expectForbidden(response, "not a member of stakwork workspace");
+    });
+
+    test("allows workspace member to delete prompt", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-123" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Development Mode Tests", () => {
+    test("bypasses stakwork workspace check when in development mode", async () => {
+      mockIsDevelopmentMode.mockReturnValue(true);
+
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: otherUser.id, email: otherUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-dev",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-dev" }),
+      });
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+    });
+  });
+
+  describe("Validation Tests", () => {
+    test("returns 400 when id is missing", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "" }),
+      });
+      await expectError(response, "Prompt ID is required", 400);
+    });
+  });
+
+  describe("Delete Tests", () => {
+    test("successfully deletes prompt", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-delete-123",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-delete-123" }),
+      });
+      const data = await expectSuccess(response, 200);
+
+      expect(data.success).toBe(true);
+    });
+
+    test("handles non-existent prompt id", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Prompt not found",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/nonexistent",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "nonexistent" }),
+      });
+      await expectError(response, "Failed to delete prompt", 404);
+    });
+  });
+
+  describe("Stakwork API Integration Tests", () => {
+    test("calls Stakwork API with correct URL and method", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-api",
+        { method: "DELETE" }
+      );
+
+      await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-api" }),
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.stakwork.test/prompts/prompt-api",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({
+            Authorization: "Token token=test-stakwork-key-123",
+            "Content-Type": "application/json",
+          }),
+        })
+      );
+    });
+
+    test("forwards Stakwork API error status", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => "Forbidden",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-forbidden",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-forbidden" }),
+      });
+      await expectError(response, "Failed to delete prompt", 403);
+    });
+
+    test("handles Stakwork API with success: false", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: false,
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-fail",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-fail" }),
+      });
+      await expectError(response, "Failed to delete prompt from Stakwork", 400);
+    });
+
+    test("handles network errors", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-network",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-network" }),
+      });
+      await expectError(response, "Failed to delete prompt", 500);
+    });
+
+    test("handles Stakwork API server errors", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "Internal server error",
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts/prompt-error",
+        { method: "DELETE" }
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ id: "prompt-error" }),
+      });
+      await expectError(response, "Failed to delete prompt", 500);
     });
   });
 });
