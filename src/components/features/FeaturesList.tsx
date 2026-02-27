@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,6 +151,7 @@ function FeatureRow({
 export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { slug: workspaceSlug } = useWorkspace();
 
   // Fetch workspace members (no system assignees for features)
@@ -161,19 +162,12 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [workspaceHasFeatures, setWorkspaceHasFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [_hasMore, setHasMore] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Read page and needsAttention from URL on mount
+  // Read needsAttention from URL on mount
   useEffect(() => {
-    const pageParam = searchParams?.get("page");
-    if (pageParam) {
-      const pageNum = parseInt(pageParam, 10);
-      if (!isNaN(pageNum) && pageNum > 0) {
-        setPage(pageNum);
-      }
-    }
     const needsAttentionParam = searchParams?.get("needsAttention");
     if (needsAttentionParam === "true") {
       setNeedsAttentionFilter(true);
@@ -282,6 +276,19 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
     return "list";
   });
+
+  // Navigate to a specific page and update URL
+  const goToPage = useCallback((n: number) => {
+    setPage(n);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (n <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", n.toString());
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const fetchFeatures = async (pageNum: number) => {
     try {
@@ -427,7 +434,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const handleViewChange = (value: string) => {
     if (value === "list" || value === "kanban") {
       setViewType(value);
-      setPage(1); // Reset to first page when switching views
+      goToPage(1); // Reset to first page when switching views
       localStorage.setItem("features-view-preference", value);
     }
   };
@@ -436,25 +443,25 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const handleStatusFiltersChange = (statuses: string | string[]) => {
     const statusArray = Array.isArray(statuses) ? statuses : [statuses];
     setStatusFilters(statusArray);
-    setPage(1);
+    goToPage(1);
   };
 
   const handleAssigneeFilterChange = (value: string | string[]) => {
     // Assignee filter is single-select, so always get first value if array
     const assigneeId = Array.isArray(value) ? value[0] : value;
     setAssigneeFilter(assigneeId);
-    setPage(1);
+    goToPage(1);
   };
 
   const handlePriorityFiltersChange = (priorities: string | string[]) => {
     const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
     setPriorityFilters(priorityArray);
-    setPage(1);
+    goToPage(1);
   };
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setPage(1);
+    goToPage(1);
   };
 
   // Handle sort changes - reset to page 1 when changing sort field
@@ -465,7 +472,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       setSortBy(field);
       setSortOrder(order);
       if (sortBy !== field) {
-        setPage(1);
+        goToPage(1);
       }
     }
   };
@@ -479,7 +486,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setSortOrder("desc");
     setSearchQuery("");
     setNeedsAttentionFilter(false);
-    setPage(1);
+    goToPage(1);
   };
 
   const handleUpdateStatus = async (featureId: string, status: FeatureStatus) => {
@@ -722,7 +729,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                   size="sm"
                   onClick={() => {
                     setNeedsAttentionFilter(!needsAttentionFilter);
-                    setPage(1);
+                    goToPage(1);
                   }}
                   className="whitespace-nowrap"
                 >
@@ -841,6 +848,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onPriorityUpdate={handleUpdatePriority}
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
+                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
                           />
                         ))
                       )}
@@ -883,7 +891,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
-                          setPage((p) => Math.max(1, p - 1));
+                          goToPage(Math.max(1, page - 1));
                         }}
                         aria-disabled={page === 1}
                         className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
@@ -897,7 +905,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
-                            setPage(1);
+                            goToPage(1);
                           }}
                           isActive={page === 1}
                           className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
@@ -921,7 +929,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
-                            setPage(pageNum);
+                            goToPage(pageNum);
                           }}
                           isActive={page === pageNum}
                           className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
@@ -945,7 +953,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
-                            setPage(totalPages);
+                            goToPage(totalPages);
                           }}
                           isActive={page === totalPages}
                           className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
@@ -961,7 +969,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
-                          setPage((p) => Math.min(totalPages, p + 1));
+                          goToPage(Math.min(totalPages, page + 1));
                         }}
                         aria-disabled={page >= totalPages}
                         className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
