@@ -20,9 +20,12 @@ test.describe('Dashboard Smoke Tests', () => {
     authPage = new AuthPage(page);
     dashboardPage = new DashboardPage(page);
 
-    // Sign in and navigate to dashboard
+    // Sign in and navigate to the specific workspace
     await authPage.goto();
     await authPage.signInWithMock();
+    
+    // Navigate to the specific workspace created for this test
+    await page.goto(`/w/${workspaceSlug}`);
     await dashboardPage.waitForLoad();
   });
 
