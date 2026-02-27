@@ -15,7 +15,7 @@ export interface CreateTestUserOptions {
   valueKey?: UserValueKey;
   name?: string;
   email?: string;
-  role?: "USER" | "ADMIN";
+  role?: "USER" | "ADMIN" | "MODERATOR" | "SUPER_ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
   /** Lightning Network public key for Sphinx integration */
