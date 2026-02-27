@@ -184,3 +184,76 @@ export async function PUT(
     return NextResponse.json({ error: "Failed to update prompt" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as { id?: string })?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+    }
+
+    // Verify user has access to stakwork workspace
+    const stakworkWorkspace = await db.workspace.findFirst({
+      where: {
+        slug: "stakwork",
+        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+      },
+    });
+
+    const devMode = isDevelopmentMode();
+
+    if (!stakworkWorkspace && !devMode) {
+      return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
+    }
+
+    const { id } = await params;
+
+    if (!id) {
+      return NextResponse.json({ error: "Prompt ID is required" }, { status: 400 });
+    }
+
+    // Delete prompt via Stakwork API
+    const promptUrl = `${config.STAKWORK_BASE_URL}/prompts/${id}`;
+
+    const response = await fetch(promptUrl, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Failed to delete prompt ${id}:`, errorText);
+      return NextResponse.json(
+        { error: "Failed to delete prompt", details: errorText },
+        { status: response.status },
+      );
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return NextResponse.json(
+        { error: "Failed to delete prompt from Stakwork" },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error deleting prompt:", error);
+    return NextResponse.json({ error: "Failed to delete prompt" }, { status: 500 });
+  }
+}

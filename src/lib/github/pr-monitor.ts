@@ -1049,7 +1049,7 @@ export async function triggerAgentModeFix(
     const webhookUrl = `${baseUrl}/api/agent/webhook?token=${webhookToken}`;
 
     // 6. Save system message about the fix attempt
-    await db.chatMessage.create({
+    const triggerMessage = await db.chatMessage.create({
       data: {
         taskId,
         message: `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`,
@@ -1057,6 +1057,9 @@ export async function triggerAgentModeFix(
         status: ChatStatus.SENT,
       },
     });
+
+    // Broadcast the trigger message via Pusher
+    await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, triggerMessage.id);
 
     // 7. Create agent session
     const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";

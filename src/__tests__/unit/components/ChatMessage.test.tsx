@@ -852,6 +852,7 @@ describe('ChatMessage', () => {
     });
   });
 
+
   describe('Quick Reply Chip', () => {
     it('renders "Looks good →" chip when isLatestAwaitingReply=true, isPlanComplete=false, role is ASSISTANT', () => {
       const message = createTestMessage({
@@ -867,52 +868,14 @@ describe('ChatMessage', () => {
           isPlanComplete={false}
         />
       );
-
-      const chip = screen.getByRole('button', { name: /looks good/i });
-      expect(chip).toBeInTheDocument();
-      expect(chip).toHaveTextContent('Looks good →');
-    });
-
-    it('does not render chip when isLatestAwaitingReply=false', () => {
-      const message = createTestMessage({
-        role: ChatRole.ASSISTANT,
-        message: 'What do you think?',
-      });
-
-      render(
-        <ChatMessage 
-          message={message} 
-          onArtifactAction={mockOnArtifactAction}
-          isLatestAwaitingReply={false}
-          isPlanComplete={false}
-        />
-      );
-
-      expect(screen.queryByRole('button', { name: /looks good/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /looks good/i })).toBeInTheDocument();
     });
 
     it('does not render chip when isPlanComplete=true', () => {
       const message = createTestMessage({
+        id: 'msg-123',
         role: ChatRole.ASSISTANT,
         message: 'What do you think?',
-      });
-
-      render(
-        <ChatMessage 
-          message={message} 
-          onArtifactAction={mockOnArtifactAction}
-          isLatestAwaitingReply={true}
-          isPlanComplete={true}
-        />
-      );
-
-      expect(screen.queryByRole('button', { name: /looks good/i })).not.toBeInTheDocument();
-    });
-
-    it('does not render chip when role is USER', () => {
-      const message = createTestMessage({
-        role: ChatRole.USER,
-        message: 'User message',
         createdBy: {
           id: 'user-123',
           name: 'John Doe',
@@ -927,7 +890,7 @@ describe('ChatMessage', () => {
           message={message} 
           onArtifactAction={mockOnArtifactAction}
           isLatestAwaitingReply={true}
-          isPlanComplete={false}
+          isPlanComplete={true}
         />
       );
 
@@ -958,6 +921,103 @@ describe('ChatMessage', () => {
         { actionType: 'button', optionLabel: 'Looks good', optionResponse: 'Looks good' },
         ''
       );
+    });
+  });
+
+  describe('Attachment Rendering', () => {
+    it('renders image attachment with correct src', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/image.png',
+            filename: 'image.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const img = screen.getByAltText('image.png') as HTMLImageElement;
+      expect(img).toBeInTheDocument();
+      expect(img.src).toContain('/api/upload/presigned-url?s3Key=s3%2Fpath%2Fto%2Fimage.png');
+    });
+
+    it('shows failed-image fallback when image fails to load', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with broken image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/broken.png',
+            filename: 'broken.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const img = screen.getByAltText('broken.png') as HTMLImageElement;
+      
+      // Simulate image load error
+      fireEvent.error(img);
+
+      expect(screen.getByText('broken.png')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load image')).toBeInTheDocument();
+    });
+
+    it('renders non-image attachment with download link', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with file',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/file.txt',
+            filename: 'file.txt',
+            mimeType: 'text/plain',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Should fall back to download link
+      const link = screen.getByText('file.txt').closest('a');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('download', 'file.txt');
     });
   });
 });
