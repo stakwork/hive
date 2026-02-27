@@ -241,10 +241,15 @@ export async function getWorkspaceById(
 
 /**
  * Gets a workspace by slug if user has access (owner or member)
+ * @param slug - The workspace slug
+ * @param userId - The user ID
+ * @param options - Optional configuration
+ * @param options.isSuperAdmin - If true, bypasses membership check and grants OWNER permissions
  */
 export async function getWorkspaceBySlug(
   slug: string,
   userId: string,
+  options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
@@ -274,6 +279,39 @@ export async function getWorkspaceBySlug(
 
   if (!workspace) {
     return null;
+  }
+
+  // Superadmin bypass - grant full access without membership check
+  if (options?.isSuperAdmin) {
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      hasKey: hasValidApiKey(workspace.stakworkApiKey),
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt.toISOString(),
+      updatedAt: workspace.updatedAt.toISOString(),
+      userRole: "OWNER", // Grant full permissions to superadmin
+      owner: workspace.owner,
+      containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+      repositoryDraft: workspace.repositoryDraft || null,
+      swarmId: workspace.swarm?.id || null,
+      isCodeGraphSetup:
+        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
+      poolState: workspace.swarm?.poolState || null,
+      podState: workspace.swarm?.podState || "NOT_STARTED",
+      swarmUrl: workspace.swarm?.swarmUrl || null,
+      logoKey: workspace.logoKey,
+      logoUrl: workspace.logoUrl,
+      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
+    };
   }
 
   // Check if user is owner
