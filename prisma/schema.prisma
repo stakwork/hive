@@ -1114,6 +1114,7 @@ model Feature {
   stakworkRuns StakworkRun[]
   whiteboard   Whiteboard?
   chatMessages ChatMessage[]
+  screenshots  Screenshot[]
 
   deleted   Boolean   @default(false)
   deletedAt DateTime? @map("deleted_at")
@@ -1252,6 +1253,8 @@ model Screenshot {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   taskId      String?   @map("task_id")
   task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  featureId   String?   @map("feature_id")
+  feature     Feature?  @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   // S3 Storage
   s3Key        String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
@@ -1273,6 +1276,7 @@ model Screenshot {
 
   @@index([workspaceId])
   @@index([taskId])
+  @@index([featureId])
   @@index([hash])
   @@index([pageUrl])
   @@index([createdAt])
