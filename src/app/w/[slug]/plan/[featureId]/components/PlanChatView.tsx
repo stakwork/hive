@@ -22,6 +22,7 @@ import {
 import { getPusherClient } from "@/lib/pusher";
 import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
+import { InvitePopover } from "./InvitePopover";
 
 function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -94,6 +95,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
   const prevFeatureRef = useRef<FeatureDetail | null>(null);
+  const [sphinxReady, setSphinxReady] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -226,6 +229,29 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // Fetch Sphinx integration status
+  useEffect(() => {
+    const fetchSphinxStatus = async () => {
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceSlug}/settings/sphinx-integration`);
+        if (response.ok) {
+          const data = await response.json();
+          const isReady = !!(
+            data.sphinxEnabled &&
+            data.sphinxChatPubkey &&
+            data.sphinxBotId &&
+            data.sphinxBotSecret
+          );
+          setSphinxReady(isReady);
+        }
+      } catch (error) {
+        console.error("Error fetching Sphinx status:", error);
+      }
+    };
+
+    fetchSphinxStatus();
+  }, [workspaceSlug]);
 
   // Refetch on tab visibility change
   useEffect(() => {
@@ -439,6 +465,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <InvitePopover
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        workspaceSlug={workspaceSlug}
+        featureId={featureId}
+      >
+        <div style={{ display: "none" }} />
+      </InvitePopover>
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
@@ -458,6 +492,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               isChainVisible={isChainVisible}
               lastLogLine={lastLogLine}
               logs={logs}
+              sphinxInviteEnabled={sphinxReady}
+              onInvite={() => setInviteOpen(true)}
             />
           </div>
         </ResizablePanel>

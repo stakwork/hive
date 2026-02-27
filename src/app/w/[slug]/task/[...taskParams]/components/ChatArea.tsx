@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
@@ -48,6 +48,8 @@ interface ChatAreaProps {
   featureTitle?: string | null;
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
+  sphinxInviteEnabled?: boolean;
+  onInvite?: () => void;
 }
 
 export function ChatArea({
@@ -78,6 +80,8 @@ export function ChatArea({
   featureTitle,
   collaborators,
   onOpenBountyRequest,
+  sphinxInviteEnabled,
+  onInvite,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -191,6 +195,20 @@ export function ChatArea({
               <div className="flex-shrink-0 self-center">
                 <CollaboratorAvatars collaborators={collaborators} />
               </div>
+            )}
+
+            {/* Invite Button (Plan Chat Only) */}
+            {sphinxInviteEnabled && onInvite && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onInvite}
+                className="flex-shrink-0 gap-2"
+                data-testid="invite-button"
+              >
+                <UserPlus className="h-4 w-4" />
+                Invite
+              </Button>
             )}
 
             {/* Preview Toggle Button (Mobile Only) */}
