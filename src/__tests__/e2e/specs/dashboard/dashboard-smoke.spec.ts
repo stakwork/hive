@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { AuthPage, DashboardPage } from '../../support/page-objects';
 import { selectors } from '../../support/fixtures/selectors';
+import { createStandardWorkspaceScenario } from '../../support/fixtures/e2e-scenarios';
 
 /**
  * Dashboard smoke tests
@@ -12,13 +13,16 @@ test.describe('Dashboard Smoke Tests', () => {
   let workspaceSlug: string;
 
   test.beforeEach(async ({ page }) => {
+    // Setup test data with standard workspace scenario
+    const scenario = await createStandardWorkspaceScenario();
+    workspaceSlug = scenario.workspace.slug;
+
     authPage = new AuthPage(page);
     dashboardPage = new DashboardPage(page);
 
     // Sign in and navigate to dashboard
     await authPage.goto();
     await authPage.signInWithMock();
-    workspaceSlug = authPage.getCurrentWorkspaceSlug();
     await dashboardPage.waitForLoad();
   });
 
