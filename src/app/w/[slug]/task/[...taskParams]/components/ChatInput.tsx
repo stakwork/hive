@@ -665,7 +665,7 @@ export function ChatInput({
               disabled ||
               pendingImages.some(img => img.uploading || img.error)
             }
-            className={isMobile ? "h-11 w-11 rounded-full shrink-0" : ""}
+            className={isMobile ? "h-11 w-11 rounded-full shrink-0" : "h-11 shrink-0"}
             data-testid="chat-message-submit"
           >
             {isMobile ? (
