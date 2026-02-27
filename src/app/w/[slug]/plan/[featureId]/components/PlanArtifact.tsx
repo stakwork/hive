@@ -115,7 +115,7 @@ function SectionContent({
 
   if (hasContent) {
     return (
-      <div className={highlight ? "plan-section-highlight" : undefined}>
+      <div className={`border-l-2 border-transparent pl-3 rounded-r ${highlight ? "plan-section-highlight" : ""}`}>
         <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
       </div>
     );
