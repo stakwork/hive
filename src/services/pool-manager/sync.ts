@@ -268,6 +268,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       files,
       poolCpu || undefined,
       poolMemory || undefined,
+      swarm.minimumVms,
       githubCreds?.token,
       githubCreds?.username,
       primaryRepo?.branch || "",
