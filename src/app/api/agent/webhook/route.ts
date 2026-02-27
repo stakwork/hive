@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
   // 6. Persist based on type
   try {
     switch (body.type) {
-      case "text":
-        await db.chatMessage.create({
+      case "text": {
+        const msg = await db.chatMessage.create({
           data: {
             taskId,
             message: body.text,
@@ -123,18 +123,39 @@ export async function POST(request: NextRequest) {
             status: ChatStatus.SENT,
           },
         });
+        await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, msg.id);
         break;
+      }
 
-      case "tool-call":
-      case "tool-result":
-        // TODO: Store as TOOL_USE artifact in future PR (FIXME: not implemented)
-        // For now, just log
-        console.log(`[Webhook] Tool event received for task ${taskId}:`, {
-          type: body.type,
-          toolName: body.type === "tool-call" ? body.toolName : undefined,
-          toolCallId: body.toolCallId,
+      case "tool-call": {
+        const input = JSON.stringify(body.input, null, 2);
+        const logContent = `🔧 tool-call: ${body.toolName}\n${input}`;
+        const msg = await db.chatMessage.create({
+          data: {
+            taskId,
+            message: `<logs>${logContent}</logs>`,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+          },
         });
+        await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, msg.id);
         break;
+      }
+
+      case "tool-result": {
+        const output = typeof body.output === "string" ? body.output : JSON.stringify(body.output, null, 2);
+        const logContent = `✅ tool-result: ${body.toolName}\n${output}`;
+        const msg = await db.chatMessage.create({
+          data: {
+            taskId,
+            message: `<logs>${logContent}</logs>`,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+          },
+        });
+        await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, msg.id);
+        break;
+      }
 
       case "finish":
         console.log(`[Webhook] Finish event received for task ${taskId}`);

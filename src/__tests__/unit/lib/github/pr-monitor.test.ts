@@ -1,6 +1,55 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
+import { ChatRole, ChatStatus } from "@prisma/client";
+
+// Mock dependencies for triggerAgentModeFix tests
+vi.mock("@/lib/db", () => ({
+  db: {
+    task: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    chatMessage: {
+      create: vi.fn(),
+    },
+  },
+}));
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: {
+    trigger: vi.fn(),
+  },
+  getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  PUSHER_EVENTS: {
+    NEW_MESSAGE: "new-message",
+  },
+}));
+vi.mock("@/lib/encryption/field-encryption", () => ({
+  FieldEncryptionService: vi.fn().mockImplementation(() => ({
+    decryptField: vi.fn().mockReturnValue("decrypted-secret"),
+    encryptField: vi.fn().mockReturnValue({
+      data: "encrypted-data",
+      iv: "mock-iv",
+      tag: "mock-tag",
+      keyId: "mock-key-id",
+      version: 1,
+      encryptedAt: new Date().toISOString(),
+    }),
+  })),
+}));
+vi.mock("jsonwebtoken", () => ({
+  default: {
+    sign: vi.fn(() => "mock-jwt-token"),
+  },
+}));
+vi.mock("@/lib/auth/agent-jwt", () => ({
+  createWebhookToken: vi.fn().mockResolvedValue("mock-webhook-token"),
+  generateWebhookSecret: vi.fn().mockReturnValue("mock-webhook-secret"),
+}));
+
+// Import mocked modules after mocks are defined
+import { db } from "@/lib/db";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 describe("PR Monitor - Branch Update Operations", () => {
   let mockOctokit: Partial<Octokit>;
@@ -944,6 +993,156 @@ describe("PR Monitor - Branch Update Operations", () => {
       expect(rebaseResult).toHaveProperty("success", false);
       expect(rebaseResult).toHaveProperty("error");
       expect(rebaseResult.sha).toBeUndefined();
+    });
+  });
+
+  describe("triggerAgentModeFix", () => {
+    const mockTaskId = "task-123";
+    const mockPrompt = "Fix the CI failure:\n<logs>npm test failed</logs>";
+    const mockAgentUrl = "https://agent.example.com";
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+
+      // Mock environment variables
+      process.env.NEXTAUTH_URL = "http://localhost:3000";
+
+      // Mock db.task.findUnique
+      vi.mocked(db.task.findUnique).mockResolvedValue({
+        id: mockTaskId,
+        agentUrl: mockAgentUrl,
+        agentPassword: JSON.stringify({ encrypted: "key" }),
+        agentWebhookSecret: null,
+        mode: "agent",
+        podId: "pod-123",
+      } as any);
+
+      // Mock db.task.update
+      vi.mocked(db.task.update).mockResolvedValue({} as any);
+
+      // Mock fetch for agent session creation
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ sessionId: "session-123" }),
+      } as any);
+    });
+
+    it("should create trigger message and broadcast via Pusher", async () => {
+      const mockTriggerMessage = {
+        id: "msg-trigger-1",
+        taskId: mockTaskId,
+        message: `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${mockPrompt}`,
+        role: ChatRole.USER,
+        status: ChatStatus.SENT,
+      };
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+
+      // Mock fetch for agent session creation
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ sessionId: "session-123" }),
+      } as any);
+
+      await triggerAgentModeFix(mockTaskId, mockPrompt);
+
+      // Verify chat message was created
+      expect(db.chatMessage.create).toHaveBeenCalledWith({
+        data: {
+          taskId: mockTaskId,
+          message: `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${mockPrompt}`,
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+        },
+      });
+
+      // Verify Pusher broadcast was triggered
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${mockTaskId}`,
+        "new-message",
+        mockTriggerMessage.id
+      );
+    });
+
+    it("should broadcast trigger message before creating agent session", async () => {
+      const mockTriggerMessage = {
+        id: "msg-trigger-2",
+        taskId: mockTaskId,
+      };
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ sessionId: "session-456" }),
+      });
+      global.fetch = fetchMock;
+
+      await triggerAgentModeFix(mockTaskId, mockPrompt);
+
+      // Get call order
+      const chatCreateCallOrder = vi.mocked(db.chatMessage.create).mock.invocationCallOrder[0];
+      const pusherTriggerCallOrder = vi.mocked(pusherServer.trigger).mock.invocationCallOrder[0];
+      const fetchCallOrder = fetchMock.mock.invocationCallOrder[0];
+
+      // Pusher should be called after chat message creation but before agent session
+      expect(chatCreateCallOrder).toBeLessThan(pusherTriggerCallOrder);
+      expect(pusherTriggerCallOrder).toBeLessThan(fetchCallOrder);
+    });
+
+    it("should still broadcast message even if agent session creation fails", async () => {
+      const mockTriggerMessage = {
+        id: "msg-trigger-3",
+        taskId: mockTaskId,
+      };
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+
+      // Mock fetch to fail
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      } as any);
+
+      const result = await triggerAgentModeFix(mockTaskId, mockPrompt);
+
+      // Verify the function returned an error
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+
+      // Verify message was still created and broadcast before the failure
+      expect(db.chatMessage.create).toHaveBeenCalled();
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${mockTaskId}`,
+        "new-message",
+        mockTriggerMessage.id
+      );
+    });
+
+    it("should include prompt with logs in trigger message", async () => {
+      const promptWithLogs = "Fix CI failure:\n<logs>Error: Test suite failed</logs>";
+      
+      vi.mocked(db.chatMessage.create).mockResolvedValue({
+        id: "msg-4",
+        taskId: mockTaskId,
+      } as any);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ sessionId: "session-789" }),
+      } as any);
+
+      await triggerAgentModeFix(mockTaskId, promptWithLogs);
+
+      expect(db.chatMessage.create).toHaveBeenCalledWith({
+        data: {
+          taskId: mockTaskId,
+          message: expect.stringContaining("<logs>Error: Test suite failed</logs>"),
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+        },
+      });
     });
   });
 });
