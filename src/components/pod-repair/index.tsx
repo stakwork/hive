@@ -12,12 +12,12 @@ import { toast } from "sonner";
 import {
   Bot,
   Circle,
-  ExternalLink,
   Loader2,
   Pencil,
   Play,
   Wrench,
 } from "lucide-react";
+import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 
 interface StakworkRun {
   id: string;
@@ -228,15 +228,11 @@ export function PodRepairSection() {
                     {formatRelativeOrDate(run.createdAt)}
                   </span>
                   {run.projectId && (
-                    <a
-                      href={`https://jobs.stakwork.com/admin/projects/${run.projectId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    >
-                      #{run.projectId}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <StakworkRunDropdown
+                      projectId={run.projectId.toString()}
+                      hiveUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${slug}/stakgraph`}
+                      variant="link"
+                    />
                   )}
                 </div>
               ))}
