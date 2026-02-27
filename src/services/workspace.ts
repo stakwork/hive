@@ -529,8 +529,9 @@ export async function validateWorkspaceAccess(
   slug: string,
   userId: string,
   allowOwner: boolean = true,
+  options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceAccessValidation> {
-  const workspace = await getWorkspaceBySlug(slug, userId);
+  const workspace = await getWorkspaceBySlug(slug, userId, options);
 
   if (!workspace) {
     return {

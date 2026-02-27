@@ -17,7 +17,7 @@ export async function GET(
 
     const userId = (session?.user as { id?: string })?.id;
 
-    if (!userId) {
+    if (!userId || !session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -30,7 +30,8 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
 
     if (!workspace) {
       return NextResponse.json(

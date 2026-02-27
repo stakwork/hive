@@ -24,7 +24,14 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
+    // Check if user is super admin
+    const { db } = await import("@/lib/db");
+    const githubAuth = await db.gitHubAuth.findUnique({
+      where: { userId: userOrResponse.id },
+    });
+    const userIsSuperAdmin = isSuperAdmin(githubAuth?.githubUsername ?? "");
+
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
 
     if (!workspace) {
       return NextResponse.json(
@@ -32,15 +39,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
-    const { db } = await import("@/lib/db");
-
-    // Get GitHub username to check superadmin status
-    const githubAuth = await db.gitHubAuth.findUnique({
-      where: { userId: userOrResponse.id },
-    });
-
-    const superAdmin = isSuperAdmin(githubAuth?.githubUsername ?? "");
 
     // Get swarm config
     const swarm = await db.swarm.findFirst({
@@ -52,7 +50,7 @@ export async function GET(
       success: true,
       data: {
         minimumVms: swarm?.minimumVms ?? 2,
-        isSuperAdmin: superAdmin,
+        isSuperAdmin: userIsSuperAdmin,
       },
     });
   } catch (error) {
@@ -85,29 +83,29 @@ export async function PATCH(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
-    }
-
+    // Check if user is super admin
     const { db } = await import("@/lib/db");
-
-    // Get GitHub username to check superadmin status
     const githubAuth = await db.gitHubAuth.findUnique({
       where: { userId: userOrResponse.id },
     });
 
     const githubUsername = githubAuth?.githubUsername ?? "";
+    const userIsSuperAdmin = isSuperAdmin(githubUsername);
 
     // Check if user is superadmin
-    if (!isSuperAdmin(githubUsername)) {
+    if (!userIsSuperAdmin) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Superadmin access required" },
         { status: 403 }
+      );
+    }
+
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+
+    if (!workspace) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 }
       );
     }
 
