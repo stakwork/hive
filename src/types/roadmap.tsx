@@ -220,6 +220,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             deployedToProductionAt: true;
             createdAt: true;
             updatedAt: true;
+            systemAssigneeType: true;
             assignee: {
               select: {
                 id: true;
@@ -442,6 +443,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         deployedToProductionAt: true;
         createdAt: true;
         updatedAt: true;
+        systemAssigneeType: true;
         assignee: {
           select: {
             id: true;
@@ -513,6 +515,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     deployedToProductionAt: true;
     createdAt: true;
     updatedAt: true;
+    systemAssigneeType: true;
     assignee: {
       select: {
         id: true;

@@ -321,6 +321,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         {tasks.map((task) => {
           const prArtifact = task.prArtifact;
           const isDimmed = task.status === "DONE" || task.status === "CANCELLED";
+          const isQueued = task.status === "TODO" && task.systemAssigneeType === "TASK_COORDINATOR";
           const deployedAtRaw = task.deploymentStatus === "production"
             ? task.deployedToProductionAt
             : task.deployedToStagingAt;
@@ -358,12 +359,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               onClick={() => router.push(getTaskRoute(task))}
             >
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[task.status] || "bg-zinc-400"}`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${isQueued ? "bg-blue-500 animate-pulse" : STATUS_DOT[task.status] || "bg-zinc-400"}`} />
                 <span
                   className={`text-sm truncate flex-1 min-w-0 ${isDimmed ? "line-through text-muted-foreground" : ""}`}
                 >
                   {task.title}
                 </span>
+                {isQueued && (
+                  <span className="text-xs text-blue-500 font-medium shrink-0">
+                    Queued
+                  </span>
+                )}
                 {task.deploymentStatus && (
                   <DeploymentStatusBadge
                     environment={task.deploymentStatus as "staging" | "production"}
