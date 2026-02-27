@@ -46,7 +46,10 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
         taskIds.map(async (taskId) => {
           try {
             const response = await fetch(
-              `/api/screenshots?workspaceId=${workspaceId}&taskId=${taskId}`
+              `/api/screenshots?workspaceId=${workspaceId}&taskId=${taskId}`,
+              {
+                credentials: 'include',
+              }
             );
             if (!response.ok) return null;
             const data = await response.json();
