@@ -848,7 +848,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onPriorityUpdate={handleUpdatePriority}
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
-                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
                           />
                         ))
                       )}
