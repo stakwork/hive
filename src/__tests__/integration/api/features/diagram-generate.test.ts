@@ -26,6 +26,7 @@ vi.mock('@/services/gemini-image')
 vi.mock('@/lib/middleware/utils', () => ({
   getMiddlewareContext: vi.fn(() => ({})),
   requireAuth: vi.fn(() => ({ id: 'test-user-id', email: 'test@example.com' })),
+  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
 }))
 
 describe('Diagram Generation S3 Integration', () => {

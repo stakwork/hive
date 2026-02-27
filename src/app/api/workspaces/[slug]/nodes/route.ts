@@ -26,7 +26,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
     }
