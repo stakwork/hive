@@ -10,6 +10,7 @@ import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
+import { VerifyPanel } from "@/app/w/[slug]/plan/[featureId]/components/VerifyPanel";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -142,6 +143,7 @@ export function ArtifactsPanel({
   const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
+  const showVerifyTab = hasTasks;
 
   // Clear the API-calling flag once the run status has taken over
   useEffect(() => {
@@ -258,6 +260,7 @@ export function ArtifactsPanel({
     const tabs: ArtifactType[] = [];
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
+    if (hasFeature && showVerifyTab) tabs.push("VERIFY");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -265,7 +268,7 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -354,6 +357,13 @@ export function ArtifactsPanel({
                   onUpdate={onFeatureUpdate!}
                   isGenerating={isGenerating}
                 />
+              </div>
+            </div>
+          )}
+          {hasFeature && showVerifyTab && (
+            <div className="h-full" hidden={activeTab !== "VERIFY"}>
+              <div className="h-full overflow-auto p-4">
+                <VerifyPanel feature={feature!} workspaceId={workspaceId!} />
               </div>
             </div>
           )}

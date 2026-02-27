@@ -5,23 +5,47 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 import { Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
 import { PoolStatusResponse } from "@/types";
+import { toast } from "sonner";
 
-export function VMConfigSection() {
+interface VMConfigSectionProps {
+  isSuperAdmin?: boolean;
+}
+
+export function VMConfigSection({ isSuperAdmin = false }: VMConfigSectionProps) {
   const { slug, workspace } = useWorkspace();
   const open = useModal();
 
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [minimumVms, setMinimumVms] = useState<number>(2);
+  const [pendingVms, setPendingVms] = useState<number>(2);
+  const [saving, setSaving] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const servicesReady = workspace?.containerFilesSetUp === true;
+
+  const fetchPoolConfig = useCallback(async () => {
+    if (!slug || !isPoolActive || !isSuperAdmin) return;
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/config`);
+      const result = await res.json();
+      if (result.success) {
+        setMinimumVms(result.data.minimumVms);
+        setPendingVms(result.data.minimumVms);
+      }
+    } catch {
+      // Silently fail - not critical
+    }
+  }, [slug, isPoolActive, isSuperAdmin]);
 
   const fetchPoolStatus = useCallback(async () => {
     if (!slug || !isPoolActive) {
@@ -53,7 +77,30 @@ export function VMConfigSection() {
 
   useEffect(() => {
     fetchPoolStatus();
-  }, [fetchPoolStatus]);
+    fetchPoolConfig();
+  }, [fetchPoolStatus, fetchPoolConfig]);
+
+  const handleSaveMinimumVms = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minimumVms: pendingVms }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setMinimumVms(pendingVms);
+        toast.success("Amount of Pods updated");
+      } else {
+        toast.error("Failed to update Amount of Pods");
+      }
+    } catch {
+      toast.error("Failed to update Amount of Pods");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleOpenModal = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -138,6 +185,30 @@ export function VMConfigSection() {
                   Updated {formatRelativeOrDate(poolStatus.status.lastCheck.endsWith('Z')
                     ? poolStatus.status.lastCheck
                     : poolStatus.status.lastCheck + 'Z')}
+                </div>
+              )}
+
+              {isSuperAdmin && (
+                <div className="flex items-center gap-2 pt-2 border-t">
+                  <Label htmlFor="minimum-vms" className="text-sm font-medium whitespace-nowrap">
+                    Amount of Pods
+                  </Label>
+                  <Input
+                    id="minimum-vms"
+                    type="number"
+                    min={1}
+                    value={pendingVms}
+                    onChange={(e) => setPendingVms(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-20 h-8"
+                    disabled={saving}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSaveMinimumVms}
+                    disabled={saving || pendingVms === minimumVms}
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
                 </div>
               )}
             </div>
