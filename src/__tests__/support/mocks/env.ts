@@ -34,23 +34,27 @@ const mockConfig = {
   MOCK_BASE: "http://localhost:3000",
 };
 
-vi.mock("@/config/env", () => ({
-  env: mockEnv,
-  config: mockConfig,
-  optionalEnvVars: {
-    STAKWORK_BASE_URL: mockConfig.STAKWORK_BASE_URL,
-    STAKWORK_WORKFLOW_ID: mockConfig.STAKWORK_WORKFLOW_ID,
-    STAKWORK_JANITOR_WORKFLOW_ID: mockConfig.STAKWORK_JANITOR_WORKFLOW_ID,
-    STAKWORK_USER_JOURNEY_WORKFLOW_ID: mockConfig.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
-    POOL_MANAGER_BASE_URL: mockConfig.POOL_MANAGER_BASE_URL,
-    API_TIMEOUT: mockConfig.API_TIMEOUT,
-    GITHUB_APP_SLUG: mockConfig.GITHUB_APP_SLUG,
-    GITHUB_APP_CLIENT_ID: mockConfig.GITHUB_APP_CLIENT_ID,
-    GITHUB_APP_CLIENT_SECRET: mockConfig.GITHUB_APP_CLIENT_SECRET,
-    LOG_LEVEL: mockConfig.LOG_LEVEL,
-    USE_MOCKS: true,
-    MOCK_BASE: "http://localhost:3000",
-  },
-}));
+vi.mock("@/config/env", async () => {
+  const actual = await vi.importActual<typeof import("@/config/env")>("@/config/env");
+  return {
+    ...actual,
+    env: mockEnv,
+    config: mockConfig,
+    optionalEnvVars: {
+      STAKWORK_BASE_URL: mockConfig.STAKWORK_BASE_URL,
+      STAKWORK_WORKFLOW_ID: mockConfig.STAKWORK_WORKFLOW_ID,
+      STAKWORK_JANITOR_WORKFLOW_ID: mockConfig.STAKWORK_JANITOR_WORKFLOW_ID,
+      STAKWORK_USER_JOURNEY_WORKFLOW_ID: mockConfig.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
+      POOL_MANAGER_BASE_URL: mockConfig.POOL_MANAGER_BASE_URL,
+      API_TIMEOUT: mockConfig.API_TIMEOUT,
+      GITHUB_APP_SLUG: mockConfig.GITHUB_APP_SLUG,
+      GITHUB_APP_CLIENT_ID: mockConfig.GITHUB_APP_CLIENT_ID,
+      GITHUB_APP_CLIENT_SECRET: mockConfig.GITHUB_APP_CLIENT_SECRET,
+      LOG_LEVEL: mockConfig.LOG_LEVEL,
+      USE_MOCKS: true,
+      MOCK_BASE: "http://localhost:3000",
+    },
+  };
+});
 
 export { mockEnv, mockConfig };

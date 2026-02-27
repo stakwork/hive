@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { detectAndWrapCode } from "@/lib/utils/detect-code-paste";
 
 interface LearnChatInputProps {
   onSend: (message: string) => Promise<void>;
@@ -17,6 +20,9 @@ export function LearnChatInput({
 }: LearnChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Feature flags
+  const codeFormattingEnabled = useFeatureFlag(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
 
   // Auto-scroll textarea to bottom when content changes
   useEffect(() => {
@@ -24,6 +30,17 @@ export function LearnChatInput({
       textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
     }
   }, [input]);
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!codeFormattingEnabled) return;
+    const text = e.clipboardData.getData('text');
+    if (!text) return;
+    const wrapped = detectAndWrapCode(text);
+    if (wrapped !== text) {
+      e.preventDefault();
+      setInput(prev => prev + wrapped);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +69,7 @@ export function LearnChatInput({
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         className="flex-1 resize-none min-h-[40px]"
         style={{
           maxHeight: "8em", // 5 lines * 1.5 line-height

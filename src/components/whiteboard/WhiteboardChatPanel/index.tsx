@@ -53,7 +53,15 @@ export function WhiteboardChatPanel({
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [layout, setLayout] = useState<LayoutAlgorithm>("layered");
+  const [layout, setLayout] = useState<LayoutAlgorithm>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`whiteboard-layout-${whiteboardId}`);
+      if (saved === 'layered' || saved === 'force' || saved === 'stress' || saved === 'mrtree') {
+        return saved;
+      }
+    }
+    return 'layered';
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
   const preVoiceInputRef = useRef("");
@@ -215,6 +223,15 @@ export function WhiteboardChatPanel({
 
   const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
     setLayout(newLayout);
+    localStorage.setItem(`whiteboard-layout-${whiteboardId}`, newLayout);
+
+    // Lazily populate ref from live canvas if not yet set by Pusher handler
+    if (!parsedDiagramRef.current && excalidrawAPI) {
+      parsedDiagramRef.current = extractParsedDiagram(
+        excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+      );
+    }
+
     const diagram = parsedDiagramRef.current;
     if (!diagram || !excalidrawAPI) return;
 

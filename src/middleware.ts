@@ -174,6 +174,23 @@ export async function middleware(request: NextRequest) {
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
+      
+      // Store role in header if present (for superadmin checks)
+      const role = extractTokenProperty(token, "role");
+      if (role) {
+        requestHeaders.set(MIDDLEWARE_HEADERS.USER_ROLE, role);
+      }
+    }
+
+    // Superadmin routes require SUPER_ADMIN role
+    if (routeAccess === "superadmin") {
+      const role = extractTokenProperty(token, "role");
+      if (role !== "SUPER_ADMIN") {
+        if (isApiRoute) {
+          return respondWithJson({ error: "Forbidden" }, { status: 403, requestId, authStatus: "forbidden" });
+        }
+        return redirectTo("/", request, { requestId, authStatus: "forbidden" });
+      }
     }
 
     return continueRequest(requestHeaders, "authenticated");
