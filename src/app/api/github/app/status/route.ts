@@ -53,7 +53,8 @@ export async function GET(request: Request) {
         action: 'validate_workspace',
       });
 
-      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+      const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id, true, { isSuperAdmin });
       if (!workspaceAccess.hasAccess) {
         console.warn("[github-app-status] Workspace access denied", {
           ...requestLogContext,
