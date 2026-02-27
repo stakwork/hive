@@ -16,6 +16,9 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { toast } from "sonner";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { detectAndWrapCode } from "@/lib/utils/detect-code-paste";
 
 interface PendingImage {
   id: string;
@@ -76,6 +79,9 @@ export function ChatInput({
 
   // Image upload is disabled in agent mode
   const isImageUploadEnabled = taskMode !== "agent";
+  
+  // Feature flags
+  const codeFormattingEnabled = useFeatureFlag(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
 
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -261,23 +267,37 @@ export function ChatInput({
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    if (!isImageUploadEnabled) return;
-    
-    const items = e.clipboardData.items;
-    const files: File[] = [];
+    // Handle image paste first
+    if (isImageUploadEnabled) {
+      const items = e.clipboardData.items;
+      const files: File[] = [];
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          files.push(file);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            files.push(file);
+          }
         }
+      }
+
+      if (files.length > 0) {
+        handleFiles(files);
+        return;
       }
     }
 
-    if (files.length > 0) {
-      handleFiles(files);
+    // Handle code/JSON paste if feature is enabled
+    if (codeFormattingEnabled) {
+      const text = e.clipboardData.getData('text');
+      if (text) {
+        const wrapped = detectAndWrapCode(text);
+        if (wrapped !== text) {
+          e.preventDefault();
+          setInput(prev => prev + wrapped);
+        }
+      }
     }
   };
 
