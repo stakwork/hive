@@ -34,8 +34,9 @@ export async function GET(
     // Check if system assignees should be included (defaults to false)
     const url = new URL(request.url);
     const includeSystemAssignees = url.searchParams.get("includeSystemAssignees") === "true";
+    const sphinxLinkedOnly = url.searchParams.get("sphinxLinkedOnly") === "true";
 
-    const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees);
+    const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees, sphinxLinkedOnly);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);

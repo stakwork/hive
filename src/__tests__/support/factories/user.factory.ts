@@ -18,6 +18,10 @@ export interface CreateTestUserOptions {
   role?: "USER" | "ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
+  /** Lightning Network public key for Sphinx integration */
+  lightningPubkey?: string;
+  /** Sphinx tribe alias/username */
+  sphinxAlias?: string;
   /** If true, return existing user if email matches (default: true) */
   idempotent?: boolean;
 }
@@ -45,7 +49,13 @@ export async function createTestUser(
   }
 
   const user = await db.user.create({
-    data: { name, email, role },
+    data: {
+      name,
+      email,
+      role,
+      lightningPubkey: options.lightningPubkey,
+      sphinxAlias: options.sphinxAlias,
+    },
   });
 
   // Create GitHub auth if requested (default true when using valueKey)

@@ -996,7 +996,11 @@ export function validateWorkspaceSlug(slug: string): {
 /**
  * Gets all members and owner information for a workspace
  */
-export async function getWorkspaceMembers(workspaceId: string, includeSystemAssignees = false) {
+export async function getWorkspaceMembers(
+  workspaceId: string, 
+  includeSystemAssignees = false,
+  sphinxLinkedOnly = false
+) {
   // Get regular members from workspace_members table
   const members = await getActiveWorkspaceMembers(workspaceId);
 
@@ -1005,7 +1009,13 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
     where: { id: workspaceId },
     include: {
       owner: {
-        include: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          lightningPubkey: true,
+          sphinxAlias: true,
           githubAuth: {
             select: {
               githubUsername: true,
@@ -1035,6 +1045,8 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
       name: workspace.owner.name,
       email: workspace.owner.email,
       image: workspace.owner.image,
+      lightningPubkey: workspace.owner.lightningPubkey ?? undefined,
+      sphinxAlias: workspace.owner.sphinxAlias ?? undefined,
       github: workspace.owner.githubAuth
         ? {
           username: workspace.owner.githubAuth.githubUsername,
@@ -1079,12 +1091,31 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
   ];
 
   // Filter out owner from members array to prevent duplicates
-  const filteredMembers = members.filter(m => m.userId !== workspace.ownerId);
+  let filteredMembers = members.filter(m => m.userId !== workspace.ownerId);
+
+  // Apply Sphinx-linked filter if requested
+  let filteredOwner = owner;
+  if (sphinxLinkedOnly) {
+    // Filter members to only those with both lightningPubkey and sphinxAlias
+    filteredMembers = filteredMembers.filter(
+      m => m.user.lightningPubkey && m.user.sphinxAlias
+    );
+    
+    // Filter owner if they don't have Sphinx linked
+    if (!workspace.owner.lightningPubkey || !workspace.owner.sphinxAlias) {
+      // Return only members, no owner, no system assignees (they don't have Sphinx)
+      return {
+        members: mapWorkspaceMembers(filteredMembers),
+        owner: null,
+      };
+    }
+  }
 
   return {
     members: mapWorkspaceMembers(filteredMembers),
-    owner,
-    ...(includeSystemAssignees && { systemAssignees }),
+    owner: sphinxLinkedOnly ? filteredOwner : owner,
+    // Don't include system assignees when filtering by Sphinx (they don't have Sphinx linked)
+    ...(!sphinxLinkedOnly && includeSystemAssignees && { systemAssignees }),
   };
 }
 
