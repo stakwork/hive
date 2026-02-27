@@ -10,8 +10,7 @@ export default async function AdminLayout({
 }) {
   const session = await getServerSession(authOptions);
 
-  // Redirect non-superadmins
-  if (!session?.user?.isSuperAdmin) {
+  if (!session?.user || session.user.role !== "SUPER_ADMIN") {
     redirect("/");
   }
 

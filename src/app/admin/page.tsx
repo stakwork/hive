@@ -27,17 +27,6 @@ export default async function AdminDashboard() {
           tasks: true,
         },
       },
-      swarm: {
-        select: {
-          _count: {
-            select: {
-              pods: {
-                where: { deletedAt: null },
-              },
-            },
-          },
-        },
-      },
     },
   });
 

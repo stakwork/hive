@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Building2, ChevronUp, ChevronDown } from "lucide-react";
 import {
@@ -26,15 +26,15 @@ interface WorkspaceData {
     members: number;
     tasks: number;
   };
-  swarm: {
-    _count: {
-      pods: number;
-    };
-  } | null;
 }
 
 interface WorkspacesTableProps {
   workspaces: WorkspaceData[];
+}
+
+interface PodCount {
+  usedVms: number;
+  totalPods: number;
 }
 
 export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
@@ -43,6 +43,75 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     direction: "desc",
   });
   const [logoUrls, setLogoUrls] = useState<Record<string, string>>({});
+  const [podCounts, setPodCounts] = useState<Record<string, PodCount>>({});
+
+  // Fetch pod counts from API
+  const fetchPodCounts = async () => {
+    try {
+      const response = await fetch("/api/admin/pods");
+      if (response.ok) {
+        const data = await response.json();
+        const countsMap: Record<string, PodCount> = {};
+        data.workspaces.forEach((ws: { workspaceId: string; usedVms: number; totalPods: number }) => {
+          countsMap[ws.workspaceId] = {
+            usedVms: ws.usedVms,
+            totalPods: ws.totalPods,
+          };
+        });
+        setPodCounts(countsMap);
+      }
+    } catch (error) {
+      console.error("Failed to fetch pod counts:", error);
+    }
+  };
+
+  // Set up polling with visibility change handling
+  useEffect(() => {
+    // Fetch immediately on mount
+    fetchPodCounts();
+
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      // Clear any existing interval
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      // Start new interval
+      intervalId = setInterval(fetchPodCounts, 30000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    // Handler for visibility change
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        // Fetch immediately when tab becomes visible
+        fetchPodCounts();
+        // Restart polling
+        startPolling();
+      }
+    };
+
+    // Start initial polling
+    startPolling();
+
+    // Set up visibility change listener
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Cleanup function
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const handleSort = (field: SortField) => {
     setSortState((prev) => {
@@ -69,9 +138,9 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
         comparison = (a._count.members + 1) - (b._count.members + 1);
         break;
       case "pods":
-        const podsA = a.swarm?._count.pods ?? 0;
-        const podsB = b.swarm?._count.pods ?? 0;
-        comparison = podsA - podsB;
+        const usedA = podCounts[a.id]?.usedVms ?? 0;
+        const usedB = podCounts[b.id]?.usedVms ?? 0;
+        comparison = usedA - usedB;
         break;
       case "tasks":
         comparison = a._count.tasks - b._count.tasks;
@@ -167,7 +236,11 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
               <code className="text-xs">{workspace.slug}</code>
             </TableCell>
             <TableCell>{workspace._count.members + 1}</TableCell>
-            <TableCell>{workspace.swarm?._count.pods ?? 0}</TableCell>
+            <TableCell>
+              {!podCounts[workspace.id] 
+                ? "—" 
+                : `${podCounts[workspace.id].usedVms} in use / ${podCounts[workspace.id].totalPods} total`}
+            </TableCell>
             <TableCell>{workspace._count.tasks}</TableCell>
             <TableCell>
               {new Date(workspace.createdAt).toLocaleDateString()}

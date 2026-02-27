@@ -151,7 +151,6 @@ export async function middleware(request: NextRequest) {
     }
 
     // Public routes (auth pages, onboarding) - accessible after landing page check
-    if (routeAccess === "public") {
       return continueRequest(requestHeaders, routeAccess);
     }
 
