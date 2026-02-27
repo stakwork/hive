@@ -189,7 +189,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const highlights = computeSectionHighlights(prev, next);
         if (highlights) {
           setSectionHighlights(highlights);
-          setTimeout(() => setSectionHighlights(null), 3000);
+          setTimeout(() => setSectionHighlights(null), 5000);
         }
       }
 
