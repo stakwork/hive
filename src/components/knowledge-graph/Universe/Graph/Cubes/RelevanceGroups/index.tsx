@@ -46,8 +46,6 @@ export const RelevanceGroups = memo(() => {
 
     const edges = selectedNodeRelativeIds.map((id: string) => getLinksBetweenNodesInstance(storeId, id, selectedNode?.ref_id || ''))
 
-    console.log(edges)
-
     const groupsMap: TGroupsMap = childNodes.reduce((acc: TGroupsMap, curr: NodeExtended) => {
       acc[curr.node_type] = (acc[curr.node_type] || 0) + 1
 

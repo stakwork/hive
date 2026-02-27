@@ -62,12 +62,10 @@ export function DashboardChat() {
 
     const handleFollowUpQuestions = (payload: { questions: string[]; timestamp: number }) => {
       // Always store questions - display logic will wait for loading to complete
-      console.log("follow up questions:", payload.questions);
       setFollowUpQuestions(payload.questions);
     };
 
     const handleProvenanceData = (payload: { provenance: ProvenanceData; timestamp: number }) => {
-      console.log("provenance data received:", payload.provenance);
       setProvenanceData(payload.provenance);
     };
 
@@ -155,8 +153,6 @@ export function DashboardChat() {
 
               // Build separate messages for tool calls, results, and text (AI SDK format)
               if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-                console.log("========= tool calls:", JSON.stringify(m.toolCalls, null, 2));
-
                 const messages: ModelMessage[] = [];
 
                 // First message: tool calls only
@@ -487,8 +483,6 @@ export function DashboardChat() {
       }
 
       const data = await response.json();
-
-      console.log("✅ Feature created from chat:", data);
 
       // Close modal on success
       setShowFeatureModal(false);
