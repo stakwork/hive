@@ -32,8 +32,6 @@ const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; nam
 export const Neighbourhoods = () => {
   const [selectedNeighbourhoodId, setSelectedNeighbourhoodId] = useState<string | null>(null)
 
-  console.log(selectedNeighbourhoodId)
-
   const graphStyle = useGraphStore((s) => s.graphStyle)
   const neighbourhoods = useGraphStore((s) => s.neighbourhoods)
   const nodeTypes = useDataStore((s) => s.nodeTypes)
