@@ -157,6 +157,7 @@ describe("CompactTasksList", () => {
     deploymentStatus: null,
     deployedToStagingAt: null,
     deployedToProductionAt: null,
+    systemAssigneeType: null,
     ...overrides,
   });
 
@@ -585,6 +586,92 @@ describe("CompactTasksList", () => {
       // Should maintain array order when timestamps are equal
       const taskTitles = getTaskTitles();
       expect(taskTitles.length).toBe(2);
+    });
+  });
+
+  describe("Queued indicator", () => {
+    test("shows 'Queued' label and pulsing blue dot for TODO task with TASK_COORDINATOR assignee", () => {
+      const task = createMockTask({
+        id: "task-queued",
+        title: "Queued Task",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Check for "Queued" label
+      expect(screen.getByText("Queued")).toBeInTheDocument();
+
+      // Check for blue pulsing dot
+      const taskCard = screen.getByText("Queued Task").closest("div[class*='cursor-pointer']");
+      const dot = taskCard?.querySelector(".bg-blue-500.animate-pulse");
+      expect(dot).toBeInTheDocument();
+    });
+
+    test("does not show 'Queued' label for TODO task without systemAssigneeType", () => {
+      const task = createMockTask({
+        id: "task-todo",
+        title: "Regular TODO Task",
+        status: "TODO",
+        systemAssigneeType: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Should not show "Queued" label
+      expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+
+      // Should show grey dot (bg-zinc-400)
+      const taskCard = screen.getByText("Regular TODO Task").closest("div[class*='cursor-pointer']");
+      const dot = taskCard?.querySelector(".bg-zinc-400");
+      expect(dot).toBeInTheDocument();
+    });
+
+    test("does not show 'Queued' label for IN_PROGRESS task with TASK_COORDINATOR assignee", () => {
+      const task = createMockTask({
+        id: "task-in-progress",
+        title: "In Progress Task",
+        status: "IN_PROGRESS",
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Should not show "Queued" label
+      expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+
+      // Should show amber dot (bg-amber-500)
+      const taskCard = screen.getByText("In Progress Task").closest("div[class*='cursor-pointer']");
+      const dot = taskCard?.querySelector(".bg-amber-500");
+      expect(dot).toBeInTheDocument();
     });
   });
 });
