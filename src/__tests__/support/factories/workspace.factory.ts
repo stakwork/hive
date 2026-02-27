@@ -234,3 +234,38 @@ export async function createTestWorkspaceScenario(
     pods,
   };
 }
+
+/**
+ * Create a workspace with Sphinx integration enabled and configured.
+ * Useful for testing Sphinx invite flows.
+ */
+export async function createSphinxEnabledWorkspace(options: {
+  ownerId: string;
+  name?: string;
+  slug?: string;
+  sphinxChatPubkey?: string;
+  sphinxBotId?: string;
+  sphinxBotSecret?: string;
+}): Promise<Workspace> {
+  const { EncryptionService } = await import("@/lib/encryption");
+  const encryptionService = EncryptionService.getInstance();
+  
+  const uniqueId = generateUniqueId("workspace");
+  const botSecret = options.sphinxBotSecret ?? `test-bot-secret-${uniqueId}`;
+  
+  // Encrypt the bot secret properly
+  const encryptedData = encryptionService.encryptField("sphinxBotSecret", botSecret);
+  const encryptedSecret = JSON.stringify(encryptedData);
+
+  return db.workspace.create({
+    data: {
+      name: options.name ?? `Sphinx Workspace ${uniqueId}`,
+      slug: options.slug ?? `sphinx-ws-${uniqueId}`,
+      ownerId: options.ownerId,
+      sphinxEnabled: true,
+      sphinxChatPubkey: options.sphinxChatPubkey ?? `test-chat-pubkey-${uniqueId}`,
+      sphinxBotId: options.sphinxBotId ?? `test-bot-id-${uniqueId}`,
+      sphinxBotSecret: encryptedSecret,
+    },
+  });
+}
