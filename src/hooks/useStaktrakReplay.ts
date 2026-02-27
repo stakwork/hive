@@ -5,6 +5,7 @@ export function usePlaywrightReplay(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
   workspaceId: string | null = null,
   taskId: string | null = null,
+  featureId: string | null = null,
   onScreenshotError?: (message: string) => void,
 ) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
@@ -235,7 +236,7 @@ export function usePlaywrightReplay(
 
           // Upload to S3 asynchronously (don't block replay)
           if (workspaceId && data.screenshot) {
-            console.log('[Screenshot] Starting S3 upload...', { workspaceId, taskId });
+            console.log('[Screenshot] Starting S3 upload...', { workspaceId, taskId, featureId });
             fetch('/api/screenshots/upload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -243,6 +244,7 @@ export function usePlaywrightReplay(
                 dataUrl: data.screenshot,
                 workspaceId,
                 taskId: taskId || null,
+                featureId: featureId || null,
                 actionIndex: data.actionIndex,
                 pageUrl: data.url,
                 timestamp: data.timestamp,
@@ -290,7 +292,7 @@ export function usePlaywrightReplay(
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onScreenshotError, workspaceId, taskId]);
+  }, [onScreenshotError, workspaceId, taskId, featureId]);
 
   return {
     isPlaywrightReplaying,
