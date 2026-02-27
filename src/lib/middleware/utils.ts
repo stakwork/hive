@@ -57,6 +57,22 @@ export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextRe
 }
 
 /**
+ * Check if a user is a super admin
+ * This is a helper for middleware-authenticated routes
+ */
+export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
+  const { db } = await import("@/lib/db");
+  const { isSuperAdmin } = await import("@/config/env");
+  
+  const githubAuth = await db.gitHubAuth.findUnique({
+    where: { userId },
+    select: { githubUsername: true },
+  });
+
+  return isSuperAdmin(githubAuth?.githubUsername ?? "");
+}
+
+/**
  * Converts a route pattern with wildcards (*) to a regular expression
  * Used for matching dynamic route segments in middleware policies
  *

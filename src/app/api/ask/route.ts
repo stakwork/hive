@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
