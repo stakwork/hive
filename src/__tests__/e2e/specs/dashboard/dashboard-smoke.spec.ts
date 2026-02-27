@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../support/fixtures/test-hooks';
 import { AuthPage, DashboardPage } from '../../support/page-objects';
 import { selectors } from '../../support/fixtures/selectors';
 import { createStandardWorkspaceScenario } from '../../support/fixtures/e2e-scenarios';
