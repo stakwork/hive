@@ -199,7 +199,7 @@ describe("resolveRouteAccess", () => {
         
         expect(typeof policy.path).toBe("string");
         expect(["exact", "prefix", "pattern"]).toContain(policy.strategy);
-        expect(["public", "webhook", "system"]).toContain(policy.access);
+        expect(["public", "webhook", "system", "superadmin"]).toContain(policy.access);
       }
     });
 
