@@ -66,6 +66,7 @@ export const optionalEnvVars = {
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
+  POOL_SUPERADMINS: process.env.POOL_SUPERADMINS || "",
   USE_MOCKS,
   MOCK_BASE,
 } as const;
@@ -95,6 +96,19 @@ export function getGeminiApiKey(): string {
  */
 export function isGeminiConfigured(): boolean {
   return !!process.env.GEMINI_API_KEY;
+}
+
+/**
+ * Checks if a GitHub username is a superadmin
+ * @param githubUsername - GitHub username to check
+ * @returns true if the username is in the POOL_SUPERADMINS list
+ */
+export function isSuperAdmin(githubUsername: string): boolean {
+  const list = (process.env.POOL_SUPERADMINS || "")
+    .split(",")
+    .map((u) => u.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(githubUsername.trim().toLowerCase());
 }
 
 // Combined environment configuration
