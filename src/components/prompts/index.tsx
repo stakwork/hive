@@ -529,7 +529,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Common wrapper classes for fullpage mode
   const wrapperClassName = isFullpage
-    ? "w-full max-w-4xl mx-auto bg-card rounded-3xl shadow-sm border h-[70vh] overflow-hidden flex flex-col"
+    ? "w-full bg-card rounded-3xl shadow-sm border flex-1 overflow-hidden flex flex-col min-h-0"
     : "";
 
   if (isLoading && prompts.length === 0 && viewMode === "list") {
@@ -564,7 +564,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         </div>
 
         <div className="flex-1 overflow-auto min-h-0 p-4">
-          <div className={cn("space-y-4", isFullpage && "max-w-2xl mx-auto")}>
+          <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Name <span className="text-destructive">*</span>
@@ -596,7 +596,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 Value <span className="text-destructive">*</span>
               </label>
               <Textarea
-                className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[300px]" : "min-h-[200px]")}
+                className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
                 placeholder="Enter prompt value..."
                 value={formValue}
                 onChange={(e) => setFormValue(e.target.value)}
@@ -670,7 +670,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           </div>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 p-4">
-            <div className={cn("space-y-4", isFullpage && "max-w-2xl mx-auto")}>
+            <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Usage Notation
@@ -719,7 +719,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </label>
                 {isEditing ? (
                   <Textarea
-                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[300px]" : "min-h-[200px]")}
+                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
                     value={formValue}
                     onChange={(e) => setFormValue(e.target.value)}
                     disabled={isSaving}
@@ -727,7 +727,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 ) : (
                   <pre className={cn(
                     "mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono",
-                    isFullpage && "max-h-[400px] overflow-y-auto"
                   )}>
                     {selectedPrompt.value}
                   </pre>
