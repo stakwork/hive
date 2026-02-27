@@ -6,7 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
@@ -83,6 +94,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [total, setTotal] = useState(0);
@@ -417,6 +429,39 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
+  const handleDeletePrompt = async () => {
+    if (!selectedPrompt) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to delete prompt");
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Navigate back to list and refresh
+        handleBackToList();
+        fetchPrompts(1);
+      } else {
+        throw new Error("Failed to delete prompt");
+      }
+    } catch (err) {
+      console.error("Error deleting prompt:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete prompt");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / pageSize);
 
   const handleCopyNotation = async () => {
@@ -529,7 +574,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Common wrapper classes for fullpage mode
   const wrapperClassName = isFullpage
-    ? "w-full max-w-4xl mx-auto bg-card rounded-3xl shadow-sm border h-[70vh] overflow-hidden flex flex-col"
+    ? "w-full bg-card rounded-3xl shadow-sm border flex-1 overflow-hidden flex flex-col min-h-0"
     : "";
 
   if (isLoading && prompts.length === 0 && viewMode === "list") {
@@ -564,7 +609,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         </div>
 
         <div className="flex-1 overflow-auto min-h-0 p-4">
-          <div className={cn("space-y-4", isFullpage && "max-w-2xl mx-auto")}>
+          <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Name <span className="text-destructive">*</span>
@@ -596,7 +641,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 Value <span className="text-destructive">*</span>
               </label>
               <Textarea
-                className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[300px]" : "min-h-[200px]")}
+                className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
                 placeholder="Enter prompt value..."
                 value={formValue}
                 onChange={(e) => setFormValue(e.target.value)}
@@ -660,6 +705,37 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Prompt</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete &quot;{selectedPrompt.name}&quot;? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeletePrompt}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
         </div>
@@ -670,7 +746,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           </div>
         ) : (
           <div className="flex-1 overflow-auto min-h-0 p-4">
-            <div className={cn("space-y-4", isFullpage && "max-w-2xl mx-auto")}>
+            <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Usage Notation
@@ -719,7 +795,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </label>
                 {isEditing ? (
                   <Textarea
-                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[300px]" : "min-h-[200px]")}
+                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
                     value={formValue}
                     onChange={(e) => setFormValue(e.target.value)}
                     disabled={isSaving}
@@ -727,7 +803,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 ) : (
                   <pre className={cn(
                     "mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono",
-                    isFullpage && "max-h-[400px] overflow-y-auto"
                   )}>
                     {selectedPrompt.value}
                   </pre>

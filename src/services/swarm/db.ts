@@ -41,6 +41,7 @@ interface SaveOrUpdateSwarmParams {
   poolName?: string;
   poolCpu?: string;
   poolMemory?: string;
+  minimumVms?: number;
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
   swarmSecretAlias?: string;
@@ -114,6 +115,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.poolCpu !== undefined) data.poolCpu = params.poolCpu;
   if (params.poolMemory !== undefined) data.poolMemory = params.poolMemory;
+  if (params.minimumVms !== undefined) data.minimumVms = params.minimumVms;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.poolState !== undefined) data.poolState = params.poolState;

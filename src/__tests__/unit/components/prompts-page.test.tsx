@@ -88,10 +88,10 @@ describe("PromptsPage", () => {
     expect(promptsPanel).toHaveAttribute("data-workspace-slug", customSlug);
   });
 
-  test("renders page structure with space-y-6 container", () => {
+  test("renders page structure with flex container", () => {
     const { container } = render(<PromptsPage />);
 
-    const mainContainer = container.querySelector(".space-y-6");
+    const mainContainer = container.querySelector(".flex.flex-col.h-full");
     expect(mainContainer).toBeInTheDocument();
   });
 
