@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
+import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft, GitBranch } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "./modals/ModlaProvider";
@@ -68,6 +68,11 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [archivingInventoryId, setArchivingInventoryId] = useState<string | null>(null);
+
+  // Repository selection state
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
+    workspace?.repositories?.[0]?.id ?? null
+  );
 
   // View type state (tests or inventory)
   const [viewType, setViewType] = useState<"tests" | "inventory">("tests");
@@ -415,6 +420,7 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
         workspaceId: id,
         title: title,
         testName: testName,
+        repositoryId: selectedRepositoryId,
       };
 
       const response = await fetch("/api/stakwork/user-journey", {
@@ -562,15 +568,42 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between gap-4 mb-6">
-              <Select value={viewType} onValueChange={(v) => setViewType(v as "tests" | "inventory")}>
-                <SelectTrigger className="h-8 w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tests">Tests</SelectItem>
-                  <SelectItem value="inventory">Inventory</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-4">
+                <Select value={viewType} onValueChange={(v) => setViewType(v as "tests" | "inventory")}>
+                  <SelectTrigger className="h-8 w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tests">Tests</SelectItem>
+                    <SelectItem value="inventory">Inventory</SelectItem>
+                  </SelectContent>
+                </Select>
+                {workspace?.repositories && workspace.repositories.length > 1 && (
+                  <Select
+                    value={selectedRepositoryId || undefined}
+                    onValueChange={(value) => setSelectedRepositoryId(value)}
+                  >
+                    <SelectTrigger className="h-8 w-[200px]">
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-4 w-4" />
+                        <span className="truncate">
+                          {workspace.repositories.find(r => r.id === selectedRepositoryId)?.name || "Select repository"}
+                        </span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workspace.repositories.map((repo) => (
+                        <SelectItem key={repo.id} value={repo.id}>
+                          <div className="flex items-center gap-2">
+                            <GitBranch className="h-3.5 w-3.5" />
+                            <span>{repo.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               <div className="flex items-center gap-4">
                 {viewType === "tests" && (
                   <DropdownMenu>
@@ -623,6 +656,7 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                         <TableHead className="w-[80px]">Replay</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Test File</TableHead>
+                        {workspace?.repositories && workspace.repositories.length > 1 && <TableHead>Repository</TableHead>}
                         <TableHead>Created</TableHead>
                         <TableHead className="w-[100px]">Archive</TableHead>
                       </TableRow>
@@ -669,6 +703,11 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                               <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
                             )}
                           </TableCell>
+                          {workspace?.repositories && workspace.repositories.length > 1 && (
+                            <TableCell className="text-sm text-muted-foreground">
+                              {row.task.repository?.name ?? '—'}
+                            </TableCell>
+                          )}
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(row.createdAt).toLocaleDateString()}
                           </TableCell>

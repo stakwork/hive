@@ -2116,4 +2116,199 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       expect(data.task.stakworkProjectId).toBe(67890); // Should be converted to number
     });
   });
+
+  describe("Repository Selection", () => {
+    const mockRepositoryId = "repo-123";
+    const mockRepository = {
+      id: mockRepositoryId,
+      repositoryUrl: "https://github.com/test/repo",
+      branch: "main",
+    };
+
+    beforeEach(() => {
+      // Setup authenticated session
+      const mockSession = createAuthenticatedSession({
+        id: mockUserId,
+        email: "test@example.com",
+      });
+      getMockedSession().mockResolvedValue(mockSession);
+
+      // Setup workspace mocks
+      vi.mocked(getWorkspaceById).mockResolvedValue({
+        id: mockWorkspaceId,
+        name: "Test Workspace",
+        slug: "test-workspace",
+        ownerId: mockUserId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+        id: mockWorkspaceId,
+        slug: "test-workspace",
+      } as any);
+
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        token: "github-token",
+        username: "testuser",
+      });
+
+      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+        id: mockSwarmId,
+        swarmUrl: "https://test-swarm.sphinx.chat:8444/api",
+        swarmSecretAlias: "test-secret",
+        poolName: "test-pool",
+      } as any);
+
+      vi.mocked(db.task.create).mockResolvedValue({
+        id: mockTaskId,
+        title: "Test Journey",
+        status: "TODO",
+        workflowStatus: "PENDING",
+        testFilePath: null,
+        stakworkProjectId: null,
+      } as any);
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue({} as any);
+      vi.mocked(db.task.update).mockResolvedValue({} as any);
+    });
+
+    test("should use findUnique when repositoryId is provided", async () => {
+      vi.mocked(db.repository.findUnique).mockResolvedValue(mockRepository as any);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test code",
+          workspaceId: mockWorkspaceId,
+          repositoryId: mockRepositoryId,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Verify findUnique was called with the correct repositoryId
+      expect(db.repository.findUnique).toHaveBeenCalledWith({
+        where: { id: mockRepositoryId },
+        select: { id: true, repositoryUrl: true, branch: true },
+      });
+
+      // Verify findFirst was NOT called
+      expect(db.repository.findFirst).not.toHaveBeenCalled();
+
+      // Verify task was created with the correct repositoryId
+      expect(db.task.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            repositoryId: mockRepositoryId,
+          }),
+        })
+      );
+    });
+
+    test("should use findFirst when repositoryId is omitted (backward compatibility)", async () => {
+      const defaultRepository = {
+        id: "default-repo-456",
+        repositoryUrl: "https://github.com/test/default-repo",
+        branch: "develop",
+      };
+
+      vi.mocked(db.repository.findFirst).mockResolvedValue(defaultRepository as any);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test code without repo selection",
+          workspaceId: mockWorkspaceId,
+          // No repositoryId provided
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Verify findFirst was called as fallback
+      expect(db.repository.findFirst).toHaveBeenCalledWith({
+        where: { workspaceId: mockWorkspaceId },
+        select: { id: true, repositoryUrl: true, branch: true },
+      });
+
+      // Verify findUnique was NOT called
+      expect(db.repository.findUnique).not.toHaveBeenCalled();
+
+      // Verify task was created with the default repository's ID
+      expect(db.task.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            repositoryId: defaultRepository.id,
+          }),
+        })
+      );
+    });
+
+    test("should use correct repository when repositoryId is provided", async () => {
+      const customBranch = "feature-branch";
+      const customRepo = {
+        id: "custom-repo-789",
+        repositoryUrl: "https://github.com/test/custom",
+        branch: customBranch,
+      };
+
+      vi.mocked(db.repository.findUnique).mockResolvedValue(customRepo as any);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test with custom branch",
+          workspaceId: mockWorkspaceId,
+          repositoryId: customRepo.id,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Verify findUnique was called with the correct repositoryId
+      expect(db.repository.findUnique).toHaveBeenCalledWith({
+        where: { id: customRepo.id },
+        select: { id: true, repositoryUrl: true, branch: true },
+      });
+
+      // Verify the task was created with the correct repositoryId
+      expect(db.task.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            repositoryId: customRepo.id,
+          }),
+        })
+      );
+    });
+
+    test("should handle null repositoryId gracefully", async () => {
+      const defaultRepository = {
+        id: "fallback-repo",
+        repositoryUrl: "https://github.com/test/fallback",
+        branch: "main",
+      };
+
+      vi.mocked(db.repository.findFirst).mockResolvedValue(defaultRepository as any);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test with null repositoryId",
+          workspaceId: mockWorkspaceId,
+          repositoryId: null,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Should use findFirst when repositoryId is null
+      expect(db.repository.findFirst).toHaveBeenCalled();
+      expect(db.repository.findUnique).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -494,6 +494,7 @@ async function seedTasks(
       testFilePath: "src/__tests__/e2e/specs/auth/login.spec.ts",
       testFileUrl:
         "https://github.com/stakwork/hive/blob/main/src/__tests__/e2e/specs/auth/login.spec.ts",
+      linkedRepositoryIndex: 0, // backend-api
     },
     {
       title: "Signup Flow Test",
@@ -501,6 +502,7 @@ async function seedTasks(
       status: TaskStatus.IN_PROGRESS,
       workflowStatus: WorkflowStatus.IN_PROGRESS,
       sourceType: TaskSourceType.USER_JOURNEY,
+      linkedRepositoryIndex: 1, // mobile-app
       // No testFilePath yet - test is still being generated
     },
 
