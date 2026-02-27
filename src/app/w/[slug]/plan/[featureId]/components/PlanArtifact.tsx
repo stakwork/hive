@@ -113,23 +113,12 @@ function SectionContent({
     );
   }
 
-  if (hasContent && highlight?.type === "diff") {
+  if (hasContent) {
     return (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">
-        {highlight.tokens.map((token, i) => (
-          <span
-            key={i}
-            className={token.isNew ? "highlight-underline" : undefined}
-          >
-            {token.word}
-          </span>
-        ))}
+      <div className={highlight ? "plan-section-highlight" : undefined}>
+        <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
       </div>
     );
-  }
-
-  if (hasContent) {
-    return <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>;
   }
 
   if (isEditable) {
@@ -210,8 +199,8 @@ function EditableSection({
           {section.label}
         </h3>
         {highlight && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 animate-[highlight-badge_3s_ease-out_forwards]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[highlight-dot_3s_ease-out_forwards]" />
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 animate-[highlight-badge_5s_ease-out_forwards]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[highlight-dot_5s_ease-out_forwards]" />
             Updated
           </span>
         )}
@@ -270,10 +259,9 @@ export function PlanArtifactPanel({
             {sections.map((section, i) => (
               <motion.div
                 key={section.key}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                className="overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
               >
                 {i > 0 && <div className="border-b my-5" />}
                 <EditableSection

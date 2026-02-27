@@ -154,7 +154,19 @@
   text-decoration-color: rgba(52, 211, 153, 0.7);
   text-underline-offset: 3px;
   text-decoration-thickness: 2px;
-  animation: highlight-underline 3s ease-out forwards;
+  animation: highlight-underline 5s ease-out forwards;
+}
+
+@keyframes plan-section-highlight {
+  0% { border-left-color: rgba(52, 211, 153, 0.6); background-color: rgba(52, 211, 153, 0.04); }
+  100% { border-left-color: transparent; background-color: transparent; }
+}
+
+.plan-section-highlight {
+  border-left: 2px solid rgba(52, 211, 153, 0.6);
+  padding-left: 0.75rem;
+  border-radius: 0 4px 4px 0;
+  animation: plan-section-highlight 5s ease-out forwards;
 }
 
 /* Hide React Flow attribution */
