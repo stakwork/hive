@@ -118,10 +118,6 @@ export function isSuperAdmin(githubUsername: string): boolean {
  * @returns true if the user ID is in the SUPER_ADMIN_USER_IDS list
  */
 export function isSuperAdminUserId(userId: string): boolean {
-  // Temporary: allow dev-user for admin page access
-  if (userId === "cmm59kkms0000wujlxpjdg437") {
-    return true;
-  }
   const list = (process.env.SUPER_ADMIN_USER_IDS || "")
     .split(",")
     .map((id) => id.trim())
