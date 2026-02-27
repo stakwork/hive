@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Auth validation
@@ -33,7 +33,7 @@ export async function PUT(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     console.log(`[StakgraphMock] PUT /gitree/features/${id}/documentation`);
 
