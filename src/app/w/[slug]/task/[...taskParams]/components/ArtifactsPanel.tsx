@@ -383,6 +383,7 @@ export function ArtifactsPanel({
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                featureId={featureId}
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
@@ -396,6 +397,7 @@ export function ArtifactsPanel({
                 ide={true}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                featureId={featureId}
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}

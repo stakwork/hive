@@ -9,6 +9,7 @@ const screenshotUploadSchema = z.object({
   dataUrl: z.string().min(1, 'Screenshot data URL is required'),
   workspaceId: z.string().min(1, 'Workspace ID is required'),
   taskId: z.string().nullable(),
+  featureId: z.string().nullable().optional(),
   actionIndex: z.number().int().min(0, 'Action index must be >= 0'),
   pageUrl: z.string().min(1, 'Page URL is required'),
   timestamp: z.number().int().positive('Timestamp must be positive'),
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
       dataUrl,
       workspaceId,
       taskId,
+      featureId,
       actionIndex,
       pageUrl,
       timestamp,
@@ -84,6 +86,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If featureId is provided, verify it exists and belongs to the workspace
+    if (featureId) {
+      const feature = await db.feature.findFirst({
+        where: {
+          id: featureId,
+          workspaceId,
+          deleted: false,
+        },
+      })
+
+      if (!feature) {
+        return NextResponse.json(
+          { error: 'Feature not found or does not belong to workspace' },
+          { status: 404 }
+        )
+      }
+    }
+
     // Process screenshot upload (convert, hash, upload to S3)
     const { hash, s3Key, s3Url } = await processScreenshotUpload(dataUrl, workspaceId)
 
@@ -126,6 +146,7 @@ export async function POST(request: NextRequest) {
       data: {
         workspaceId,
         taskId,
+        featureId,
         s3Key,
         s3Url,
         urlExpiresAt,
