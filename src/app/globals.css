@@ -205,18 +205,16 @@
   height: 16px !important;
 }
 
-@media (prefers-color-scheme: dark) {
-  .react-flow__controls-button {
-    background: #1f2937 !important;
-    border-color: #4b5563 !important;
-  }
+.dark .react-flow__controls-button {
+  background: #1f2937 !important;
+  border-color: #4b5563 !important;
+}
 
-  .react-flow__controls-button:hover {
-    background: #374151 !important;
-    border-color: #6b7280 !important;
-  }
+.dark .react-flow__controls-button:hover {
+  background: #374151 !important;
+  border-color: #6b7280 !important;
+}
 
-  .react-flow__controls-button svg {
-    fill: #d1d5db !important;
-  }
+.dark .react-flow__controls-button svg {
+  fill: #d1d5db !important;
 }
