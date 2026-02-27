@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { WorkspacesTable } from "@/app/admin/components/WorkspacesTable";
@@ -17,6 +17,13 @@ vi.mock("@/components/ui/presigned-image", () => ({
 }));
 
 describe("WorkspacesTable", () => {
+  beforeEach(() => {
+    // Mock fetch by default to return empty pod counts
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ workspaces: [] }),
+    });
+  });
   const mockWorkspaces = [
     {
       id: "1",
@@ -27,11 +34,6 @@ describe("WorkspacesTable", () => {
       _count: {
         members: 5,
         tasks: 10,
-      },
-      swarm: {
-        _count: {
-          pods: 3,
-        },
       },
     },
     {
@@ -44,7 +46,6 @@ describe("WorkspacesTable", () => {
         members: 2,
         tasks: 25,
       },
-      swarm: null,
     },
     {
       id: "3",
@@ -55,11 +56,6 @@ describe("WorkspacesTable", () => {
       _count: {
         members: 8,
         tasks: 5,
-      },
-      swarm: {
-        _count: {
-          pods: 0,
-        },
       },
     },
   ];
@@ -157,18 +153,34 @@ describe("WorkspacesTable", () => {
     expect(workspaceRows[2].textContent).toContain("Gamma Workspace");
   });
 
-  it("sorts by pods count correctly", () => {
+  it("sorts by pods count correctly", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        workspaces: [
+          { workspaceId: "1", usedVms: 3, totalPods: 5 },
+          { workspaceId: "2", usedVms: 0, totalPods: 0 },
+          { workspaceId: "3", usedVms: 0, totalPods: 0 },
+        ],
+      }),
+    });
+
     render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+    // Wait for fetch to complete
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/admin/pods");
+    });
 
     const podsHeader = screen.getByText("Pods").closest("th");
     fireEvent.click(podsHeader!);
 
-    const rows = screen.getAllByRole("row");
-    const workspaceRows = rows.slice(1);
-
-    // Beta (0), Gamma (0), Alpha (3)
-    // Beta and Gamma both have 0, then Alpha has 3
-    expect(workspaceRows[2].textContent).toContain("Alpha Workspace");
+    await vi.waitFor(() => {
+      const rows = screen.getAllByRole("row");
+      const workspaceRows = rows.slice(1);
+      // After sort: Beta (0 used), Gamma (0 used), Alpha (3 used)
+      expect(workspaceRows[2].textContent).toContain("Alpha Workspace");
+    });
   });
 
   it("sorts by tasks count correctly", () => {
