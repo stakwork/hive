@@ -90,6 +90,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const hasAutoClickedRef = useRef<boolean>(false);
   const hasInitialFitViewRef = useRef<boolean>(false);
+  const hasSavedPositionRef = useRef<boolean>(false);
 
   const requestQueue = useRef<RequestQueue>(new RequestQueue());
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
@@ -385,9 +386,9 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     }
   }, [useAssistantDimensions]);
 
-  // Auto-fit view for project workflows on initial load
+  // Auto-fit view for project workflows on initial load and editor mode without saved position
   useEffect(() => {
-    if (projectId && reactFlowInstance && nodes.length > 0 && !hasInitialFitViewRef.current) {
+    if ((projectId || !hasSavedPositionRef.current) && reactFlowInstance && nodes.length > 0 && !hasInitialFitViewRef.current) {
       hasInitialFitViewRef.current = true;
 
       // Small delay to ensure nodes are rendered
@@ -398,7 +399,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         });
       }, 100);
     }
-  }, [projectId, reactFlowInstance, nodes.length]);
+  }, [projectId, reactFlowInstance, nodes.length, hasSavedPositionRef]);
 
   // Handle step clicks for workflow editor mode
   useEffect(() => {
@@ -865,6 +866,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       try {
         const parsedPosition = JSON.parse(savedPosition);
         setTargetPosition(parsedPosition);
+        hasSavedPositionRef.current = true;
       } catch (error) {
         console.error("Failed to parse position from cookie:", error);
       }
