@@ -13,6 +13,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -31,49 +32,6 @@ interface AttachmentRequest {
   filename: string;
   mimeType: string;
   size: number;
-}
-
-async function fetchChatHistory(taskId: string, excludeMessageId: string): Promise<Record<string, unknown>[]> {
-  const chatHistory = await db.chatMessage.findMany({
-    where: {
-      taskId,
-      id: { not: excludeMessageId },
-    },
-    include: {
-      artifacts: {
-        where: {
-          type: ArtifactType.LONGFORM,
-        },
-      },
-      attachments: true,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
-
-  return chatHistory.map((msg) => ({
-    id: msg.id,
-    message: msg.message,
-    role: msg.role,
-    status: msg.status,
-    timestamp: msg.createdAt.toISOString(),
-    contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
-    artifacts: msg.artifacts.map((artifact) => ({
-      id: artifact.id,
-      type: artifact.type,
-      content: artifact.content,
-      icon: artifact.icon,
-    })),
-    attachments:
-      msg.attachments?.map((attachment) => ({
-        id: attachment.id,
-        filename: attachment.filename,
-        path: attachment.path,
-        mimeType: attachment.mimeType,
-        size: attachment.size,
-      })) || [],
-  }));
 }
 
 async function callMock(
