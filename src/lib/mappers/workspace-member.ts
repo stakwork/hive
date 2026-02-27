@@ -17,6 +17,29 @@ export const WORKSPACE_MEMBER_INCLUDE = {
   },
 } as const;
 
+// Extended include for Sphinx-related queries
+export const WORKSPACE_MEMBER_INCLUDE_WITH_SPHINX = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      lightningPubkey: true,
+      sphinxAlias: true,
+      githubAuth: {
+        select: {
+          githubUsername: true,
+          name: true,
+          bio: true,
+          publicRepos: true,
+          followers: true,
+        },
+      },
+    },
+  },
+} as const;
+
 // Type for the Prisma result with includes
 export type PrismaWorkspaceMemberWithUser = {
   id: string;
@@ -28,6 +51,8 @@ export type PrismaWorkspaceMemberWithUser = {
     name: string | null;
     email: string | null;
     image: string | null;
+    lightningPubkey?: string | null;
+    sphinxAlias?: string | null;
     githubAuth: {
       githubUsername: string;
       name: string | null;
@@ -52,6 +77,8 @@ export function mapWorkspaceMember(member: PrismaWorkspaceMemberWithUser): Works
       name: member.user.name,
       email: member.user.email,
       image: member.user.image,
+      lightningPubkey: member.user.lightningPubkey ?? undefined,
+      sphinxAlias: member.user.sphinxAlias ?? undefined,
       github: member.user.githubAuth
         ? {
             username: member.user.githubAuth.githubUsername,
