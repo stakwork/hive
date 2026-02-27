@@ -655,6 +655,12 @@ describe("nextauth.ts - jwt callback", () => {
 
       const mockToken = {};
 
+      // Mock db.user.findUnique to return user with role
+      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+        id: "user-123",
+        role: "USER",
+      } as any);
+
       const jwtCallback = authOptions.callbacks?.jwt;
       expect(jwtCallback).toBeDefined();
 
@@ -673,6 +679,7 @@ describe("nextauth.ts - jwt callback", () => {
         email: "test@example.com",
         name: "Test User",
         picture: "https://example.com/avatar.jpg",
+        role: "USER",
       });
     });
 
@@ -699,6 +706,12 @@ describe("nextauth.ts - jwt callback", () => {
 
       const mockToken = {};
 
+      // Mock db.user.findUnique to return user with role
+      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+        id: "mock-user-123",
+        role: "USER",
+      } as any);
+
       const jwtCallback = authOptions.callbacks?.jwt;
       const result = await jwtCallback!({
         token: mockToken,
@@ -715,6 +728,7 @@ describe("nextauth.ts - jwt callback", () => {
         email: "testuser@mock.dev",
         name: "Test User",
         picture: null,
+        role: "USER",
         github: {
           username: "test-user",
           publicRepos: 5,
@@ -745,6 +759,12 @@ describe("nextauth.ts - jwt callback", () => {
       };
 
       const mockToken = {};
+
+      // Mock db.user.findUnique to return user with role
+      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+        id: "mock-user-456",
+        role: "USER",
+      } as any);
 
       const jwtCallback = authOptions.callbacks?.jwt;
       const result = await jwtCallback!({
