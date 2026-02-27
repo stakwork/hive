@@ -11,6 +11,7 @@ const TASK_SELECT = {
   title: true,
   description: true,
   status: true,
+  workflowStatus: true,
   priority: true,
   order: true,
   featureId: true,

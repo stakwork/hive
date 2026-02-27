@@ -38,6 +38,7 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
           title: true,
           description: true,
           status: true,
+          workflowStatus: true,
           priority: true,
           order: true,
           featureId: true,
@@ -95,12 +96,14 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
               name: "Task Coordinator",
               email: null,
               image: null,
+              icon: "bot" as const,
             }
           : {
               id: "system:bounty-hunter",
               name: "Bounty Hunter",
               email: null,
               image: "/sphinx_icon.png",
+              icon: null,
             };
 
       return {

@@ -50,6 +50,8 @@ interface ChatAreaProps {
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
   onInvite?: () => void;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
 }
 
 export function ChatArea({
@@ -82,6 +84,8 @@ export function ChatArea({
   onOpenBountyRequest,
   sphinxInviteEnabled,
   onInvite,
+  onRetry,
+  isRetrying = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -325,6 +329,8 @@ export function ChatArea({
         featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
       />
 
       {onReleasePod && (
