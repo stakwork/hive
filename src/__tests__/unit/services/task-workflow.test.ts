@@ -48,6 +48,10 @@ vi.mock("@/services/task-coordinator", () => ({
   buildFeatureContext: vi.fn(),
 }));
 
+vi.mock("@/lib/helpers/chat-history", () => ({
+  fetchChatHistory: vi.fn(),
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
@@ -4287,3 +4291,291 @@ describe("callStakworkAPI", () => {
   });
 });
 */
+
+// ============================================================================
+// startTaskWorkflow with includeHistory Tests
+// ============================================================================
+
+describe("startTaskWorkflow with includeHistory", () => {
+  // Import the mocked fetchChatHistory
+  let mockFetchChatHistory: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    MockSetup.reset();
+    const { fetchChatHistory } = await import("@/lib/helpers/chat-history");
+    mockFetchChatHistory = vi.mocked(fetchChatHistory);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("History Inclusion", () => {
+    test("should call fetchChatHistory when includeHistory is true", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const mockHistory = [
+        { role: "user", content: "Previous message 1" },
+        { role: "assistant", content: "Previous response 1" },
+      ];
+      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      expect(mockFetchChatHistory).toHaveBeenCalledWith("test-task-id");
+      expect(mockFetchChatHistory).toHaveBeenCalledTimes(1);
+    });
+
+    test("should pass fetched history to callStakworkAPI", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const mockHistory = [
+        { role: "user", content: "Previous message" },
+        { role: "assistant", content: "Previous response" },
+      ];
+      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      // Verify history was passed to Stakwork API
+      TestHelpers.expectStakworkCalledWithVars({
+        history: mockHistory,
+      });
+    });
+
+    test("should not call fetchChatHistory when includeHistory is false", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: false,
+      });
+
+      expect(mockFetchChatHistory).not.toHaveBeenCalled();
+    });
+
+    test("should not call fetchChatHistory when includeHistory is omitted", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      expect(mockFetchChatHistory).not.toHaveBeenCalled();
+    });
+
+    test("should pass empty history array when includeHistory is omitted", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      // Verify empty history was passed
+      TestHelpers.expectStakworkCalledWithVars({
+        history: [],
+      });
+    });
+  });
+
+  describe("History Fetch Error Handling", () => {
+    test("should continue workflow when fetchChatHistory fails", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockFetchChatHistory.mockRejectedValue(new Error("Database error"));
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Error fetching chat history:",
+        expect.any(Error)
+      );
+
+      // Verify workflow continued with empty history
+      TestHelpers.expectStakworkCalled();
+      TestHelpers.expectStakworkCalledWithVars({
+        history: [],
+      });
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    test("should use empty history when fetchChatHistory returns null", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      mockFetchChatHistory.mockResolvedValue(null as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        history: [],
+      });
+    });
+
+    test("should use empty history when fetchChatHistory returns undefined", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      mockFetchChatHistory.mockResolvedValue(undefined as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        history: [],
+      });
+    });
+  });
+
+  describe("History with Multiple Messages", () => {
+    test("should handle history with multiple messages", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const mockHistory = [
+        { role: "user", content: "Message 1" },
+        { role: "assistant", content: "Response 1" },
+        { role: "user", content: "Message 2" },
+        { role: "assistant", content: "Response 2" },
+        { role: "user", content: "Message 3" },
+      ];
+      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        history: mockHistory,
+      });
+    });
+
+    test("should handle empty history array", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      mockFetchChatHistory.mockResolvedValue([]);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        history: [],
+      });
+    });
+
+    test("should handle history with artifacts", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const mockHistory = [
+        {
+          role: "user",
+          content: "Create a component",
+          artifacts: [{ type: "CODE", content: "const Component = () => {}" }],
+        },
+        {
+          role: "assistant",
+          content: "Here's the component",
+          artifacts: [{ type: "CODE", content: "export default Component;" }],
+        },
+      ];
+      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        history: mockHistory,
+      });
+    });
+  });
+
+  describe("Integration with Other Parameters", () => {
+    test("should work with mode parameter", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+      
+      const mockHistory = [{ role: "user", content: "Test" }];
+      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "live",
+        includeHistory: true,
+      });
+
+      expect(mockFetchChatHistory).toHaveBeenCalled();
+      TestHelpers.expectStakworkCalledWithVars({
+        history: mockHistory,
+        taskMode: "live",
+      });
+    });
+
+    test("should maintain backward compatibility when includeHistory not provided", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      
+      const result = await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      expect(mockFetchChatHistory).not.toHaveBeenCalled();
+      expect(result).toBeDefined();
+      TestHelpers.expectStakworkCalled();
+    });
+  });
+});
