@@ -851,4 +851,357 @@ describe('ChatMessage', () => {
       expect(screen.queryByText('User One')).not.toBeInTheDocument();
     });
   });
+
+  describe('Attachment Rendering', () => {
+    it('renders image attachment with correct src', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/image.png',
+            filename: 'image.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const img = screen.getByAltText('image.png') as HTMLImageElement;
+      expect(img).toBeInTheDocument();
+      expect(img.src).toContain('/api/upload/presigned-url?s3Key=s3%2Fpath%2Fto%2Fimage.png');
+    });
+
+    it('shows failed-image fallback when image fails to load', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with broken image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/broken.png',
+            filename: 'broken.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const img = screen.getByAltText('broken.png') as HTMLImageElement;
+      
+      // Simulate image load error
+      fireEvent.error(img);
+
+      expect(screen.getByText('broken.png')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load image')).toBeInTheDocument();
+    });
+
+    it('opens enlarge dialog when clicking image attachment', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with clickable image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/photo.jpg',
+            filename: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            size: 2048,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const imageContainer = screen.getByAltText('photo.jpg').parentElement;
+      
+      // Click the image container
+      fireEvent.click(imageContainer!);
+
+      // Dialog should open (check for dialog content)
+      waitFor(() => {
+        const dialogImage = screen.getAllByAltText('photo.jpg')[1]; // Second one is in dialog
+        expect(dialogImage).toBeInTheDocument();
+      });
+    });
+
+    it('does not trigger enlarge dialog when clicking failed image', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with failed image',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/failed.png',
+            filename: 'failed.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const img = screen.getByAltText('failed.png') as HTMLImageElement;
+      
+      // Simulate image load error
+      fireEvent.error(img);
+
+      const failedContainer = screen.getByText('Failed to load image').parentElement?.parentElement;
+      
+      // Click the failed image container
+      fireEvent.click(failedContainer!);
+
+      // Dialog should NOT open - no second image in DOM
+      expect(screen.queryAllByAltText('failed.png')).toHaveLength(0);
+      expect(screen.queryByText('Failed to load image')).toBeInTheDocument();
+    });
+
+    it('renders video attachment with native video player', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with video',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/recording.webm',
+            filename: 'recording.webm',
+            mimeType: 'video/webm',
+            size: 5120,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const video = document.querySelector('video') as HTMLVideoElement;
+      expect(video).toBeInTheDocument();
+      expect(video.src).toContain('/api/upload/presigned-url?s3Key=s3%2Fpath%2Fto%2Frecording.webm');
+      expect(video.controls).toBe(true);
+      expect(video.preload).toBe('metadata');
+      expect(video.className).toContain('max-h-48');
+    });
+
+    it('renders video attachment with col-span-2 for full width', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with video',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/video.mp4',
+            filename: 'video.mp4',
+            mimeType: 'video/mp4',
+            size: 10240,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const videoContainer = document.querySelector('video')?.parentElement;
+      expect(videoContainer).toBeInTheDocument();
+      expect(videoContainer?.className).toContain('col-span-2');
+    });
+
+    it('does not trigger enlarge dialog when clicking video attachment', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with video',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/video.webm',
+            filename: 'video.webm',
+            mimeType: 'video/webm',
+            size: 5120,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const videoContainer = document.querySelector('video')?.parentElement;
+      
+      // Click the video container
+      fireEvent.click(videoContainer!);
+
+      // Dialog should NOT open - video should not have onClick handler
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('renders unknown attachment as download link', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with PDF',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/document.pdf',
+            filename: 'document.pdf',
+            mimeType: 'application/pdf',
+            size: 2048,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const link = screen.getByText('document.pdf').closest('a') as HTMLAnchorElement;
+      expect(link).toBeInTheDocument();
+      expect(link.href).toContain('/api/upload/presigned-url?s3Key=s3%2Fpath%2Fto%2Fdocument.pdf');
+      expect(link.download).toBe('document.pdf');
+    });
+
+    it('renders multiple attachments of different types', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with mixed attachments',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/image.png',
+            filename: 'image.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          {
+            id: 'attachment-2',
+            path: 's3/path/to/video.webm',
+            filename: 'video.webm',
+            mimeType: 'video/webm',
+            size: 5120,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          {
+            id: 'attachment-3',
+            path: 's3/path/to/doc.pdf',
+            filename: 'doc.pdf',
+            mimeType: 'application/pdf',
+            size: 2048,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Check all three types are rendered
+      expect(screen.getByAltText('image.png')).toBeInTheDocument();
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(screen.getByText('doc.pdf')).toBeInTheDocument();
+    });
+
+    it('handles attachment with missing mimeType gracefully', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with attachment without mimeType',
+        attachments: [
+          {
+            id: 'attachment-1',
+            path: 's3/path/to/file.txt',
+            filename: 'file.txt',
+            mimeType: null as any, // Missing mimeType
+            size: 512,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Should fall back to download link
+      const link = screen.getByText('file.txt').closest('a');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('download', 'file.txt');
+    });
+  });
 });
