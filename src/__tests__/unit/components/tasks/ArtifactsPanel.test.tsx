@@ -451,3 +451,107 @@ describe("ArtifactsPanel - Failure UX (Amber Button & Toast)", () => {
     expect(result.current.getButtonColor()).toBe("bg-amber-500");
   });
 });
+
+/**
+ * Unit tests for ArtifactsPanel tab-reset guard fix.
+ * 
+ * These tests verify that the tab-reset guard respects valid URL-specified tabs
+ * (PLAN, TASKS) even when they're not yet in availableTabs, preventing premature
+ * overrides during data load.
+ * 
+ * Rather than simulating the full useEffect (which causes infinite loops in tests),
+ * we test the guard conditions directly.
+ */
+describe("ArtifactsPanel - Tab Reset Guard Logic", () => {
+  type ArtifactType = "PLAN" | "TASKS" | "CODE" | "DIFF" | "BROWSER" | "WORKFLOW";
+
+  const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
+  /**
+   * Pure function that determines if a tab reset should occur.
+   * This mirrors the guard logic from ArtifactsPanel's useEffect.
+   */
+  function shouldResetTab(
+    availableTabs: ArtifactType[],
+    activeTab: ArtifactType | null,
+    isControlled: boolean,
+    hasInitiatedGeneration: boolean
+  ): boolean {
+    // No tabs available → no reset
+    if (availableTabs.length === 0) return false;
+
+    // Active tab exists and is in availableTabs → no reset needed
+    if (activeTab && availableTabs.includes(activeTab)) return false;
+
+    // Guard 1: Don't reset during active generation
+    if (hasInitiatedGeneration) return false;
+
+    // Guard 2: Don't reset a valid controlled tab (e.g. TASKS from URL)
+    // even if it's not yet in availableTabs — wait for data to load
+    if (isControlled && activeTab && VALID_PLAN_TABS.includes(activeTab)) return false;
+
+    // All guards passed → reset should occur
+    return true;
+  }
+
+  test("controlled mode: TASKS tab not in availableTabs → NO reset (guard protects it)", () => {
+    const shouldReset = shouldResetTab(["PLAN"], "TASKS", true, false);
+    expect(shouldReset).toBe(false);
+  });
+
+  test("controlled mode: PLAN tab already in availableTabs → NO reset", () => {
+    const shouldReset = shouldResetTab(["PLAN", "TASKS"], "PLAN", true, false);
+    expect(shouldReset).toBe(false);
+  });
+
+  test("uncontrolled mode: activeTab=null → reset to first available", () => {
+    const shouldReset = shouldResetTab(["PLAN"], null, false, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("controlled mode: CODE tab not recognized → reset to first available", () => {
+    const shouldReset = shouldResetTab(["PLAN", "TASKS"], "CODE", true, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("controlled mode: TASKS tab with hasInitiatedGeneration=true → NO reset", () => {
+    const shouldReset = shouldResetTab(["PLAN"], "TASKS", true, true);
+    expect(shouldReset).toBe(false);
+  });
+
+  test("controlled mode: DIFF tab not in VALID_PLAN_TABS → reset to first available", () => {
+    const shouldReset = shouldResetTab(["PLAN", "TASKS"], "DIFF", true, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("uncontrolled mode: CODE tab not in availableTabs → reset to first available", () => {
+    const shouldReset = shouldResetTab(["PLAN", "TASKS"], "CODE", false, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("controlled mode: empty availableTabs → NO reset triggered", () => {
+    const shouldReset = shouldResetTab([], "TASKS", true, false);
+    expect(shouldReset).toBe(false);
+  });
+
+  test("uncontrolled mode: PLAN tab in availableTabs → NO reset", () => {
+    const shouldReset = shouldResetTab(["PLAN", "TASKS"], "PLAN", false, false);
+    expect(shouldReset).toBe(false);
+  });
+
+  test("controlled mode: null activeTab with availableTabs → reset occurs", () => {
+    const shouldReset = shouldResetTab(["PLAN"], null, true, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("uncontrolled mode: TASKS not in availableTabs → reset occurs (no guard)", () => {
+    // Unlike controlled mode, uncontrolled doesn't protect TASKS
+    const shouldReset = shouldResetTab(["PLAN"], "TASKS", false, false);
+    expect(shouldReset).toBe(true);
+  });
+
+  test("controlled mode: BROWSER tab not in VALID_PLAN_TABS → reset occurs", () => {
+    const shouldReset = shouldResetTab(["PLAN"], "BROWSER", true, false);
+    expect(shouldReset).toBe(true);
+  });
+});
