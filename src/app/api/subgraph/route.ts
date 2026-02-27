@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+
     // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }

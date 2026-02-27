@@ -241,7 +241,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             data.sphinxEnabled &&
             data.sphinxChatPubkey &&
             data.sphinxBotId &&
-            data.sphinxBotSecret
+            data.hasBotSecret
           );
           setSphinxReady(isReady);
         }
@@ -474,7 +474,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         <div style={{ display: "none" }} />
       </InvitePopover>
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
-        <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
+        <ResizablePanel defaultSize={isMobile ? 100 : 40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
             <ChatArea
               messages={messages}
@@ -500,7 +500,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         {!isMobile && (
           <>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={50} minSize={25}>
+            <ResizablePanel defaultSize={60} minSize={25}>
               <div className="h-full min-h-0 min-w-0">
                 <ArtifactsPanel
                   artifacts={allArtifacts}

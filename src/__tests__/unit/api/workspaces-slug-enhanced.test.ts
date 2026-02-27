@@ -79,7 +79,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(data.workspace.name).toBe(mockWorkspace.name);
       expect(data.workspace.slug).toBe(mockWorkspace.slug);
       expect(data.workspace.userRole).toBe("OWNER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id, { isSuperAdmin: false });
     });
 
     test("should return workspace with correct user role for admin", async () => {
@@ -98,7 +98,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("ADMIN");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockAdminUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockAdminUser.id, { isSuperAdmin: false });
     });
 
     test("should return workspace with correct user role for member", async () => {
@@ -117,7 +117,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("DEVELOPER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockMemberUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockMemberUser.id, { isSuperAdmin: false });
     });
 
     test("should return 404 for outsider user with no access", async () => {
@@ -133,7 +133,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Workspace not found or access denied");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOutsiderUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOutsiderUser.id, { isSuperAdmin: false });
     });
 
     test("should handle malformed session data gracefully", async () => {

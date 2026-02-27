@@ -95,7 +95,15 @@ vi.mock("@/components/ui/resizable", () => ({
 
 const mockArtifactsPanel = vi.fn();
 vi.mock("@/components/chat", () => ({
-  ChatArea: ({ onArtifactAction }: { onArtifactAction: (messageId: string, action: { optionResponse: string }) => void }) => (
+  ChatArea: ({ 
+    onArtifactAction, 
+    sphinxInviteEnabled, 
+    onInvite 
+  }: { 
+    onArtifactAction: (messageId: string, action: { optionResponse: string }) => void;
+    sphinxInviteEnabled?: boolean;
+    onInvite?: () => void;
+  }) => (
     <div data-testid="chat-area">
       <button
         data-testid="artifact-action-button"
@@ -103,6 +111,14 @@ vi.mock("@/components/chat", () => ({
       >
         Submit Answer
       </button>
+      {sphinxInviteEnabled && onInvite && (
+        <button
+          data-testid="invite-button"
+          onClick={onInvite}
+        >
+          Invite
+        </button>
+      )}
     </div>
   ),
   ArtifactsPanel: (props: any) => {
@@ -705,6 +721,79 @@ describe("PlanChatView", () => {
 
       // Verify ChatArea is rendered (props are passed via mock in setup)
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
+  });
+
+  describe("Sphinx invite button visibility", () => {
+    beforeEach(() => {
+      // Reset fetch mock for each test
+      mockFetch.mockClear();
+    });
+
+    it("shows Invite button when Sphinx is fully configured", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch with all fields configured
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sphinxEnabled: true,
+          sphinxChatPubkey: "test-pubkey",
+          sphinxBotId: "test-bot-id",
+          hasBotSecret: true,
+        }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Wait for the invite button to appear
+      await waitFor(() => {
+        expect(screen.getByTestId("invite-button")).toBeInTheDocument();
+      });
+    });
+
+    it("hides Invite button when bot secret is missing", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch with hasBotSecret=false
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sphinxEnabled: true,
+          sphinxChatPubkey: "test-pubkey",
+          sphinxBotId: "test-bot-id",
+          hasBotSecret: false,
+        }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Verify the invite button is NOT present
+      await waitFor(() => {
+        expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
+      });
     });
   });
 

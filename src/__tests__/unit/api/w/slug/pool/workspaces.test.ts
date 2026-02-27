@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn(),
   requireAuth: vi.fn(),
+  checkIsSuperAdmin: vi.fn(),
 }));
 
 vi.mock("@/services/workspace", () => ({
@@ -220,7 +221,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data).toEqual({
         error: "Workspace not found or access denied",
       });
-      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id);
+      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id, { isSuperAdmin: undefined });
     });
 
     it("should return 400 when slug parameter is missing", async () => {

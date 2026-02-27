@@ -103,8 +103,8 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
       });
       return await MockGET(mockRequest);
     } else {
-      // Call the mock endpoint via HTTP
-      const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
+      // Call the mock endpoint via HTTP (always use localhost for internal API calls to avoid SSL issues)
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, 'http://localhost:3000');
       mockUrl.searchParams.set("workspaceSlug", workspace.slug);
       
       const mockResponse = await fetch(mockUrl.toString(), {
