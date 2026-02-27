@@ -368,6 +368,14 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
     });
 
+    test("send button has h-11 class on desktop for alignment with other buttons", () => {
+      render(<ChatInput {...defaultProps} />);
+      
+      const submitButton = screen.getByTestId("chat-message-submit");
+      expect(submitButton).toHaveClass("h-11");
+      expect(submitButton).toHaveClass("shrink-0");
+    });
+
     test("textarea has autofocus", () => {
       render(<ChatInput {...defaultProps} />);
       
