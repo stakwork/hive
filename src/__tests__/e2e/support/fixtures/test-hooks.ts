@@ -50,39 +50,10 @@ export async function teardownTest(): Promise<void> {
  * });
  * ```
  */
-export const test = base.extend<{}, { workerStorageState: string }>({
-  // Worker-scoped fixture that sets DATABASE_URL once per worker
-  workerStorageState: [
-    async ({}, use, workerInfo) => {
-      const baseUrl = stripSchema(process.env.DATABASE_URL!);
-      const schemaUrl = `${baseUrl}?schema=test_worker_${workerInfo.workerIndex}`;
-      
-      // Store original and set worker-specific URL
-      const originalUrl = process.env.DATABASE_URL;
-      process.env.DATABASE_URL = schemaUrl;
-      
-      // Clear cached Prisma client so it reconnects with new URL
-      const globalForPrisma = globalThis as unknown as { prisma?: any };
-      if (globalForPrisma.prisma) {
-        await globalForPrisma.prisma.$disconnect();
-        delete globalForPrisma.prisma;
-      }
-
-      await use('');
-
-      // Restore and reconnect
-      process.env.DATABASE_URL = originalUrl;
-      if (globalForPrisma.prisma) {
-        await globalForPrisma.prisma.$disconnect();
-        delete globalForPrisma.prisma;
-      }
-    },
-    { scope: 'worker' }
-  ],
-
+export const test = base.extend({
   // Test-scoped fixture that resets the database before each test
-  page: async ({ page, workerStorageState }, use, testInfo) => {
-    // DATABASE_URL is already set to worker-specific schema by workerStorageState
+  page: async ({ page }, use, testInfo) => {
+    // Use parallelIndex to determine worker-specific schema
     const baseUrl = stripSchema(process.env.DATABASE_URL!);
     const schemaUrl = `${baseUrl}?schema=test_worker_${testInfo.parallelIndex}`;
     
