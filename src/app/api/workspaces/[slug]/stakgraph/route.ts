@@ -164,7 +164,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json(
         {
@@ -410,7 +411,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         );
       }
 
-      workspace = await getWorkspaceBySlug(slug, userId);
+      const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+      workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     }
 
     if (!workspace) {

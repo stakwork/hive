@@ -25,9 +25,10 @@ export async function GET(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
 
     // Check workspace access - need write permission
-    const access = await validateWorkspaceAccess(slug, userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.canWrite) {
       return NextResponse.json(
         { error: "Forbidden - write access required" },
@@ -72,9 +73,10 @@ export async function POST(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
+    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
 
     // Check workspace access - need write permission
-    const access = await validateWorkspaceAccess(slug, userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.canWrite) {
       return NextResponse.json(
         { error: "Forbidden - write access required" },
