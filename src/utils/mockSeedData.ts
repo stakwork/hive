@@ -830,16 +830,20 @@ async function seedChatMessagesWithArtifacts(
         messageId: diffMsg.id,
         type: ArtifactType.DIFF,
         content: {
-          files: [
+          diffs: [
             {
-              path: "src/components/Dashboard.tsx",
-              additions: 25,
-              deletions: 8,
-              diff: `@@ -1,8 +1,25 @@
+              file: "src/components/Dashboard.tsx",
+              action: "modify",
+              repoName: "test/repo",
+              content: `diff --git a/src/components/Dashboard.tsx b/src/components/Dashboard.tsx
+index 1234567..abcdefg 100644
+--- a/src/components/Dashboard.tsx
++++ b/src/components/Dashboard.tsx
+@@ -1,8 +1,25 @@
 -import React from 'react';
 +import React, { useState, useEffect } from 'react';
 +import { useData } from '@/hooks/useData';
-
+ 
  export function Dashboard() {
 +  const [isLoading, setIsLoading] = useState(true);
 +  const { data, error } = useData();
@@ -863,9 +867,17 @@ async function seedChatMessagesWithArtifacts(
    );
  }`,
             },
+            {
+              file: "public/logo.png",
+              action: "create",
+              repoName: "test/repo",
+              content: `--- /dev/null
++++ b/public/logo.png
+Binary image file (image/png, 68 B)
+data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==`,
+            },
           ],
-          summary: `Changes for: ${task.title}`,
-        },
+        } as any,
       },
     });
 

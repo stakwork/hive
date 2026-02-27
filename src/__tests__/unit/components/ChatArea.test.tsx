@@ -140,6 +140,7 @@ vi.mock("lucide-react", () => ({
   AlertCircle: () => <span data-testid="alert-circle-icon">⚠</span>,
   Pause: () => <span data-testid="pause-icon">⏸</span>,
   XCircle: () => <span data-testid="x-circle-icon">✗</span>,
+  UserPlus: () => <span data-testid="user-plus-icon">👤+</span>,
 }));
 
 // Mock useIsMobile hook
@@ -895,6 +896,103 @@ describe("ChatArea", () => {
 
       const releaseButton = screen.getByTestId("server-icon").closest("button");
       expect(releaseButton).toBeDisabled();
+    });
+  });
+
+  describe("Sphinx Invite Button", () => {
+    test("renders Invite button when sphinxInviteEnabled is true", () => {
+      const onInvite = vi.fn();
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: true,
+        onInvite,
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const inviteButton = screen.getByText("Invite");
+      expect(inviteButton).toBeInTheDocument();
+      expect(screen.getByTestId("user-plus-icon")).toBeInTheDocument();
+    });
+
+    test("does not render Invite button when sphinxInviteEnabled is false", () => {
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: false,
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByText("Invite")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("user-plus-icon")).not.toBeInTheDocument();
+    });
+
+    test("does not render Invite button when sphinxInviteEnabled is undefined", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByText("Invite")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("user-plus-icon")).not.toBeInTheDocument();
+    });
+
+    test("calls onInvite when Invite button is clicked", async () => {
+      const user = userEvent.setup();
+      const onInvite = vi.fn();
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: true,
+        onInvite,
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const inviteButton = screen.getByText("Invite");
+      await user.click(inviteButton);
+
+      expect(onInvite).toHaveBeenCalledTimes(1);
+    });
+
+    test("does not render Invite button when onInvite is not provided", () => {
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: true,
+        onInvite: undefined,
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByText("Invite")).not.toBeInTheDocument();
+    });
+
+    test("Invite button has correct styling classes", () => {
+      const onInvite = vi.fn();
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: true,
+        onInvite,
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      const inviteButton = screen.getByText("Invite");
+      expect(inviteButton).toHaveClass("btn", "outline", "sm");
+    });
+
+    test("does not render Invite button without task title", () => {
+      const onInvite = vi.fn();
+      const { props } = setupChatAreaTest({
+        sphinxInviteEnabled: true,
+        onInvite,
+        taskTitle: null,
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Button should not render when header is not shown (no task title)
+      expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
     });
   });
 });

@@ -1,18 +1,16 @@
 "use client";
 
 import { useMemo, useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import { ExternalLink } from "lucide-react";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
+import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -163,16 +161,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         {projectId && (
-          <Button variant="outline" size="sm" asChild className="mb-2 self-start ml-2 mt-2">
-            <Link
-              href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View on Stakwork
-              <ExternalLink className="w-4 h-4 ml-1" />
-            </Link>
-          </Button>
+          <div className="mb-2 self-start ml-2 mt-2">
+            <StakworkRunDropdown
+              projectId={projectId}
+              workflowId={workflowId}
+              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              variant="button"
+            />
+          </div>
         )}
         <Tabs
           value={activeDisplayTab}
@@ -302,16 +298,12 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       <div className="overflow-y-auto flex-1">
         {projectId && (
           <div className="px-4 pt-4">
-            <Button variant="outline" size="sm" asChild className="mb-2">
-              <Link
-                href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View on Stakwork
-                <ExternalLink className="w-4 h-4 ml-1" />
-              </Link>
-            </Button>
+            <StakworkRunDropdown
+              projectId={projectId}
+              workflowId={workflowId}
+              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              variant="button"
+            />
           </div>
         )}
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,13 +68,16 @@ function calculateDateRange(range: TimeRange): { start?: string; end?: string } 
 
 export default function AgentLogsPage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const slug = params.slug as string;
   const { workspace, id: workspaceId } = useWorkspace();
 
   const [logs, setLogs] = useState<AgentLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [hasMore, setHasMore] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -84,15 +87,28 @@ export default function AgentLogsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
+  // Navigate to a specific page and update URL
+  const goToPage = useCallback((n: number) => {
+    setPage(n);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (n <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", n.toString());
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchKeyword);
-      setPage(1); // Reset to first page on search
+      goToPage(1); // Reset to first page on search
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchKeyword]);
+  }, [searchKeyword, goToPage]);
 
   // Fetch logs
   useEffect(() => {
@@ -175,7 +191,7 @@ export default function AgentLogsPage() {
                 value={timeRange}
                 onValueChange={(value) => {
                   setTimeRange(value as TimeRange);
-                  setPage(1);
+                  goToPage(1);
                 }}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
@@ -241,7 +257,7 @@ export default function AgentLogsPage() {
                     <Button
                       variant="ghost"
                       size="default"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      onClick={() => goToPage(Math.max(1, page - 1))}
                       disabled={page === 1}
                       className="gap-1 pl-2.5"
                     >
@@ -255,7 +271,7 @@ export default function AgentLogsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => setPage(1)}
+                        onClick={() => goToPage(1)}
                         className={buttonVariants({
                           variant: "ghost",
                           size: "icon",
@@ -295,7 +311,7 @@ export default function AgentLogsPage() {
                         <Button
                           variant="ghost"
                           size="default"
-                          onClick={() => setPage((p) => p + 1)}
+                          onClick={() => goToPage(page + 1)}
                           className="gap-1 pr-2.5"
                         >
                           <span>Next</span>

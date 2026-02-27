@@ -92,30 +92,28 @@ export function RepositorySettingsModal({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Pod Repair Toggle - Disabled until pod recreation race condition is resolved (FIXME) */}
-          {false && isNewRepository && (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <RefreshCw className="h-5 w-5 text-muted-foreground" />
-                <div className="space-y-0.5">
-                  <Label htmlFor="trigger-pod-repair" className="text-sm font-medium">
-                    Re-configure Pod Configuration
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Regenerate PM2/Docker files to include this repository
-                  </p>
-                </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="h-5 w-5 text-muted-foreground" />
+              <div className="space-y-0.5">
+                <Label htmlFor="trigger-pod-repair" className="text-sm font-medium">
+                  Re-configure Pod Services
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Regenerate PM2/Docker files to include this repository
+                </p>
               </div>
-              <Switch
-                id="trigger-pod-repair"
-                checked={settings.triggerPodRepair}
-                onCheckedChange={(checked) =>
-                  setSettings((prev) => ({ ...prev, triggerPodRepair: checked }))
-                }
-                disabled={loading || isSaving}
-              />
             </div>
-          )}
+            <Switch
+              id="trigger-pod-repair"
+              checked={settings.triggerPodRepair}
+              onCheckedChange={(checked) =>
+                setSettings((prev) => ({ ...prev, triggerPodRepair: checked }))
+              }
+              disabled={loading || isSaving}
+            />
+          </div>
 
           {/* Code Ingestion Toggle - Main toggle */}
           <div className="flex items-center justify-between">

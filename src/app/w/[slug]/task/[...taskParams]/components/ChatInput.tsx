@@ -72,6 +72,7 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const preVoiceInputRef = useRef("");
   const isMobile = useIsMobile();
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
@@ -92,7 +93,10 @@ export function ChatInput({
 
   useEffect(() => {
     if (transcript) {
-      setInput(transcript);
+      const newValue = preVoiceInputRef.current
+        ? `${preVoiceInputRef.current} ${transcript}`.trim()
+        : transcript;
+      setInput(newValue);
     }
   }, [transcript]);
 
@@ -309,12 +313,16 @@ export function ChatInput({
     if (isListening) {
       stopListening();
     } else {
+      preVoiceInputRef.current = input;
       startListening();
     }
-  }, [isListening, stopListening, startListening]);
+  }, [isListening, stopListening, startListening, input]);
 
   useControlKeyHold({
-    onStart: startListening,
+    onStart: () => {
+      preVoiceInputRef.current = input;
+      startListening();
+    },
     onStop: stopListening,
     enabled: isSupported && !disabled,
   });
@@ -365,6 +373,7 @@ export function ChatInput({
     // Clear state
     setInput("");
     resetTranscript();
+    preVoiceInputRef.current = "";
     setPendingImages([]);
 
     // Send message with attachments

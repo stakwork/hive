@@ -20,12 +20,19 @@ export interface PlanData {
   sections: PlanSection[];
 }
 
+export type DiffToken = { word: string; isNew: boolean };
+export type SectionHighlight =
+  | { type: "new" }
+  | { type: "diff"; tokens: DiffToken[] };
+export type SectionHighlights = Record<string, SectionHighlight>;
+
 interface PlanArtifactPanelProps {
   planData: PlanData;
   onSectionSave?: (field: string, value: string) => Promise<void>;
   savedField?: string | null;
   saving?: boolean;
   saved?: boolean;
+  sectionHighlights?: SectionHighlights | null;
 }
 
 const SECTION_META: Record<
@@ -54,18 +61,108 @@ const SECTION_META: Record<
   },
 };
 
+interface SectionContentProps {
+  editing: boolean;
+  hasContent: boolean;
+  isEditable: boolean;
+  section: PlanSection;
+  meta: (typeof SECTION_META)[string] | undefined;
+  highlight?: SectionHighlight | null;
+  draft: string;
+  setDraft: (value: string) => void;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  finishEditing: () => void;
+  startEditing: () => void;
+}
+
+function SectionContent({
+  editing,
+  hasContent,
+  isEditable,
+  section,
+  meta,
+  highlight,
+  draft,
+  setDraft,
+  textareaRef,
+  finishEditing,
+  startEditing,
+}: SectionContentProps): React.ReactNode {
+  if (editing) {
+    return (
+      <div className="relative">
+        <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={finishEditing}
+            className="pointer-events-auto h-7 w-7 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-1.5 mr-1.5"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <Textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={finishEditing}
+          placeholder={meta?.placeholder}
+          className="resize-y font-mono text-sm min-h-[120px] pr-10"
+        />
+      </div>
+    );
+  }
+
+  if (hasContent) {
+    return (
+      <div className={highlight ? "plan-section-highlight" : undefined}>
+        <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
+      </div>
+    );
+  }
+
+  if (isEditable) {
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="w-full text-left rounded-lg border border-dashed border-border/60 hover:border-emerald-500/40 bg-muted/20 hover:bg-emerald-500/[0.03] transition-all duration-200 cursor-text group/empty"
+      >
+        <div className="px-4 py-4">
+          <p className="text-sm text-muted-foreground/50 group-hover/empty:text-muted-foreground/70 transition-colors leading-relaxed">
+            {meta?.hint || `Add ${section.label.toLowerCase()}...`}
+          </p>
+          <p className="text-xs text-muted-foreground/30 group-hover/empty:text-muted-foreground/50 transition-colors mt-1.5">
+            Click to start writing
+          </p>
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-border/40 bg-muted/10 px-4 py-4">
+      <p className="text-sm text-muted-foreground/30 italic">
+        No {section.label.toLowerCase()} yet
+      </p>
+    </div>
+  );
+}
+
 function EditableSection({
   section,
   onSave,
   savedField,
   saving,
   saved,
+  highlight,
 }: {
   section: PlanSection;
   onSave?: (key: string, content: string) => void;
   savedField: string | null;
   saving: boolean;
   saved: boolean;
+  highlight?: SectionHighlight | null;
 }) {
   const hasContent = !!section.content;
   const [editing, setEditing] = useState(false);
@@ -101,6 +198,12 @@ function EditableSection({
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {section.label}
         </h3>
+        {highlight && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 animate-[highlight-badge_5s_ease-out_forwards]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[highlight-dot_5s_ease-out_forwards]" />
+            Updated
+          </span>
+        )}
         {isEditable && !editing && (
           <SaveIndicator
             field={section.key}
@@ -121,55 +224,19 @@ function EditableSection({
         )}
       </div>
 
-      {/* Editing state */}
-      {editing ? (
-        <div className="relative">
-          <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={finishEditing}
-              className="pointer-events-auto h-7 w-7 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-1.5 mr-1.5"
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <Textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={finishEditing}
-            placeholder={meta?.placeholder}
-            className="resize-y font-mono text-sm min-h-[120px] pr-10"
-          />
-        </div>
-      ) : hasContent ? (
-        /* Filled state - render markdown */
-        <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
-      ) : isEditable ? (
-        /* Empty editable state - inviting click target */
-        <button
-          type="button"
-          onClick={startEditing}
-          className="w-full text-left rounded-lg border border-dashed border-border/60 hover:border-emerald-500/40 bg-muted/20 hover:bg-emerald-500/[0.03] transition-all duration-200 cursor-text group/empty"
-        >
-          <div className="px-4 py-4">
-            <p className="text-sm text-muted-foreground/50 group-hover/empty:text-muted-foreground/70 transition-colors leading-relaxed">
-              {meta?.hint || `Add ${section.label.toLowerCase()}...`}
-            </p>
-            <p className="text-xs text-muted-foreground/30 group-hover/empty:text-muted-foreground/50 transition-colors mt-1.5">
-              Click to start writing
-            </p>
-          </div>
-        </button>
-      ) : (
-        /* Empty read-only state */
-        <div className="rounded-lg border border-dashed border-border/40 bg-muted/10 px-4 py-4">
-          <p className="text-sm text-muted-foreground/30 italic">
-            No {section.label.toLowerCase()} yet
-          </p>
-        </div>
-      )}
+      <SectionContent
+        editing={editing}
+        hasContent={hasContent}
+        isEditable={isEditable}
+        section={section}
+        meta={meta}
+        highlight={highlight}
+        draft={draft}
+        setDraft={setDraft}
+        textareaRef={textareaRef}
+        finishEditing={finishEditing}
+        startEditing={startEditing}
+      />
     </div>
   );
 }
@@ -180,6 +247,7 @@ export function PlanArtifactPanel({
   savedField = null,
   saving = false,
   saved = false,
+  sectionHighlights = null,
 }: PlanArtifactPanelProps) {
   const { sections } = planData;
 
@@ -191,10 +259,9 @@ export function PlanArtifactPanel({
             {sections.map((section, i) => (
               <motion.div
                 key={section.key}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                className="overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
               >
                 {i > 0 && <div className="border-b my-5" />}
                 <EditableSection
@@ -203,6 +270,7 @@ export function PlanArtifactPanel({
                   savedField={savedField}
                   saving={saving}
                   saved={saved}
+                  highlight={sectionHighlights?.[section.key] ?? null}
                 />
               </motion.div>
             ))}

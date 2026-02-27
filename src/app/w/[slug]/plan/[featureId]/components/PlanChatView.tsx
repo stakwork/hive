@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { diffWords } from "diff";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
+import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
@@ -19,14 +20,61 @@ import {
   createChatMessage,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData } from "./PlanArtifact";
+import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
+import { InvitePopover } from "./InvitePopover";
 
-function generateUniqueId() {
+function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+
+const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
+
+function getUserStoriesText(feature: FeatureDetail): string | null {
+  const stories = feature.userStories ?? [];
+  if (stories.length === 0) return null;
+  if (stories.length === 1) return stories[0].title;
+  return stories.map((s) => s.title).join("\n");
+}
+
+function getSectionValue(feature: FeatureDetail, key: string): string | null {
+  if (key === "user-stories") return getUserStoriesText(feature);
+  return (feature[key as keyof FeatureDetail] as string) ?? null;
+}
+
+function computeDiffTokens(prevVal: string, nextVal: string): DiffToken[] {
+  const parts = diffWords(prevVal, nextVal);
+  return parts.flatMap((part) => {
+    if (part.removed) return [];
+    return (part.value.match(/\S+|\s+/g) ?? []).map((word) => ({
+      word,
+      isNew: !!part.added,
+    }));
+  });
+}
+
+export function computeSectionHighlights(
+  prev: FeatureDetail,
+  next: FeatureDetail
+): SectionHighlights | null {
+  const highlights: SectionHighlights = {};
+
+  for (const key of PLAN_SECTION_KEYS) {
+    const prevVal = getSectionValue(prev, key);
+    const nextVal = getSectionValue(next, key);
+
+    if (!nextVal) continue;
+    if (!prevVal) {
+      highlights[key] = { type: "new" };
+    } else if (prevVal !== nextVal) {
+      highlights[key] = { type: "diff", tokens: computeDiffTokens(prevVal, nextVal) };
+    }
+  }
+
+  return Object.keys(highlights).length > 0 ? highlights : null;
+}
 
 interface PlanChatViewProps {
   featureId: string;
@@ -45,34 +93,45 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isChainVisible, setIsChainVisible] = useState(false);
+  const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
+  const prevFeatureRef = useRef<FeatureDetail | null>(null);
+  const [sphinxReady, setSphinxReady] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {
-    // Priority 1: URL param
+    // Priority 1: URL param — read directly from window to survive hard refresh
+    if (typeof window !== "undefined") {
+      const tabParam = new URLSearchParams(window.location.search).get("tab");
+      if (tabParam) {
+        const uppercased = tabParam.toUpperCase() as ArtifactType;
+        if (VALID_PLAN_TABS.includes(uppercased)) return uppercased;
+      }
+    }
+    // Priority 2: localStorage
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(`plan_tab_${featureId}`);
+      if (stored && VALID_PLAN_TABS.includes(stored as ArtifactType)) return stored as ArtifactType;
+    }
+    // Priority 3: default
+    return "PLAN";
+  }, [featureId]);
+
+  const [activeTab, setActiveTab] = useState<ArtifactType>(resolveInitialTab);
+
+  // Sync activeTab when searchParams changes after hydration (e.g. browser navigation)
+  useEffect(() => {
     const tabParam = searchParams?.get("tab");
     if (tabParam) {
       const uppercased = tabParam.toUpperCase() as ArtifactType;
-      if (VALID_PLAN_TABS.includes(uppercased)) {
-        return uppercased;
+      if (VALID_PLAN_TABS.includes(uppercased) && uppercased !== activeTab) {
+        setActiveTab(uppercased);
       }
     }
-
-    // Priority 2: localStorage (client-side only)
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(`plan_tab_${featureId}`);
-      if (stored && VALID_PLAN_TABS.includes(stored as ArtifactType)) {
-        return stored as ArtifactType;
-      }
-    }
-
-    // Priority 3: default
-    return "PLAN";
-  }, [searchParams, featureId]);
-
-  const [activeTab, setActiveTab] = useState<ArtifactType>(resolveInitialTab);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabChange = useCallback(
     (tab: ArtifactType) => {
@@ -99,12 +158,20 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const {
     data: feature,
     setData: setFeature,
+    updateData: updateFeature,
     loading,
     error,
   } = useDetailResource<FeatureDetail>({
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Initialize prevFeatureRef on first load
+  useEffect(() => {
+    if (feature && !prevFeatureRef.current) {
+      prevFeatureRef.current = feature;
+    }
+  }, [feature]);
 
   // Redirect to plan list if feature not found
   useEffect(() => {
@@ -116,11 +183,23 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const refetchFeature = useCallback(async () => {
     try {
       const result = await fetchFeature(featureId);
-      if (result.success && result.data) {
-        setFeature(result.data);
+      if (!result.success || !result.data) return;
+
+      const next = result.data;
+      const prev = prevFeatureRef.current;
+
+      if (prev) {
+        const highlights = computeSectionHighlights(prev, next);
+        if (highlights) {
+          setSectionHighlights(highlights);
+          setTimeout(() => setSectionHighlights(null), 5000);
+        }
       }
-    } catch (error) {
-      console.error("Error fetching feature:", error);
+
+      prevFeatureRef.current = next;
+      setFeature(next);
+    } catch (err) {
+      console.error("Error fetching feature:", err);
     }
   }, [featureId, fetchFeature, setFeature]);
 
@@ -150,6 +229,29 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // Fetch Sphinx integration status
+  useEffect(() => {
+    const fetchSphinxStatus = async () => {
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceSlug}/settings/sphinx-integration`);
+        if (response.ok) {
+          const data = await response.json();
+          const isReady = !!(
+            data.sphinxEnabled &&
+            data.sphinxChatPubkey &&
+            data.sphinxBotId &&
+            data.sphinxBotSecret
+          );
+          setSphinxReady(isReady);
+        }
+      } catch (error) {
+        console.error("Error fetching Sphinx status:", error);
+      }
+    };
+
+    fetchSphinxStatus();
+  }, [workspaceSlug]);
 
   // Refetch on tab visibility change
   useEffect(() => {
@@ -191,11 +293,19 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [],
   );
 
+  const handleFeatureTitleUpdate = useCallback(
+    (update: FeatureTitleUpdateEvent) => {
+      updateFeature({ title: update.newTitle });
+    },
+    [updateFeature],
+  );
+
   usePusherConnection({
     featureId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onFeatureUpdated: refetchFeature,
+    onFeatureTitleUpdate: handleFeatureTitleUpdate,
   });
 
   const sendMessage = useCallback(
@@ -316,7 +426,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId, session, clearLogs],
   );
 
-  const allArtifacts = useMemo(() => messages.flatMap((m) => m.artifacts || []), [messages]);
+  const allArtifacts = useMemo(() => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []), [messages]);
 
   const planData: PlanData = useMemo(() => {
     const stories = feature?.userStories ?? [];
@@ -355,6 +465,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <InvitePopover
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        workspaceSlug={workspaceSlug}
+        featureId={featureId}
+      >
+        <div style={{ display: "none" }} />
+      </InvitePopover>
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
@@ -374,6 +492,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
               isChainVisible={isChainVisible}
               lastLogLine={lastLogLine}
               logs={logs}
+              sphinxInviteEnabled={sphinxReady}
+              onInvite={() => setInviteOpen(true)}
             />
           </div>
         </ResizablePanel>
@@ -392,6 +512,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
                   onFeatureUpdate={setFeature}
                   controlledTab={activeTab}
                   onControlledTabChange={handleTabChange}
+                  sectionHighlights={sectionHighlights}
                 />
               </div>
             </ResizablePanel>

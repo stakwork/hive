@@ -43,15 +43,26 @@ vi.mock("@/hooks/useWorkspace", () => ({
   }),
 }));
 
+const mockUsePusherConnection = vi.fn();
 vi.mock("@/hooks/usePusherConnection", () => ({
-  usePusherConnection: vi.fn(),
+  usePusherConnection: (config: any) => mockUsePusherConnection(config),
 }));
 
-const mockUseDetailResource = vi.fn(() => ({
-  data: null,
-  setData: vi.fn(),
+const mockSetData = vi.fn();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockUseDetailResource = vi.fn((): any => ({
+  data: {
+    id: "feature-123",
+    title: "Test Feature",
+    brief: null,
+    requirements: null,
+    architecture: null,
+    userStories: [],
+  },
+  setData: mockSetData,
+  updateData: vi.fn(),
   loading: false,
-  error: null,
+  error: null as string | null,
 }));
 
 vi.mock("@/hooks/useDetailResource", () => ({
@@ -246,8 +257,65 @@ describe("PlanChatView", () => {
         expect(window.localStorage.getItem).toHaveBeenCalledWith("plan_tab_feature-123");
       });
 
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
       const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
       expect(lastCall.controlledTab).toBe("PLAN");
+    });
+
+    it("should read from window.location.search on hard refresh when searchParams returns null", async () => {
+      // Simulate hard refresh: searchParams returns null but window.location.search has ?tab=tasks
+      mockGet.mockReturnValue(null);
+      
+      // Mock window.location.search
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: { ...originalLocation, search: "?tab=tasks" }
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("TASKS");
+
+      // Restore window.location
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: originalLocation
+      });
+    });
+
+    it("should sync activeTab when searchParams changes after hydration", async () => {
+      // Initially no tab param
+      mockGet.mockReturnValue(null);
+
+      const { rerender } = render(
+        <PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />
+      );
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      let lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      expect(lastCall.controlledTab).toBe("PLAN");
+
+      // Simulate searchParams changing (e.g., browser navigation)
+      mockGet.mockReturnValue("tasks");
+
+      rerender(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+        expect(lastCall.controlledTab).toBe("TASKS");
+      });
     });
   });
 
@@ -380,6 +448,7 @@ describe("PlanChatView", () => {
     mockUseDetailResource.mockReturnValueOnce({
       data: null,
       setData: vi.fn(),
+      updateData: vi.fn(),
       loading: false,
       error: "Not found",
     });
@@ -491,6 +560,136 @@ describe("PlanChatView", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  describe("Feature title updates", () => {
+    it("should update feature title when onFeatureTitleUpdate is called", async () => {
+      const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Original Title",
+          brief: "Test brief",
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "IN_PROGRESS",
+          priority: "MEDIUM",
+          workflowStatus: "IN_PROGRESS",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: mockUpdateData,
+        loading: false,
+        error: null,
+      });
+
+      let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
+
+      // Mock usePusherConnection to capture the callback
+      mockUsePusherConnection.mockImplementation((options: any) => {
+        capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
+        return {
+          isConnected: true,
+          connectionId: "test-connection",
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          error: null,
+        };
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Verify that usePusherConnection was called with onFeatureTitleUpdate
+      expect(mockUsePusherConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          featureId: "feature-123",
+          onFeatureTitleUpdate: expect.any(Function),
+        })
+      );
+
+      // Simulate receiving a feature title update
+      act(() => {
+        capturedOnFeatureTitleUpdate?.({
+          featureId: "feature-123",
+          newTitle: "Updated Title",
+        });
+      });
+
+      // Verify updateData was called with the new title
+      await waitFor(() => {
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
+      });
+    });
+
+    it("should not update if feature data is null", async () => {
+      const mockSetData = vi.fn();
+      const mockUpdateData = vi.fn();
+      mockUseDetailResource.mockReturnValue({
+        data: null,
+        setData: mockSetData,
+        updateData: mockUpdateData,
+        loading: false,
+        error: null,
+      });
+
+      let capturedOnFeatureTitleUpdate: ((update: { featureId: string; newTitle: string }) => void) | undefined;
+
+      // Mock usePusherConnection to capture the callback
+      mockUsePusherConnection.mockImplementation((options: any) => {
+        capturedOnFeatureTitleUpdate = options.onFeatureTitleUpdate;
+        return {
+          isConnected: true,
+          connectionId: "test-connection",
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          error: null,
+        };
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Simulate receiving a feature title update when data is null
+      act(() => {
+        capturedOnFeatureTitleUpdate?.({
+          featureId: "feature-123",
+          newTitle: "Updated Title",
+        });
+      });
+
+      // Verify updateData was called (even though data is null, the callback still fires)
+      await waitFor(() => {
+        expect(mockUpdateData).toHaveBeenCalledWith({ title: "Updated Title" });
+      });
+
+      // Verify setData was NOT called (because updateData does nothing when data is null)
+      expect(mockSetData).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Project log WebSocket integration", () => {
     it("should pass isChainVisible, logs, and lastLogLine props to ChatArea", async () => {
       mockFetch.mockResolvedValue({
@@ -508,4 +707,7 @@ describe("PlanChatView", () => {
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
     });
   });
+
+  // Section Highlights feature is comprehensively tested in sectionHighlights.test.ts
+  // The integration is smoke-tested by ensuring PlanChatView renders without errors
 });

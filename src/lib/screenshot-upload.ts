@@ -96,3 +96,27 @@ export async function processScreenshotUpload(
 
   return { buffer, hash, s3Key, s3Url }
 }
+
+/**
+ * Downloads a .webm recording from a URL, uploads it to S3, and returns metadata.
+ * S3 key format: recordings/{workspaceId}/{hash}.webm
+ * @param url Remote URL of the .webm file
+ * @param workspaceId Workspace ID
+ * @returns Object with s3Key, buffer, and hash
+ */
+export async function processRecordingUpload(
+  url: string,
+  workspaceId: string
+): Promise<{ s3Key: string; buffer: Buffer; hash: string }> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recording: ${response.status} ${response.statusText}`)
+  }
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const hash = generateContentHash(buffer)
+  const s3Key = `recordings/${workspaceId}/${hash}.webm`
+  const s3Service = getS3Service()
+  await s3Service.putObject(s3Key, buffer, 'video/webm')
+  return { s3Key, buffer, hash }
+}

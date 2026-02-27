@@ -48,6 +48,7 @@ export const PUSHER_EVENTS = {
   PR_STATUS_CHANGE: "pr-status-change",
   BOUNTY_STATUS_CHANGE: "bounty-status-change",
   DEPLOYMENT_STATUS_CHANGE: "deployment-status-change",
+  FEATURE_TITLE_UPDATE: "feature-title-update",
   // Whiteboard collaboration events
   WHITEBOARD_ELEMENTS_UPDATE: "whiteboard-elements-update",
   WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
