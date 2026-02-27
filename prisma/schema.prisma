@@ -850,6 +850,7 @@ enum UserRole {
   USER
   ADMIN
   MODERATOR
+  SUPER_ADMIN
 }
 
 enum WorkspaceRole {
