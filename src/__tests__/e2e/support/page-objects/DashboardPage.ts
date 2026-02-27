@@ -104,8 +104,16 @@ export class DashboardPage {
    * Navigate to settings page
    */
   async goToSettings(): Promise<void> {
-    await this.page.locator(selectors.navigation.settingsButton).click();
-    await this.page.waitForURL(/\/w\/.*\/settings/, { timeout: 10000 });
+    // Wait for the button to be ready and click it
+    const settingsButton = this.page.locator(selectors.navigation.settingsButton);
+    await settingsButton.waitFor({ state: 'visible', timeout: 5000 });
+    
+    // Use Promise.all to handle navigation that starts on click
+    await Promise.all([
+      this.page.waitForURL(/\/w\/.*\/settings/, { timeout: 15000 }),
+      settingsButton.click()
+    ]);
+    
     await expect(this.page.locator(selectors.pageTitle.settings)).toBeVisible();
   }
 
