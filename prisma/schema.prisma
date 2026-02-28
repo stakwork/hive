@@ -758,7 +758,7 @@ model JanitorConfig {
   // Task Coordinator automation
   taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
   recommendationSweepEnabled Boolean @default(false) @map("recommendation_sweep_enabled")
-  ticketSweepEnabled         Boolean @default(false) @map("ticket_sweep_enabled")
+  ticketSweepEnabled         Boolean @default(true) @map("ticket_sweep_enabled")
 
   // PR Monitor automation
   prMonitorEnabled      Boolean @default(false) @map("pr_monitor_enabled")
