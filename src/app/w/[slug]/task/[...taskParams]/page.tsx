@@ -1840,7 +1840,7 @@ export default function TaskChatPage() {
                       onArtifactAction={handleArtifactAction}
                       inputDisabled={inputDisabled}
                       isLoading={isLoading}
-  
+
                       isChainVisible={isChainVisible}
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
