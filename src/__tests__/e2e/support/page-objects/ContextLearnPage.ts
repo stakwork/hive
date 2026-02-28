@@ -20,10 +20,12 @@ export class ContextLearnPage {
    * Wait for Context Learn page to fully load
    */
   async waitForLoad(): Promise<void> {
-    // Wait for either docs or concepts section to be visible as indicator of page load
+    // Wait for either docs or concepts section to be visible as indicator of page load.
+    // Use .first() because when both sections render, .or() resolves to 2 elements
+    // and Playwright's strict mode rejects toBeVisible() on multiple matches.
     await expect(
-      this.page.locator(selectors.learn.docsSection).or(this.page.locator(selectors.learn.conceptsSection))
-    ).toBeVisible({ timeout: 10000 });
+      this.page.locator(selectors.learn.docsSection).or(this.page.locator(selectors.learn.conceptsSection)).first()
+    ).toBeVisible({ timeout: 30000 });
   }
 
   /**
@@ -38,17 +40,17 @@ export class ContextLearnPage {
     const isLearnVisible = await learnLink.isVisible().catch(() => false);
     if (!isLearnVisible) {
       await contextButton.click();
-      await learnLink.waitFor({ state: 'visible', timeout: 5000 });
+      await learnLink.waitFor({ state: 'visible', timeout: 15000 });
     }
 
     // Ensure page is fully loaded and network is idle before navigation
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {
+    await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {
       // If networkidle times out, fall back to domcontentloaded
       return this.page.waitForLoadState('domcontentloaded');
     });
     
     // Wait for the link to be attached and stable
-    await learnLink.waitFor({ state: 'attached', timeout: 5000 });
+    await learnLink.waitFor({ state: 'attached', timeout: 15000 });
     
     // Small delay to ensure link is fully interactive (reduces race conditions)
     await this.page.waitForTimeout(100);

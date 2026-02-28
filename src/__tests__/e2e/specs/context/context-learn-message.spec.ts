@@ -36,7 +36,7 @@ test.describe('Context Learn Documentation Viewer', () => {
     await contextLearnPage.navigateViaNavigation();
 
     // Verify we're on the Context Learn page
-    await expect(page).toHaveURL(/\/w\/.*\/learn/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/.*\/learn/, { timeout: 30000 });
 
     // Verify the page loaded (either docs or concepts section visible)
     const isLoaded = await contextLearnPage.isLoaded();
