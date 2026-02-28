@@ -24,7 +24,7 @@ export default async function AdminLayout({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <Link href="/admin" className="text-2xl font-bold">
-                Hive Admin
+                Admin
               </Link>
               <nav className="flex gap-4">
                 <Link
