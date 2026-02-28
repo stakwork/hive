@@ -305,7 +305,6 @@ export function AgentChatArea({
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
-        workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
       />
 
