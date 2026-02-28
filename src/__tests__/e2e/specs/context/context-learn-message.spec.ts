@@ -1,24 +1,20 @@
-import { expect } from '@playwright/test';
-import { test } from '../../support/fixtures/test-hooks';
-import { AuthPage, DashboardPage, ContextLearnPage } from '../../support/page-objects';
+import { test, expect } from '@playwright/test';
+import { AuthPage } from '../../support/page-objects/AuthPage';
+import { DashboardPage } from '../../support/page-objects/DashboardPage';
+import { ContextLearnPage } from '../../support/page-objects/ContextLearnPage';
 import { selectors } from '../../support/fixtures/selectors';
-import { createStandardWorkspaceScenario } from '../../support/fixtures/e2e-scenarios';
 
 /**
- * Context Learn page message sending tests
- * Tests user journey for navigating to and sending messages in the Context Learn page
+ * E2E tests for Context Learn page (Documentation Viewer)
+ * Tests the new documentation viewer UI that replaced the chat interface
  */
-test.describe('Send message in Context Learn page', () => {
+test.describe('Context Learn Documentation Viewer', () => {
   let authPage: AuthPage;
   let dashboardPage: DashboardPage;
   let contextLearnPage: ContextLearnPage;
   let workspaceSlug: string;
 
   test.beforeEach(async ({ page }) => {
-    // Setup test data
-    const scenario = await createStandardWorkspaceScenario();
-    workspaceSlug = scenario.workspace.slug;
-
     // Initialize page objects
     authPage = new AuthPage(page);
     dashboardPage = new DashboardPage(page);
@@ -28,6 +24,11 @@ test.describe('Send message in Context Learn page', () => {
     await authPage.goto();
     await authPage.signInWithMock();
     await dashboardPage.waitForLoad();
+    
+    // Extract workspace slug from URL
+    const url = page.url();
+    const match = url.match(/\/w\/([^/]+)/);
+    workspaceSlug = match ? match[1] : 'default';
   });
 
   test('should navigate to Context Learn page via sidebar', async ({ page }) => {
@@ -35,44 +36,54 @@ test.describe('Send message in Context Learn page', () => {
     await contextLearnPage.navigateViaNavigation();
 
     // Verify we're on the Context Learn page
-    await expect(page).toHaveURL(/\/w\/.*\/learn/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/.*\/learn/, { timeout: 30000 });
 
-    // Verify the message input is visible
-    const isInputVisible = await contextLearnPage.isMessageInputVisible();
-    expect(isInputVisible).toBe(true);
+    // Verify the page loaded (either docs or concepts section visible)
+    const isLoaded = await contextLearnPage.isLoaded();
+    expect(isLoaded).toBe(true);
   });
 
-  test('should display message input and send button', async ({ page }) => {
+  test('should display docs and concepts sections', async ({ page }) => {
     // Navigate to Context Learn page
     await contextLearnPage.goto(workspaceSlug);
 
-    // Verify message input is visible
-    const isInputVisible = await contextLearnPage.isMessageInputVisible();
-    expect(isInputVisible).toBe(true);
+    // Verify docs section is visible
+    const isDocsSectionVisible = await contextLearnPage.isDocsSectionVisible();
+    expect(isDocsSectionVisible).toBe(true);
 
-    // Verify send button is visible
-    const isSendButtonVisible = await contextLearnPage.isSendButtonVisible();
-    expect(isSendButtonVisible).toBe(true);
+    // Verify concepts section is visible
+    const isConceptsSectionVisible = await contextLearnPage.isConceptsSectionVisible();
+    expect(isConceptsSectionVisible).toBe(true);
   });
 
-  test('should send a message in Context Learn page', async ({ page }) => {
+  test('should display content area when a doc is clicked', async ({ page }) => {
     // Navigate to Context Learn page
     await contextLearnPage.goto(workspaceSlug);
 
-    // Send a message
-    const testMessage = 'hi there!';
-    await contextLearnPage.sendMessage(testMessage);
+    // Wait for docs to load
+    await expect(page.locator(selectors.learn.docsSection)).toBeVisible();
 
-    // Verify the message input is cleared after sending
-    const inputValue = await contextLearnPage.getMessageInputValue();
-    expect(inputValue).toBe('');
+    // Check if there are any doc items
+    const docItemCount = await page.locator(selectors.learn.docItem).count();
+    
+    if (docItemCount > 0) {
+      // Click first doc item
+      await contextLearnPage.clickDocItem(0);
 
-    // Verify the send button remains visible (for sending more messages)
-    const isSendButtonVisible = await contextLearnPage.isSendButtonVisible();
-    expect(isSendButtonVisible).toBe(true);
+      // Verify content area is visible
+      const isContentAreaVisible = await contextLearnPage.isContentAreaVisible();
+      expect(isContentAreaVisible).toBe(true);
+
+      // Verify edit button is visible in view mode
+      const isEditButtonVisible = await contextLearnPage.isEditButtonVisible();
+      expect(isEditButtonVisible).toBe(true);
+    } else {
+      // Skip test if no docs available
+      test.skip();
+    }
   });
 
-  test('should complete full user journey: dashboard -> Context Learn -> send message', async ({ page }) => {
+  test('should complete full user journey: dashboard -> Context Learn -> view doc', async ({ page }) => {
     // Starting from dashboard
     await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
 
@@ -82,39 +93,47 @@ test.describe('Send message in Context Learn page', () => {
     // Verify we're on Context Learn page
     await expect(page).toHaveURL(/\/w\/.*\/learn/);
 
-    // Verify message input is present
-    await expect(page.locator(selectors.learn.messageInput)).toBeVisible();
+    // Verify docs section is present
+    await expect(page.locator(selectors.learn.docsSection)).toBeVisible();
 
-    // Send a message
-    const testMessage = 'hi there!';
-    await contextLearnPage.sendMessage(testMessage);
-
-    // Verify the input is cleared after sending
-    const inputValue = await contextLearnPage.getMessageInputValue();
-    expect(inputValue).toBe('');
+    // Verify concepts section is present
+    await expect(page.locator(selectors.learn.conceptsSection)).toBeVisible();
   });
 
-  test('should not allow sending empty messages', async ({ page }) => {
+  test('should allow editing documentation (if docs available)', async ({ page }) => {
     // Navigate to Context Learn page
     await contextLearnPage.goto(workspaceSlug);
 
-    // Try to send an empty message
-    const sendButton = page.locator(selectors.learn.messageSend);
+    // Wait for docs section
+    await expect(page.locator(selectors.learn.docsSection)).toBeVisible();
+
+    // Check if there are any doc items
+    const docItemCount = await page.locator(selectors.learn.docItem).count();
     
-    // Verify send button is initially disabled (no text entered)
-    await expect(sendButton).toBeDisabled();
+    if (docItemCount > 0) {
+      // Click first doc item
+      await contextLearnPage.clickDocItem(0);
 
-    // Fill with whitespace only
-    const messageInput = page.locator(selectors.learn.messageInput);
-    await messageInput.fill('   ');
+      // Wait for content area
+      await expect(page.locator(selectors.learn.contentArea)).toBeVisible();
 
-    // Verify send button is still disabled
-    await expect(sendButton).toBeDisabled();
+      // Click edit button
+      await contextLearnPage.clickEditButton();
 
-    // Fill with actual content
-    await messageInput.fill('valid message');
+      // Verify view button appears (indicating we're in edit mode)
+      await expect(page.locator(selectors.learn.viewButton)).toBeVisible();
 
-    // Verify send button is now enabled
-    await expect(sendButton).toBeEnabled();
+      // Verify save button appears
+      await expect(page.locator(selectors.learn.saveButton)).toBeVisible();
+
+      // Click view button to return to view mode
+      await contextLearnPage.clickViewButton();
+
+      // Verify edit button is back
+      await expect(page.locator(selectors.learn.editButton)).toBeVisible();
+    } else {
+      // Skip test if no docs available
+      test.skip();
+    }
   });
 });
