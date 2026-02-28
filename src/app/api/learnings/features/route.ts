@@ -39,7 +39,11 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    const features = Array.isArray(data) ? data : Array.isArray(data?.features) ? data.features : [];
+    const features = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.features)
+        ? data.features
+        : [];
     return NextResponse.json(features);
   } catch (error) {
     console.error("Features API proxy error:", error);

@@ -89,16 +89,6 @@ export function LearnDocViewer({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={handleExitEditMode}
-                disabled={isSaving}
-                title="Preview"
-                data-testid="learn-view-button"
-              >
-                <Eye className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
                 onClick={handleSaveClick}
                 disabled={isSaving}
                 className="text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -106,6 +96,16 @@ export function LearnDocViewer({
                 data-testid="learn-save-button"
               >
                 <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleExitEditMode}
+                disabled={isSaving}
+                title="Preview"
+                data-testid="learn-view-button"
+              >
+                <Eye className="h-4 w-4" />
               </Button>
             </>
           ) : (

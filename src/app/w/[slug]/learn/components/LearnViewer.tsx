@@ -105,13 +105,40 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     });
   };
 
-  const handleConceptClick = (id: string, name: string, content: string) => {
+  const handleConceptClick = async (id: string, name: string, content: string) => {
+    // Show immediately with whatever content we have
     setActiveItem({
       type: "concept",
       id,
       name,
       content,
     });
+
+    // If no content cached, fetch the full documentation
+    if (!content) {
+      try {
+        const response = await fetch(
+          `/api/learnings/features/${encodeURIComponent(id)}?workspace=${workspaceSlug}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          const documentation = data?.feature?.documentation || "";
+          setActiveItem({
+            type: "concept",
+            id,
+            name,
+            content: documentation,
+          });
+          // Cache it in local state so we don't re-fetch
+          setConcepts((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, content: documentation } : c))
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch concept documentation:", error);
+        toast.error("Failed to load concept documentation");
+      }
+    }
   };
 
   const handleSave = async (content: string) => {
