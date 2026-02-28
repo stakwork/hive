@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(Array.isArray(data) ? data : []);
+    const features = Array.isArray(data) ? data : Array.isArray(data?.features) ? data.features : [];
+    return NextResponse.json(features);
   } catch (error) {
     console.error("Features API proxy error:", error);
     return NextResponse.json({ error: "Failed to fetch features data" }, { status: 500 });
