@@ -65,8 +65,11 @@ export function InvitePopover({
 
         const data = await response.json();
         
+        // Combine owner and members arrays
+        const allMembers = [...(data.owner ? [data.owner] : []), ...(data.members || [])];
+        
         // Handle response structure - map user data from members
-        const membersList = (data.data || []).map((member: any) => ({
+        const membersList = allMembers.map((member: any) => ({
           id: member.user.id,
           name: member.user.name,
           email: member.user.email,
