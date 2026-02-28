@@ -464,6 +464,18 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
 
+  const handleTitleSave = useCallback(
+    async (newTitle: string) => {
+      await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      updateFeature({ title: newTitle });
+    },
+    [featureId, updateFeature]
+  );
+
   const chatAreaProps = {
     messages,
     onSend: sendMessage,
@@ -482,6 +494,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     logs,
     isPlanComplete,
     sphinxInviteEnabled: sphinxReady,
+    onTitleSave: handleTitleSave,
   };
 
   const artifactsPanelProps = {

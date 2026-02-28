@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
+import { ArrowLeft, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
@@ -53,6 +53,7 @@ interface ChatAreaProps {
   isPlanComplete?: boolean;
   sphinxInviteEnabled?: boolean;
   isPlanChat?: boolean;
+  onTitleSave?: (newTitle: string) => Promise<void>;
 }
 
 export function ChatArea({
@@ -87,12 +88,16 @@ export function ChatArea({
   isPlanComplete = false,
   sphinxInviteEnabled,
   isPlanChat = false,
+  onTitleSave,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -142,6 +147,41 @@ export function ChatArea({
     return () => clearTimeout(timer);
   }, [messages, shouldAutoScroll]);
 
+  // Auto-focus title input when editing starts
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
+
+  const handleTitleSaveInternal = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || !onTitleSave) {
+      setIsEditingTitle(false);
+      return;
+    }
+    await onTitleSave(trimmed);
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleEdit = () => {
+    if (featureId && onTitleSave) {
+      setTitleDraft(taskTitle ?? "");
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTitleSaveInternal();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsEditingTitle(false);
+    }
+  };
+
   const handleBackToTasks = () => {
     if (isPlanChat) {
       router.push(`/w/${workspaceSlug}/plan`);
@@ -176,30 +216,55 @@ export function ChatArea({
               </Button>
 
               {/* Task Title with inline breadcrumbs - with animation only when title changes */}
-              <AnimatePresence mode="wait">
-                <motion.h2
-                  key={taskTitle} // This will trigger re-animation when title changes
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0"
-                  title={taskTitle}
-                  data-testid="task-title"
-                >
-                  {/* Inline Breadcrumbs - only show in task chat context */}
-                  {workspaceSlug && taskId && (
-                    <TaskBreadcrumbs
-                      featureId={featureId ?? null}
-                      featureTitle={featureTitle ?? null}
-                      workspaceSlug={workspaceSlug}
-                    />
-                  )}
-                  <span className="truncate w-full">
-                    {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
-                  </span>
-                </motion.h2>
-              </AnimatePresence>
+              {!isEditingTitle ? (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={taskTitle}
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
+                    data-testid="task-title"
+                  >
+                    {/* Inline Breadcrumbs - only show in task chat context */}
+                    {workspaceSlug && taskId && (
+                      <TaskBreadcrumbs
+                        featureId={featureId ?? null}
+                        featureTitle={featureTitle ?? null}
+                        workspaceSlug={workspaceSlug}
+                      />
+                    )}
+                    <div className="flex items-center gap-2 w-full min-w-0">
+                      <span
+                        className="truncate cursor-pointer"
+                        title={taskTitle}
+                        onClick={handleTitleEdit}
+                      >
+                        {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                      </span>
+                      {featureId && onTitleSave && (
+                        <Pencil
+                          className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                          onClick={handleTitleEdit}
+                        />
+                      )}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+              ) : (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={handleTitleSaveInternal}
+                  onKeyDown={handleTitleKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  data-testid="task-title-input"
+                />
+              )}
             </div>
 
             {/* Presence Avatars */}
