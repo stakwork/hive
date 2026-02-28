@@ -1,5 +1,6 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { decryptEnvVars, encryptEnvVars } from "@/lib/encryption";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json(
@@ -411,7 +412,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         );
       }
 
-      const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
       workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     }
 

@@ -4,6 +4,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -53,8 +54,9 @@ export async function GET(request: Request) {
         action: 'validate_workspace',
       });
 
-      const isSuperAdmin = session.user?.isSuperAdmin ?? false;
-      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id, true, { isSuperAdmin });
+      const userId = (session.user as { id: string }).id;
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true, { isSuperAdmin });
       if (!workspaceAccess.hasAccess) {
         console.warn("[github-app-status] Workspace access denied", {
           ...requestLogContext,
