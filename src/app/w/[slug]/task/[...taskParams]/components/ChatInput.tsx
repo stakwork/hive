@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
@@ -42,11 +42,10 @@ interface ChatInputProps {
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;
-  workspaceSlug?: string;
   taskMode?: string;
   taskId?: string;
-  featureId?: string;
   onOpenBountyRequest?: () => void;
+  stakworkProjectId?: string | null;
 }
 
 export function ChatInput({
@@ -59,14 +58,12 @@ export function ChatInput({
   onRemoveStepAttachment,
   workflowStatus,
   hasPrArtifact = false,
-  workspaceSlug,
   taskMode,
   taskId,
-  featureId,
   onOpenBountyRequest,
+  stakworkProjectId,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState("live");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -85,11 +82,6 @@ export function ChatInput({
 
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-  useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    setMode(mode || "live");
-  }, []);
 
   useEffect(() => {
     if (transcript) {
@@ -389,78 +381,34 @@ export function ChatInput({
     }
   };
 
-  const getModeConfig = (mode: string) => {
-    if (mode === "agent") {
-      return { icon: Bot, label: "Agent" };
-    }
-    return { icon: Workflow, label: "Workflow" };
-  };
-
-  const modeConfig = getModeConfig(mode);
-  const ModeIcon = modeConfig.icon;
-
   // Show simplified ended state for terminal workflow statuses
   const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const getTerminalMessage = () => {
-    if (taskMode === "agent") {
-      return "Session expired.";
-    }
-    switch (workflowStatus) {
-      case WorkflowStatus.HALTED:
-        return "Workflow halted.";
-      case WorkflowStatus.FAILED:
-        return "Workflow failed.";
-      case WorkflowStatus.ERROR:
-        return "Workflow error.";
-      default:
-        return "Workflow ended.";
-    }
-  };
-
-  if (isTerminalState && !featureId) {
-    return (
-      <div className={cn(
-        "px-4 py-4 border-t bg-background",
-        isMobile && "fixed bottom-0 left-0 right-0 z-10 pb-[env(safe-area-inset-bottom)]"
-      )}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
-            <span>{getTerminalMessage()}</span>
-          </div>
-          {workspaceSlug && (
-            <Button asChild size="sm">
-              <Link href={`/w/${workspaceSlug}/task/new`}>
-                <Plus className="h-3 w-3 mr-1" />
-                New Task
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Dot inside input only for in-progress
+  const showDotInInput = workflowStatus === WorkflowStatus.IN_PROGRESS;
 
   return (
     <div className={cn(
       isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
     )}>
-      <div className={cn(
-        "flex items-center gap-2 text-sm text-muted-foreground",
-        isMobile && "px-4"
-      )}>
-        <ModeIcon className="h-4 w-4" />
-        <span>{modeConfig.label}</span>
-        {!hasPrArtifact && workflowStatus !== WorkflowStatus.COMPLETED && (
-          <>
-            <span>|</span>
-            <WorkflowStatusBadge status={workflowStatus} />
-          </>
+      {/* Terminal status indicator */}
+      <AnimatePresence>
+        {isTerminalState && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: 12, height: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className={cn("px-4 py-2 md:px-6")}>
+              <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* Debug attachment display */}
       {pendingDebugAttachment && (
@@ -575,23 +523,41 @@ export function ChatInput({
           </div>
         )}
 
-        <Textarea
-          ref={textareaRef}
-          placeholder={isListening ? "Listening..." : "Type your message..."}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          className="flex-1 resize-none min-h-[36px]"
-          style={{
-            maxHeight: "8em", // About 5 lines
-            overflowY: "auto",
-          }}
-          disabled={disabled}
-          autoFocus
-          rows={1}
-          data-testid="chat-message-input"
-        />
+        <div className="flex-1 relative">
+          <AnimatePresence>
+            {!hasPrArtifact && showDotInInput && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none"
+              >
+                <WorkflowStatusBadge status={workflowStatus} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <Textarea
+            ref={textareaRef}
+            placeholder={isListening ? "Listening..." : showDotInInput ? "" : "Type your message..."}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            className={cn(
+              "resize-none min-h-[36px]",
+              !hasPrArtifact && showDotInInput && "pl-7",
+            )}
+            style={{
+              maxHeight: "8em",
+              overflowY: "auto",
+            }}
+            disabled={disabled}
+            autoFocus
+            rows={1}
+            data-testid="chat-message-input"
+          />
+        </div>
         <div className="flex gap-2 shrink-0">
           {isImageUploadEnabled && (
             <TooltipProvider>

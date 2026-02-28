@@ -26,7 +26,6 @@ interface ChatAreaProps {
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
-  hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
   lastLogLine?: string;
   logs?: LogEntry[];
@@ -53,6 +52,7 @@ interface ChatAreaProps {
   sphinxInviteEnabled?: boolean;
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
+  stakworkProjectId?: string | null;
 }
 
 export function ChatArea({
@@ -87,6 +87,7 @@ export function ChatArea({
   sphinxInviteEnabled,
   isPlanChat = false,
   onTitleSave,
+  stakworkProjectId,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -355,23 +356,20 @@ export function ChatArea({
                 Hive
               </div>
               <div className="text-sm">{lastLogLine ? lastLogLine : `Communicating with workflow...`}</div>
-              {/* Optional: Add a subtle loading indicator */}
-              {isChainVisible && (
-                <div className="flex items-center mt-2 text-xs text-muted-foreground">
-                  <div className="flex space-x-1">
-                    <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.2s" }}
-                    ></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.4s" }}
-                    ></div>
-                  </div>
-                  <span className="ml-2">Processing...</span>
+              <div className="flex items-center mt-2 text-xs text-muted-foreground">
+                <div className="flex space-x-1">
+                  <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+                  <div
+                    className="w-1 h-1 bg-current rounded-full animate-pulse"
+                    style={{ animationDelay: "0.2s" }}
+                  ></div>
+                  <div
+                    className="w-1 h-1 bg-current rounded-full animate-pulse"
+                    style={{ animationDelay: "0.4s" }}
+                  ></div>
                 </div>
-              )}
+                <span className="ml-2">Processing...</span>
+              </div>
             </div>
           </motion.div>
         )}
@@ -391,9 +389,8 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
-        featureId={featureId ?? undefined}
-        workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        stakworkProjectId={stakworkProjectId}
       />
 
       {onReleasePod && (

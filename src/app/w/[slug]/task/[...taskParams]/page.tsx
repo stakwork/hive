@@ -96,13 +96,6 @@ export default function TaskChatPage() {
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
 
-  // Debug logging
-  // console.log("[TaskPage] Workspace context:", {
-  //   workspaceId,
-  //   workspaceObject: workspace,
-  //   effectiveWorkspaceId,
-  //   currentTaskId,
-  // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [taskDescription, setTaskDescription] = useState<string | null>(null);
   const [podId, setPodId] = useState<string | null>(null);
@@ -1623,11 +1616,6 @@ export default function TaskChatPage() {
     | undefined;
   const prLink = prUrl?.url || null;
 
-  const isTerminalState =
-    workflowStatus === WorkflowStatus.HALTED ||
-    workflowStatus === WorkflowStatus.FAILED ||
-    workflowStatus === WorkflowStatus.ERROR;
-
   // Live mode: restrict input based on workflow state and pod availability
   const liveModeSendAllowed =
     !started || // Fresh task - can send to kick off
@@ -1638,7 +1626,6 @@ export default function TaskChatPage() {
   const inputDisabled =
     isLoading ||
     !isConnected ||
-    isTerminalState ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1815,7 +1802,7 @@ export default function TaskChatPage() {
                     onArtifactAction={handleArtifactAction}
                     inputDisabled={inputDisabled}
                     isLoading={isLoading}
-                    hasNonFormArtifacts={hasNonFormArtifacts}
+
                     isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
@@ -1835,6 +1822,7 @@ export default function TaskChatPage() {
                     isReleasingPod={isReleasingPod}
                     featureId={featureId}
                     featureTitle={featureTitle}
+                    stakworkProjectId={projectId}
                     onOpenBountyRequest={
                       canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                     }
@@ -1852,7 +1840,7 @@ export default function TaskChatPage() {
                       onArtifactAction={handleArtifactAction}
                       inputDisabled={inputDisabled}
                       isLoading={isLoading}
-                      hasNonFormArtifacts={hasNonFormArtifacts}
+  
                       isChainVisible={isChainVisible}
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
@@ -1869,6 +1857,7 @@ export default function TaskChatPage() {
                       isReleasingPod={isReleasingPod}
                       featureId={featureId}
                       featureTitle={featureTitle}
+                      stakworkProjectId={projectId}
                       onOpenBountyRequest={
                         canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                       }
@@ -1898,7 +1887,6 @@ export default function TaskChatPage() {
                 onArtifactAction={handleArtifactAction}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}
-                hasNonFormArtifacts={hasNonFormArtifacts}
                 isChainVisible={isChainVisible}
                 lastLogLine={lastLogLine}
                 logs={logs}
@@ -1916,6 +1904,7 @@ export default function TaskChatPage() {
                 isReleasingPod={isReleasingPod}
                 featureId={featureId}
                 featureTitle={featureTitle}
+                stakworkProjectId={projectId}
                 onOpenBountyRequest={
                   canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                 }
