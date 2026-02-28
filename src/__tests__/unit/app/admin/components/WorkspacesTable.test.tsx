@@ -283,16 +283,16 @@ describe("WorkspacesTable", () => {
     expect(screen.getByText("No workspaces found")).toBeInTheDocument();
   });
 
-  it("renders settings link for each workspace", () => {
+  it("renders view workspace link for each workspace", () => {
     render(<WorkspacesTable workspaces={mockWorkspaces} />);
 
-    const settingsLinks = screen.getAllByText(/Settings →/);
-    expect(settingsLinks).toHaveLength(3);
+    const workspaceLinks = screen.getAllByText(/View workspace →/);
+    expect(workspaceLinks).toHaveLength(3);
 
     // Table starts sorted by createdAt desc: Gamma (Mar), Beta (Feb), Alpha (Jan)
-    expect(settingsLinks[0].closest("a")).toHaveAttribute("href", "/w/gamma/settings");
-    expect(settingsLinks[1].closest("a")).toHaveAttribute("href", "/w/beta/settings");
-    expect(settingsLinks[2].closest("a")).toHaveAttribute("href", "/w/alpha/settings");
+    expect(workspaceLinks[0].closest("a")).toHaveAttribute("href", "/admin/workspaces/gamma");
+    expect(workspaceLinks[1].closest("a")).toHaveAttribute("href", "/admin/workspaces/beta");
+    expect(workspaceLinks[2].closest("a")).toHaveAttribute("href", "/admin/workspaces/alpha");
   });
 
   it("displays ChevronUp icon when sorting ascending", () => {
