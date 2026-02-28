@@ -3,6 +3,20 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { WorkspacesTable } from "@/app/admin/components/WorkspacesTable";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock("@/components/ui/PresignedImage", () => ({
   default: ({ logoKey }: { logoKey: string }) => <div data-testid={`logo-${logoKey}`} />,
 }));
