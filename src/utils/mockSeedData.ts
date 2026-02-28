@@ -391,6 +391,20 @@ async function seedTasks(
   teamMemberIds: string[],
   repositories: Array<{ id: string; name: string; repositoryUrl: string }> = []
 ): Promise<{ tasksWithPods: TaskWithPod[]; allTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> }> {
+  // Check if tasks already exist for this workspace to avoid duplicate bounty codes
+  const existingTasksCount = await db.task.count({
+    where: { workspaceId, deleted: false },
+  });
+  
+  if (existingTasksCount > 0) {
+    console.log(`Tasks already exist for workspace ${workspaceId}, skipping seed`);
+    const existingTasks = await db.task.findMany({
+      where: { workspaceId, deleted: false },
+      select: { id: true, title: true, status: true, sourceType: true },
+    });
+    return { tasksWithPods: [], allTasks: existingTasks };
+  }
+
   const mockPodUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
   const taskTemplates = [
@@ -2122,11 +2136,11 @@ async function seedAttachments(
   // Get chat messages to link attachments to
   const messagesWithTasks = await db.chatMessage.findMany({
     where: {
-      taskId: { in: tasks.slice(0, 5).map(t => t.id) },
+      taskId: { in: tasks.slice(0, 6).map(t => t.id) },
       role: "ASSISTANT",
     },
     select: { id: true, taskId: true },
-    take: 5,
+    take: 6,
   });
 
   if (messagesWithTasks.length === 0) {
@@ -2160,11 +2174,16 @@ async function seedAttachments(
       mimeType: "application/json",
       size: 5600,
     },
+    {
+      filename: "recording.mp4",
+      mimeType: "video/mp4",
+      size: 1240000,
+    },
   ];
 
   let attachmentCount = 0;
 
-  for (let i = 0; i < Math.min(messagesWithTasks.length, 5); i++) {
+  for (let i = 0; i < Math.min(messagesWithTasks.length, attachmentTemplates.length); i++) {
     const message = messagesWithTasks[i];
     const template = attachmentTemplates[i];
 

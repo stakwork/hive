@@ -17,11 +17,26 @@ interface GroupedScreenshots {
   screenshots: Screenshot[];
 }
 
+interface TaskAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  url: string;
+}
+
+interface GroupedAttachments {
+  taskTitle: string;
+  attachments: TaskAttachment[];
+}
+
 export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
   const [loading, setLoading] = useState(true);
   const [groupedScreenshots, setGroupedScreenshots] = useState<
     GroupedScreenshots[]
   >([]);
+  const [groupedAttachments, setGroupedAttachments] = useState<
+    Record<string, GroupedAttachments>
+  >({});
   const [selectedScreenshot, setSelectedScreenshot] =
     useState<Screenshot | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,19 +47,22 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
       setLoading(true);
 
       try {
-        // Fetch all screenshots for this feature in a single request
-        const response = await fetch(
-          `/api/screenshots?workspaceId=${workspaceId}&featureId=${feature.id}`,
-          { credentials: 'include' }
-        );
+        // Fetch screenshots and attachments in parallel
+        const [screenshotsRes, attachmentsRes] = await Promise.all([
+          fetch(
+            `/api/screenshots?workspaceId=${workspaceId}&featureId=${feature.id}`,
+            { credentials: 'include' }
+          ),
+          fetch(`/api/features/${feature.id}/attachments`, { credentials: 'include' }),
+        ]);
 
-        if (!response.ok) {
-          console.error('Error fetching screenshots:', response.statusText);
+        if (!screenshotsRes.ok) {
+          console.error('Error fetching screenshots:', screenshotsRes.statusText);
           setLoading(false);
           return;
         }
 
-        const data = await response.json();
+        const data = await screenshotsRes.json();
         const screenshots: any[] = data.screenshots || [];
 
         // Group screenshots by task
@@ -120,6 +138,25 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
 
         setGroupedScreenshots(grouped);
         setAllScreenshots(flat);
+
+        // Process attachments
+        if (attachmentsRes.ok) {
+          const attData = await attachmentsRes.json();
+          const attList: Array<{ taskId: string; taskTitle: string } & TaskAttachment> = attData.attachments || [];
+          const groupedAtt: Record<string, GroupedAttachments> = {};
+          for (const att of attList) {
+            if (!groupedAtt[att.taskId]) {
+              groupedAtt[att.taskId] = { taskTitle: att.taskTitle, attachments: [] };
+            }
+            groupedAtt[att.taskId].attachments.push({
+              id: att.id,
+              filename: att.filename,
+              mimeType: att.mimeType,
+              url: att.url,
+            });
+          }
+          setGroupedAttachments(groupedAtt);
+        }
       } catch (error) {
         console.error('Error fetching screenshots:', error);
       } finally {
@@ -164,7 +201,7 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     );
   }
 
-  if (groupedScreenshots.length === 0) {
+  if (groupedScreenshots.length === 0 && Object.keys(groupedAttachments).length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-center p-8">
         <div className="space-y-3">
@@ -212,6 +249,30 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
                 </button>
               ))}
             </div>
+            {group.taskId && groupedAttachments[group.taskId]?.attachments.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <h4 className="text-sm font-semibold text-muted-foreground">Agent Attachments</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {groupedAttachments[group.taskId].attachments.map((att) =>
+                    att.mimeType.startsWith("video/") ? (
+                      <video
+                        key={att.id}
+                        src={att.url}
+                        controls
+                        className="w-full rounded-lg border border-border aspect-video bg-muted"
+                      />
+                    ) : (
+                      <img
+                        key={att.id}
+                        src={att.url}
+                        alt={att.filename}
+                        className="w-full rounded-lg border border-border object-cover aspect-video bg-muted"
+                      />
+                    )
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
