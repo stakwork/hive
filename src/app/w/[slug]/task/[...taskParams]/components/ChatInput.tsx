@@ -582,7 +582,7 @@ export function ChatInput({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="flex-1 resize-none min-h-[56px] md:min-h-[40px]"
+          className="flex-1 resize-none min-h-[36px]"
           style={{
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
@@ -603,7 +603,7 @@ export function ChatInput({
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={disabled}
-                    className="h-11 w-11 rounded-full shrink-0"
+                    className="h-9 w-9 rounded-full shrink-0"
                   >
                     <ImageIcon className="w-5 h-5" />
                   </Button>
@@ -624,7 +624,7 @@ export function ChatInput({
                     variant={isListening ? "default" : "outline"}
                     onClick={toggleListening}
                     disabled={disabled}
-                    className="h-11 w-11 rounded-full shrink-0"
+                    className="h-9 w-9 rounded-full shrink-0"
                   >
                     {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </Button>
@@ -644,7 +644,7 @@ export function ChatInput({
               disabled ||
               pendingImages.some(img => img.uploading || img.error)
             }
-            className={isMobile ? "h-11 w-11 rounded-full shrink-0" : "h-11 shrink-0"}
+            className={isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0"}
             data-testid="chat-message-submit"
           >
             {isMobile ? (
