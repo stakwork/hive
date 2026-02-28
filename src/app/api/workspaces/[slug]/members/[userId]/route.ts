@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
@@ -23,7 +24,7 @@ export async function PATCH(
 
     const { slug, userId: targetUserId } = await params;
     const requesterId = (session.user as { id: string }).id;
-    const isSuperAdmin = (session.user as any)?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(requesterId);
     const body = await request.json();
 
     const { role } = body;
@@ -76,7 +77,7 @@ export async function DELETE(
 
     const { slug, userId: targetUserId } = await params;
     const requesterId = (session.user as { id: string }).id;
-    const isSuperAdmin = (session.user as any)?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(requesterId);
 
     // Check workspace access and admin permissions
     const access = await validateWorkspaceAccess(slug, requesterId, true, { isSuperAdmin });
