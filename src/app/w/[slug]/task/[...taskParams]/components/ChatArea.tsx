@@ -1,28 +1,28 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus, ChatRole } from "@/lib/chat";
-import { ChatMessage } from "./ChatMessage";
-import { ChatInput } from "./ChatInput";
-import { getAgentIcon } from "@/lib/icons";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { Artifact, ChatMessage as ChatMessageType, ChatRole, Option, WorkflowStatus } from "@/lib/chat";
+import { getAgentIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
-import TaskBreadcrumbs from "./TaskBreadcrumbs";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
-import { InvitePopover } from "@/components/plan/InvitePopover";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChatInput } from "./ChatInput";
+import { ChatMessage } from "./ChatMessage";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{ path: string, filename: string, mimeType: string, size: number }>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -52,6 +52,7 @@ interface ChatAreaProps {
   onOpenBountyRequest?: () => void;
   isPlanComplete?: boolean;
   sphinxInviteEnabled?: boolean;
+  isPlanChat?: boolean;
 }
 
 export function ChatArea({
@@ -85,6 +86,7 @@ export function ChatArea({
   onOpenBountyRequest,
   isPlanComplete = false,
   sphinxInviteEnabled,
+  isPlanChat = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -141,22 +143,15 @@ export function ChatArea({
   }, [messages, shouldAutoScroll]);
 
   const handleBackToTasks = () => {
-    const referrer = document.referrer;
-    const currentOrigin = window.location.origin;
-
-    // Check if referrer exists and is from same app (same origin)
-    if (referrer && referrer.startsWith(currentOrigin)) {
-      router.back();
+    if (isPlanChat) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    } else if (workspaceSlug) {
+      const path = featureId
+        ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
+        : `/w/${workspaceSlug}/tasks`;
+      router.push(path);
     } else {
-      // Fallback: feature Tasks tab for feature tasks, task list otherwise
-      if (workspaceSlug) {
-        const fallbackPath = featureId
-          ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
-          : `/w/${workspaceSlug}/tasks`;
-        router.push(fallbackPath);
-      } else {
-        router.back();
-      }
+      router.back();
     }
   };
 
