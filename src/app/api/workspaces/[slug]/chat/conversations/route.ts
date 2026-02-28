@@ -1,4 +1,5 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { ConversationListItem } from "@/types/shared-conversation";
@@ -89,7 +90,7 @@ export async function GET(
   }
 
   const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
   const { slug } = await params;
 
   try {
@@ -199,7 +200,7 @@ export async function POST(
   }
 
   const userId = (session.user as { id: string }).id;
-  const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+  const isSuperAdmin = await checkIsSuperAdmin(userId);
   const { slug } = await params;
 
   try {

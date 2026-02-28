@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -16,7 +17,7 @@ export async function POST(
   }
 
   const { slug } = await params;
-  const isSuperAdmin = (session?.user as any)?.isSuperAdmin ?? false;
+  const isSuperAdmin = await checkIsSuperAdmin(session.user.id);
   const access = await validateWorkspaceAccess(slug, session.user.id, true, { isSuperAdmin });
 
   if (!access.canAdmin) {

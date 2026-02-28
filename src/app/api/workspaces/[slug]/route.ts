@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   getWorkspaceBySlug,
   deleteWorkspaceBySlug,
@@ -30,7 +31,7 @@ export async function GET(
       );
     }
 
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
 
     if (!workspace) {

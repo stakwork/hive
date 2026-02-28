@@ -13,8 +13,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
-import { isSuperAdmin } from "@/config/env";
-import { db } from "@/lib/db";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);
@@ -30,15 +29,11 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
   }
 
   // Get workspace information - superadmins can access any workspace
-  const userIsSuperAdmin = session.user.isSuperAdmin ?? false;
+  const userIsSuperAdmin = await checkIsSuperAdmin(userId);
   const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin: userIsSuperAdmin });
   if (!workspace) {
     notFound();
   }
-
-  // Check if user is a superadmin
-  const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
-  const superAdmin = isSuperAdmin(githubAuth?.githubUsername ?? "");
 
   return (
     <div className="space-y-6">
@@ -48,7 +43,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
         <div className="space-y-6">
           <WorkspaceSettings />
 
-          <VMConfigSection isSuperAdmin={superAdmin} />
+          <VMConfigSection isSuperAdmin={userIsSuperAdmin} />
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 
