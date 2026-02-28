@@ -43,11 +43,6 @@ interface WorkspaceData {
     members: number;
     tasks: number;
   };
-  swarm: {
-    _count: {
-      pods: number;
-    };
-  } | null;
 }
 
 interface WorkspacesTableProps {
@@ -65,6 +60,13 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
   const [deletingWorkspace, setDeletingWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Live pod counts state
+  interface PodCount {
+    usedVms: number;
+    totalPods: number;
+  }
+  const [podCounts, setPodCounts] = useState<Record<string, PodCount>>({});
 
   // Fetch logos on mount for workspaces that have logoKey
   useEffect(() => {
@@ -99,6 +101,62 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     fetchLogos();
   }, [workspaces]);
 
+  // Fetch pod counts from API with polling
+  useEffect(() => {
+    const fetchPodCounts = async () => {
+      try {
+        const response = await fetch("/api/admin/pods");
+        if (response.ok) {
+          const data = await response.json();
+          const countsMap: Record<string, PodCount> = {};
+          data.workspaces.forEach(
+            (ws: { workspaceId: string; usedVms: number; totalPods: number }) => {
+              countsMap[ws.workspaceId] = {
+                usedVms: ws.usedVms,
+                totalPods: ws.totalPods,
+              };
+            }
+          );
+          setPodCounts(countsMap);
+        }
+      } catch (error) {
+        console.error("Failed to fetch pod counts:", error);
+      }
+    };
+
+    // Fetch immediately on mount
+    fetchPodCounts();
+
+    // Set up polling interval
+    let intervalId: NodeJS.Timeout | null = setInterval(fetchPodCounts, 30000);
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Clear interval when tab is hidden
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      } else {
+        // Fetch immediately and restart interval when tab becomes visible
+        fetchPodCounts();
+        if (!intervalId) {
+          intervalId = setInterval(fetchPodCounts, 30000);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleSort = (field: SortField) => {
     setSortState((prev) => {
       if (prev.field === field) {
@@ -124,8 +182,8 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
         comparison = (a._count.members + 1) - (b._count.members + 1);
         break;
       case "pods":
-        const podsA = a.swarm?._count.pods ?? 0;
-        const podsB = b.swarm?._count.pods ?? 0;
+        const podsA = podCounts[a.id]?.usedVms ?? 0;
+        const podsB = podCounts[b.id]?.usedVms ?? 0;
         comparison = podsA - podsB;
         break;
       case "tasks":
@@ -282,7 +340,11 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
               </span>
             </TableCell>
             <TableCell>{workspace._count.members + 1}</TableCell>
-            <TableCell>{workspace.swarm?._count.pods ?? 0}</TableCell>
+            <TableCell>
+              {podCounts[workspace.id]
+                ? `${podCounts[workspace.id].usedVms} in use / ${podCounts[workspace.id].totalPods} total`
+                : "—"}
+            </TableCell>
             <TableCell>{workspace._count.tasks}</TableCell>
             <TableCell>
               {new Date(workspace.createdAt).toLocaleDateString()}

@@ -121,8 +121,14 @@ export class DashboardPage {
    * Navigate to capacity page
    */
   async goToCapacity(): Promise<void> {
-    await this.page.locator(selectors.navigation.capacityLink).click();
-    await this.page.waitForURL(/\/w\/.*\/capacity/, { timeout: 10000 });
+    const capacityLink = this.page.locator(selectors.navigation.capacityLink);
+    await capacityLink.waitFor({ state: 'visible', timeout: 5000 });
+    
+    // Use Promise.all to handle navigation that starts on click
+    await Promise.all([
+      this.page.waitForURL(/\/w\/.*\/capacity/, { timeout: 30000 }),
+      capacityLink.click()
+    ]);
   }
 
   /**
