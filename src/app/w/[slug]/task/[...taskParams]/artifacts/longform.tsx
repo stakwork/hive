@@ -54,7 +54,7 @@ export const LongformArtifactPanel = memo(function LongformArtifactPanel({
     >
       <div
         ref={scrollRef}
-        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-normal relative"
+        className="bg-background/50 border rounded-lg p-4 max-h-80 max-w-full overflow-x-auto overflow-y-auto whitespace-normal relative"
       >
         {artifacts.map((artifact) => {
           const content = artifact.content as LongformContent;
