@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   getWorkspaceMembers,
   addWorkspaceMember,
@@ -24,7 +25,7 @@ export async function GET(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Check workspace access
     const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
@@ -78,7 +79,7 @@ export async function POST(
     }
 
     // Check workspace access and admin permissions
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
