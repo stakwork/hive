@@ -212,7 +212,37 @@ jobs:
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
-          npx prisma migrate deploy
+          
+          # Retry migration deployment with exponential backoff
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          RETRY_DELAY=15
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempting migration deployment (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
+            
+            # Append connect_timeout and lock_timeout to DATABASE_URL
+            # Connect timeout: 30s, Lock timeout: 30s for advisory locks
+            MIGRATION_URL="${DATABASE_URL}&connect_timeout=30&lock_timeout=30000"
+            
+            if timeout 60 env DATABASE_URL="$MIGRATION_URL" npx prisma migrate deploy; then
+              echo "✅ Migration deployment successful"
+              break
+            else
+              EXIT_CODE=$?
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⚠️ Migration deployment failed (exit code: $EXIT_CODE). Retrying in ${RETRY_DELAY}s..."
+                sleep $RETRY_DELAY
+                RETRY_DELAY=$((RETRY_DELAY * 2))  # Exponential backoff
+              else
+                echo "❌ Migration deployment failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
+          
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################

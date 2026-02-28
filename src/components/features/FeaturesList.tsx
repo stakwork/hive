@@ -1,7 +1,9 @@
 "use client";
 
+import React from "react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import Link from "next/link";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,7 +56,6 @@ function FeatureRow({
   onPriorityUpdate,
   onAssigneeUpdate,
   onDelete,
-  onClick,
 }: {
   feature: FeatureWithDetails;
   workspaceSlug: string;
@@ -62,16 +63,19 @@ function FeatureRow({
   onPriorityUpdate: (featureId: string, priority: FeaturePriority) => Promise<void>;
   onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
-  onClick: () => void;
 }) {
   const needsReview = feature._count.stakworkRuns > 0;
 
   return (
     <TableRow
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
-      onClick={onClick}
+      className="relative cursor-pointer hover:bg-muted/50 transition-colors"
     >
       <TableCell className="w-[469px] font-medium truncate">
+        <Link
+          href={`/w/${workspaceSlug}/plan/${feature.id}`}
+          className="absolute inset-0"
+          aria-label={feature.title}
+        />
         <div className="flex items-center gap-2">
           <span className="truncate">{feature.title}</span>
           {needsReview && (
@@ -891,7 +895,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onPriorityUpdate={handleUpdatePriority}
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
-                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
                           />
                         ))
                       )}

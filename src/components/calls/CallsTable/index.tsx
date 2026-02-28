@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import React from "react";
+import Link from "next/link";
 import { CallRecording } from "@/types/calls";
 import {
   Table,
@@ -17,8 +18,6 @@ interface CallsTableProps {
 }
 
 export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
-  const router = useRouter();
-
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return new Intl.DateTimeFormat("en-US", {
@@ -28,10 +27,6 @@ export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
-  };
-
-  const handleRowClick = (refId: string) => {
-    router.push(`/w/${workspaceSlug}/calls/${refId}`);
   };
 
   if (calls.length === 0) {
@@ -56,10 +51,14 @@ export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
           {calls.map((call) => (
             <TableRow
               key={call.ref_id}
-              onClick={() => handleRowClick(call.ref_id)}
-              className="cursor-pointer hover:bg-muted/50"
+              className="relative cursor-pointer hover:bg-muted/50"
             >
               <TableCell className="font-medium">
+                <Link
+                  href={`/w/${workspaceSlug}/calls/${call.ref_id}`}
+                  className="absolute inset-0"
+                  aria-label={call.episode_title}
+                />
                 {call.episode_title}
               </TableCell>
               <TableCell>{formatDate(call.date_added_to_graph)}</TableCell>
