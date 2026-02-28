@@ -109,6 +109,7 @@ export default function TaskChatPage() {
   const [featureId, setFeatureId] = useState<string | null>(null);
   const [featureTitle, setFeatureTitle] = useState<string | null>(null);
   const [isReleasingPod, setIsReleasingPod] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
@@ -1426,6 +1427,23 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleRetry = async () => {
+    if (!currentTaskId || isRetrying) return;
+    setIsRetrying(true);
+    try {
+      const res = await fetch(`/api/tasks/${currentTaskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retryWorkflow: true }),
+      });
+      if (!res.ok) throw new Error('Retry failed');
+    } catch {
+      toast.error('Failed to retry task. Please try again.');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
       console.error("Missing commit requirements:", { workspaceId, currentTaskId });
@@ -1719,6 +1737,8 @@ export default function TaskChatPage() {
                     onOpenBountyRequest={
                       canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                     }
+                    onRetry={handleRetry}
+                    isRetrying={isRetrying}
                   />
                 )}
               </div>
@@ -1749,6 +1769,8 @@ export default function TaskChatPage() {
                       onOpenBountyRequest={
                         canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                       }
+                      onRetry={handleRetry}
+                      isRetrying={isRetrying}
                     />
                   </div>
                 </ResizablePanel>
@@ -1791,6 +1813,8 @@ export default function TaskChatPage() {
                 onOpenBountyRequest={
                   canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                 }
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1838,6 +1862,8 @@ export default function TaskChatPage() {
                     onOpenBountyRequest={
                       canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                     }
+                    onRetry={handleRetry}
+                    isRetrying={isRetrying}
                   />
                 )}
               </div>
@@ -1872,6 +1898,8 @@ export default function TaskChatPage() {
                       onOpenBountyRequest={
                         canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                       }
+                      onRetry={handleRetry}
+                      isRetrying={isRetrying}
                     />
                   </div>
                 </ResizablePanel>
@@ -1919,6 +1947,8 @@ export default function TaskChatPage() {
                 onOpenBountyRequest={
                   canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                 }
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
               />
             </div>
           )}

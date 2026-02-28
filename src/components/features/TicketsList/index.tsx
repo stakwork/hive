@@ -28,7 +28,7 @@ import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { usePusherConnection, TaskTitleUpdateEvent, DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import { toast } from "sonner";
 
@@ -152,7 +152,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
                 ...task,
                 ...(update.newTitle !== undefined && { title: update.newTitle }),
                 ...(update.status !== undefined && { status: update.status as TaskStatus }),
-                ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus }),
+                ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus as WorkflowStatus | null }),
                 ...('archived' in update && update.archived !== undefined && { archived: update.archived }),
                 ...('podId' in update && { podId: update.podId }),
               };
