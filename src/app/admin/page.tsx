@@ -35,7 +35,6 @@ export default async function AdminDashboard() {
       },
       swarm: {
         select: {
-          swarmPassword: true,
           _count: {
             select: {
               pods: {
@@ -56,7 +55,6 @@ export default async function AdminDashboard() {
     logoKey: workspace.logoKey,
     createdAt: workspace.createdAt,
     owner: workspace.owner,
-    hasSwarmPassword: !!workspace.swarm?.swarmPassword,
     _count: workspace._count,
     swarm: workspace.swarm
       ? {
