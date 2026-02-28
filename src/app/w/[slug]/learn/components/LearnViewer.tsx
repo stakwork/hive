@@ -174,7 +174,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         toast.success("Documentation saved successfully");
       } else if (activeItem.type === "concept" && activeItem.id) {
         const response = await fetch(
-          `/api/learnings/features/${activeItem.id}/documentation`,
+          `/api/learnings/features/${encodeURIComponent(activeItem.id)}/documentation`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
