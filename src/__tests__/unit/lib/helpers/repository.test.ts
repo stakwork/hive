@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getPrimaryRepository, joinRepoUrls } from "@/lib/helpers/repository";
 import { db } from "@/lib/db";
 
 // Mock the database module
@@ -434,5 +434,48 @@ describe("getPrimaryRepository", () => {
         }),
       })
     );
+  });
+});
+
+describe("joinRepoUrls", () => {
+  test("should return null for empty array", () => {
+    const result = joinRepoUrls([]);
+    expect(result).toBeNull();
+  });
+
+  test("should return plain URL string for single repository", () => {
+    const repos = [{ repositoryUrl: "https://github.com/owner/repo1" }];
+    const result = joinRepoUrls(repos);
+    expect(result).toBe("https://github.com/owner/repo1");
+  });
+
+  test("should return comma-separated string for multiple repositories", () => {
+    const repos = [
+      { repositoryUrl: "https://github.com/owner/repo1" },
+      { repositoryUrl: "https://github.com/owner/repo2" },
+    ];
+    const result = joinRepoUrls(repos);
+    expect(result).toBe("https://github.com/owner/repo1,https://github.com/owner/repo2");
+  });
+
+  test("should handle three or more repositories", () => {
+    const repos = [
+      { repositoryUrl: "https://github.com/owner/repo1" },
+      { repositoryUrl: "https://github.com/owner/repo2" },
+      { repositoryUrl: "https://github.com/owner/repo3" },
+    ];
+    const result = joinRepoUrls(repos);
+    expect(result).toBe(
+      "https://github.com/owner/repo1,https://github.com/owner/repo2,https://github.com/owner/repo3"
+    );
+  });
+
+  test("should preserve exact URL format from input", () => {
+    const repos = [
+      { repositoryUrl: "git@github.com:owner/repo1.git" },
+      { repositoryUrl: "https://gitlab.com/group/repo2" },
+    ];
+    const result = joinRepoUrls(repos);
+    expect(result).toBe("git@github.com:owner/repo1.git,https://gitlab.com/group/repo2");
   });
 });
