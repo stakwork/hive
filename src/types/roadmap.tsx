@@ -119,7 +119,7 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 // Feature with relations (matches GET /api/features list query)
-// Note: stakworkRuns count is added manually since Prisma types don't support conditional counts
+// Note: stakworkRuns count is computed from last ChatMessage role (ASSISTANT = needs input)
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
   select: {
     id: true;

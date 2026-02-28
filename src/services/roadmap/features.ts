@@ -85,16 +85,22 @@ export async function listFeatures({
     };
   }
 
-  // Handle needsAttention filter - features with pending StakworkRuns awaiting user decision
+  // Handle needsAttention filter - features where last chat message is from ASSISTANT
   // Exclude features that are already COMPLETED
   if (needsAttention) {
-    whereClause.stakworkRuns = {
-      some: {
-        status: "COMPLETED",
-        decision: null,
-        type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-      },
-    };
+    const rows = await db.$queryRaw<{ feature_id: string }[]>`
+      SELECT DISTINCT cm.feature_id
+      FROM chat_messages cm
+      WHERE cm.feature_id IS NOT NULL
+        AND cm.role = 'ASSISTANT'
+        AND cm.created_at = (
+          SELECT MAX(cm2.created_at)
+          FROM chat_messages cm2
+          WHERE cm2.feature_id = cm.feature_id
+        )
+    `;
+    const ids = rows.map(r => r.feature_id);
+    whereClause.id = { in: ids };
     // If status filter is already set, merge with COMPLETED exclusion
     // Otherwise, just exclude COMPLETED status
     if (whereClause.status && whereClause.status.in) {
@@ -134,20 +140,11 @@ export async function listFeatures({
             userStories: true,
           },
         },
-        // Fetch actual stakwork runs to compute count client-side
-        stakworkRuns: {
-          where: {
-            status: "COMPLETED",
-            decision: null,
-            type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-          },
+        // Fetch last chat message to determine if feature needs attention
+        chatMessages: {
           orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            type: true,
-            decision: true,
-            createdAt: true,
-          },
+          take: 1,
+          select: { role: true },
         },
         // Fetch tasks for deployment status calculation (excluding archived/deleted)
         phases: {
@@ -182,20 +179,10 @@ export async function listFeatures({
     }),
   ]);
 
-  // Compute correct pending count per feature (only latest run per type)
+  // Compute needs attention status from last chat message role
   // and calculate deployment status
   const features = rawFeatures.map(feature => {
-    const latestPerType = new Map();
-    // Handle case where stakworkRuns might be undefined
-    if (feature.stakworkRuns) {
-      feature.stakworkRuns.forEach(run => {
-        if (!latestPerType.has(run.type)) {
-          latestPerType.set(run.type, run);
-        }
-      });
-    }
-    const pendingCount = Array.from(latestPerType.values())
-      .filter(run => run.decision === null).length;
+    const needsResponse = feature.chatMessages?.[0]?.role === 'ASSISTANT';
     
     // Calculate deployment status by aggregating all tasks across phases
     const allTasks = feature.phases?.flatMap(phase => phase.tasks) || [];
@@ -230,7 +217,7 @@ export async function listFeatures({
       createdBy: feature.createdBy,
       _count: {
         userStories: feature._count.userStories,
-        stakworkRuns: pendingCount,
+        stakworkRuns: needsResponse ? 1 : 0,
       },
       deploymentStatus,
       deploymentUrl,
