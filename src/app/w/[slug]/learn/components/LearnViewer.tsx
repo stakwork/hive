@@ -82,7 +82,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
         if (conceptsResponse.ok) {
           const conceptsData = await conceptsResponse.json();
-          setConcepts(conceptsData || []);
+          setConcepts(Array.isArray(conceptsData) ? conceptsData : []);
         }
         setIsConceptsLoading(false);
       } catch (error) {
