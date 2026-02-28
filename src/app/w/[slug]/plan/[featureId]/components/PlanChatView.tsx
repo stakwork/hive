@@ -480,6 +480,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     isChainVisible,
     lastLogLine,
     logs,
+    isPlanComplete,
     sphinxInviteEnabled: sphinxReady,
   };
 
