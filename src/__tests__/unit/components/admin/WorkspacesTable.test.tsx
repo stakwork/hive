@@ -3,6 +3,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { WorkspacesTable } from "@/app/admin/components/WorkspacesTable";
 
+// Mock next/navigation
+const mockRefresh = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: mockRefresh,
+  }),
+}));
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch as any;
