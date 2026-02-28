@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
-    const isSuperAdmin = (session?.user as any)?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     const workspaceAccess = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
@@ -52,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
-    const isSuperAdmin = (session?.user as any)?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const body = await request.json();
     const validatedData = updateLearnConfigSchema.parse(body);
 

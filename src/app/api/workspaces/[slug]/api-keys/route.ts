@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createApiKey, listApiKeys } from "@/lib/api-keys";
 import { createApiKeySchema } from "@/lib/schemas/api-keys";
@@ -25,7 +26,7 @@ export async function GET(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Check workspace access - need write permission
     const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
@@ -73,7 +74,7 @@ export async function POST(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Check workspace access - need write permission
     const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });

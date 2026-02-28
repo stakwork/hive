@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
     }
 
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });

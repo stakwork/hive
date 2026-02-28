@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,10 +22,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const userId = (session.user as { id: string }).id;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true, { isSuperAdmin });
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }

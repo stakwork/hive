@@ -35,8 +35,7 @@ describe("ArtifactsPanel - Generate Tasks Race Condition Logic", () => {
     const handleGenerateTasks = () => {
       setIsApiCalling(true);
       setHasInitiatedGeneration(true);
-      // Simulate API call completion
-      setTimeout(() => setIsApiCalling(false), 100);
+      // No async timeout - state changes are synchronous for testing
     };
 
     return {
