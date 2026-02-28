@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState, useCallback, useRef, type ReactNode } fro
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Monitor, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
@@ -302,23 +302,9 @@ export function ArtifactsPanel({
       className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {!isMobile && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
-          >
-            <ArtifactsHeader
-              availableArtifacts={availableTabs}
-              activeArtifact={activeTab}
-              onArtifactChange={setActiveTab}
-              headerAction={renderGenerateTasksButton()}
-            />
-          </motion.div>
-        )}
         {isMobile && onTogglePreview && (
           <motion.div
-            className="border-b bg-background/80 backdrop-blur px-3 py-2"
+            className="border-b bg-background/80 backdrop-blur px-3 py-2 flex items-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
@@ -327,13 +313,25 @@ export function ArtifactsPanel({
               variant="ghost"
               size="sm"
               onClick={onTogglePreview}
-              className="gap-2"
+              className="gap-1"
             >
-              <Monitor className="w-4 h-4" />
-              Back to Chat
+              <ArrowLeft className="w-4 h-4" />
+              Chat
             </Button>
           </motion.div>
         )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          <ArtifactsHeader
+            availableArtifacts={availableTabs}
+            activeArtifact={activeTab}
+            onArtifactChange={setActiveTab}
+            headerAction={renderGenerateTasksButton()}
+          />
+        </motion.div>
 
         <motion.div
           className="flex-1 overflow-hidden min-h-0"
