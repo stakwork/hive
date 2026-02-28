@@ -2,8 +2,8 @@ import { Page, expect } from '@playwright/test';
 import { selectors } from '../fixtures/selectors';
 
 /**
- * Page Object Model for Context Learn page
- * Encapsulates all Context Learn page interactions and assertions
+ * Page Object Model for Context Learn page (Documentation Viewer)
+ * Updated to match new documentation viewer UI (no chat interface)
  */
 export class ContextLearnPage {
   constructor(private page: Page) {}
@@ -20,8 +20,10 @@ export class ContextLearnPage {
    * Wait for Context Learn page to fully load
    */
   async waitForLoad(): Promise<void> {
-    // Wait for the message input to be visible as indicator of page load
-    await expect(this.page.locator(selectors.learn.messageInput)).toBeVisible({ timeout: 10000 });
+    // Wait for either docs or concepts section to be visible as indicator of page load
+    await expect(
+      this.page.locator(selectors.learn.docsSection).or(this.page.locator(selectors.learn.conceptsSection))
+    ).toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -61,47 +63,81 @@ export class ContextLearnPage {
   }
 
   /**
-   * Send a message in the Context Learn chat
+   * Check if the docs section is visible
    */
-  async sendMessage(message: string): Promise<void> {
-    const messageInput = this.page.locator(selectors.learn.messageInput);
-    const sendButton = this.page.locator(selectors.learn.messageSend);
-
-    // Fill the message input
-    await messageInput.fill(message);
-
-    // Wait for send button to be enabled (not disabled)
-    await expect(sendButton).toBeEnabled({ timeout: 5000 });
-
-    // Click the send button
-    await sendButton.click();
+  async isDocsSectionVisible(): Promise<boolean> {
+    return await this.page.locator(selectors.learn.docsSection).isVisible();
   }
 
   /**
-   * Check if the message input is visible
+   * Check if the concepts section is visible
    */
-  async isMessageInputVisible(): Promise<boolean> {
-    return await this.page.locator(selectors.learn.messageInput).isVisible();
+  async isConceptsSectionVisible(): Promise<boolean> {
+    return await this.page.locator(selectors.learn.conceptsSection).isVisible();
   }
 
   /**
-   * Check if the send button is visible
+   * Check if the content area is visible
    */
-  async isSendButtonVisible(): Promise<boolean> {
-    return await this.page.locator(selectors.learn.messageSend).isVisible();
+  async isContentAreaVisible(): Promise<boolean> {
+    return await this.page.locator(selectors.learn.contentArea).isVisible();
   }
 
   /**
-   * Get the value of the message input
+   * Click on a doc item in the sidebar
    */
-  async getMessageInputValue(): Promise<string> {
-    return await this.page.locator(selectors.learn.messageInput).inputValue();
+  async clickDocItem(index: number = 0): Promise<void> {
+    await this.page.locator(selectors.learn.docItem).nth(index).click();
   }
 
   /**
-   * Check if page is loaded (message input is visible)
+   * Click on a concept item in the sidebar
+   */
+  async clickConceptItem(index: number = 0): Promise<void> {
+    await this.page.locator(selectors.learn.conceptItem).nth(index).click();
+  }
+
+  /**
+   * Check if the edit button is visible
+   */
+  async isEditButtonVisible(): Promise<boolean> {
+    return await this.page.locator(selectors.learn.editButton).isVisible();
+  }
+
+  /**
+   * Click the edit button to enter edit mode
+   */
+  async clickEditButton(): Promise<void> {
+    await this.page.locator(selectors.learn.editButton).click();
+  }
+
+  /**
+   * Click the view button to return to view mode
+   */
+  async clickViewButton(): Promise<void> {
+    await this.page.locator(selectors.learn.viewButton).click();
+  }
+
+  /**
+   * Click the save button
+   */
+  async clickSaveButton(): Promise<void> {
+    await this.page.locator(selectors.learn.saveButton).click();
+  }
+
+  /**
+   * Check if the save confirmation dialog is visible
+   */
+  async isSaveConfirmDialogVisible(): Promise<boolean> {
+    return await this.page.locator(selectors.learn.saveConfirmDialog).isVisible();
+  }
+
+  /**
+   * Check if page is loaded (docs or concepts section is visible)
    */
   async isLoaded(): Promise<boolean> {
-    return await this.page.locator(selectors.learn.messageInput).isVisible();
+    const docsVisible = await this.page.locator(selectors.learn.docsSection).isVisible().catch(() => false);
+    const conceptsVisible = await this.page.locator(selectors.learn.conceptsSection).isVisible().catch(() => false);
+    return docsVisible || conceptsVisible;
   }
 }

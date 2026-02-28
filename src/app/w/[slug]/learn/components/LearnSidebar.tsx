@@ -44,7 +44,7 @@ export function LearnSidebar({
     <div className="fixed right-0 top-0 bottom-0 w-80 border-l bg-background overflow-y-auto">
       <div className="p-4 space-y-6">
         {/* Docs Section */}
-        <div>
+        <div data-testid="learn-docs-section">
           <Button
             variant="ghost"
             className="w-full justify-between p-2 h-auto"
@@ -95,6 +95,7 @@ export function LearnSidebar({
                       return (
                         <button
                           key={doc.repoName}
+                          data-testid="learn-doc-item"
                           onClick={() => onDocClick(doc.repoName, doc.content)}
                           className={cn(
                             "w-full text-left p-2 rounded-md text-sm transition-colors",
@@ -115,7 +116,7 @@ export function LearnSidebar({
         </div>
 
         {/* Concepts Section */}
-        <div>
+        <div data-testid="learn-concepts-section">
           <Button
             variant="ghost"
             className="w-full justify-between p-2 h-auto"
@@ -166,6 +167,7 @@ export function LearnSidebar({
                       return (
                         <button
                           key={concept.id}
+                          data-testid="learn-concept-item"
                           onClick={() =>
                             onConceptClick(
                               concept.id,

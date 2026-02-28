@@ -92,6 +92,7 @@ export function LearnDocViewer({
                 onClick={handleExitEditMode}
                 disabled={isSaving}
                 title="Preview"
+                data-testid="learn-view-button"
               >
                 <Eye className="h-4 w-4" />
               </Button>
@@ -102,6 +103,7 @@ export function LearnDocViewer({
                 disabled={isSaving}
                 className="text-green-600 hover:text-green-700 hover:bg-green-50"
                 title="Save"
+                data-testid="learn-save-button"
               >
                 <Check className="h-4 w-4" />
               </Button>
@@ -112,6 +114,7 @@ export function LearnDocViewer({
               size="icon"
               onClick={handleEnterEditMode}
               title="Edit"
+              data-testid="learn-edit-button"
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -120,16 +123,17 @@ export function LearnDocViewer({
       </div>
 
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6" data-testid="learn-content-area">
         {isEditMode ? (
           <Textarea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
             className="w-full h-full min-h-[500px] font-mono text-sm resize-none"
             placeholder="Enter documentation content..."
+            data-testid="learn-content-editor"
           />
         ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="learn-content-view">
             <MarkdownRenderer>{activeItem.content}</MarkdownRenderer>
           </div>
         )}
