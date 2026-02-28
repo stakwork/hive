@@ -1,5 +1,4 @@
-import { LearnChat } from "./components/LearnChat";
-import { StoreProvider } from "@/stores/StoreProvider";
+import { LearnViewer } from "./components/LearnViewer";
 
 interface LearnPageProps {
   params: Promise<{
@@ -11,10 +10,8 @@ export default async function LearnPage({ params }: LearnPageProps) {
   const { slug } = await params;
 
   return (
-    <div className="flex-1 flex flex-col h-full">
-      <StoreProvider storeId={`workspace-${slug}`}>
-        <LearnChat workspaceSlug={slug} />
-      </StoreProvider>
+    <div className="flex h-full">
+      <LearnViewer workspaceSlug={slug} />
     </div>
   );
 }
