@@ -24,6 +24,11 @@ describe("WorkspacesTable", () => {
       slug: "alpha",
       logoKey: "logo-alpha.png",
       createdAt: new Date("2024-01-15"),
+      owner: {
+        name: "Alice Owner",
+        email: "alice@example.com",
+      },
+      hasSwarmPassword: true,
       _count: {
         members: 5,
         tasks: 10,
@@ -40,6 +45,11 @@ describe("WorkspacesTable", () => {
       slug: "beta",
       logoKey: null,
       createdAt: new Date("2024-02-20"),
+      owner: {
+        name: null,
+        email: "bob@example.com",
+      },
+      hasSwarmPassword: false,
       _count: {
         members: 2,
         tasks: 25,
@@ -52,6 +62,11 @@ describe("WorkspacesTable", () => {
       slug: "gamma",
       logoKey: "logo-gamma.png",
       createdAt: new Date("2024-03-10"),
+      owner: {
+        name: "Charlie Owner",
+        email: "charlie@example.com",
+      },
+      hasSwarmPassword: true,
       _count: {
         members: 8,
         tasks: 5,
