@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getApiKey, revokeApiKey } from "@/lib/api-keys";
 import { logger } from "@/lib/logger";
@@ -27,7 +28,7 @@ export async function DELETE(
 
     const { slug, keyId } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = session.user?.isSuperAdmin ?? false;
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Check workspace access - need write permission at minimum
     const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });

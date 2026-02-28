@@ -59,17 +59,20 @@ export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextRe
 /**
  * Check if a user is a super admin
  * This is a helper for middleware-authenticated routes
+ * Returns true if either:
+ * - User.role === SUPER_ADMIN in the database
+ * - User's GitHub username is in POOL_SUPERADMINS env var
  */
 export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
   const { db } = await import("@/lib/db");
   const { isSuperAdmin } = await import("@/config/env");
-  
-  const githubAuth = await db.gitHubAuth.findUnique({
-    where: { userId },
-    select: { githubUsername: true },
-  });
 
-  return isSuperAdmin(githubAuth?.githubUsername ?? "");
+  const [user, githubAuth] = await Promise.all([
+    db.user.findUnique({ where: { id: userId }, select: { role: true } }),
+    db.gitHubAuth.findUnique({ where: { userId }, select: { githubUsername: true } }),
+  ]);
+
+  return user?.role === "SUPER_ADMIN" || isSuperAdmin(githubAuth?.githubUsername ?? "");
 }
 
 /**

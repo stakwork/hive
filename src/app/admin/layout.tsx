@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export default async function AdminLayout({
   children,
@@ -11,7 +12,8 @@ export default async function AdminLayout({
   const session = await getServerSession(authOptions);
 
   // Redirect non-superadmins
-  if (!session?.user?.isSuperAdmin) {
+  const userId = (session?.user as { id?: string })?.id;
+  if (!userId || !(await checkIsSuperAdmin(userId))) {
     redirect("/");
   }
 
