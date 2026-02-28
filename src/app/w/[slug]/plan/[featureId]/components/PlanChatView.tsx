@@ -1,28 +1,28 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { diffWords } from "diff";
-import { ClipboardList } from "lucide-react";
-import { ChatArea, ArtifactsPanel } from "@/components/chat";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { ArtifactsPanel, ChatArea } from "@/components/chat";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
+import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
+  ArtifactType,
   ChatMessage,
   ChatRole,
   ChatStatus,
-  WorkflowStatus,
-  ArtifactType,
   createChatMessage,
+  WorkflowStatus,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
+import { diffWords } from "diff";
+import { ClipboardList } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -317,11 +317,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         status: ChatStatus.SENDING,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -341,7 +341,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -375,11 +375,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         replyId: messageId,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -402,7 +402,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -509,6 +509,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         ) : (
           <ChatArea
             {...chatAreaProps}
+            isPlanChat
             showPreviewToggle
             showPreview={showPreview}
             onTogglePreview={togglePreview}
@@ -524,7 +525,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
-            <ChatArea {...chatAreaProps} />
+            <ChatArea {...chatAreaProps} isPlanChat />
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
