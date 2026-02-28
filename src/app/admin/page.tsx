@@ -6,7 +6,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Link from "next/link";
 import { WorkspacesTable } from "./components/WorkspacesTable";
 import { StatsPanel } from "./components/StatsPanel";
 
@@ -36,7 +35,6 @@ export default async function AdminDashboard() {
       },
       swarm: {
         select: {
-          swarmPassword: true,
           _count: {
             select: {
               pods: {
@@ -49,7 +47,7 @@ export default async function AdminDashboard() {
     },
   });
 
-  // Transform workspaces to include hasSwarmPassword boolean
+  // Transform workspaces to simplify structure
   const workspacesWithFlags = workspaces.map((workspace) => ({
     id: workspace.id,
     name: workspace.name,
@@ -57,7 +55,6 @@ export default async function AdminDashboard() {
     logoKey: workspace.logoKey,
     createdAt: workspace.createdAt,
     owner: workspace.owner,
-    hasSwarmPassword: !!workspace.swarm?.swarmPassword,
     _count: workspace._count,
     swarm: workspace.swarm
       ? {
@@ -68,19 +65,6 @@ export default async function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
-        <p className="text-muted-foreground">
-          Platform-wide workspace management and user administration
-        </p>
-        <Link
-          href="/admin/users"
-          className="text-sm font-medium text-primary hover:underline"
-        >
-          Manage Superadmin Users →
-        </Link>
-      </div>
-
       <StatsPanel />
 
       <Card>
