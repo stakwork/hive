@@ -1,28 +1,28 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
-import { ChatMessage } from "./ChatMessage";
-import { ChatInput } from "./ChatInput";
-import { getAgentIcon } from "@/lib/icons";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
+import { getAgentIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
-import TaskBreadcrumbs from "./TaskBreadcrumbs";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
-import { InvitePopover } from "@/components/plan/InvitePopover";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useRef, useState } from "react";
+import { ChatInput } from "./ChatInput";
+import { ChatMessage } from "./ChatMessage";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{ path: string, filename: string, mimeType: string, size: number }>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -52,6 +52,8 @@ interface ChatAreaProps {
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
 }
+
+// check
 
 export function ChatArea({
   messages,
