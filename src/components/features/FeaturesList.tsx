@@ -472,12 +472,12 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
 
   // Pusher integration for real-time deployment updates
-  const handleDeploymentStatusChange = useCallback((event: DeploymentStatusChangeEvent) => {
+  const handleDeploymentStatusChange = useCallback((_event: DeploymentStatusChangeEvent) => {
     // Refetch features to get updated deployment status
     // Since we don't have task-to-feature mapping in the list view,
     // we refetch all features when any deployment changes
     fetchFeatures(page);
-  }, [page]);
+  }, [page, fetchFeatures]);
 
   usePusherConnection({
     workspaceSlug,

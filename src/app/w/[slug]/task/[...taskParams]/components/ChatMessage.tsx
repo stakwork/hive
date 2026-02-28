@@ -38,6 +38,8 @@ interface ChatMessageProps {
   message: ChatMessageType;
   replyMessage?: ChatMessageType;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
+  isLatestAwaitingReply?: boolean;
+  isPlanComplete?: boolean;
 }
 
 // Custom comparison function for React.memo
@@ -56,7 +58,13 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   return messageEqual && replyMessageEqual;
 }
 
-export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ 
+  message, 
+  replyMessage, 
+  onArtifactAction,
+  isLatestAwaitingReply = false,
+  isPlanComplete = false,
+}: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
@@ -327,6 +335,26 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           );
         })}
+      
+      {/* Quick Reply Chip - "Looks good →" */}
+      {isLatestAwaitingReply && !isPlanComplete && message.role === "ASSISTANT" && (
+        <div className="flex justify-start mt-2 pl-10">
+          <button
+            onClick={() =>
+              onArtifactAction(
+                message.id,
+                { actionType: "button", optionLabel: "Looks good", optionResponse: "Looks good" },
+                ""
+              )
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-sm font-medium hover:bg-emerald-500/20 transition-colors"
+            data-testid="looks-good-chip"
+          >
+            Looks good →
+          </button>
+        </div>
+      )}
+      
       {/* Image Enlargement Dialog */}
       <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">

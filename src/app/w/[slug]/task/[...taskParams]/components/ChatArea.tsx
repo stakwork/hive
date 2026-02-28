@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
-import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
+import { Artifact, ChatMessage as ChatMessageType, ChatRole, Option, WorkflowStatus } from "@/lib/chat";
 import { getAgentIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
@@ -15,7 +15,7 @@ import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
@@ -50,6 +50,7 @@ interface ChatAreaProps {
   featureTitle?: string | null;
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
+  isPlanComplete?: boolean;
   sphinxInviteEnabled?: boolean;
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
@@ -84,6 +85,7 @@ export function ChatArea({
   featureTitle,
   collaborators,
   onOpenBountyRequest,
+  isPlanComplete = false,
   sphinxInviteEnabled,
   isPlanChat = false,
   onTitleSave,
@@ -101,6 +103,17 @@ export function ChatArea({
 
   // Check if any message has a PULL_REQUEST artifact
   const hasPrArtifact = messages.some((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
+
+  // Identify the last unanswered ASSISTANT message
+  const lastUnansweredAssistantId = useMemo(() => {
+    const assistantMsgs = messages.filter(
+      (m) => !m.replyId && m.role === ChatRole.ASSISTANT
+    );
+    if (!assistantMsgs.length) return null;
+    const last = assistantMsgs[assistantMsgs.length - 1];
+    const hasReply = messages.some((m) => m.replyId === last.id);
+    return hasReply ? null : last.id;
+  }, [messages]);
 
   // Handle scroll events to detect user scrolling
   useEffect(() => {
@@ -189,6 +202,8 @@ export function ChatArea({
       initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
+      data-testid="chat-area"
+      data-is-plan-complete={isPlanComplete.toString()}
     >
       {/* Task Title Header */}
       {taskTitle && (
@@ -338,6 +353,8 @@ export function ChatArea({
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
+                isLatestAwaitingReply={msg.id === lastUnansweredAssistantId && !inputDisabled}
+                isPlanComplete={isPlanComplete}
               />
             );
           })}
