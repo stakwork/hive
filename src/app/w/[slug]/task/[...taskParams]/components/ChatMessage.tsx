@@ -248,7 +248,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
         ?.filter((a) => a.type === "LONGFORM")
         .map((artifact) => (
           <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
-            <div className="max-w-md w-full">
+            <div className="max-w-md w-full min-w-0 overflow-hidden">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <LongformArtifactPanel artifacts={[artifact]} workflowUrl={message.workflowUrl ?? undefined} />
               </motion.div>

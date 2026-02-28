@@ -1,6 +1,6 @@
+import React, { memo, useEffect, useRef, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { LongformContent, Artifact } from "@/lib/chat";
-import { memo, useEffect, useRef, useState } from "react";
 import { WorkflowUrlLink } from "../components/WorkflowUrlLink";
 import { getArtifactIcon } from "@/lib/icons";
 
@@ -49,12 +49,13 @@ export const LongformArtifactPanel = memo(function LongformArtifactPanel({
   return (
     <div 
       className="h-full flex flex-col relative"
+      data-testid="longform-artifact-panel"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
         ref={scrollRef}
-        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-normal relative"
+        className="bg-background/50 border rounded-lg p-4 max-h-80 max-w-full overflow-x-auto overflow-y-auto whitespace-normal relative"
       >
         {artifacts.map((artifact) => {
           const content = artifact.content as LongformContent;
