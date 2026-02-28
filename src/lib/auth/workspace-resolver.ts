@@ -25,16 +25,10 @@ export async function resolveUserWorkspaceRedirect(
     // Get all workspaces the user has access to
     const userWorkspaces = await getUserWorkspaces(userId);
 
-    if (process.env.POD_URL && userWorkspaces.length === 0) {
-      return {
-        shouldRedirect: true,
-        redirectUrl: "/auth/signin",
-        workspaceCount: 0,
-      };
-    }
-
     if (userWorkspaces.length === 0) {
       // User has no workspaces - redirect to onboarding
+      // Note: Even with POD_URL set (mock mode), users should go to onboarding
+      // if they somehow have no workspaces, not back to /auth/signin (causes redirect loop)
       return {
         shouldRedirect: true,
         redirectUrl: "/onboarding/workspace",
