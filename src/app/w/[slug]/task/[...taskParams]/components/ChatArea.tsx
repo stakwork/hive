@@ -40,6 +40,7 @@ interface ChatAreaProps {
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
+  previewToggleIcon?: React.ComponentType<{ className?: string }>;
   taskMode?: string;
   taskId?: string | null;
   podId?: string | null;
@@ -71,6 +72,7 @@ export function ChatArea({
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
+  previewToggleIcon: PreviewToggleIcon = Monitor,
   taskMode,
   taskId,
   podId,
@@ -155,7 +157,7 @@ export function ChatArea({
     >
       {/* Task Title Header */}
       {taskTitle && (
-        <div className="px-4 py-3 border-b bg-muted/20">
+        <div className={cn("px-4 py-3 border-b bg-muted/20", isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b")}>
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Back Button */}
@@ -225,9 +227,9 @@ export function ChatArea({
                 size="sm"
                 onClick={onTogglePreview}
                 className="flex-shrink-0"
-                title={showPreview ? "Show Chat" : "Show Live Preview"}
+                title={showPreview ? "Show Chat" : "Show Preview"}
               >
-                <Monitor className="w-4 h-4" />
+                <PreviewToggleIcon className="w-4 h-4" />
               </Button>
             )}
 
@@ -262,7 +264,7 @@ export function ChatArea({
       {/* Messages */}
       <div
         ref={messagesContainerRef}
-        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28")}
+        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28", isMobile && taskTitle && "pt-16")}
       >
         {messages
           .filter((msg) => !msg.replyId) // Hide messages that are replies

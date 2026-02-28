@@ -6,8 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Link from "next/link";
 import { WorkspacesTable } from "./components/WorkspacesTable";
+import { StatsPanel } from "./components/StatsPanel";
 
 export default async function AdminDashboard() {
   // Fetch all workspaces
@@ -36,12 +36,19 @@ export default async function AdminDashboard() {
       swarm: {
         select: {
           swarmPassword: true,
+          _count: {
+            select: {
+              pods: {
+                where: { deletedAt: null },
+              },
+            },
+          },
         },
       },
     },
   });
 
-  // Transform workspaces to include hasSwarmPassword boolean
+  // Transform workspaces to simplify structure
   const workspacesWithFlags = workspaces.map((workspace) => ({
     id: workspace.id,
     name: workspace.name,
@@ -51,43 +58,16 @@ export default async function AdminDashboard() {
     owner: workspace.owner,
     hasSwarmPassword: !!workspace.swarm?.swarmPassword,
     _count: workspace._count,
+    swarm: workspace.swarm
+      ? {
+          _count: workspace.swarm._count,
+        }
+      : null,
   }));
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
-        <p className="text-muted-foreground">
-          Platform-wide workspace management and user administration
-        </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Workspaces</CardTitle>
-            <CardDescription>Active workspaces on the platform</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold">{workspaces.length}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Administrative tools</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href="/admin/users"
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Manage Superadmin Users →
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      <StatsPanel />
 
       <Card>
         <CardHeader>

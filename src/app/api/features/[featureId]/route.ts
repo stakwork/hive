@@ -5,6 +5,7 @@ import { updateFeature, deleteFeature } from "@/services/roadmap";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 const TASK_SELECT = {
   id: true,
@@ -243,6 +244,19 @@ export async function PATCH(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const updatedFeature = await updateFeature(featureId, userOrResponse.id, body);
+
+    // Broadcast title update via Pusher if title was changed
+    if (body.title && typeof body.title === "string" && body.title.trim()) {
+      try {
+        await pusherServer.trigger(
+          getFeatureChannelName(featureId),
+          PUSHER_EVENTS.FEATURE_TITLE_UPDATE,
+          { featureId, newTitle: body.title.trim() }
+        );
+      } catch (pusherError) {
+        console.error("Failed to broadcast feature title update:", pusherError);
+      }
+    }
 
     return NextResponse.json(
       {
