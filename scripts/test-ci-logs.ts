@@ -51,20 +51,39 @@ interface GitHubJobDetails {
 }
 
 /**
+ * Check if a line contains an error marker.
+ * GitHub Actions runner uses ##[error] internally, but workflow commands use ::error::
+ * We support both formats for robustness.
+ */
+function isErrorLine(line: string): boolean {
+  return line.includes("##[error]") || /::error\b/.test(line);
+}
+
+/**
+ * Check if a line contains a group marker.
+ * GitHub Actions runner uses ##[group] internally, but workflow commands use ::group::
+ * We support both formats for robustness.
+ */
+function isGroupLine(line: string): boolean {
+  return line.includes("##[group]") || line.includes("::group::");
+}
+
+/**
  * NEW IMPLEMENTATION: Extract logs for a failed step
  *
  * Strategy (in order of reliability):
  *
- * 1. FIND STEP SECTION: Locate the step's log section using ##[group] markers
+ * 1. FIND STEP SECTION: Locate the step's log section using group markers
  *    - GitHub uses ##[group]Run <command> for steps with `run:` in YAML
+ *    - Also supports ::group:: format for robustness
  *    - The step NAME from YAML is NOT in the logs, only the COMMAND is
  *
- * 2. FIND ERRORS: Look for ##[error] markers within the step section
- *    - GitHub Actions adds ##[error] for any failure
- *    - Always includes "##[error]Process completed with exit code N"
+ * 2. FIND ERRORS: Look for error markers within the step section
+ *    - GitHub Actions adds ##[error] (or ::error::) for any failure
+ *    - Always includes "Process completed with exit code N"
  *
- * 3. EXTRACT CONTEXT: Take N lines before the ##[error] marker
- *    - Error details (stack traces, diffs, etc.) appear BEFORE ##[error]
+ * 3. EXTRACT CONTEXT: Take N lines before the error marker
+ *    - Error details (stack traces, diffs, etc.) appear BEFORE the marker
  *    - This is generic - works for any CI tool output
  */
 function extractStepLogs(
@@ -76,16 +95,16 @@ function extractStepLogs(
   const debug: string[] = [];
 
   // ============================================================
-  // STEP 1: Find all ##[group] markers to understand log structure
+  // STEP 1: Find all group markers to understand log structure
   // ============================================================
   const groupMarkers: { lineNum: number; content: string }[] = [];
   lines.forEach((line, idx) => {
-    if (line.includes("##[group]")) {
+    if (isGroupLine(line)) {
       groupMarkers.push({ lineNum: idx, content: line });
     }
   });
 
-  debug.push(`STEP 1: Found ${groupMarkers.length} ##[group] markers`);
+  debug.push(`STEP 1: Found ${groupMarkers.length} group markers`);
 
   // ============================================================
   // STEP 2: Try to find the target step's section
@@ -107,27 +126,41 @@ function extractStepLogs(
     debug.push(`STEP 2 (Method A): Found step by name at line ${stepStartLine}`);
   }
 
-  // Method B: Find "Run" markers and use the last one before "Post" steps
-  // (Failed step is usually the last actual step before cleanup)
-  if (targetIdx < 0 && stepName.startsWith("Run ")) {
-    const postIdx = groupMarkers.findIndex((m) => m.content.includes("Post "));
-    const searchMarkers = postIdx >= 0 ? groupMarkers.slice(0, postIdx) : groupMarkers;
-    const runMarkers = searchMarkers.filter((m) => /##\[group\]Run\s/.test(m.content));
+  // Method B: Find the group section that contains error markers.
+  // This is more reliable than "last Run before Post" which can pick cleanup steps
+  // that run after the failure (e.g., "Stop Containers" with `if: always()`).
+  if (targetIdx < 0) {
+    debug.push(`STEP 2 (Method B): Searching for group section containing error markers`);
 
-    debug.push(`STEP 2 (Method B): Found ${runMarkers.length} "Run" markers before "Post" steps`);
+    for (let i = 0; i < groupMarkers.length; i++) {
+      const sectionStart = groupMarkers[i].lineNum;
+      const sectionEnd = groupMarkers[i + 1]?.lineNum ?? lines.length;
 
-    if (runMarkers.length > 0) {
-      const lastRunMarker = runMarkers[runMarkers.length - 1];
-      targetIdx = groupMarkers.findIndex((m) => m.lineNum === lastRunMarker.lineNum);
-      matchMethod = "B: Last 'Run' marker before 'Post' steps";
-      stepStartLine = lastRunMarker.lineNum;
-      stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
-      debug.push(`  -> Using marker at line ${stepStartLine}: ${lastRunMarker.content.slice(30, 100)}`);
+      // Skip "Post" and "Complete" cleanup sections
+      if (groupMarkers[i].content.includes("Post ") || groupMarkers[i].content.includes("Complete ")) {
+        continue;
+      }
+
+      let hasError = false;
+      for (let j = sectionStart; j < sectionEnd; j++) {
+        if (isErrorLine(lines[j])) {
+          hasError = true;
+          break;
+        }
+      }
+      if (hasError) {
+        targetIdx = i;
+        matchMethod = "B: Group section containing error markers";
+        stepStartLine = sectionStart;
+        stepEndLine = sectionEnd;
+        debug.push(`  -> Found errors in section at line ${sectionStart}: ${groupMarkers[i].content.slice(30, 100)}`);
+        break;
+      }
     }
   }
 
   // ============================================================
-  // STEP 3: Find ##[error] markers (either within step or globally)
+  // STEP 3: Find error markers (either within step or globally)
   // ============================================================
 
   let errorMarkers: { lineNum: number; content: string }[] = [];
@@ -135,22 +168,22 @@ function extractStepLogs(
   if (stepStartLine >= 0) {
     // Search within the step's section
     for (let i = stepStartLine; i < stepEndLine; i++) {
-      if (lines[i].includes("##[error]")) {
+      if (isErrorLine(lines[i])) {
         errorMarkers.push({ lineNum: i, content: lines[i] });
       }
     }
     debug.push(
-      `STEP 3: Found ${errorMarkers.length} ##[error] markers within step section (lines ${stepStartLine}-${stepEndLine})`,
+      `STEP 3: Found ${errorMarkers.length} error markers within step section (lines ${stepStartLine}-${stepEndLine})`,
     );
   } else {
     // Fallback: search entire log
     lines.forEach((line, idx) => {
-      if (line.includes("##[error]")) {
+      if (isErrorLine(line)) {
         errorMarkers.push({ lineNum: idx, content: line });
       }
     });
-    matchMethod = "C: Global ##[error] search (no step section found)";
-    debug.push(`STEP 3 (Fallback): Found ${errorMarkers.length} ##[error] markers in entire log`);
+    matchMethod = "C: Global error search (no step section found)";
+    debug.push(`STEP 3 (Fallback): Found ${errorMarkers.length} error markers in entire log`);
   }
 
   errorMarkers.forEach((e) => {
