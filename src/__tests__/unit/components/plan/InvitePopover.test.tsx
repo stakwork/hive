@@ -2,7 +2,7 @@ import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { InvitePopover } from "@/app/w/[slug]/plan/[featureId]/components/InvitePopover";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -73,7 +73,7 @@ describe("InvitePopover", () => {
   test("renders member list when Sphinx-linked members exist", async () => {
     const mockMembers = {
       success: true,
-      data: [
+      members: [
         {
           user: {
             id: "user-1",
@@ -97,6 +97,7 @@ describe("InvitePopover", () => {
           role: "PM",
         },
       ],
+      owner: null,
     };
 
     mockFetch.mockResolvedValueOnce({
@@ -125,7 +126,7 @@ describe("InvitePopover", () => {
   test("shows empty state when no Sphinx-linked members exist", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ success: true, data: [] }),
+      json: async () => ({ success: true, members: [], owner: null }),
     });
 
     render(<InvitePopover {...defaultProps} />);
@@ -141,7 +142,7 @@ describe("InvitePopover", () => {
       ok: true,
       json: async () => ({
         success: true,
-        data: [
+        members: [
           {
             user: {
               id: "user-1",
@@ -154,6 +155,7 @@ describe("InvitePopover", () => {
             role: "DEVELOPER",
           },
         ],
+        owner: null,
       }),
     });
 
@@ -176,7 +178,7 @@ describe("InvitePopover", () => {
       ok: true,
       json: async () => ({
         success: true,
-        data: [
+        members: [
           {
             user: {
               id: "user-1",
@@ -189,6 +191,7 @@ describe("InvitePopover", () => {
             role: "DEVELOPER",
           },
         ],
+        owner: null,
       }),
     });
 
@@ -215,7 +218,7 @@ describe("InvitePopover", () => {
         ok: true,
         json: async () => ({
           success: true,
-          data: [
+          members: [
             {
               user: {
                 id: "user-1",
@@ -228,6 +231,7 @@ describe("InvitePopover", () => {
               role: "DEVELOPER",
             },
           ],
+          owner: null,
         }),
       })
       .mockResolvedValueOnce({
@@ -272,7 +276,7 @@ describe("InvitePopover", () => {
         ok: true,
         json: async () => ({
           success: true,
-          data: [
+          members: [
             {
               user: {
                 id: "user-1",
@@ -285,6 +289,7 @@ describe("InvitePopover", () => {
               role: "DEVELOPER",
             },
           ],
+          owner: null,
         }),
       })
       .mockResolvedValueOnce({
@@ -320,7 +325,7 @@ describe("InvitePopover", () => {
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ success: true, data: [] }),
+      json: async () => ({ success: true, members: [], owner: null }),
     });
 
     render(<InvitePopover {...defaultProps} />);
