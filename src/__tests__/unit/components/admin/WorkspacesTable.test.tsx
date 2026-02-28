@@ -15,6 +15,11 @@ describe("WorkspacesTable polling", () => {
       slug: "workspace-1",
       logoKey: null,
       createdAt: new Date("2025-01-01"),
+      owner: {
+        name: "Owner 1",
+        email: "owner1@example.com",
+      },
+      hasSwarmPassword: false,
       _count: {
         members: 5,
         tasks: 10,
@@ -26,6 +31,11 @@ describe("WorkspacesTable polling", () => {
       slug: "workspace-2",
       logoKey: null,
       createdAt: new Date("2025-01-02"),
+      owner: {
+        name: "Owner 2",
+        email: "owner2@example.com",
+      },
+      hasSwarmPassword: false,
       _count: {
         members: 3,
         tasks: 8,
