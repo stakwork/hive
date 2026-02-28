@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, ChevronUp, ChevronDown, Eye, EyeOff, Copy, Check, Trash2, AlertTriangle } from "lucide-react";
+import { Building2, ChevronUp, ChevronDown, Trash2, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -39,7 +39,6 @@ interface WorkspaceData {
     name: string | null;
     email: string | null;
   };
-  hasSwarmPassword: boolean;
   _count: {
     members: number;
     tasks: number;
@@ -62,10 +61,7 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     direction: "desc",
   });
   const [logoUrls, setLogoUrls] = useState<Record<string, string>>({});
-  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
-  const [copiedPasswords, setCopiedPasswords] = useState<Record<string, boolean>>({});
-  const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [deletingWorkspace, setDeletingWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -80,7 +76,7 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
           const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
           if (response.ok) {
             const data = await response.json();
-            return { slug: workspace.slug, url: data.url };
+            return { slug: workspace.slug, url: data.presignedUrl };
           }
         } catch (error) {
           console.error(`Failed to fetch logo for ${workspace.slug}:`, error);
@@ -143,60 +139,28 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     return sortState.direction === "asc" ? comparison : -comparison;
   });
 
+  const filteredWorkspaces = sortedWorkspaces.filter((ws) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      ws.name.toLowerCase().includes(q) ||
+      ws.slug.toLowerCase().includes(q) ||
+      (ws.owner.name ?? "").toLowerCase().includes(q) ||
+      (ws.owner.email ?? "").toLowerCase().includes(q)
+    );
+  });
+
   const refetchLogo = async (slug: string): Promise<string | null> => {
     try {
       const response = await fetch(`/api/workspaces/${slug}/image`);
       if (response.ok) {
         const data = await response.json();
-        setLogoUrls((prev) => ({ ...prev, [slug]: data.url }));
-        return data.url;
+        setLogoUrls((prev) => ({ ...prev, [slug]: data.presignedUrl }));
+        return data.presignedUrl;
       }
       return null;
     } catch (error) {
       console.error("Failed to fetch logo:", error);
       return null;
-    }
-  };
-
-  const fetchPassword = async (workspaceId: string): Promise<string | null> => {
-    if (revealedPasswords[workspaceId]) {
-      return revealedPasswords[workspaceId];
-    }
-
-    setLoadingPasswords((prev) => ({ ...prev, [workspaceId]: true }));
-    try {
-      const response = await fetch(`/api/admin/workspaces/${workspaceId}/swarm-password`);
-      if (response.ok) {
-        const data = await response.json();
-        setRevealedPasswords((prev) => ({ ...prev, [workspaceId]: data.password }));
-        return data.password;
-      }
-      console.error("Failed to fetch password:", response.statusText);
-      return null;
-    } catch (error) {
-      console.error("Failed to fetch password:", error);
-      return null;
-    } finally {
-      setLoadingPasswords((prev) => ({ ...prev, [workspaceId]: false }));
-    }
-  };
-
-  const togglePasswordVisibility = async (workspaceId: string) => {
-    if (!revealedPasswords[workspaceId]) {
-      // Fetch on first reveal
-      await fetchPassword(workspaceId);
-    }
-    setVisiblePasswords((prev) => ({ ...prev, [workspaceId]: !prev[workspaceId] }));
-  };
-
-  const copyPassword = async (workspaceId: string) => {
-    const password = await fetchPassword(workspaceId);
-    if (password) {
-      await navigator.clipboard.writeText(password);
-      setCopiedPasswords((prev) => ({ ...prev, [workspaceId]: true }));
-      setTimeout(() => {
-        setCopiedPasswords((prev) => ({ ...prev, [workspaceId]: false }));
-      }, 2000);
     }
   };
 
@@ -260,6 +224,15 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
 
   return (
     <>
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search workspaces…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -271,12 +244,18 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
             <SortableHeader field="pods">Pods</SortableHeader>
             <SortableHeader field="tasks">Tasks</SortableHeader>
             <SortableHeader field="createdAt">Created</SortableHeader>
-            <TableHead>Swarm Password</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
       <TableBody>
-        {sortedWorkspaces.map((workspace) => (
+        {filteredWorkspaces.length === 0 && workspaces.length > 0 && (
+          <TableRow>
+            <TableCell colSpan={9} className="text-center">
+              <p className="text-muted-foreground text-sm py-4">No workspaces match your search.</p>
+            </TableCell>
+          </TableRow>
+        )}
+        {filteredWorkspaces.map((workspace) => (
           <TableRow key={workspace.id}>
             <TableCell>
               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
@@ -307,45 +286,6 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
             <TableCell>{workspace._count.tasks}</TableCell>
             <TableCell>
               {new Date(workspace.createdAt).toLocaleDateString()}
-            </TableCell>
-            <TableCell>
-              {!workspace.hasSwarmPassword ? (
-                <span className="text-muted-foreground">—</span>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <code className="text-xs">
-                    {visiblePasswords[workspace.id] && revealedPasswords[workspace.id]
-                      ? revealedPasswords[workspace.id]
-                      : "••••••••"}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => togglePasswordVisibility(workspace.id)}
-                    disabled={loadingPasswords[workspace.id]}
-                  >
-                    {visiblePasswords[workspace.id] ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => copyPassword(workspace.id)}
-                    disabled={loadingPasswords[workspace.id]}
-                  >
-                    {copiedPasswords[workspace.id] ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              )}
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-2">
