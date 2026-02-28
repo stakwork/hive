@@ -1,7 +1,28 @@
+import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import { LongformArtifactPanel } from '@/app/w/[slug]/task/[...taskParams]/artifacts/longform';
 import { ArtifactType } from '@prisma/client';
 import type { LongformContent } from '@/types/artifact';
+
+// Mock dependencies
+vi.mock('@/components/MarkdownRenderer', () => ({
+  MarkdownRenderer: ({ children }: { children: string }) => (
+    <div data-testid="markdown-renderer">{children}</div>
+  ),
+}));
+
+vi.mock('@/app/w/[slug]/task/[...taskParams]/components/WorkflowUrlLink', () => ({
+  WorkflowUrlLink: ({ workflowUrl }: { workflowUrl: string }) => (
+    <a href={workflowUrl} data-testid="workflow-url-link">
+      Workflow Link
+    </a>
+  ),
+}));
+
+vi.mock('@/lib/icons', () => ({
+  getArtifactIcon: () => <span data-testid="artifact-icon">Icon</span>,
+}));
 
 describe('LongformArtifactPanel', () => {
   const createLongformArtifact = (content: LongformContent, id = 'test-artifact-1') => ({
