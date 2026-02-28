@@ -16,6 +16,8 @@ const mockWorkspaces = [
     createdAt: new Date("2024-01-01"),
     _count: { workspaceMembers: 5, tasks: 10 },
     swarm: { _count: { pods: 2 } },
+    owner: { name: "Test Owner", email: "owner@test.com" },
+    hasSwarmPassword: false,
   },
 ];
 

@@ -14,6 +14,7 @@ import {
   findPreviousMember,
   findUserByGitHubUsername,
   getActiveWorkspaceMembers,
+  getActiveWorkspaceMembersWithSphinx,
   isWorkspaceOwner,
   reactivateWorkspaceMember,
   softDeleteMember,
@@ -1040,8 +1041,10 @@ export async function getWorkspaceMembers(
   includeSystemAssignees = false,
   sphinxLinkedOnly = false
 ) {
-  // Get regular members from workspace_members table
-  const members = await getActiveWorkspaceMembers(workspaceId);
+  // Use the Sphinx-specific query when filtering by Sphinx-linked members
+  const members = sphinxLinkedOnly 
+    ? await getActiveWorkspaceMembersWithSphinx(workspaceId)
+    : await getActiveWorkspaceMembers(workspaceId);
 
   // Get workspace owner information
   const workspace = await db.workspace.findUnique({
