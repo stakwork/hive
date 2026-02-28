@@ -18,6 +18,7 @@ import { WorkflowTransition } from "@/types/stakwork/workflow";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -50,7 +51,6 @@ interface ChatAreaProps {
   onOpenBountyRequest?: () => void;
   isPlanComplete?: boolean;
   sphinxInviteEnabled?: boolean;
-  onInvite?: () => void;
 }
 
 export function ChatArea({
@@ -83,12 +83,12 @@ export function ChatArea({
   onOpenBountyRequest,
   isPlanComplete = false,
   sphinxInviteEnabled,
-  onInvite,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -213,17 +213,24 @@ export function ChatArea({
             )}
 
             {/* Invite Button (Plan Chat Only) */}
-            {sphinxInviteEnabled && onInvite && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onInvite}
-                className="flex-shrink-0 gap-2"
-                data-testid="invite-button"
+            {sphinxInviteEnabled && workspaceSlug && featureId && (
+              <InvitePopover
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                workspaceSlug={workspaceSlug}
+                featureId={featureId}
               >
-                <UserPlus className="h-4 w-4" />
-                Invite
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInviteOpen(true)}
+                  className="flex-shrink-0 gap-2"
+                  data-testid="invite-button"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Invite
+                </Button>
+              </InvitePopover>
             )}
 
             {/* Preview Toggle Button (Mobile Only) */}

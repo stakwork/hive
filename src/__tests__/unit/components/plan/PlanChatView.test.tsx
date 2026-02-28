@@ -98,13 +98,15 @@ vi.mock("@/components/chat", () => ({
   ChatArea: ({ 
     onArtifactAction, 
     isPlanComplete,
-    sphinxInviteEnabled, 
-    onInvite 
+    sphinxInviteEnabled,
+    workspaceSlug,
+    featureId
   }: { 
     onArtifactAction: (messageId: string, action: { optionResponse: string }) => void;
     isPlanComplete?: boolean;
     sphinxInviteEnabled?: boolean;
-    onInvite?: () => void;
+    workspaceSlug?: string;
+    featureId?: string;
   }) => (
     <div data-testid="chat-area" data-is-plan-complete={isPlanComplete?.toString()}>
       <button
@@ -113,10 +115,9 @@ vi.mock("@/components/chat", () => ({
       >
         Submit Answer
       </button>
-      {sphinxInviteEnabled && onInvite && (
+      {sphinxInviteEnabled && workspaceSlug && featureId && (
         <button
           data-testid="invite-button"
-          onClick={onInvite}
         >
           Invite
         </button>
@@ -851,7 +852,7 @@ describe("PlanChatView", () => {
         }),
       });
 
-      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+      const { container } = render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
       // Wait for the Sphinx status fetch to complete
       await waitFor(() => {
