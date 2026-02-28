@@ -50,12 +50,8 @@ interface ChatAreaProps {
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
-<<<<<<< HEAD
-  onInvite?: () => void;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
-=======
->>>>>>> abbe3ac3e (Generated with Hive: fix invitepopover sphinx member query and positioning (#3252))
 }
 
 export function ChatArea({
@@ -87,12 +83,8 @@ export function ChatArea({
   collaborators,
   onOpenBountyRequest,
   sphinxInviteEnabled,
-<<<<<<< HEAD
-  onInvite,
   onRetry,
   isRetrying = false,
-=======
->>>>>>> abbe3ac3e (Generated with Hive: fix invitepopover sphinx member query and positioning (#3252))
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
