@@ -412,10 +412,10 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
             <TableCell>
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/w/${workspace.slug}/settings`}
+                  href={`/admin/workspaces/${workspace.slug}`}
                   className="text-sm text-primary hover:underline"
                 >
-                  Settings →
+                  View workspace →
                 </Link>
                 <Button
                   variant="ghost"
