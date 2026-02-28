@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell, Pencil } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
@@ -55,6 +55,9 @@ function FeatureRow({
   onAssigneeUpdate,
   onDelete,
   onClick,
+  isRenaming,
+  onRenameStart,
+  onRenameSave,
 }: {
   feature: FeatureWithDetails;
   workspaceSlug: string;
@@ -63,8 +66,51 @@ function FeatureRow({
   onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
   onClick: () => void;
+  isRenaming: boolean;
+  onRenameStart: () => void;
+  onRenameSave: (featureId: string, newTitle: string) => Promise<void>;
 }) {
   const needsReview = feature._count.stakworkRuns > 0;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState(feature.title);
+
+  // Auto-focus input when entering rename mode
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  // Reset edit value when feature title changes or rename mode exits
+  useEffect(() => {
+    if (!isRenaming) {
+      setEditValue(feature.title);
+    }
+  }, [feature.title, isRenaming]);
+
+  const handleSave = async () => {
+    const trimmed = editValue.trim();
+    // Only save if non-empty and changed
+    if (trimmed && trimmed !== feature.title) {
+      await onRenameSave(feature.id, trimmed);
+    } else {
+      // Revert if empty or unchanged
+      setEditValue(feature.title);
+      onRenameStart(); // This will toggle off rename mode since it's already true
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditValue(feature.title);
+      onRenameStart(); // Toggle off rename mode
+    }
+  };
 
   return (
     <TableRow
@@ -73,8 +119,21 @@ function FeatureRow({
     >
       <TableCell className="w-[469px] font-medium truncate">
         <div className="flex items-center gap-2">
-          <span className="truncate">{feature.title}</span>
-          {needsReview && (
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          ) : (
+            <span className="truncate">{feature.title}</span>
+          )}
+          {!isRenaming && needsReview && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="flex-shrink-0">
@@ -86,7 +145,7 @@ function FeatureRow({
               </TooltipContent>
             </Tooltip>
           )}
-          {feature.deploymentStatus && (
+          {!isRenaming && feature.deploymentStatus && (
             <DeploymentStatusBadge
               environment={feature.deploymentStatus}
               deploymentUrl={feature.deploymentUrl}
@@ -127,6 +186,12 @@ function FeatureRow({
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
           actions={[
+            {
+              label: "Rename",
+              icon: Pencil,
+              onClick: onRenameStart,
+              separator: true,
+            },
             {
               label: "Delete",
               icon: Trash2,
@@ -287,6 +352,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
     return "list";
   });
+
+  // Rename state management
+  const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null);
 
   // Navigate to a specific page and update URL
   const goToPage = useCallback((n: number) => {
@@ -608,6 +676,29 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
+  const handleRenameFeature = async (featureId: string, newTitle: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to rename feature");
+      }
+
+      // Update local state
+      setFeatures((prev) => prev.map((f) => f.id === featureId ? { ...f, title: newTitle } : f));
+      setRenamingFeatureId(null);
+    } catch (error) {
+      console.error("Failed to rename feature:", error);
+      // Revert rename state on error
+      setRenamingFeatureId(null);
+      throw error;
+    }
+  };
+
   // Prepare filter options
   const statusOptions = [
     { value: "ALL", label: "All Statuses" },
@@ -892,6 +983,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
                             onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
+                            isRenaming={renamingFeatureId === feature.id}
+                            onRenameStart={() => setRenamingFeatureId(feature.id)}
+                            onRenameSave={handleRenameFeature}
                           />
                         ))
                       )}
