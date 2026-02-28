@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import { WORKSPACE_MEMBER_INCLUDE, type PrismaWorkspaceMemberWithUser } from "@/lib/mappers/workspace-member";
+import { 
+  WORKSPACE_MEMBER_INCLUDE, 
+  WORKSPACE_MEMBER_INCLUDE_WITH_SPHINX,
+  type PrismaWorkspaceMemberWithUser 
+} from "@/lib/mappers/workspace-member";
 
 /**
  * Finds a user by GitHub username with their user profile
@@ -96,6 +100,20 @@ export async function getActiveWorkspaceMembers(workspaceId: string): Promise<Pr
       leftAt: null,
     },
     include: WORKSPACE_MEMBER_INCLUDE,
+    orderBy: { joinedAt: "asc" },
+  });
+}
+
+/**
+ * Gets all active workspace members with Sphinx fields (lightningPubkey, sphinxAlias)
+ */
+export async function getActiveWorkspaceMembersWithSphinx(workspaceId: string): Promise<PrismaWorkspaceMemberWithUser[]> {
+  return await db.workspaceMember.findMany({
+    where: {
+      workspaceId,
+      leftAt: null,
+    },
+    include: WORKSPACE_MEMBER_INCLUDE_WITH_SPHINX,
     orderBy: { joinedAt: "asc" },
   });
 }
