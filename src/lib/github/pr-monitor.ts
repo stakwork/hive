@@ -29,6 +29,50 @@ const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10)
 const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
 const PR_FIX_STALE_TIMEOUT_MS = parseInt(process.env.PR_FIX_STALE_TIMEOUT_MS || "1800000", 10); // 30 minutes - timeout for stuck 'in_progress' state
 
+/**
+ * Build the prompt for the agent to fix a PR issue
+ */
+export function buildFixPrompt(result: PRCheckResult): string {
+  if (result.state === "conflict") {
+    return `The PR (#${result.prNumber}) created from the branch you are on (${result.headBranch}) in ${result.owner}/${result.repo} has merge conflicts.
+
+Please:
+1. Fetch the latest changes from the base branch (${result.problemDetails?.includes("with") ? result.problemDetails.split("with ")[1] : "main"})
+2. Resolve any merge conflicts
+3. Changes will be pushed to the PR automatically, you don't need to push manually.
+
+${result.problemDetails || ""}`;
+  }
+
+  if (result.state === "ci_failure") {
+    let prompt = `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
+
+Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
+
+Please:
+1. Review the CI failure logs below
+2. Fix the issues causing the failures
+3. Changes will be pushed to the PR automatically, you don't need to push manually.
+
+(if the error is from playwright, you might just need to increase playwright timeouts a bit... github CI can be slow sometimes)
+
+${result.problemDetails || ""}`;
+
+    // Append log excerpts if available
+    if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
+      prompt += "\n\n<logs>\n";
+      for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
+        prompt += `### ${checkName}\n${logs}\n\n`;
+      }
+      prompt += "</logs>";
+    }
+
+    return prompt;
+  }
+
+  return `Please check the status of pull request #${result.prNumber} in ${result.owner}/${result.repo}.`;
+}
+
 // Simple console logging helpers
 const log = {
   info: (msg: string, data?: Record<string, unknown>) =>
@@ -579,48 +623,6 @@ export async function getOctokitForWorkspace(userId: string, owner: string): Pro
     return null;
   }
   return new Octokit({ auth: tokens.accessToken });
-}
-
-/**
- * Build the prompt for the agent to fix a PR issue
- */
-export function buildFixPrompt(result: PRCheckResult): string {
-  if (result.state === "conflict") {
-    return `The PR (#${result.prNumber}) created from the branch you are on (${result.headBranch}) in ${result.owner}/${result.repo} has merge conflicts.
-
-Please:
-1. Fetch the latest changes from the base branch (${result.problemDetails?.includes("with") ? result.problemDetails.split("with ")[1] : "main"})
-2. Resolve any merge conflicts
-3. Changes will be pushed to the PR automatically, you don't need to push manually.
-
-${result.problemDetails || ""}`;
-  }
-
-  if (result.state === "ci_failure") {
-    let prompt = `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
-
-Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
-
-Please:
-1. Review the CI failure logs below
-2. Fix the issues causing the failures
-3. Changes will be pushed to the PR automatically, you don't need to push manually.
-
-${result.problemDetails || ""}`;
-
-    // Append log excerpts if available
-    if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
-      prompt += "\n\n<logs>\n";
-      for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
-        prompt += `### ${checkName}\n${logs}\n\n`;
-      }
-      prompt += "</logs>";
-    }
-
-    return prompt;
-  }
-
-  return `Please check the status of pull request #${result.prNumber} in ${result.owner}/${result.repo}.`;
 }
 
 /**
