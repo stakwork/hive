@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import Link from "next/link";
 import { WorkspacesTable } from "./components/WorkspacesTable";
+import { StatsPanel } from "./components/StatsPanel";
 
 export default async function AdminDashboard() {
   // Fetch all workspaces
@@ -60,34 +61,15 @@ export default async function AdminDashboard() {
         <p className="text-muted-foreground">
           Platform-wide workspace management and user administration
         </p>
+        <Link
+          href="/admin/users"
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Manage Superadmin Users →
+        </Link>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Workspaces</CardTitle>
-            <CardDescription>Active workspaces on the platform</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold">{workspaces.length}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Administrative tools</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href="/admin/users"
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Manage Superadmin Users →
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      <StatsPanel />
 
       <Card>
         <CardHeader>
