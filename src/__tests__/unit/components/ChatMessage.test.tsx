@@ -1204,4 +1204,62 @@ describe('ChatMessage', () => {
       expect(link).toHaveAttribute('download', 'file.txt');
     });
   });
+
+  describe('LONGFORM Artifact Overflow Fix', () => {
+    it('applies overflow constraints to LONGFORM wrapper to prevent bleeding', () => {
+      const longformContent: LongformContent = {
+        title: 'Task Description',
+        text: 'Some content',
+      };
+
+      const longformArtifact = createTestArtifact(ArtifactType.LONGFORM, longformContent);
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        artifacts: [longformArtifact],
+      });
+
+      const { container } = render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Find the wrapper div that contains LongformArtifactPanel
+      const wrapper = container.querySelector('.max-w-md.w-full');
+      expect(wrapper).toBeInTheDocument();
+      expect(wrapper).toHaveClass('min-w-0');
+      expect(wrapper).toHaveClass('overflow-hidden');
+    });
+
+    it('renders LONGFORM artifact with code blocks without expanding panel', () => {
+      const longCodeBlock = '```bash\n' + 'very-long-command-that-would-normally-cause-overflow '.repeat(10) + '\n```';
+      
+      const longformContent: LongformContent = {
+        title: 'Task with Code',
+        text: `Here is a long command:\n\n${longCodeBlock}`,
+      };
+
+      const longformArtifact = createTestArtifact(ArtifactType.LONGFORM, longformContent);
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        artifacts: [longformArtifact],
+      });
+
+      const { container } = render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Verify wrapper has overflow constraints
+      const wrapper = container.querySelector('.max-w-md.w-full');
+      expect(wrapper).toHaveClass('min-w-0');
+      expect(wrapper).toHaveClass('overflow-hidden');
+
+      // Verify LONGFORM panel is rendered
+      expect(screen.getByTestId('longform-artifact-panel')).toBeInTheDocument();
+    });
+  });
 });
