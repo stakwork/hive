@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Building2, ChevronUp, ChevronDown, Eye, EyeOff, Copy, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Building2, ChevronUp, ChevronDown, Eye, EyeOff, Copy, Check, Trash2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -13,6 +15,16 @@ import {
 } from "@/components/ui/table";
 import { PresignedImage } from "@/components/ui/presigned-image";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type SortField = "name" | "members" | "pods" | "tasks" | "createdAt";
 type SortDirection = "asc" | "desc";
@@ -44,6 +56,7 @@ interface WorkspacesTableProps {
 }
 
 export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
+  const router = useRouter();
   const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
     field: "createdAt",
     direction: "desc",
@@ -53,6 +66,9 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedPasswords, setCopiedPasswords] = useState<Record<string, boolean>>({});
   const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
+  const [deletingWorkspace, setDeletingWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch logos on mount for workspaces that have logoKey
   useEffect(() => {
@@ -184,6 +200,33 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     }
   };
 
+  const handleAdminDelete = async () => {
+    if (!deletingWorkspace || deleteConfirmText !== deletingWorkspace.name) {
+      toast.error("Confirmation failed", {
+        description: "Please type the workspace name exactly as shown.",
+      });
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/workspaces/${deletingWorkspace.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete workspace");
+      }
+      toast.success("Workspace deleted");
+      setDeletingWorkspace(null);
+      setDeleteConfirmText("");
+      router.refresh();
+    } catch (error) {
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : "Failed to delete workspace.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortState.field !== field) return null;
     return sortState.direction === "asc" ? (
@@ -216,21 +259,22 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[60px]">Icon</TableHead>
-          <SortableHeader field="name">Name</SortableHeader>
-          <TableHead>Slug</TableHead>
-          <TableHead>Created By</TableHead>
-          <SortableHeader field="members">Members</SortableHeader>
-          <SortableHeader field="pods">Pods</SortableHeader>
-          <SortableHeader field="tasks">Tasks</SortableHeader>
-          <SortableHeader field="createdAt">Created</SortableHeader>
-          <TableHead>Swarm Password</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[60px]">Icon</TableHead>
+            <SortableHeader field="name">Name</SortableHeader>
+            <TableHead>Slug</TableHead>
+            <TableHead>Created By</TableHead>
+            <SortableHeader field="members">Members</SortableHeader>
+            <SortableHeader field="pods">Pods</SortableHeader>
+            <SortableHeader field="tasks">Tasks</SortableHeader>
+            <SortableHeader field="createdAt">Created</SortableHeader>
+            <TableHead>Swarm Password</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
       <TableBody>
         {sortedWorkspaces.map((workspace) => (
           <TableRow key={workspace.id}>
@@ -304,16 +348,88 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
               )}
             </TableCell>
             <TableCell>
-              <Link
-                href={`/w/${workspace.slug}/settings`}
-                className="text-sm text-primary hover:underline"
-              >
-                Settings →
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/w/${workspace.slug}/settings`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Settings →
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    setDeletingWorkspace({ id: workspace.id, name: workspace.name });
+                    setDeleteConfirmText("");
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
+    <Dialog
+      open={!!deletingWorkspace}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeletingWorkspace(null);
+          setDeleteConfirmText("");
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-5 h-5" />
+            Delete Workspace
+          </DialogTitle>
+          <DialogDescription>
+            This will permanently delete &ldquo;{deletingWorkspace?.name}&rdquo; and all its data. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+            <p className="text-sm text-destructive">
+              <strong>Warning:</strong> All data will be permanently lost.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Type <strong>{deletingWorkspace?.name}</strong> to confirm:
+            </Label>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deletingWorkspace?.name}
+              disabled={isDeleting}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDeletingWorkspace(null);
+              setDeleteConfirmText("");
+            }}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleAdminDelete}
+            disabled={deleteConfirmText !== deletingWorkspace?.name || isDeleting}
+          >
+            {isDeleting ? "Deleting..." : "Delete Workspace"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
