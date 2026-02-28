@@ -21,7 +21,7 @@ import { diffWords } from "diff";
 import { ClipboardList } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
