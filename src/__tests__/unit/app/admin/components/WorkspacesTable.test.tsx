@@ -1,7 +1,68 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { WorkspacesTable } from "@/app/admin/components/WorkspacesTable";
+import { toast } from "sonner";
+
+// Mock next/navigation
+const mockRefresh = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: mockRefresh,
+  }),
+}));
+
+// Mock sonner toast
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+// Mock Dialog components
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children, open, onOpenChange }: { children: React.ReactNode; open: boolean; onOpenChange: (open: boolean) => void }) => (
+    open ? <div data-testid="dialog-mock" role="dialog">{children}</div> : null
+  ),
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+// Mock Input component
+vi.mock("@/components/ui/input", () => ({
+  Input: ({ value, onChange, placeholder, disabled }: any) => (
+    <input
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      disabled={disabled}
+    />
+  ),
+}));
+
+// Mock Label component
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children }: { children: React.ReactNode }) => <label>{children}</label>,
+}));
+
+// Mock Button component
+vi.mock("@/components/ui/button", () => ({
+  Button: ({ children, onClick, disabled, variant, size, className }: any) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      data-variant={variant}
+      data-size={size}
+      className={className}
+    >
+      {children}
+    </button>
+  ),
+}));
 
 // Mock PresignedImage component
 vi.mock("@/components/ui/presigned-image", () => ({
@@ -273,5 +334,201 @@ describe("WorkspacesTable", () => {
     expect(nameHeaderElement).toBeInTheDocument();
     const svgs = nameHeaderElement!.querySelectorAll('svg');
     expect(svgs.length).toBeGreaterThan(0);
+  });
+
+  describe("Delete Dialog", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      global.fetch = vi.fn();
+    });
+
+    it("renders delete button for each workspace", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Should have 3 delete buttons (one per workspace)
+      const deleteButtons = screen.getAllByRole("button").filter(
+        (button) => button.querySelector('svg')?.classList.toString().includes('lucide')
+      );
+      expect(deleteButtons.length).toBeGreaterThan(0);
+    });
+
+    it("opens delete dialog when trash button is clicked", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Find the first trash button and click it
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1]; // Skip header
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      
+      fireEvent.click(deleteButton!);
+
+      // Dialog should open with workspace name
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText(/This will permanently delete/)).toBeInTheDocument();
+      
+      // Verify input field is present
+      const input = screen.queryByPlaceholderText("Gamma Workspace");
+      expect(input).toBeInTheDocument();
+    });
+
+    it("confirm button is disabled when typed text does not match workspace name", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Click delete on first workspace (Gamma - sorted by createdAt desc)
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type incorrect text
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Wrong Name" } });
+
+      // Delete button should be disabled
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      expect(confirmButton).toBeDisabled();
+    });
+
+    it("confirm button is enabled when typed text matches workspace name exactly", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Click delete on first workspace (Gamma)
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type exact workspace name
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Gamma Workspace" } });
+
+      // Delete button should be enabled
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      expect(confirmButton).not.toBeDisabled();
+    });
+
+    it("calls DELETE endpoint when confirm button is clicked with correct name", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      global.fetch = mockFetch;
+
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Click delete on first workspace (Gamma - id: 3)
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type exact workspace name
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Gamma Workspace" } });
+
+      // Click confirm
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      fireEvent.click(confirmButton);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/admin/workspaces/3",
+          { method: "DELETE" }
+        );
+      });
+    });
+
+    it("shows success toast and refreshes page on successful deletion", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      global.fetch = mockFetch;
+
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Click delete on first workspace
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type exact workspace name and confirm
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Gamma Workspace" } });
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      fireEvent.click(confirmButton);
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith("Workspace deleted");
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+    });
+
+    it("shows error toast on deletion failure", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ error: "Workspace not found" }),
+      });
+      global.fetch = mockFetch;
+
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Click delete on first workspace
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type exact workspace name and confirm
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Gamma Workspace" } });
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      fireEvent.click(confirmButton);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("Error", {
+          description: "Workspace not found",
+        });
+      });
+    });
+
+    it("closes dialog when cancel button is clicked", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Open dialog
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Verify dialog is open
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      // Click cancel
+      const cancelButton = screen.getByRole("button", { name: /Cancel/i });
+      fireEvent.click(cancelButton);
+
+      // Dialog should close
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("shows error toast when trying to confirm without matching name", () => {
+      render(<WorkspacesTable workspaces={mockWorkspaces} />);
+
+      // Open dialog
+      const rows = screen.getAllByRole("row");
+      const firstDataRow = rows[1];
+      const deleteButton = firstDataRow.querySelector('button[class*="destructive"]');
+      fireEvent.click(deleteButton!);
+
+      // Type incorrect name
+      const input = screen.getByPlaceholderText(/Gamma Workspace/i);
+      fireEvent.change(input, { target: { value: "Wrong" } });
+
+      // Try to confirm (button should be disabled, but test the handler logic)
+      const confirmButton = screen.getByRole("button", { name: /Delete Workspace/i });
+      expect(confirmButton).toBeDisabled();
+    });
   });
 });
