@@ -19,6 +19,12 @@ export default async function AdminDashboard() {
       slug: true,
       logoKey: true,
       createdAt: true,
+      owner: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
       _count: {
         select: {
           members: {
@@ -27,8 +33,25 @@ export default async function AdminDashboard() {
           tasks: true,
         },
       },
+      swarm: {
+        select: {
+          swarmPassword: true,
+        },
+      },
     },
   });
+
+  // Transform workspaces to include hasSwarmPassword boolean
+  const workspacesWithFlags = workspaces.map((workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    slug: workspace.slug,
+    logoKey: workspace.logoKey,
+    createdAt: workspace.createdAt,
+    owner: workspace.owner,
+    hasSwarmPassword: !!workspace.swarm?.swarmPassword,
+    _count: workspace._count,
+  }));
 
   return (
     <div className="space-y-6">
@@ -74,7 +97,7 @@ export default async function AdminDashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <WorkspacesTable workspaces={workspaces} />
+          <WorkspacesTable workspaces={workspacesWithFlags} />
         </CardContent>
       </Card>
     </div>

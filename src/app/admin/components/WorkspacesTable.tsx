@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Building2, ChevronUp, ChevronDown } from "lucide-react";
+import { Building2, ChevronUp, ChevronDown, Eye, EyeOff, Copy, Check } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PresignedImage } from "@/components/ui/presigned-image";
+import { Button } from "@/components/ui/button";
 
 type SortField = "name" | "members" | "pods" | "tasks" | "createdAt";
 type SortDirection = "asc" | "desc";
@@ -22,6 +23,11 @@ interface WorkspaceData {
   slug: string;
   logoKey: string | null;
   createdAt: Date;
+  owner: {
+    name: string | null;
+    email: string | null;
+  };
+  hasSwarmPassword: boolean;
   _count: {
     members: number;
     tasks: number;
@@ -32,86 +38,23 @@ interface WorkspacesTableProps {
   workspaces: WorkspaceData[];
 }
 
-interface PodCount {
-  usedVms: number;
-  totalPods: number;
-}
-
 export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
   const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
     field: "createdAt",
     direction: "desc",
   });
   const [logoUrls, setLogoUrls] = useState<Record<string, string>>({});
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [copiedPasswords, setCopiedPasswords] = useState<Record<string, boolean>>({});
+  const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
+  
+  // Live pod counts state
+  interface PodCount {
+    usedVms: number;
+    totalPods: number;
+  }
   const [podCounts, setPodCounts] = useState<Record<string, PodCount>>({});
-
-  // Fetch pod counts from API
-  const fetchPodCounts = async () => {
-    try {
-      const response = await fetch("/api/admin/pods");
-      if (response.ok) {
-        const data = await response.json();
-        const countsMap: Record<string, PodCount> = {};
-        data.workspaces.forEach((ws: { workspaceId: string; usedVms: number; totalPods: number }) => {
-          countsMap[ws.workspaceId] = {
-            usedVms: ws.usedVms,
-            totalPods: ws.totalPods,
-          };
-        });
-        setPodCounts(countsMap);
-      }
-    } catch (error) {
-      console.error("Failed to fetch pod counts:", error);
-    }
-  };
-
-  // Set up polling with visibility change handling
-  useEffect(() => {
-    // Fetch immediately on mount
-    fetchPodCounts();
-
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const startPolling = () => {
-      // Clear any existing interval
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-      // Start new interval
-      intervalId = setInterval(fetchPodCounts, 30000);
-    };
-
-    const stopPolling = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    // Handler for visibility change
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        // Fetch immediately when tab becomes visible
-        fetchPodCounts();
-        // Restart polling
-        startPolling();
-      }
-    };
-
-    // Start initial polling
-    startPolling();
-
-    // Set up visibility change listener
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Cleanup function
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
 
   // Fetch logos on mount for workspaces that have logoKey
   useEffect(() => {
@@ -146,6 +89,62 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     fetchLogos();
   }, [workspaces]);
 
+  // Fetch pod counts from API with polling
+  useEffect(() => {
+    const fetchPodCounts = async () => {
+      try {
+        const response = await fetch("/api/admin/pods");
+        if (response.ok) {
+          const data = await response.json();
+          const countsMap: Record<string, PodCount> = {};
+          data.workspaces.forEach(
+            (ws: { workspaceId: string; usedVms: number; totalPods: number }) => {
+              countsMap[ws.workspaceId] = {
+                usedVms: ws.usedVms,
+                totalPods: ws.totalPods,
+              };
+            }
+          );
+          setPodCounts(countsMap);
+        }
+      } catch (error) {
+        console.error("Failed to fetch pod counts:", error);
+      }
+    };
+
+    // Fetch immediately on mount
+    fetchPodCounts();
+
+    // Set up polling interval
+    let intervalId: NodeJS.Timeout | null = setInterval(fetchPodCounts, 30000);
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Clear interval when tab is hidden
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      } else {
+        // Fetch immediately and restart interval when tab becomes visible
+        fetchPodCounts();
+        if (!intervalId) {
+          intervalId = setInterval(fetchPodCounts, 30000);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleSort = (field: SortField) => {
     setSortState((prev) => {
       if (prev.field === field) {
@@ -171,9 +170,9 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
         comparison = (a._count.members + 1) - (b._count.members + 1);
         break;
       case "pods":
-        const usedA = podCounts[a.id]?.usedVms ?? 0;
-        const usedB = podCounts[b.id]?.usedVms ?? 0;
-        comparison = usedA - usedB;
+        const podsA = podCounts[a.id]?.usedVms ?? 0;
+        const podsB = podCounts[b.id]?.usedVms ?? 0;
+        comparison = podsA - podsB;
         break;
       case "tasks":
         comparison = a._count.tasks - b._count.tasks;
@@ -198,6 +197,48 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
     } catch (error) {
       console.error("Failed to fetch logo:", error);
       return null;
+    }
+  };
+
+  const fetchPassword = async (workspaceId: string): Promise<string | null> => {
+    if (revealedPasswords[workspaceId]) {
+      return revealedPasswords[workspaceId];
+    }
+
+    setLoadingPasswords((prev) => ({ ...prev, [workspaceId]: true }));
+    try {
+      const response = await fetch(`/api/admin/workspaces/${workspaceId}/swarm-password`);
+      if (response.ok) {
+        const data = await response.json();
+        setRevealedPasswords((prev) => ({ ...prev, [workspaceId]: data.password }));
+        return data.password;
+      }
+      console.error("Failed to fetch password:", response.statusText);
+      return null;
+    } catch (error) {
+      console.error("Failed to fetch password:", error);
+      return null;
+    } finally {
+      setLoadingPasswords((prev) => ({ ...prev, [workspaceId]: false }));
+    }
+  };
+
+  const togglePasswordVisibility = async (workspaceId: string) => {
+    if (!revealedPasswords[workspaceId]) {
+      // Fetch on first reveal
+      await fetchPassword(workspaceId);
+    }
+    setVisiblePasswords((prev) => ({ ...prev, [workspaceId]: !prev[workspaceId] }));
+  };
+
+  const copyPassword = async (workspaceId: string) => {
+    const password = await fetchPassword(workspaceId);
+    if (password) {
+      await navigator.clipboard.writeText(password);
+      setCopiedPasswords((prev) => ({ ...prev, [workspaceId]: true }));
+      setTimeout(() => {
+        setCopiedPasswords((prev) => ({ ...prev, [workspaceId]: false }));
+      }, 2000);
     }
   };
 
@@ -239,10 +280,12 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
           <TableHead className="w-[60px]">Icon</TableHead>
           <SortableHeader field="name">Name</SortableHeader>
           <TableHead>Slug</TableHead>
+          <TableHead>Created By</TableHead>
           <SortableHeader field="members">Members</SortableHeader>
           <SortableHeader field="pods">Pods</SortableHeader>
           <SortableHeader field="tasks">Tasks</SortableHeader>
           <SortableHeader field="createdAt">Created</SortableHeader>
+          <TableHead>Swarm Password</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
       </TableHeader>
@@ -268,15 +311,59 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
             <TableCell>
               <code className="text-xs">{workspace.slug}</code>
             </TableCell>
+            <TableCell>
+              <span className="text-sm text-muted-foreground">
+                {workspace.owner.name ?? workspace.owner.email}
+              </span>
+            </TableCell>
             <TableCell>{workspace._count.members + 1}</TableCell>
             <TableCell>
-              {!podCounts[workspace.id] 
-                ? "—" 
-                : `${podCounts[workspace.id].usedVms} in use / ${podCounts[workspace.id].totalPods} total`}
+              {podCounts[workspace.id]
+                ? `${podCounts[workspace.id].usedVms} in use / ${podCounts[workspace.id].totalPods} total`
+                : "—"}
             </TableCell>
             <TableCell>{workspace._count.tasks}</TableCell>
             <TableCell>
               {new Date(workspace.createdAt).toLocaleDateString()}
+            </TableCell>
+            <TableCell>
+              {!workspace.hasSwarmPassword ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <code className="text-xs">
+                    {visiblePasswords[workspace.id] && revealedPasswords[workspace.id]
+                      ? revealedPasswords[workspace.id]
+                      : "••••••••"}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => togglePasswordVisibility(workspace.id)}
+                    disabled={loadingPasswords[workspace.id]}
+                  >
+                    {visiblePasswords[workspace.id] ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => copyPassword(workspace.id)}
+                    disabled={loadingPasswords[workspace.id]}
+                  >
+                    {copiedPasswords[workspace.id] ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              )}
             </TableCell>
             <TableCell>
               <Link
