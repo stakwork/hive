@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { diffWords } from "diff";
+import { ClipboardList } from "lucide-react";
 import { ChatArea, ArtifactsPanel } from "@/components/chat";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
@@ -95,6 +96,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
   const prevFeatureRef = useRef<FeatureDetail | null>(null);
   const [sphinxReady, setSphinxReady] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -460,6 +462,40 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const inputDisabled =
     isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
 
+  const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
+
+  const chatAreaProps = {
+    messages,
+    onSend: sendMessage,
+    onArtifactAction: handleArtifactAction,
+    inputDisabled,
+    collaborators,
+    isLoading,
+    workflowStatus,
+    taskTitle: featureTitle,
+    workspaceSlug,
+    featureId,
+    featureTitle,
+    taskMode: "live" as const,
+    isChainVisible,
+    lastLogLine,
+    logs,
+    sphinxInviteEnabled: sphinxReady,
+  };
+
+  const artifactsPanelProps = {
+    artifacts: allArtifacts,
+    workspaceId,
+    taskId: featureId,
+    planData,
+    feature,
+    featureId,
+    onFeatureUpdate: setFeature,
+    controlledTab: activeTab,
+    onControlledTabChange: handleTabChange,
+    sectionHighlights,
+  };
+
   if (!initialLoadDone) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -468,53 +504,42 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     );
   }
 
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-4rem)]">
+        {showPreview ? (
+          <ArtifactsPanel
+            {...artifactsPanelProps}
+            isMobile
+            onTogglePreview={togglePreview}
+          />
+        ) : (
+          <ChatArea
+            {...chatAreaProps}
+            showPreviewToggle
+            showPreview={showPreview}
+            onTogglePreview={togglePreview}
+            previewToggleIcon={ClipboardList}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
-        <ResizablePanel defaultSize={isMobile ? 100 : 40} minSize={30}>
+        <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
-            <ChatArea
-              messages={messages}
-              onSend={sendMessage}
-              onArtifactAction={handleArtifactAction}
-              inputDisabled={inputDisabled}
-              collaborators={collaborators}
-              isLoading={isLoading}
-              workflowStatus={workflowStatus}
-              taskTitle={featureTitle}
-              workspaceSlug={workspaceSlug}
-              featureId={featureId}
-              featureTitle={featureTitle}
-              taskMode="live"
-              isChainVisible={isChainVisible}
-              lastLogLine={lastLogLine}
-              logs={logs}
-              isPlanComplete={isPlanComplete}
-              sphinxInviteEnabled={sphinxReady}
-            />
+            <ChatArea {...chatAreaProps} />
           </div>
         </ResizablePanel>
-        {!isMobile && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={60} minSize={25}>
-              <div className="h-full min-h-0 min-w-0">
-                <ArtifactsPanel
-                  artifacts={allArtifacts}
-                  workspaceId={workspaceId}
-                  taskId={featureId}
-                  planData={planData}
-                  feature={feature}
-                  featureId={featureId}
-                  onFeatureUpdate={setFeature}
-                  controlledTab={activeTab}
-                  onControlledTabChange={handleTabChange}
-                  sectionHighlights={sectionHighlights}
-                />
-              </div>
-            </ResizablePanel>
-          </>
-        )}
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={60} minSize={25}>
+          <div className="h-full min-h-0 min-w-0">
+            <ArtifactsPanel {...artifactsPanelProps} />
+          </div>
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );

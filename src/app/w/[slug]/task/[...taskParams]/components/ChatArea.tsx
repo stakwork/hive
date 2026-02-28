@@ -40,6 +40,7 @@ interface ChatAreaProps {
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
+  previewToggleIcon?: React.ComponentType<{ className?: string }>;
   taskMode?: string;
   taskId?: string | null;
   podId?: string | null;
@@ -72,6 +73,7 @@ export function ChatArea({
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
+  previewToggleIcon: PreviewToggleIcon = Monitor,
   taskMode,
   taskId,
   podId,
@@ -240,9 +242,9 @@ export function ChatArea({
                 size="sm"
                 onClick={onTogglePreview}
                 className="flex-shrink-0"
-                title={showPreview ? "Show Chat" : "Show Live Preview"}
+                title={showPreview ? "Show Chat" : "Show Preview"}
               >
-                <Monitor className="w-4 h-4" />
+                <PreviewToggleIcon className="w-4 h-4" />
               </Button>
             )}
 
