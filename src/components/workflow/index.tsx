@@ -387,7 +387,15 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
 
   // Auto-fit view for project workflows on initial load
   useEffect(() => {
-    if (projectId && reactFlowInstance && nodes.length > 0 && !hasInitialFitViewRef.current) {
+    const isEditorMode = !!workflowData && !projectId;
+    const hasSavedPosition = isEditorMode && !!localStorage.getItem(`position_${workflowId}`);
+
+    if (
+      (projectId || (isEditorMode && !hasSavedPosition)) &&
+      reactFlowInstance &&
+      nodes.length > 0 &&
+      !hasInitialFitViewRef.current
+    ) {
       hasInitialFitViewRef.current = true;
 
       // Small delay to ensure nodes are rendered
@@ -398,7 +406,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         });
       }, 100);
     }
-  }, [projectId, reactFlowInstance, nodes.length]);
+  }, [projectId, workflowData, workflowId, reactFlowInstance, nodes.length]);
 
   // Handle step clicks for workflow editor mode
   useEffect(() => {
