@@ -6,7 +6,7 @@ import { ChatInput } from "@/app/w/[slug]/task/[...taskParams]/components/ChatIn
 import { WorkflowStatus } from "@/lib/chat";
 
 // Mock dependencies using vi.hoisted to avoid hoisting issues
-const { mockSpeechRecognitionState, mockUseSpeechRecognition } = vi.hoisted(() => {
+const { mockSpeechRecognitionState, mockUseSpeechRecognition, mockUseFeatureFlag } = vi.hoisted(() => {
   const state = {
     isListening: false,
     transcript: "",
@@ -26,9 +26,12 @@ const { mockSpeechRecognitionState, mockUseSpeechRecognition } = vi.hoisted(() =
     resetTranscript: state.resetTranscript,
   }));
   
+  const mockFeatureFlag = vi.fn(() => false);
+  
   return {
     mockSpeechRecognitionState: state,
     mockUseSpeechRecognition: mockFn,
+    mockUseFeatureFlag: mockFeatureFlag,
   };
 });
 
@@ -82,7 +85,7 @@ vi.mock("@/components/InputDebugAttachment", () => ({
 }));
 
 vi.mock("@/hooks/useFeatureFlag", () => ({
-  useFeatureFlag: vi.fn(() => false),
+  useFeatureFlag: mockUseFeatureFlag,
 }));
 
 vi.mock("@/lib/utils/detect-code-paste", () => ({
@@ -98,6 +101,63 @@ describe("ChatInput - Task Mode", () => {
     onRemoveDebugAttachment: vi.fn(),
     workflowStatus: null as WorkflowStatus | null,
   };
+
+  describe("Component Height Consistency", () => {
+    test("textarea has consistent h-9 minimum height", () => {
+      render(<ChatInput {...defaultProps} />);
+      const textarea = screen.getByTestId("chat-message-input");
+      
+      expect(textarea.className).toContain("min-h-[36px]");
+      expect(textarea.className).not.toContain("min-h-[56px]");
+      expect(textarea.className).not.toContain("md:min-h-[40px]");
+    });
+
+    test("submit button has h-9 height class", () => {
+      render(<ChatInput {...defaultProps} />);
+      const submitButton = screen.getByTestId("chat-message-submit");
+      
+      expect(submitButton.className).toContain("h-9");
+      expect(submitButton.className).not.toContain("h-11");
+    });
+
+    test("mic button has h-9 w-9 dimensions when speech recognition is supported", () => {
+      mockSpeechRecognitionState.isSupported = true;
+      
+      render(<ChatInput {...defaultProps} />);
+      
+      // Find the mic button by looking for buttons with the mic class dimensions
+      const buttons = screen.getAllByRole("button");
+      const micButton = buttons.find(btn => 
+        btn.className.includes("rounded-full") && 
+        (btn.querySelector("svg") || btn.textContent === "")
+      );
+      
+      expect(micButton).toBeDefined();
+      expect(micButton?.className).toContain("h-9");
+      expect(micButton?.className).toContain("w-9");
+      expect(micButton?.className).not.toContain("h-11");
+      expect(micButton?.className).not.toContain("w-11");
+    });
+
+    test("image upload button has h-9 w-9 dimensions when not in agent mode", () => {
+      // Image upload is only visible when NOT in agent mode
+      render(<ChatInput {...defaultProps} />);
+      
+      // Find all buttons and locate the image upload button
+      const buttons = screen.getAllByRole("button");
+      const imageButton = buttons.find(btn => 
+        btn.className.includes("rounded-full") && 
+        btn.className.includes("shrink-0") &&
+        btn !== screen.getByTestId("chat-message-submit")
+      );
+      
+      expect(imageButton).toBeDefined();
+      expect(imageButton?.className).toContain("h-9");
+      expect(imageButton?.className).toContain("w-9");
+      expect(imageButton?.className).not.toContain("h-11");
+      expect(imageButton?.className).not.toContain("w-11");
+    });
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -368,11 +428,11 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
     });
 
-    test("send button has h-11 class on desktop for alignment with other buttons", () => {
+    test("send button has h-9 class on desktop for alignment with other buttons", () => {
       render(<ChatInput {...defaultProps} />);
       
       const submitButton = screen.getByTestId("chat-message-submit");
-      expect(submitButton).toHaveClass("h-11");
+      expect(submitButton).toHaveClass("h-9");
       expect(submitButton).toHaveClass("shrink-0");
     });
 
@@ -381,6 +441,69 @@ describe("ChatInput - Task Mode", () => {
       
       const textarea = screen.getByTestId("chat-message-input");
       expect(textarea).toHaveFocus();
+    });
+  });
+
+  describe("Component Height Consistency", () => {
+    test("textarea has min-h-[36px] for unified height", () => {
+      render(<ChatInput {...defaultProps} />);
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea.className).toContain("min-h-[36px]");
+    });
+
+    test("textarea does not have old mobile-specific min-h-[56px]", () => {
+      render(<ChatInput {...defaultProps} />);
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea.className).not.toContain("min-h-[56px]");
+    });
+
+    test("textarea does not have old desktop-specific md:min-h-[40px]", () => {
+      render(<ChatInput {...defaultProps} />);
+      const textarea = screen.getByTestId("chat-message-input");
+      expect(textarea.className).not.toContain("md:min-h-[40px]");
+    });
+
+    test("submit button has h-9 class and not h-11", () => {
+      render(<ChatInput {...defaultProps} />);
+      const button = screen.getByTestId("chat-message-submit");
+      expect(button.className).toContain("h-9");
+      expect(button.className).not.toContain("h-11");
+    });
+
+    test("mic button has h-9 w-9 classes when speech is supported", () => {
+      mockSpeechRecognitionState.isSupported = true;
+      render(<ChatInput {...defaultProps} />);
+      // The mic button doesn't have a data-testid, so we look for it by its position and classes
+      const buttons = document.querySelectorAll("button");
+      const micButton = Array.from(buttons).find(btn => 
+        btn.className.includes("h-9") && 
+        btn.className.includes("w-9") &&
+        btn.className.includes("rounded-full") &&
+        !btn.getAttribute("data-testid") // Exclude the submit button which has a testid
+      );
+      expect(micButton).toBeTruthy();
+      expect(micButton?.className).toContain("h-9");
+      expect(micButton?.className).toContain("w-9");
+      expect(micButton?.className).not.toContain("h-11");
+      mockSpeechRecognitionState.isSupported = false;
+    });
+
+    test("image upload button has h-9 w-9 classes when visible", () => {
+      // Image upload is only visible when taskMode is not "agent" (default behavior)
+      render(<ChatInput {...defaultProps} taskMode="task" />);
+      
+      // The image upload button is the rounded-full button (not the submit button which doesn't have rounded-full)
+      const buttons = screen.getAllByRole("button");
+      const imageButton = buttons.find(btn => 
+        btn.className.includes("rounded-full") && 
+        btn.type === "button"
+      );
+      
+      expect(imageButton).toBeTruthy();
+      expect(imageButton?.className).toContain("h-9");
+      expect(imageButton?.className).toContain("w-9");
+      expect(imageButton?.className).not.toContain("h-11");
+      expect(imageButton?.className).not.toContain("w-11");
     });
   });
 
