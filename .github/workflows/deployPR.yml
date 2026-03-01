@@ -217,7 +217,7 @@ jobs:
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
           # Mark the duplicate migration as rolled back if it exists in the database
-          npx prisma migrate resolve --rolled-back 20260301051516_add_voice_signature_to_user || echo "Migration not found or already resolved"
+          npx prisma migrate resolve --rolled-back 20260301051356_add_voice_signature_to_user || echo "Migration not found or already resolved"
 
       - name: Build
         run: |
