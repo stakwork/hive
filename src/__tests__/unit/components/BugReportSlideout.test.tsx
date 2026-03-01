@@ -74,6 +74,8 @@ describe('BugReportSlideout', () => {
       name: 'Test Workspace',
       slug: 'test-workspace',
     },
+    slug: 'test-workspace',
+    id: 'workspace-123',
     loading: false,
     error: null,
   };
@@ -1032,7 +1034,10 @@ describe('BugReportSlideout', () => {
 
   describe('Fast Track Workflow', () => {
     beforeEach(() => {
+      vi.clearAllMocks();
       mockRouterPush.mockClear();
+      vi.mocked(toast.success).mockImplementation(() => '');
+      vi.mocked(toast.error).mockImplementation(() => '');
     });
 
     it('should trigger REQUIREMENTS generation and navigate when Fast Track is enabled', async () => {
@@ -1126,21 +1131,24 @@ describe('BugReportSlideout', () => {
 
       const toggle = screen.getByTestId('fast-track-toggle');
       await user.click(toggle);
-
+      
       // Wait for toggle state to update
       await waitFor(() => {
         const updatedToggle = screen.getByTestId('fast-track-toggle');
         expect(updatedToggle).toHaveAttribute('data-state', 'checked');
       });
 
+      // Add a small delay to ensure component state has fully updated
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       const submitButton = screen.getByTestId('submit-bug-report-button');
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(mockRouterPush).toHaveBeenCalled();
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
       });
 
-      // Success toast should NOT be called
+      // Success toast should NOT be called when Fast Track is enabled
       expect(toast.success).not.toHaveBeenCalled();
     });
 
