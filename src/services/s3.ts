@@ -23,7 +23,7 @@ const VIDEO_MAGIC_NUMBERS: Record<string, number[]> = {
 }
 
 const AUDIO_MAGIC_NUMBERS: Record<string, number[]> = {
-  'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF header
+  'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
 }
 
 export class S3Service {
@@ -112,10 +112,6 @@ export class S3Service {
     return `recordings/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_recording.webm`
   }
 
-  generateVoiceSignaturePath(userId: string): string {
-    return `voice-signatures/${userId}/signature.wav`
-  }
-
   async deleteObject(key: string): Promise<void> {
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
@@ -166,8 +162,7 @@ export class S3Service {
       'image/jpg',
       'image/png',
       'image/gif',
-      'image/webp',
-      'audio/wav'
+      'image/webp'
     ]
     return allowedTypes.includes(mimeType.toLowerCase())
   }
@@ -247,6 +242,10 @@ export class S3Service {
     } catch {
       return false
     }
+  }
+
+  generateVoiceSignaturePath(userId: string): string {
+    return `voice-signatures/${userId}/signature.wav`
   }
 }
 

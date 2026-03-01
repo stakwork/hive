@@ -140,13 +140,6 @@ export class S3MockWrapper {
   }
 
   /**
-   * Generate voice signature path
-   */
-  generateVoiceSignaturePath(userId: string): string {
-    return `voice-signatures/${userId}/signature.wav`;
-  }
-
-  /**
    * Validate image buffer by checking magic numbers
    */
   validateImageBuffer(
@@ -221,7 +214,7 @@ export class S3MockWrapper {
   validateAudioBuffer(buffer: Buffer, expectedType: string): boolean {
     try {
       const AUDIO_MAGIC_NUMBERS: Record<string, number[]> = {
-        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF header
+        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
       };
 
       const magicNumbers = AUDIO_MAGIC_NUMBERS[expectedType];
@@ -244,6 +237,13 @@ export class S3MockWrapper {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Generate voice signature path
+   */
+  generateVoiceSignaturePath(userId: string): string {
+    return `voice-signatures/${userId}/signature.wav`;
   }
 }
 

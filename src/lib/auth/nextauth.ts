@@ -505,9 +505,8 @@ export const authOptions: NextAuthOptions = {
               (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
             }
 
-            if (userRecord?.voiceSignatureKey) {
-              (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord.voiceSignatureKey;
-            }
+            // Surface voice signature existence flag (not the raw S3 key)
+            (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord?.voiceSignatureKey;
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
               userId,
