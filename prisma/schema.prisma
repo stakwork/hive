@@ -538,7 +538,7 @@ model swarms {
   pending_repair_trigger     Json?
   pod_completed_at           DateTime?
   description                String?
-  environment_variables      environment_variables[]
+  environment_variable_records environment_variables[]
   pods                       pods[]
   workspaces                 workspaces              @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
