@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth/nextauth'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { voiceSignatureUploadRequestSchema } from '@/lib/schemas/user'
+
+const MAX_VOICE_SIGNATURE_SIZE = 50 * 1024 * 1024 // 50 MB
 
 /**
  * POST /api/user/voice-signature
@@ -19,13 +20,30 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const validatedData = voiceSignatureUploadRequestSchema.parse(body)
+    const { contentType, size } = body
+
+    // Validate content type
+    if (contentType !== 'audio/wav') {
+      return NextResponse.json(
+        { error: 'Invalid content type. Only audio/wav is supported.' },
+        { status: 400 }
+      )
+    }
+
+    // Validate file size
+    if (typeof size !== 'number' || size <= 0 || size > MAX_VOICE_SIGNATURE_SIZE) {
+      return NextResponse.json(
+        { error: `File size must be between 1 byte and 50 MB.` },
+        { status: 400 }
+      )
+    }
 
     const s3Service = getS3Service()
     const s3Path = s3Service.generateVoiceSignaturePath(session.user.id)
+
     const presignedUrl = await s3Service.generatePresignedUploadUrl(
       s3Path,
-      validatedData.contentType,
+      contentType,
       900 // 15 minutes
     )
 
@@ -37,16 +55,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ presignedUrl, s3Path })
   } catch (error) {
     logger.error('Failed to generate voice signature upload URL', 'VOICE_SIGNATURE_UPLOAD_URL_ERROR', error)
-
-    if (error && typeof error === 'object' && 'issues' in error) {
-      return NextResponse.json(
-        { error: 'Invalid request data', details: error },
-        { status: 400 }
-      )
-    }
-
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to generate upload URL' },
       { status: 500 }
     )
   }
@@ -54,7 +64,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/user/voice-signature
- * Delete voice signature from S3 and clear DB reference
+ * Delete user's voice signature from S3 and clear DB reference
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -64,32 +74,30 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch current voice signature key
+    // Fetch user's current voice signature key
     const user = await db.user.findUnique({
       where: { id: session.user.id },
       select: { voiceSignatureKey: true },
     })
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    if (!user?.voiceSignatureKey) {
+      return NextResponse.json({ error: 'No voice signature found' }, { status: 404 })
     }
 
-    // Delete from S3 if exists
-    if (user.voiceSignatureKey) {
-      try {
-        const s3Service = getS3Service()
-        await s3Service.deleteObject(user.voiceSignatureKey)
-      } catch (s3Error) {
-        // Log but don't fail - we still want to clear the DB reference
-        logger.warn('Failed to delete voice signature from S3', 'VOICE_SIGNATURE_S3_DELETE_ERROR', {
-          userId: session.user.id,
-          s3Key: user.voiceSignatureKey,
-          error: s3Error,
-        })
-      }
+    // Delete from S3
+    try {
+      const s3Service = getS3Service()
+      await s3Service.deleteObject(user.voiceSignatureKey)
+    } catch (s3Error) {
+      // Swallow S3 errors with a warning
+      logger.warn('Failed to delete voice signature from S3', 'VOICE_SIGNATURE_S3_DELETE_ERROR', {
+        userId: session.user.id,
+        s3Key: user.voiceSignatureKey,
+        error: s3Error,
+      })
     }
 
-    // Clear DB reference
+    // Clear the DB reference
     await db.user.update({
       where: { id: session.user.id },
       data: { voiceSignatureKey: null },
@@ -102,9 +110,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('Failed to delete voice signature', 'VOICE_SIGNATURE_DELETE_ERROR', error)
-
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to delete voice signature' },
       { status: 500 }
     )
   }
