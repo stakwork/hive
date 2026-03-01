@@ -1101,6 +1101,9 @@ model Feature {
   status   FeatureStatus   @default(BACKLOG)
   priority FeaturePriority @default(LOW)
 
+  // Fast Track toggle for auto-chained workflows
+  isFastTrack Boolean @default(false) @map("is_fast_track")
+
   // Audit fields
   createdById String @map("created_by_id")
   createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])

@@ -351,6 +351,7 @@ export interface CreateFeatureRequest {
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string;
+  isFastTrack?: boolean;
 }
 
 export interface UpdateFeatureRequest {
