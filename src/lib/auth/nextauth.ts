@@ -493,7 +493,7 @@ export const authOptions: NextAuthOptions = {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true, sphinxAlias: true },
+              select: { lightningPubkey: true, sphinxAlias: true, voiceSignatureKey: true },
             });
 
             if (userRecord?.lightningPubkey) {
@@ -503,6 +503,10 @@ export const authOptions: NextAuthOptions = {
 
             if (userRecord?.sphinxAlias) {
               (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
+            }
+
+            if (userRecord?.voiceSignatureKey) {
+              (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord.voiceSignatureKey;
             }
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
