@@ -47,6 +47,8 @@ interface ChatInputProps {
   taskId?: string;
   featureId?: string;
   onOpenBountyRequest?: () => void;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
 }
 
 export function ChatInput({
@@ -64,6 +66,8 @@ export function ChatInput({
   taskId,
   featureId,
   onOpenBountyRequest,
+  onRetry,
+  isRetrying = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -431,14 +435,31 @@ export function ChatInput({
             <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
             <span>{getTerminalMessage()}</span>
           </div>
-          {workspaceSlug && (
-            <Button asChild size="sm">
-              <Link href={`/w/${workspaceSlug}/task/new`}>
-                <Plus className="h-3 w-3 mr-1" />
-                New Task
-              </Link>
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {onRetry && (
+              <Button
+                onClick={onRetry}
+                disabled={isRetrying}
+                size="sm"
+                variant="outline"
+              >
+                {isRetrying ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Retry
+              </Button>
+            )}
+            {workspaceSlug && (
+              <Button asChild size="sm">
+                <Link href={`/w/${workspaceSlug}/task/new`}>
+                  <Plus className="h-3 w-3 mr-1" />
+                  New Task
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );

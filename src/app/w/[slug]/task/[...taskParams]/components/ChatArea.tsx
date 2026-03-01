@@ -51,6 +51,8 @@ interface ChatAreaProps {
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
 }
@@ -85,6 +87,8 @@ export function ChatArea({
   collaborators,
   onOpenBountyRequest,
   sphinxInviteEnabled,
+  onRetry,
+  isRetrying = false,
   isPlanChat = false,
   onTitleSave,
 }: ChatAreaProps) {
@@ -394,6 +398,8 @@ export function ChatArea({
         featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
       />
 
       {onReleasePod && (
