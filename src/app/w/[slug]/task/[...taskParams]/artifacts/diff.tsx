@@ -426,7 +426,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                       <img
                         src={file.imageDataUri}
                         alt={file.fileName}
-                        className="max-w-full max-h-96 object-contain rounded"
+                        className="w-full max-w-[1200px] object-contain rounded"
                       />
                     </div>
                   )}
