@@ -29,6 +29,7 @@ import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -593,11 +594,17 @@ export async function processStakworkRunWebhook(
         select: {
           slug: true,
           ownerId: true,
+          sphinxEnabled: true,
+          sphinxChatPubkey: true,
+          sphinxBotId: true,
+          sphinxBotSecret: true,
         },
       },
       feature: {
         select: {
           createdById: true,
+          isFastTrack: true,
+          title: true,
         },
       },
     },
@@ -872,11 +879,107 @@ export async function processStakworkRunWebhook(
     }
   }
 
+  // Step 4: Fast Track chain - auto-trigger next run in sequence
+  const FAST_TRACK_CHAIN: Partial<Record<StakworkRunType, StakworkRunType>> = {
+    [StakworkRunType.REQUIREMENTS]: StakworkRunType.ARCHITECTURE,
+    [StakworkRunType.ARCHITECTURE]: StakworkRunType.TASK_GENERATION,
+  };
+
+  if (
+    run.autoAccept &&
+    run.feature?.isFastTrack &&
+    run.featureId &&
+    status === WorkflowStatus.COMPLETED &&
+    FAST_TRACK_CHAIN[run.type]
+  ) {
+    try {
+      await createStakworkRun(
+        {
+          type: FAST_TRACK_CHAIN[run.type]!,
+          workspaceId: run.workspaceId,
+          featureId: run.featureId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        },
+        run.feature.createdById ?? run.workspace.ownerId
+      );
+    } catch (chainError) {
+      console.error(`Fast Track chain failed to start next run for feature ${run.featureId}:`, chainError);
+    }
+  }
+
+  // Step 5: Sphinx failure notification for fast-track features
+  if (run.feature?.isFastTrack && run.featureId && status === WorkflowStatus.FAILED) {
+    await notifyFastTrackFailureViaSphinx(run, run.featureId);
+  }
+
   return {
     runId: run.id,
     status,
     dataType,
   };
+}
+
+/**
+ * Send Sphinx notification when a Fast Track run fails
+ */
+async function notifyFastTrackFailureViaSphinx(
+  run: {
+    workspace: {
+      slug: string;
+      ownerId: string;
+      sphinxEnabled: boolean | null;
+      sphinxChatPubkey: string | null;
+      sphinxBotId: string | null;
+      sphinxBotSecret: string | null;
+    };
+    feature: {
+      createdById: string | null;
+      isFastTrack: boolean | null;
+      title: string | null;
+    } | null;
+  },
+  featureId: string
+): Promise<void> {
+  try {
+    const { workspace, feature } = run;
+    
+    // Early returns if Sphinx not configured
+    if (!workspace.sphinxEnabled || !workspace.sphinxBotSecret || !workspace.sphinxChatPubkey || !workspace.sphinxBotId) {
+      return;
+    }
+
+    // Check if creator has Sphinx alias
+    const creator = feature?.createdById
+      ? await db.user.findUnique({ where: { id: feature.createdById }, select: { sphinxAlias: true } })
+      : null;
+    
+    if (!creator?.sphinxAlias) {
+      return;
+    }
+
+    // Decrypt bot secret
+    const decryptedSecret = encryptionService.decryptField("sphinxBotSecret", workspace.sphinxBotSecret);
+
+    // Build feature URL
+    const featureUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/plan/${featureId}`;
+
+    // Build message
+    const message = `Fast Track bug fix for '${feature?.title ?? featureId}' has stalled — review it here: ${featureUrl}`;
+
+    // Send notification
+    await sendToSphinx(
+      { 
+        chatPubkey: workspace.sphinxChatPubkey, 
+        botId: workspace.sphinxBotId, 
+        botSecret: decryptedSecret 
+      },
+      message
+    );
+  } catch (err) {
+    console.error("[FastTrack] Sphinx failure notification error:", err);
+    // Never throws - this is a best-effort notification
+  }
 }
 
 /**
@@ -967,9 +1070,15 @@ async function applyAcceptResult(
 
       const featureWithPhase = await db.feature.findUnique({
         where: { id: run.featureId },
-        include: {
-          phases: { orderBy: { order: "asc" }, take: 1 },
-          workspace: { select: { id: true } },
+        select: {
+          isFastTrack: true,
+          phases: {
+            orderBy: { order: "asc" },
+            take: 1,
+          },
+          workspace: {
+            select: { id: true },
+          },
         },
       });
 
@@ -981,6 +1090,8 @@ async function applyAcceptResult(
       if (!defaultPhase) {
         throw new Error("No phase found for feature");
       }
+
+      const isFastTrack = featureWithPhase.isFastTrack ?? false;
 
       // Build URL→ID map for multi-repo task assignment
       const repos = await db.repository.findMany({
@@ -1014,6 +1125,8 @@ async function applyAcceptResult(
             repositoryId,
             createdById: userId,
             updatedById: userId,
+            autoMerge: isFastTrack ? true : undefined,
+            systemAssigneeType: isFastTrack ? "TASK_COORDINATOR" : undefined,
           },
         });
 
