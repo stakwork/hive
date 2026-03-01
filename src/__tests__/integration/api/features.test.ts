@@ -724,5 +724,85 @@ describe("Features API - Integration Tests", () => {
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Feature");
     });
+
+    test("creates feature with isFastTrack: true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Fast Track Feature",
+        workspaceId: workspace.id,
+        isFastTrack: true,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.isFastTrack).toBe(true);
+
+      // Verify in database
+      const feature = await db.feature.findUnique({
+        where: { id: data.data.id },
+        select: { isFastTrack: true },
+      });
+      expect(feature?.isFastTrack).toBe(true);
+    });
+
+    test("defaults isFastTrack to false when omitted", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Regular Feature",
+        workspaceId: workspace.id,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.isFastTrack).toBe(false);
+
+      // Verify in database
+      const feature = await db.feature.findUnique({
+        where: { id: data.data.id },
+        select: { isFastTrack: true },
+      });
+      expect(feature?.isFastTrack).toBe(false);
+    });
+
+    test("creates feature with isFastTrack: false explicitly", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Explicit Non-Fast-Track Feature",
+        workspaceId: workspace.id,
+        isFastTrack: false,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.isFastTrack).toBe(false);
+
+      // Verify in database
+      const feature = await db.feature.findUnique({
+        where: { id: data.data.id },
+        select: { isFastTrack: true },
+      });
+      expect(feature?.isFastTrack).toBe(false);
+    });
   });
 });
