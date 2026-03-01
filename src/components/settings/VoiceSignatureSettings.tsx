@@ -144,6 +144,86 @@ export function VoiceSignatureSettings() {
     startRecording();
   };
 
+  // Convert webm to WAV using Web Audio API
+  const convertToWav = async (blob: Blob): Promise<Blob> => {
+    // If already WAV, return as-is
+    if (blob.type === "audio/wav") {
+      return blob;
+    }
+
+    const audioContext = new AudioContext();
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+    // Convert AudioBuffer to WAV
+    const wavBuffer = audioBufferToWav(audioBuffer);
+    return new Blob([wavBuffer], { type: "audio/wav" });
+  };
+
+  // Encode AudioBuffer to WAV format
+  const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
+    const length = buffer.length * buffer.numberOfChannels * 2 + 44;
+    const arrayBuffer = new ArrayBuffer(length);
+    const view = new DataView(arrayBuffer);
+    const channels: Float32Array[] = [];
+    let offset = 0;
+    let pos = 0;
+
+    // Write WAV header
+    const setUint16 = (data: number) => {
+      view.setUint16(pos, data, true);
+      pos += 2;
+    };
+    const setUint32 = (data: number) => {
+      view.setUint32(pos, data, true);
+      pos += 4;
+    };
+
+    // RIFF identifier
+    setUint32(0x46464952);
+    // file length minus RIFF identifier length and file description length
+    setUint32(length - 8);
+    // RIFF type
+    setUint32(0x45564157);
+    // format chunk identifier
+    setUint32(0x20746d66);
+    // format chunk length
+    setUint32(16);
+    // sample format (raw)
+    setUint16(1);
+    // channel count
+    setUint16(buffer.numberOfChannels);
+    // sample rate
+    setUint32(buffer.sampleRate);
+    // byte rate (sample rate * block align)
+    setUint32(buffer.sampleRate * buffer.numberOfChannels * 2);
+    // block align (channel count * bytes per sample)
+    setUint16(buffer.numberOfChannels * 2);
+    // bits per sample
+    setUint16(16);
+    // data chunk identifier
+    setUint32(0x61746164);
+    // data chunk length
+    setUint32(length - pos - 4);
+
+    // Write interleaved data
+    for (let i = 0; i < buffer.numberOfChannels; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    while (pos < length) {
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+        sample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+        view.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+
+    return arrayBuffer;
+  };
+
   // Save recording
   const handleSave = async () => {
     if (!audioBlob) return;
@@ -151,13 +231,16 @@ export function VoiceSignatureSettings() {
     setState("saving");
 
     try {
+      // Convert to WAV if needed
+      const wavBlob = await convertToWav(audioBlob);
+
       // Step 1: Get presigned URL
       const uploadResponse = await fetch("/api/user/voice-signature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentType: "audio/wav",
-          size: audioBlob.size,
+          size: wavBlob.size,
         }),
       });
 
@@ -170,7 +253,7 @@ export function VoiceSignatureSettings() {
       // Step 2: Upload to S3
       const uploadToS3Response = await fetch(presignedUrl, {
         method: "PUT",
-        body: audioBlob,
+        body: wavBlob,
         headers: {
           "Content-Type": "audio/wav",
         },
