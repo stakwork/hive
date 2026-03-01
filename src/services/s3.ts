@@ -22,6 +22,10 @@ const VIDEO_MAGIC_NUMBERS: Record<string, number[]> = {
   'video/webm': [0x1a, 0x45, 0xdf, 0xa3],
 }
 
+const AUDIO_MAGIC_NUMBERS: Record<string, number[]> = {
+  'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF header
+}
+
 export class S3Service {
   private client: S3Client
   private bucketName: string
@@ -108,6 +112,10 @@ export class S3Service {
     return `recordings/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_recording.webm`
   }
 
+  generateVoiceSignaturePath(userId: string): string {
+    return `voice-signatures/${userId}/signature.wav`
+  }
+
   async deleteObject(key: string): Promise<void> {
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
@@ -158,7 +166,8 @@ export class S3Service {
       'image/jpg',
       'image/png',
       'image/gif',
-      'image/webp'
+      'image/webp',
+      'audio/wav'
     ]
     return allowedTypes.includes(mimeType.toLowerCase())
   }
@@ -195,6 +204,30 @@ export class S3Service {
   validateVideoBuffer(buffer: Buffer, expectedType: string): boolean {
     try {
       const magicNumbers = VIDEO_MAGIC_NUMBERS[expectedType]
+
+      if (!magicNumbers) {
+        return false
+      }
+
+      if (buffer.length < magicNumbers.length) {
+        return false
+      }
+
+      for (let i = 0; i < magicNumbers.length; i++) {
+        if (buffer[i] !== magicNumbers[i]) {
+          return false
+        }
+      }
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  validateAudioBuffer(buffer: Buffer, expectedType: string): boolean {
+    try {
+      const magicNumbers = AUDIO_MAGIC_NUMBERS[expectedType]
 
       if (!magicNumbers) {
         return false
