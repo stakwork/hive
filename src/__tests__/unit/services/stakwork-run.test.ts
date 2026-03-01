@@ -68,6 +68,10 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
+vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
+  sendToSphinx: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
@@ -2563,6 +2567,835 @@ describe("Stakwork Run Service", () => {
           result: null,
           feedback: null,
         },
+      });
+    });
+  });
+
+  describe("Fast Track Chain", () => {
+    test("should trigger ARCHITECTURE run when REQUIREMENTS completes on fast-track feature", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: "Requirements result",
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      // Mock workspace query for createStakworkRun
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "ADMIN" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-token" }],
+        },
+        repositories: [
+          {
+            id: "repo-1",
+            name: "test-repo",
+            repositoryUrl: "https://github.com/test/repo",
+            branch: "main",
+          },
+        ],
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue({
+        id: "run-2",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        status: WorkflowStatus.PENDING,
+      });
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      });
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+        id: "feature-1",
+        title: "Bug Fix",
+        brief: "Fix bug",
+        phases: [],
+      });
+      mockedStakworkService.mockReturnValue({
+        triggerWorkflow: vi.fn().mockResolvedValue({ project_id: "project-2" }),
+      } as any);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "completed",
+          result: "Requirements result",
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      // Verify that a new run was created with the correct type
+      expect(db.stakworkRun.create).toHaveBeenCalled();
+      const createCall = vi.mocked(db.stakworkRun.create).mock.calls[0][0];
+      expect(createCall.data).toMatchObject({
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+      });
+    });
+
+    test("should trigger TASK_GENERATION run when ARCHITECTURE completes on fast-track feature", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: "Architecture result",
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      // Mock workspace query for createStakworkRun
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "ADMIN" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-token" }],
+        },
+        repositories: [
+          {
+            id: "repo-1",
+            name: "test-repo",
+            repositoryUrl: "https://github.com/test/repo",
+            branch: "main",
+          },
+        ],
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue({
+        id: "run-2",
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        status: WorkflowStatus.PENDING,
+      });
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      });
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+        id: "feature-1",
+        title: "Bug Fix",
+        brief: "Fix bug",
+        phases: [],
+      });
+      mockedStakworkService.mockReturnValue({
+        triggerWorkflow: vi.fn().mockResolvedValue({ project_id: "project-2" }),
+      } as any);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "completed",
+          result: "Architecture result",
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "ARCHITECTURE",
+        }
+      );
+
+      // Verify that a new run was created with the correct type
+      expect(db.stakworkRun.create).toHaveBeenCalled();
+      const createCall = vi.mocked(db.stakworkRun.create).mock.calls[0][0];
+      expect(createCall.data).toMatchObject({
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+      });
+    });
+
+    test("should NOT trigger next run when TASK_GENERATION completes", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: JSON.stringify({ phases: [{ tasks: [] }] }),
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        isFastTrack: true,
+        phases: [{
+          id: "phase-1",
+          order: 1,
+        }],
+        workspace: {
+          id: "ws-1",
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const createSpy = vi.spyOn(db.stakworkRun, "create");
+
+      await processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "completed",
+          result: JSON.stringify({ phases: [{ tasks: [] }] }),
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "TASK_GENERATION",
+        }
+      );
+
+      // Verify no additional run was created (chain ends)
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test("should NOT trigger chain when autoAccept is false", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: false, // Not auto-accept
+        result: "Requirements result",
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const createSpy = vi.spyOn(db.stakworkRun, "create");
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "completed",
+          result: "Requirements result",
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test("should NOT trigger chain when isFastTrack is false", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: "Requirements result",
+        feature: {
+          createdById: "user-1",
+          isFastTrack: false, // Not fast-track
+          title: "Regular Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const createSpy = vi.spyOn(db.stakworkRun, "create");
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "completed",
+          result: "Requirements result",
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test("should handle chain creation errors gracefully", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: "Requirements result",
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakworkRun.create = vi.fn().mockRejectedValue(new Error("Chain creation failed"));
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Should not throw
+      await expect(processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "completed",
+          result: "Requirements result",
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      )).resolves.toBeDefined();
+    });
+  });
+
+  describe("Sphinx Failure Notification", () => {
+    beforeEach(() => {
+      vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
+        sendToSphinx: vi.fn().mockResolvedValue({}),
+      }));
+    });
+
+    test("should send Sphinx notification when fast-track run fails with all requirements met", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: null,
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: true,
+          sphinxChatPubkey: "chat-pubkey-123",
+          sphinxBotId: "bot-id-123",
+          sphinxBotSecret: "encrypted-secret",
+        },
+      };
+
+      const mockCreator = {
+        id: "user-1",
+        sphinxAlias: "developer-alias",
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
+      const sendToSphinxMock = vi.mocked(sendToSphinx);
+
+      await processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "failed",
+          result: null,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      // Check that user.findUnique was called to fetch sphinxAlias
+      const userFindCalls = vi.mocked(db.user.findUnique).mock.calls;
+      const sphinxAliasCalls = userFindCalls.filter(call => 
+        call[0].select && 'sphinxAlias' in call[0].select
+      );
+      expect(sphinxAliasCalls.length).toBeGreaterThan(0);
+
+      expect(sendToSphinxMock).toHaveBeenCalledWith(
+        {
+          chatPubkey: "chat-pubkey-123",
+          botId: "bot-id-123",
+          botSecret: "decrypted-sphinxBotSecret",
+        },
+        expect.stringContaining("Fast Track bug fix for 'Bug Fix Feature' has stalled")
+      );
+    });
+
+    test("should NOT send notification when sphinxEnabled is false", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: null,
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false, // Disabled
+          sphinxChatPubkey: "chat-pubkey-123",
+          sphinxBotId: "bot-id-123",
+          sphinxBotSecret: "encrypted-secret",
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
+      const sendToSphinxMock = vi.mocked(sendToSphinx);
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "failed",
+          result: null,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(sendToSphinxMock).not.toHaveBeenCalled();
+    });
+
+    test("should NOT send notification when creator has no sphinxAlias", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: null,
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: true,
+          sphinxChatPubkey: "chat-pubkey-123",
+          sphinxBotId: "bot-id-123",
+          sphinxBotSecret: "encrypted-secret",
+        },
+      };
+
+      const mockCreator = {
+        id: "user-1",
+        sphinxAlias: null, // No Sphinx alias
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
+      const sendToSphinxMock = vi.mocked(sendToSphinx);
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "failed",
+          result: null,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(sendToSphinxMock).not.toHaveBeenCalled();
+    });
+
+    test("should handle Sphinx notification errors gracefully", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: null,
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: true,
+          sphinxChatPubkey: "chat-pubkey-123",
+          sphinxBotId: "bot-id-123",
+          sphinxBotSecret: "encrypted-secret",
+        },
+      };
+
+      const mockCreator = {
+        id: "user-1",
+        sphinxAlias: "developer-alias",
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
+      vi.mocked(sendToSphinx).mockRejectedValue(new Error("Sphinx API error"));
+
+      // Should not throw
+      await expect(processStakworkRunWebhook(
+        {
+          project_id: "project-1",
+          project_status: "failed",
+          result: null,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      )).resolves.toBeDefined();
+    });
+
+    test("should NOT send notification for non-fast-track features", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: null,
+        feature: {
+          createdById: "user-1",
+          isFastTrack: false, // Not fast-track
+          title: "Regular Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: true,
+          sphinxChatPubkey: "chat-pubkey-123",
+          sphinxBotId: "bot-id-123",
+          sphinxBotSecret: "encrypted-secret",
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
+      const sendToSphinxMock = vi.mocked(sendToSphinx);
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "failed",
+          result: null,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(sendToSphinxMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Fast Track Task Creation", () => {
+    test("should create tasks with autoMerge and systemAssigneeType when isFastTrack is true", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: JSON.stringify({
+          phases: [{
+            tasks: [{
+              tempId: "temp-1",
+              title: "Fix bug",
+              description: "Fix the reported bug",
+              priority: "HIGH",
+              dependsOn: [],
+            }]
+          }]
+        }),
+        feature: {
+          createdById: "user-1",
+          isFastTrack: true,
+          title: "Bug Fix Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        isFastTrack: true,
+        phases: [{
+          id: "phase-1",
+          order: 1,
+        }],
+        workspace: {
+          id: "ws-1",
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "completed",
+          result: mockRun.result,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(db.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Fix bug",
+          autoMerge: true,
+          systemAssigneeType: "TASK_COORDINATOR",
+        }),
+      });
+    });
+
+    test("should create tasks WITHOUT autoMerge when isFastTrack is false", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "project-1",
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        autoAccept: true,
+        result: JSON.stringify({
+          phases: [{
+            tasks: [{
+              tempId: "temp-1",
+              title: "Regular task",
+              description: "Regular task description",
+              priority: "MEDIUM",
+              dependsOn: [],
+            }]
+          }]
+        }),
+        feature: {
+          createdById: "user-1",
+          isFastTrack: false, // Not fast-track
+          title: "Regular Feature",
+        },
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-1",
+          sphinxEnabled: false,
+          sphinxChatPubkey: null,
+          sphinxBotId: null,
+          sphinxBotSecret: null,
+        },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        isFastTrack: false,
+        phases: [{
+          id: "phase-1",
+          order: 1,
+        }],
+        workspace: {
+          id: "ws-1",
+        },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        {
+                    project_id: "project-1",
+          project_status: "completed",
+          result: mockRun.result,
+        },
+        {
+          workspace_id: "ws-1",
+          feature_id: "feature-1",
+          type: "REQUIREMENTS",
+        }
+      );
+
+      expect(db.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Regular task",
+          autoMerge: undefined,
+          systemAssigneeType: undefined,
+        }),
       });
     });
   });
