@@ -25,6 +25,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/admin", strategy: "prefix", access: "superadmin" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)
+  { path: "/person", strategy: "exact", access: "webhook" }, // Sphinx app post-link profile sync
   { path: "/api/auth/sphinx/token", strategy: "exact", access: "webhook" }, // Sphinx app token exchange (has own auth, bypasses landing page)
   { path: "/api/auth", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },

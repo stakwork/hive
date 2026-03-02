@@ -66,6 +66,7 @@ model User {
   poolApiKey       String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
   lightningPubkey  String?   @unique @map("lightning_pubkey") // Lightning Network public key for Sphinx auth
   sphinxAlias      String?   @map("sphinx_alias") // Sphinx tribe username for @mentions
+  sphinxRouteHint  String?   @map("sphinx_route_hint") // Sphinx route hint for Lightning payments
   voiceSignatureKey String?  @map("voice_signature_key") // S3 key for user's voice signature WAV file
 
   // Authentication relationships
