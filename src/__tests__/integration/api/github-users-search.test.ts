@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, vi, it } from "vitest";
 import { GET } from "@/app/api/github/users/search/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -25,6 +25,7 @@ const mockAxios = axios as vi.Mocked<typeof axios>;
 
 describe("GitHub Users Search API Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
+  const isMockMode = !!process.env.POD_URL;
 
   async function createTestUserWithGitHubAccount() {
     // Use a transaction to ensure atomicity
@@ -74,68 +75,83 @@ describe("GitHub Users Search API Integration Tests", () => {
   });
 
   describe("GET /api/github/users/search", () => {
-    test("should search GitHub users successfully with real database operations", async () => {
+    test("should search GitHub users successfully", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      // Mock GitHub API response
-      const mockGitHubResponse = {
-        data: {
-          total_count: 2,
-          items: [
-            {
-              id: 1,
-              login: "johndoe",
-              avatar_url: "https://avatars.githubusercontent.com/u/1",
-              html_url: "https://github.com/johndoe",
-              type: "User",
-              score: 1.0,
-            },
-            {
-              id: 2,
-              login: "johnsmith",
-              avatar_url: "https://avatars.githubusercontent.com/u/2",
-              html_url: "https://github.com/johnsmith",
-              type: "User",
-              score: 0.8,
-            },
-          ],
-        },
-      };
+      if (!isMockMode) {
+        // Mock GitHub API response only in non-mock mode
+        const mockGitHubResponse = {
+          data: {
+            total_count: 2,
+            items: [
+              {
+                id: 1,
+                login: "johndoe",
+                avatar_url: "https://avatars.githubusercontent.com/u/1",
+                html_url: "https://github.com/johndoe",
+                type: "User",
+                score: 1.0,
+              },
+              {
+                id: 2,
+                login: "johnsmith",
+                avatar_url: "https://avatars.githubusercontent.com/u/2",
+                html_url: "https://github.com/johnsmith",
+                type: "User",
+                score: 0.8,
+              },
+            ],
+          },
+        };
 
-      mockAxios.get.mockResolvedValue(mockGitHubResponse);
+        mockAxios.get.mockResolvedValue(mockGitHubResponse);
+      }
 
       const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
       const response = await GET(request);
       const data = await expectSuccess(response);
 
-      expect(data.users).toHaveLength(2);
-      expect(data.users[0].login).toBe("johndoe");
-      expect(data.users[1].login).toBe("johnsmith");
-      expect(data.total_count).toBe(2);
+      if (isMockMode) {
+        // In mock mode, verify mock data is returned
+        expect(data.users).toHaveLength(1);
+        expect(data.users[0]).toMatchObject({
+          login: expect.any(String),
+          avatar_url: expect.any(String),
+          html_url: expect.any(String),
+          type: "User",
+        });
+        expect(data.total_count).toBe(1);
+      } else {
+        // In normal mode, verify GitHub API response
+        expect(data.users).toHaveLength(2);
+        expect(data.users[0].login).toBe("johndoe");
+        expect(data.users[1].login).toBe("johnsmith");
+        expect(data.total_count).toBe(2);
 
-      // Verify GitHub API was called with decrypted token
-      expect(mockAxios.get).toHaveBeenCalledWith(
-        `${serviceConfigs.github.baseURL}/search/users`,
-        {
-          headers: {
-            Authorization: "token github_pat_test_token",
-            Accept: "application/vnd.github.v3+json",
-          },
-          params: {
-            q: "john",
-            per_page: 10,
-          },
-        }
-      );
+        // Verify GitHub API was called with decrypted token
+        expect(mockAxios.get).toHaveBeenCalledWith(
+          `${serviceConfigs.github.baseURL}/search/users`,
+          {
+            headers: {
+              Authorization: "token github_pat_test_token",
+              Accept: "application/vnd.github.v3+json",
+            },
+            params: {
+              q: "john",
+              per_page: 10,
+            },
+          }
+        );
 
-      // Verify real database lookup occurred
-      const accountInDb = await db.account.findFirst({
-        where: { userId: testUser.id, provider: "github" },
-      });
-      expect(accountInDb).toBeTruthy();
-      expect(accountInDb?.access_token).toBe(testAccount.access_token);
+        // Verify real database lookup occurred
+        const accountInDb = await db.account.findFirst({
+          where: { userId: testUser.id, provider: "github" },
+        });
+        expect(accountInDb).toBeTruthy();
+        expect(accountInDb?.access_token).toBe(testAccount.access_token);
+      }
     });
 
     test("should return 401 for unauthenticated user", async () => {
@@ -169,7 +185,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       await expectError(response, "Search query must be at least 2 characters", 400);
     });
 
-    test("should return 400 when GitHub account not found in database", async () => {
+    test.skipIf(isMockMode)("should return 400 when GitHub account not found in database", async () => {
+      // Skip in mock mode: mock mode bypasses GitHub account validation
       // Create user without GitHub account
       const userWithoutGitHub = await createTestUser({ name: "No Auth User" });
 
@@ -181,7 +198,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       await expectError(response, "GitHub access token not found", 400);
     });
 
-    test("should return 401 for expired GitHub token", async () => {
+    test.skipIf(isMockMode)("should return 401 for expired GitHub token", async () => {
+      // Skip in mock mode: mock mode bypasses real GitHub API calls
       const { testUser } = await createTestUserWithGitHubAccount();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -197,7 +215,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       await expectError(response, "GitHub token expired or invalid", 401);
     });
 
-    test("should return 500 for other GitHub API errors", async () => {
+    test.skipIf(isMockMode)("should return 500 for other GitHub API errors", async () => {
+      // Skip in mock mode: mock mode bypasses real GitHub API calls
       const { testUser } = await createTestUserWithGitHubAccount();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -210,7 +229,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       await expectError(response, "Failed to search GitHub users", 500);
     });
 
-    test("should handle empty search results", async () => {
+    test.skipIf(isMockMode)("should handle empty search results", async () => {
+      // Skip in mock mode: mock mode always returns one mock user
       const { testUser } = await createTestUserWithGitHubAccount();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -230,7 +250,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       expect(data.total_count).toBe(0);
     });
 
-    test("should properly encrypt and decrypt access tokens", async () => {
+    test.skipIf(isMockMode)("should properly encrypt and decrypt access tokens", async () => {
+      // Skip in mock mode: mock mode bypasses token decryption and axios calls
       const { testUser } = await createTestUserWithGitHubAccount();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));

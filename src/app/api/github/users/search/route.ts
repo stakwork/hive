@@ -23,6 +23,25 @@ export async function GET(request: Request) {
 
     const userId = (session.user as { id: string }).id;
 
+    // Mock mode: Return mock search results when POD_URL is set
+    if (process.env.POD_URL) {
+      const mockUsers = [
+        {
+          id: Date.now(),
+          login: query,
+          avatar_url: `https://avatars.githubusercontent.com/u/${Date.now()}?v=4`,
+          html_url: `https://github.com/${query}`,
+          type: "User",
+          score: 1.0,
+        },
+      ];
+
+      return NextResponse.json({
+        users: mockUsers,
+        total_count: 1,
+      });
+    }
+
     // Use user's OAuth token for user search (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);
     if (!githubProfile?.token) {
