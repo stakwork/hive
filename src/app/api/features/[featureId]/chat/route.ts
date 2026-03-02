@@ -127,7 +127,7 @@ export async function POST(
       where: { id: featureId },
       select: {
         id: true,
-        updatedAt: true,
+        planUpdatedAt: true,
         workspaceId: true,
         phases: {
           where: { order: 0 },
@@ -270,8 +270,8 @@ export async function POST(
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       });
-      const planEdited = lastPlanArtifact
-        ? feature.updatedAt > lastPlanArtifact.createdAt
+      const planEdited = lastPlanArtifact && feature.planUpdatedAt
+        ? feature.planUpdatedAt > lastPlanArtifact.createdAt
         : false;
 
       stakworkData = await callStakworkAPI({
