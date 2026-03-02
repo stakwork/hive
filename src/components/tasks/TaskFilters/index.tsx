@@ -30,6 +30,7 @@ const SOURCE_TYPES = [
   { value: "JANITOR", label: "Janitor" },
   { value: "TASK_COORDINATOR", label: "Task Coordinator" },
   { value: "SYSTEM", label: "System" },
+  { value: "PROTOTYPE", label: "Prototype" },
 ] as const;
 
 const STATUSES = [
