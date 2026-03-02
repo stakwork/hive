@@ -93,7 +93,15 @@ export class WorkspaceSettingsPage {
       await this.openAddMemberModal();
     }
 
-    await modal.locator(selectors.addMemberModal.githubInput).fill(githubUsername);
+    // Fill the search input
+    const searchInput = modal.locator(selectors.addMemberModal.githubInput);
+    await searchInput.fill(githubUsername);
+
+    // Wait for search results and select the user
+    // The search results appear as buttons with the user's login
+    const searchResultButton = this.page.locator(`button:has-text("${githubUsername}")`).first();
+    await searchResultButton.waitFor({ state: 'visible', timeout: 10000 });
+    await searchResultButton.click();
 
     const roleSelector = roleSelectors[role];
     if (roleSelector && role !== WorkspaceRole.DEVELOPER) {
@@ -101,7 +109,11 @@ export class WorkspaceSettingsPage {
       await this.page.locator(roleSelector).click();
     }
 
-    await modal.locator(selectors.addMemberModal.submit).click();
+    // Wait for the submit button to be enabled before clicking
+    const submitButton = modal.locator(selectors.addMemberModal.submit);
+    await submitButton.waitFor({ state: 'visible', timeout: 5000 });
+    await expect(submitButton).toBeEnabled({ timeout: 5000 });
+    await submitButton.click();
     await expect(modal).toBeHidden({ timeout: 10000 });
   }
 
