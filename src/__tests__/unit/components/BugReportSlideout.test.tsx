@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BugReportSlideout } from '@/components/BugReportSlideout';
@@ -17,8 +17,17 @@ vi.mock('next-auth/react', () => ({
 }));
 
 // Mock next/navigation
+const mockRouterPush = vi.fn();
 vi.mock('next/navigation', () => ({
   usePathname: () => '/w/test-workspace/plan',
+  useRouter: () => ({
+    push: mockRouterPush,
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 // Mock Sheet components to render children
@@ -65,12 +74,15 @@ describe('BugReportSlideout', () => {
       name: 'Test Workspace',
       slug: 'test-workspace',
     },
+    slug: 'test-workspace',
+    id: 'workspace-123',
     loading: false,
     error: null,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRouterPush.mockClear();
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(mockWorkspace as any);
     // Mock window.location.href
     Object.defineProperty(window, 'location', {
@@ -313,6 +325,7 @@ describe('BugReportSlideout', () => {
             status: 'BACKLOG',
             priority: 'HIGH',
             brief: '**Reported from:** https://example.com/w/test-workspace/plan\n\nThis is a bug report description',
+            isFastTrack: false,
           }),
         });
       });
@@ -615,14 +628,14 @@ describe('BugReportSlideout', () => {
     });
   });
 
-  describe('Drag and Drop', () => {
-    const createFile = (name: string, type: string, size: number) => {
-      const file = new File(['file content'], name, { type, lastModified: Date.now() });
-      Object.defineProperty(file, 'size', { value: size, writable: false });
-      return file;
-    };
+  // Helper functions for file creation in tests
+  const createFile = (name: string, type: string, size: number) => {
+    const file = new File(['file content'], name, { type, lastModified: Date.now() });
+    Object.defineProperty(file, 'size', { value: size, writable: false });
+    return file;
+  };
 
-    const createDataTransfer = (files: File[]) => {
+  const createDataTransfer = (files: File[]) => {
       return {
         files,
         items: files.map(file => ({
@@ -635,11 +648,11 @@ describe('BugReportSlideout', () => {
         setData: () => {},
         clearData: () => {},
       };
-    };
+  };
 
+  describe('Drag and Drop', () => {
     it('should show visual feedback when dragging an image over the upload area', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
-
       const dropzone = screen.getByTestId('bug-screenshot-dropzone');
       
       // Simulate drag enter
@@ -870,6 +883,407 @@ describe('BugReportSlideout', () => {
       const textarea = screen.getByTestId('bug-description-textarea');
       
       expect(textarea).toHaveAttribute('rows', '6');
+    });
+  });
+
+  describe('Fast Track Toggle', () => {
+    it('should render Fast Track toggle above Submit button', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const toggle = screen.getByTestId('fast-track-toggle');
+      const label = screen.getByText('Fast Track');
+      const description = screen.getByText('Automatically generate and apply a fix without manual approval.');
+
+      expect(toggle).toBeInTheDocument();
+      expect(label).toBeInTheDocument();
+      expect(description).toBeInTheDocument();
+    });
+
+    it('should toggle Fast Track state when clicked', async () => {
+      const user = userEvent.setup();
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const toggle = screen.getByTestId('fast-track-toggle');
+      
+      // Initially unchecked
+      expect(toggle).toHaveAttribute('data-state', 'unchecked');
+
+      // Click to enable
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute('data-state', 'checked');
+
+      // Click to disable
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute('data-state', 'unchecked');
+    });
+
+    it('should include isFastTrack in feature creation request body', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      // Fill in description
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      // Enable Fast Track
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+      
+      // Wait for state to update
+      await waitFor(() => {
+        expect(toggle).toHaveAttribute('data-state', 'checked');
+      });
+
+      // Submit form
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/features',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: expect.stringContaining('"isFastTrack":true'),
+          })
+        );
+      });
+    });
+
+    it('should set isFastTrack to false when toggle is off', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      // Fill in description
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      // Leave Fast Track disabled (default state)
+
+      // Submit form
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/features',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: expect.stringContaining('"isFastTrack":false'),
+          })
+        );
+      });
+    });
+
+    it('should reset isFastTrack to false when form is reset', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        });
+
+      const { rerender } = render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      // Enable Fast Track
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute('data-state', 'checked');
+
+      // Fill in description and submit
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      // Wait for form to reset
+      await waitFor(() => {
+        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      });
+
+      // Re-open the slideout by changing the open prop
+      mockOnOpenChange.mockClear();
+      rerender(<BugReportSlideout open={false} onOpenChange={mockOnOpenChange} />);
+      rerender(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      // Fast Track should be reset to unchecked
+      const toggleAfterReset = screen.getByTestId('fast-track-toggle');
+      expect(toggleAfterReset).toHaveAttribute('data-state', 'unchecked');
+    });
+  });
+
+  describe('Fast Track Workflow', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockRouterPush.mockClear();
+      vi.mocked(toast.success).mockImplementation(() => '');
+      vi.mocked(toast.error).mockImplementation(() => '');
+    });
+
+    it('should trigger REQUIREMENTS generation and navigate when Fast Track is enabled', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      // Mock feature creation
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        })
+        // Mock generate API call
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      // Fill in description
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      // Enable Fast Track
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+
+      // Wait for toggle state to update
+      await waitFor(() => {
+        const updatedToggle = screen.getByTestId('fast-track-toggle');
+        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
+      });
+
+      // Add a small delay to ensure component state has fully updated
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Submit form
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        // Verify feature creation was called first
+        expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/features', expect.any(Object));
+      });
+
+      await waitFor(() => {
+        // Verify generate API was called with correct params
+        expect(global.fetch).toHaveBeenNthCalledWith(
+          2,
+          '/api/stakwork/ai/generate',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'REQUIREMENTS',
+              featureId: 'feature-123',
+              workspaceId: 'workspace-123',
+              autoAccept: true,
+              params: { skipClarifyingQuestions: true },
+            }),
+          })
+        );
+
+        // Verify navigation to feature page
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+
+        // Verify slideout was closed
+        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      });
+    });
+
+    it('should NOT show success toast when Fast Track is enabled', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+      
+      // Wait for toggle state to update
+      await waitFor(() => {
+        const updatedToggle = screen.getByTestId('fast-track-toggle');
+        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
+      });
+
+      // Add a small delay to ensure component state has fully updated
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+      });
+
+      // Success toast should NOT be called when Fast Track is enabled
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('should show success toast when Fast Track is disabled', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      // Leave Fast Track disabled
+
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith(
+          'Bug report submitted. Thank you for helping us improve!'
+        );
+      });
+
+      // Should NOT navigate
+      expect(mockRouterPush).not.toHaveBeenCalled();
+
+      // Should NOT call generate API
+      expect(global.fetch).toHaveBeenCalledTimes(1); // Only feature creation
+    });
+
+    it('should still navigate if generate API fails', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        })
+        // Generate API fails
+        .mockRejectedValueOnce(new Error('Generate API error'));
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+
+      // Wait for toggle state to update
+      await waitFor(() => {
+        const updatedToggle = screen.getByTestId('fast-track-toggle');
+        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
+      });
+
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        // Should still navigate even if generate fails
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      });
+    });
+
+    it('should handle Fast Track with screenshot upload', async () => {
+      const user = userEvent.setup();
+      const mockOnOpenChange = vi.fn();
+      
+      global.fetch = vi.fn()
+        // Feature creation
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        })
+        // Upload URL request
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            presignedUrl: 'https://s3.example.com/upload',
+            publicUrl: 'https://s3.example.com/image.png',
+          }),
+        })
+        // S3 upload
+        .mockResolvedValueOnce({
+          ok: true,
+        })
+        // Feature update with image
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'feature-123' } }),
+        })
+        // Generate API
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
+
+      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
+
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a valid bug description');
+
+      // Upload screenshot
+      const fileInput = screen.getByTestId('bug-screenshot-input');
+      const file = createFile('screenshot.png', 'image/png', 1000);
+      await user.upload(fileInput, file);
+
+      // Enable Fast Track
+      const toggle = screen.getByTestId('fast-track-toggle');
+      await user.click(toggle);
+
+      // Wait for toggle state to update
+      await waitFor(() => {
+        const updatedToggle = screen.getByTestId('fast-track-toggle');
+        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
+      });
+
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        // All API calls should be made
+        expect(global.fetch).toHaveBeenCalledTimes(5);
+        
+        // Should navigate
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+      });
     });
   });
 });

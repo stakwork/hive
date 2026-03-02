@@ -89,7 +89,12 @@ describe("GET /api/github/app/status", () => {
       const response = await GET(request);
 
       await expectForbidden(response, "Workspace not found or access denied");
-      expect(vi.mocked(validateWorkspaceAccess)).toHaveBeenCalledWith("test-workspace", testUser.id);
+      expect(vi.mocked(validateWorkspaceAccess)).toHaveBeenCalledWith(
+        "test-workspace", 
+        testUser.id, 
+        true, 
+        { isSuperAdmin: false }
+      );
     });
 
     it("should return 403 when workspace exists but user is not a member", async () => {

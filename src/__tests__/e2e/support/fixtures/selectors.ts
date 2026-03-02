@@ -203,19 +203,18 @@ export const selectors = {
 
   // Learn / Context Learn
   learn: {
-    messageInput: '[data-testid="learn-message-input"]',
-    messageSend: '[data-testid="learn-message-send"]',
-    chatMessage: '[data-testid="learn-chat-message"]',
+    // Documentation viewer selectors
+    docsSection: '[data-testid="learn-docs-section"]',
+    conceptsSection: '[data-testid="learn-concepts-section"]',
+    docItem: '[data-testid="learn-doc-item"]',
+    conceptItem: '[data-testid="learn-concept-item"]',
+    contentArea: '[data-testid="learn-content-area"]',
+    editButton: '[data-testid="learn-edit-button"]',
+    viewButton: '[data-testid="learn-view-button"]',
+    saveButton: '[data-testid="learn-save-button"]',
+    saveConfirmDialog: '[data-testid="learn-doc-save-confirm"]',
   },
 
-  // Janitors
-  janitors: {
-    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
-    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
-    testingSection: '[data-testid="janitor-section-testing"]',
-    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
-    securitySection: '[data-testid="janitor-section-security"]',
-	},
   // Testing
   testing: {
     tabs: '[data-testid="testing-tabs"]',

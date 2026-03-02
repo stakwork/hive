@@ -8,6 +8,7 @@ import { callStakworkAPI } from "@/services/task-workflow";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { joinRepoUrls } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -152,7 +153,6 @@ export async function POST(
               },
             },
             repositories: {
-              take: 1,
               orderBy: { createdAt: "asc" },
               select: {
                 name: true,
@@ -243,9 +243,10 @@ export async function POST(
       const swarmSecretAlias = swarm?.swarmSecretAlias || null;
       const poolName = swarm?.id || null;
       const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
-      const repoUrl = feature.workspace.repositories?.[0]?.repositoryUrl || null;
-      const baseBranch = feature.workspace.repositories?.[0]?.branch || null;
-      const repoName = feature.workspace.repositories?.[0]?.name || null;
+      const repos = feature.workspace.repositories ?? [];
+      const repoUrl = joinRepoUrls(repos);
+      const baseBranch = repos[0]?.branch || null;
+      const repoName = repos[0]?.name || null;
 
       const history = await fetchFeatureChatHistory(featureId, chatMessage.id);
 

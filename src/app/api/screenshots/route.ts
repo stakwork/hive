@@ -8,6 +8,7 @@ import { getS3Service } from '@/services/s3'
 const screenshotQuerySchema = z.object({
   workspaceId: z.string().min(1, 'Workspace ID is required'),
   taskId: z.string().optional(),
+  featureId: z.string().optional(),
   pageUrl: z.string().optional(),
   limit: z.string().transform(Number).pipe(z.number().int().positive()).optional(),
   cursor: z.string().optional(),
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const queryParams = Object.fromEntries(searchParams.entries())
     const validatedData = screenshotQuerySchema.parse(queryParams)
-    const { workspaceId, taskId, pageUrl, limit = 50, cursor } = validatedData
+    const { workspaceId, taskId, featureId, pageUrl, limit = 50, cursor } = validatedData
 
     // Verify workspace exists and user has access
     const workspace = await db.workspace.findFirst({
@@ -64,6 +65,10 @@ export async function GET(request: NextRequest) {
       where.taskId = taskId
     }
 
+    if (featureId) {
+      where.featureId = featureId
+    }
+
     if (pageUrl) {
       where.pageUrl = pageUrl
     }
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
         width: true,
         height: true,
         taskId: true,
+        featureId: true,
         createdAt: true,
         updatedAt: true,
       },

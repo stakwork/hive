@@ -137,7 +137,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should allow VIEWER role to access feature data", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -165,7 +165,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should allow DEVELOPER role to access feature data", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -183,7 +183,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should allow ADMIN role to access feature data", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -201,7 +201,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should allow OWNER role to access feature data", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -293,7 +293,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
   it("should decrypt API key before making external request", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -319,7 +319,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
   it("should construct correct external URL with encoded id", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -349,11 +349,11 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       id: "feature-123",
       name: "Authentication Feature",
       description: "User authentication and authorization",
-      files: ["src/auth/login.ts", "src/auth/middleware.ts"],
+      documentation: "# Auth\nJWT-based authentication system.",
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(mockFeature), {
+      new Response(JSON.stringify({ feature: mockFeature, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -368,11 +368,13 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // Verify response structure
-    expect(data).toHaveProperty("id");
-    expect(data).toHaveProperty("name");
-    expect(data.id).toBe("feature-123");
-    expect(data.name).toBe("Authentication Feature");
+    // Verify response structure matches swarm format
+    expect(data).toHaveProperty("feature");
+    expect(data).toHaveProperty("prs");
+    expect(data).toHaveProperty("commits");
+    expect(data.feature.id).toBe("feature-123");
+    expect(data.feature.name).toBe("Authentication Feature");
+    expect(data.feature.documentation).toBe("# Auth\nJWT-based authentication system.");
   });
 
   it("should return 500 when external swarm server fails", async () => {
@@ -412,7 +414,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
   it("should construct correct swarm URL with port 3355", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -442,7 +444,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     });
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -465,7 +467,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
   it("should include Content-Type header in external request", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
+      new Response(JSON.stringify({ feature: { id: "feature-123", name: "Test Feature" }, prs: [], commits: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })

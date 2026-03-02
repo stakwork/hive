@@ -7,6 +7,7 @@ import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -234,8 +235,9 @@ export async function startTaskWorkflow(params: {
   taskId: string;
   userId: string;
   mode?: string;
+  includeHistory?: boolean;
 }) {
-  const { taskId, userId, mode = "live" } = params;
+  const { taskId, userId, mode = "live", includeHistory = false } = params;
 
   // Get task with workspace and swarm details
   const task = await db.task.findFirst({
@@ -306,6 +308,18 @@ export async function startTaskWorkflow(params: {
     }
   }
 
+  // Fetch chat history if includeHistory is true
+  let history: Record<string, unknown>[] = [];
+  if (includeHistory) {
+    try {
+      const fetchedHistory = await fetchChatHistory(taskId);
+      history = fetchedHistory || [];
+    } catch (error) {
+      console.error("Error fetching chat history:", error);
+      // Continue without history if it fails
+    }
+  }
+
   return await createChatMessageAndTriggerStakwork({
     taskId,
     message,
@@ -317,6 +331,7 @@ export async function startTaskWorkflow(params: {
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
     autoMergePr: task.autoMerge,
+    history,
   });
 }
 
@@ -335,8 +350,9 @@ export async function createChatMessageAndTriggerStakwork(params: {
   generateChatTitle?: boolean;
   featureContext?: object;
   autoMergePr?: boolean;
+  history?: Record<string, unknown>[];
 }) {
-  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
+  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr, history = [] } = params;
 
   // Fetch task if not provided
   let task = providedTask;
@@ -449,6 +465,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         podId: task.podId,
         podPassword,
         autoMergePr,
+        history,
       });
 
       if (stakworkData.success) {

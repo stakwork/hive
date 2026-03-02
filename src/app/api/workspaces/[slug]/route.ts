@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   getWorkspaceBySlug,
   deleteWorkspaceBySlug,
@@ -17,7 +18,7 @@ export async function GET(
 
     const userId = (session?.user as { id?: string })?.id;
 
-    if (!userId) {
+    if (!userId || !session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -30,7 +31,8 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
 
     if (!workspace) {
       return NextResponse.json(

@@ -1,27 +1,28 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
-import { ChatMessage } from "./ChatMessage";
-import { ChatInput } from "./ChatInput";
-import { getAgentIcon } from "@/lib/icons";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
+import { getAgentIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
-import TaskBreadcrumbs from "./TaskBreadcrumbs";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useRef, useState } from "react";
+import { ChatInput } from "./ChatInput";
+import { ChatMessage } from "./ChatMessage";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{ path: string, filename: string, mimeType: string, size: number }>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -39,6 +40,7 @@ interface ChatAreaProps {
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
+  previewToggleIcon?: React.ComponentType<{ className?: string }>;
   taskMode?: string;
   taskId?: string | null;
   podId?: string | null;
@@ -49,7 +51,10 @@ interface ChatAreaProps {
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
-  onInvite?: () => void;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
+  isPlanChat?: boolean;
+  onTitleSave?: (newTitle: string) => Promise<void>;
 }
 
 export function ChatArea({
@@ -71,6 +76,7 @@ export function ChatArea({
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
+  previewToggleIcon: PreviewToggleIcon = Monitor,
   taskMode,
   taskId,
   podId,
@@ -81,12 +87,19 @@ export function ChatArea({
   collaborators,
   onOpenBountyRequest,
   sphinxInviteEnabled,
-  onInvite,
+  onRetry,
+  isRetrying = false,
+  isPlanChat = false,
+  onTitleSave,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -125,23 +138,51 @@ export function ChatArea({
     return () => clearTimeout(timer);
   }, [messages, shouldAutoScroll]);
 
-  const handleBackToTasks = () => {
-    const referrer = document.referrer;
-    const currentOrigin = window.location.origin;
+  // Auto-focus title input when editing starts
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
 
-    // Check if referrer exists and is from same app (same origin)
-    if (referrer && referrer.startsWith(currentOrigin)) {
-      router.back();
+  const handleTitleSaveInternal = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || !onTitleSave) {
+      setIsEditingTitle(false);
+      return;
+    }
+    await onTitleSave(trimmed);
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleEdit = () => {
+    if (featureId && onTitleSave) {
+      setTitleDraft(taskTitle ?? "");
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTitleSaveInternal();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsEditingTitle(false);
+    }
+  };
+
+  const handleBackToTasks = () => {
+    if (isPlanChat) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    } else if (workspaceSlug) {
+      const path = featureId
+        ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
+        : `/w/${workspaceSlug}/tasks`;
+      router.push(path);
     } else {
-      // Fallback: plan list for feature chats, task list otherwise
-      if (workspaceSlug) {
-        const fallbackPath = featureId
-          ? `/w/${workspaceSlug}/plan`
-          : `/w/${workspaceSlug}/tasks`;
-        router.push(fallbackPath);
-      } else {
-        router.back();
-      }
+      router.back();
     }
   };
 
@@ -155,7 +196,7 @@ export function ChatArea({
     >
       {/* Task Title Header */}
       {taskTitle && (
-        <div className="px-4 py-3 border-b bg-muted/20">
+        <div className={cn("px-4 py-3 border-b bg-muted/20", isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b")}>
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Back Button */}
@@ -164,30 +205,55 @@ export function ChatArea({
               </Button>
 
               {/* Task Title with inline breadcrumbs - with animation only when title changes */}
-              <AnimatePresence mode="wait">
-                <motion.h2
-                  key={taskTitle} // This will trigger re-animation when title changes
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0"
-                  title={taskTitle}
-                  data-testid="task-title"
-                >
-                  {/* Inline Breadcrumbs - only show in task chat context */}
-                  {workspaceSlug && taskId && (
-                    <TaskBreadcrumbs
-                      featureId={featureId ?? null}
-                      featureTitle={featureTitle ?? null}
-                      workspaceSlug={workspaceSlug}
-                    />
-                  )}
-                  <span className="truncate w-full">
-                    {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
-                  </span>
-                </motion.h2>
-              </AnimatePresence>
+              {!isEditingTitle ? (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={taskTitle}
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
+                    data-testid="task-title"
+                  >
+                    {/* Inline Breadcrumbs - only show in task chat context */}
+                    {workspaceSlug && taskId && (
+                      <TaskBreadcrumbs
+                        featureId={featureId ?? null}
+                        featureTitle={featureTitle ?? null}
+                        workspaceSlug={workspaceSlug}
+                      />
+                    )}
+                    <div className="flex items-center gap-2 w-full min-w-0">
+                      <span
+                        className="truncate cursor-pointer"
+                        title={taskTitle}
+                        onClick={handleTitleEdit}
+                      >
+                        {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                      </span>
+                      {featureId && onTitleSave && (
+                        <Pencil
+                          className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                          onClick={handleTitleEdit}
+                        />
+                      )}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+              ) : (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={handleTitleSaveInternal}
+                  onKeyDown={handleTitleKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  data-testid="task-title-input"
+                />
+              )}
             </div>
 
             {/* Presence Avatars */}
@@ -198,17 +264,24 @@ export function ChatArea({
             )}
 
             {/* Invite Button (Plan Chat Only) */}
-            {sphinxInviteEnabled && onInvite && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onInvite}
-                className="flex-shrink-0 gap-2"
-                data-testid="invite-button"
+            {sphinxInviteEnabled && workspaceSlug && featureId && (
+              <InvitePopover
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                workspaceSlug={workspaceSlug}
+                featureId={featureId}
               >
-                <UserPlus className="h-4 w-4" />
-                Invite
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInviteOpen(true)}
+                  className="flex-shrink-0 gap-2"
+                  data-testid="invite-button"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Invite
+                </Button>
+              </InvitePopover>
             )}
 
             {/* Preview Toggle Button (Mobile Only) */}
@@ -218,9 +291,9 @@ export function ChatArea({
                 size="sm"
                 onClick={onTogglePreview}
                 className="flex-shrink-0"
-                title={showPreview ? "Show Chat" : "Show Live Preview"}
+                title={showPreview ? "Show Chat" : "Show Preview"}
               >
-                <Monitor className="w-4 h-4" />
+                <PreviewToggleIcon className="w-4 h-4" />
               </Button>
             )}
 
@@ -255,7 +328,7 @@ export function ChatArea({
       {/* Messages */}
       <div
         ref={messagesContainerRef}
-        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28")}
+        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28", isMobile && taskTitle && "pt-16")}
       >
         {messages
           .filter((msg) => !msg.replyId) // Hide messages that are replies
@@ -325,6 +398,8 @@ export function ChatArea({
         featureId={featureId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
       />
 
       {onReleasePod && (

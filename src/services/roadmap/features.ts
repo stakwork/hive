@@ -268,6 +268,7 @@ export async function createFeature(
     requirements?: string;
     architecture?: string;
     personas?: string[];
+    isFastTrack?: boolean;
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -314,6 +315,7 @@ export async function createFeature(
       status: data.status || FeatureStatus.BACKLOG,
       priority: data.priority || FeaturePriority.LOW,
       assigneeId: data.assigneeId || null,
+      isFastTrack: data.isFastTrack ?? false,
       createdById: userId,
       updatedById: userId,
       phases: {

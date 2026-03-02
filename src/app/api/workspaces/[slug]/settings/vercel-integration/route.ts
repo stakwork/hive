@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Validate workspace access and check for admin permissions
-    const access = await validateWorkspaceAccess(slug, userId);
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
 
     if (!access.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
@@ -147,7 +149,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Validate workspace access and check for admin permissions
-    const access = await validateWorkspaceAccess(slug, userId);
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
 
     if (!access.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });

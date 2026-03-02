@@ -3,11 +3,14 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Toaster } from "@/components/ui/sonner";
 
-// Mock next-themes to avoid theme context issues in tests
-vi.mock("next-themes", () => ({
+// Mock app's theme hook to avoid theme context issues in tests
+vi.mock("@/hooks/use-theme", () => ({
   useTheme: () => ({
+    resolvedTheme: "light",
     theme: "light",
     setTheme: vi.fn(),
+    toggleTheme: vi.fn(),
+    mounted: true,
   }),
 }));
 

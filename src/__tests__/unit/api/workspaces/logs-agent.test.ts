@@ -51,6 +51,7 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn(),
   requireAuth: vi.fn(),
+  checkIsSuperAdmin: vi.fn(),
 }));
 
 const { getServerSession: mockGetServerSession } = await import("next-auth/next");

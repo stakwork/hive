@@ -25,11 +25,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          npm install --global prisma@6
-          npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+            npm install --global prisma@6
+            npm ci
 
       ###########################################################
       # 1️⃣ Select Rotating Preview Slot
@@ -206,6 +211,31 @@ jobs:
       ############################################################
       # 6️⃣ Build with Prisma
       ############################################################
+
+      - name: Resolve Failed Migrations
+        run: |
+          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+          echo "Checking for failed migrations..."
+          
+          # Check if the migration is in a failed state
+          MIGRATION_STATUS=$(npx prisma migrate status 2>&1 || true)
+          
+          if echo "$MIGRATION_STATUS" | grep -q "20260301051356_add_voice_signature_to_user"; then
+            echo "Found voice_signature migration, checking if it needs resolution..."
+            
+            # If the column already exists, mark the migration as applied
+            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';")
+            
+            if [ "$COLUMN_EXISTS" = "1" ]; then
+              echo "Column already exists, marking migration as applied..."
+              npx prisma migrate resolve --applied 20260301051356_add_voice_signature_to_user || echo "Could not mark as applied"
+            else
+              echo "Column doesn't exist, marking migration as rolled back for retry..."
+              npx prisma migrate resolve --rolled-back 20260301051356_add_voice_signature_to_user || echo "Could not mark as rolled back"
+            fi
+          else
+            echo "Migration not in failed state, proceeding normally"
+          fi
 
       - name: Build
         run: |

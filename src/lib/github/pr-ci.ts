@@ -67,26 +67,45 @@ async function fetchJobDetails(
 }
 
 /**
+ * Check if a line contains an error marker.
+ * GitHub Actions runner uses ##[error] internally, but workflow commands use ::error::
+ * We support both formats for robustness.
+ */
+function isErrorLine(line: string): boolean {
+  return line.includes("##[error]") || /::error\b/.test(line);
+}
+
+/**
+ * Check if a line contains a group marker.
+ * GitHub Actions runner uses ##[group] internally, but workflow commands use ::group::
+ * We support both formats for robustness.
+ */
+function isGroupLine(line: string): boolean {
+  return line.includes("##[group]") || line.includes("::group::");
+}
+
+/**
  * Extract logs for a specific step from the full job logs.
  *
  * GitHub Actions log format:
  * - Lines start with timestamps: "2024-01-15T10:30:00.0000000Z ..."
  * - Step sections marked by: "##[group]Run <command>" (note: contains COMMAND, not step NAME)
- * - Errors marked by: "##[error]<message>"
+ *   (or "::group::" in some cases)
+ * - Errors marked by: "##[error]<message>" (or "::error::" in some cases)
  *
  * Strategy:
- * 1. Find step section using ##[group] markers (step name won't match, use command patterns)
- * 2. Find ##[error] markers within section (GitHub adds these for any failure)
- * 3. Extract N lines before ##[error] (error details appear before the marker)
+ * 1. Find step section using group markers (step name won't match, use command patterns)
+ * 2. Find error markers within section (GitHub adds these for any failure)
+ * 3. Extract N lines before error marker (error details appear before the marker)
  */
 function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
   const lines = fullLogs.split("\n");
   const MAX_LINES = 150;
 
-  // Step 1: Find all ##[group] markers
+  // Step 1: Find all group markers (##[group] or ::group::)
   const groupMarkers: { lineNum: number; content: string }[] = [];
   lines.forEach((line, idx) => {
-    if (line.includes("##[group]")) {
+    if (isGroupLine(line)) {
       groupMarkers.push({ lineNum: idx, content: line });
     }
   });
@@ -105,35 +124,49 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
     stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
   }
 
-  // Fallback: Find "Run" markers and use the last one before "Post" steps
-  // (Failed step is usually the last actual step before cleanup)
-  if (targetIdx < 0 && stepName.startsWith("Run ")) {
-    const postIdx = groupMarkers.findIndex((m) => m.content.includes("Post "));
-    const searchMarkers = postIdx >= 0 ? groupMarkers.slice(0, postIdx) : groupMarkers;
-    const runMarkers = searchMarkers.filter((m) => /##\[group\]Run\s/.test(m.content));
+  // Fallback: Find the group section that contains error markers.
+  // This is more reliable than "last Run before Post" which can pick cleanup steps
+  // that run after the failure (e.g., "Stop Containers" with `if: always()`).
+  if (targetIdx < 0) {
+    for (let i = 0; i < groupMarkers.length; i++) {
+      const sectionStart = groupMarkers[i].lineNum;
+      const sectionEnd = groupMarkers[i + 1]?.lineNum ?? lines.length;
 
-    if (runMarkers.length > 0) {
-      const lastRunMarker = runMarkers[runMarkers.length - 1];
-      targetIdx = groupMarkers.findIndex((m) => m.lineNum === lastRunMarker.lineNum);
-      stepStartLine = lastRunMarker.lineNum;
-      stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
+      // Skip "Post" and "Complete" cleanup sections
+      if (groupMarkers[i].content.includes("Post ") || groupMarkers[i].content.includes("Complete ")) {
+        continue;
+      }
+
+      let hasError = false;
+      for (let j = sectionStart; j < sectionEnd; j++) {
+        if (isErrorLine(lines[j])) {
+          hasError = true;
+          break;
+        }
+      }
+      if (hasError) {
+        targetIdx = i;
+        stepStartLine = sectionStart;
+        stepEndLine = sectionEnd;
+        break;
+      }
     }
   }
 
-  // Step 3: Find ##[error] markers (within step section or globally)
+  // Step 3: Find error markers (within step section or globally)
   const errorMarkers: { lineNum: number }[] = [];
   const searchStart = stepStartLine >= 0 ? stepStartLine : 0;
   const searchEnd = stepStartLine >= 0 ? stepEndLine : lines.length;
 
   for (let i = searchStart; i < searchEnd; i++) {
-    if (lines[i].includes("##[error]")) {
+    if (isErrorLine(lines[i])) {
       errorMarkers.push({ lineNum: i });
     }
   }
 
   // Step 4: Extract logs
   if (errorMarkers.length > 0) {
-    // Take MAX_LINES before first ##[error], through last ##[error] + 5
+    // Take MAX_LINES before first error marker, through last error marker + 5
     const firstErrorLine = errorMarkers[0].lineNum;
     const lastErrorLine = errorMarkers[errorMarkers.length - 1].lineNum;
 
@@ -143,7 +176,7 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
     return lines.slice(extractStart, extractEnd).join("\n");
   }
 
-  // No ##[error] found - take last MAX_LINES of step (or entire log as last resort)
+  // No error markers found - take last MAX_LINES of step (or entire log as last resort)
   if (stepStartLine >= 0) {
     const stepLines = lines.slice(stepStartLine, stepEndLine);
     if (stepLines.length > MAX_LINES) {

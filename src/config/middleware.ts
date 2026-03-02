@@ -5,11 +5,12 @@ export const MIDDLEWARE_HEADERS = {
   USER_ID: "x-middleware-user-id",
   USER_EMAIL: "x-middleware-user-email",
   USER_NAME: "x-middleware-user-name",
+  USER_ROLE: "x-middleware-user-role",
   REQUEST_ID: "x-middleware-request-id",
   AUTH_STATUS: "x-middleware-auth-status",
 } as const;
 
-export type RouteAccess = "public" | "webhook" | "system" | "protected";
+export type RouteAccess = "public" | "webhook" | "system" | "superadmin" | "protected";
 export type RouteMatchStrategy = "exact" | "prefix" | "pattern";
 
 export interface RoutePolicy {
@@ -22,10 +23,12 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/", strategy: "exact", access: "public" },
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
+  { path: "/admin", strategy: "prefix", access: "superadmin" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)
   { path: "/api/auth/sphinx/token", strategy: "exact", access: "webhook" }, // Sphinx app token exchange (has own auth, bypasses landing page)
   { path: "/api/auth", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },
+  { path: "/api/admin", strategy: "prefix", access: "superadmin" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
   { path: "/api/github/webhook", strategy: "prefix", access: "webhook" },

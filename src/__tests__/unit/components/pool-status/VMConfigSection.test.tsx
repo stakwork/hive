@@ -1,13 +1,20 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { VMConfigSection } from '@/components/pool-status';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useModal } from '@/components/modals/ModlaProvider';
+import { toast } from 'sonner';
 
 // Mock dependencies
 vi.mock('@/hooks/useWorkspace');
 vi.mock('@/components/modals/ModlaProvider');
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -291,6 +298,363 @@ describe('VMConfigSection', () => {
 
       expect(screen.getByText('Services are being set up.')).toBeInTheDocument();
       expect(screen.getByText('In progress')).toBeInTheDocument();
+    });
+  });
+
+  describe('Superadmin Controls', () => {
+    beforeEach(() => {
+      // Setup for active pool with status
+      const mockPoolStatus = {
+        success: true,
+        data: {
+          status: {
+            usedVms: 3,
+            unusedVms: 2,
+            pendingVms: 0,
+            failedVms: 0,
+            runningVms: 5,
+            lastCheck: '2025-01-15T10:00:00Z',
+          },
+        },
+      };
+
+      (global.fetch as any).mockImplementation((url: string) => {
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => mockPoolStatus,
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumVms: 3, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      mockUseWorkspace.mockReturnValue({
+        slug: mockSlug,
+        workspace: {
+          poolState: 'COMPLETE',
+          containerFilesSetUp: true,
+        },
+      } as any);
+    });
+
+    it('should render Amount of Pods input and Save button for superadmin with active pool', async () => {
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      expect(input.value).toBe('3');
+    });
+
+    it('should NOT render Amount of Pods input for non-superadmin with active pool', async () => {
+      render(<VMConfigSection isSuperAdmin={false} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('3 in use')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByLabelText('Amount of Pods')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+    });
+
+    it('should call PATCH /api/w/[slug]/pool/config with correct body when Save is clicked', async () => {
+      const mockPatch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return mockPatch(url, options);
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumVms: 3, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '5' } });
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockPatch).toHaveBeenCalledWith(
+          `/api/w/${mockSlug}/pool/config`,
+          expect.objectContaining({
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minimumVms: 5 }),
+          })
+        );
+      });
+    });
+
+    it('should disable Save button when pendingVms equals minimumVms', async () => {
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      expect(saveButton).toBeDisabled();
+    });
+
+    it('should show success toast when PATCH succeeds', async () => {
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ success: true }),
+          });
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumVms: 3, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '5' } });
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith('Amount of Pods updated');
+      });
+    });
+
+    it('should show error toast when PATCH fails', async () => {
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ success: false }),
+          });
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumVms: 3, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '5' } });
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Failed to update Amount of Pods');
+      });
+    });
+
+    it('should enforce minimum value of 1 client-side', async () => {
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      
+      // Try to set to 0
+      fireEvent.change(input, { target: { value: '0' } });
+      expect(input.value).toBe('1');
+
+      // Try to set to negative
+      fireEvent.change(input, { target: { value: '-5' } });
+      expect(input.value).toBe('1');
+    });
+
+    it('should disable input and button while saving', async () => {
+      let resolvePatch: any;
+      const patchPromise = new Promise((resolve) => {
+        resolvePatch = resolve;
+      });
+
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return patchPromise;
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumVms: 3, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      render(<VMConfigSection isSuperAdmin={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
+      });
+
+      const input = screen.getByLabelText('Amount of Pods') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '5' } });
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /saving/i })).toBeInTheDocument();
+      });
+
+      expect(input).toBeDisabled();
+      expect(saveButton).toBeDisabled();
+
+      // Resolve the promise
+      resolvePatch({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
+      });
     });
   });
 });

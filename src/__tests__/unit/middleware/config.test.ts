@@ -199,7 +199,7 @@ describe("resolveRouteAccess", () => {
         
         expect(typeof policy.path).toBe("string");
         expect(["exact", "prefix", "pattern"]).toContain(policy.strategy);
-        expect(["public", "webhook", "system"]).toContain(policy.access);
+        expect(["public", "webhook", "system", "superadmin", "protected"]).toContain(policy.access);
       }
     });
 
@@ -244,6 +244,15 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/tasks")).toBe("protected");
       expect(resolveRouteAccess("/api/users/me")).toBe("protected");
       expect(resolveRouteAccess("/api/github/repos")).toBe("protected");
+    });
+
+    it("correctly classifies superadmin routes", () => {
+      expect(resolveRouteAccess("/admin")).toBe("superadmin");
+      expect(resolveRouteAccess("/admin/users")).toBe("superadmin");
+      expect(resolveRouteAccess("/admin/dashboard")).toBe("superadmin");
+      expect(resolveRouteAccess("/api/admin/users")).toBe("superadmin");
+      expect(resolveRouteAccess("/api/admin/config")).toBe("superadmin");
+      expect(resolveRouteAccess("/api/admin/anything")).toBe("superadmin");
     });
   });
 });

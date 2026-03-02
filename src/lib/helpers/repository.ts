@@ -152,3 +152,15 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
     embeddingsEnabled: repo.embeddingsEnabled,
   }));
 }
+
+/**
+ * Joins an array of repository objects into a comma-separated URL string,
+ * matching the format expected by Stakwork's `repo_url` parameter.
+ * Returns null if the array is empty.
+ */
+export function joinRepoUrls(
+  repos: { repositoryUrl: string }[]
+): string | null {
+  if (!repos.length) return null;
+  return repos.map((r) => r.repositoryUrl).join(",");
+}

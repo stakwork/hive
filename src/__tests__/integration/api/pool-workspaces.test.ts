@@ -22,6 +22,7 @@ import { NextResponse } from "next/server";
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn(),
   requireAuth: vi.fn(),
+  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
 }));
 
 import { requireAuth } from "@/lib/middleware/utils";

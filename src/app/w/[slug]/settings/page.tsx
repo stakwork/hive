@@ -13,6 +13,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);
@@ -27,8 +28,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  // Get workspace information
-  const workspace = await getWorkspaceBySlug(slug, userId);
+  // Get workspace information - superadmins can access any workspace
+  const userIsSuperAdmin = await checkIsSuperAdmin(userId);
+  const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin: userIsSuperAdmin });
   if (!workspace) {
     notFound();
   }
@@ -41,7 +43,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
         <div className="space-y-6">
           <WorkspaceSettings />
 
-          <VMConfigSection />
+          <VMConfigSection isSuperAdmin={userIsSuperAdmin} />
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 

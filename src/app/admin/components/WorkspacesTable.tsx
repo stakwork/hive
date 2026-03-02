@@ -1,0 +1,375 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Building2, ChevronUp, ChevronDown, Trash2, AlertTriangle, Search } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { PresignedImage } from "@/components/ui/presigned-image";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+type SortField = "name" | "members" | "pods" | "tasks" | "createdAt";
+type SortDirection = "asc" | "desc";
+
+interface WorkspaceData {
+  id: string;
+  name: string;
+  slug: string;
+  logoKey: string | null;
+  createdAt: Date;
+  owner: {
+    name: string | null;
+    email: string | null;
+  };
+  _count: {
+    members: number;
+    tasks: number;
+  };
+  swarm: {
+    _count: {
+      pods: number;
+    };
+  } | null;
+}
+
+interface WorkspacesTableProps {
+  workspaces: WorkspaceData[];
+}
+
+export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
+  const router = useRouter();
+  const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
+    field: "createdAt",
+    direction: "desc",
+  });
+  const [logoUrls, setLogoUrls] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [deletingWorkspace, setDeletingWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Fetch logos on mount for workspaces that have logoKey
+  useEffect(() => {
+    const fetchLogos = async () => {
+      const workspacesWithLogos = workspaces.filter((ws) => ws.logoKey);
+      
+      const logoPromises = workspacesWithLogos.map(async (workspace) => {
+        try {
+          const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+          if (response.ok) {
+            const data = await response.json();
+            return { slug: workspace.slug, url: data.presignedUrl };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch logo for ${workspace.slug}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(logoPromises);
+      const newLogoUrls: Record<string, string> = {};
+      
+      results.forEach((result) => {
+        if (result) {
+          newLogoUrls[result.slug] = result.url;
+        }
+      });
+
+      setLogoUrls(newLogoUrls);
+    };
+
+    fetchLogos();
+  }, [workspaces]);
+
+  const handleSort = (field: SortField) => {
+    setSortState((prev) => {
+      if (prev.field === field) {
+        // Toggle direction if clicking the same field
+        const newState = { field, direction: prev.direction === "asc" ? "desc" : "asc" as SortDirection };
+        return newState;
+      } else {
+        // Default to ascending when switching fields
+        const newState = { field, direction: "asc" as SortDirection };
+        return newState;
+      }
+    });
+  };
+
+  const sortedWorkspaces = [...workspaces].sort((a, b) => {
+    let comparison = 0;
+
+    switch (sortState.field) {
+      case "name":
+        comparison = a.name.localeCompare(b.name);
+        break;
+      case "members":
+        comparison = (a._count.members + 1) - (b._count.members + 1);
+        break;
+      case "pods":
+        const podsA = a.swarm?._count.pods ?? 0;
+        const podsB = b.swarm?._count.pods ?? 0;
+        comparison = podsA - podsB;
+        break;
+      case "tasks":
+        comparison = a._count.tasks - b._count.tasks;
+        break;
+      case "createdAt":
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        break;
+    }
+
+    return sortState.direction === "asc" ? comparison : -comparison;
+  });
+
+  const filteredWorkspaces = sortedWorkspaces.filter((ws) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      ws.name.toLowerCase().includes(q) ||
+      ws.slug.toLowerCase().includes(q) ||
+      (ws.owner.name ?? "").toLowerCase().includes(q) ||
+      (ws.owner.email ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const refetchLogo = async (slug: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/image`);
+      if (response.ok) {
+        const data = await response.json();
+        setLogoUrls((prev) => ({ ...prev, [slug]: data.presignedUrl }));
+        return data.presignedUrl;
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to fetch logo:", error);
+      return null;
+    }
+  };
+
+  const handleAdminDelete = async () => {
+    if (!deletingWorkspace || deleteConfirmText !== deletingWorkspace.name) {
+      toast.error("Confirmation failed", {
+        description: "Please type the workspace name exactly as shown.",
+      });
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/workspaces/${deletingWorkspace.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete workspace");
+      }
+      toast.success("Workspace deleted");
+      setDeletingWorkspace(null);
+      setDeleteConfirmText("");
+      router.refresh();
+    } catch (error) {
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : "Failed to delete workspace.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortState.field !== field) return null;
+    return sortState.direction === "asc" ? (
+      <ChevronUp className="inline w-4 h-4 ml-1" />
+    ) : (
+      <ChevronDown className="inline w-4 h-4 ml-1" />
+    );
+  };
+
+  const SortableHeader = ({
+    field,
+    children,
+  }: {
+    field: SortField;
+    children: React.ReactNode;
+  }) => (
+    <TableHead
+      className="cursor-pointer select-none hover:bg-muted/50"
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center">
+        {children}
+        <SortIcon field={field} />
+      </div>
+    </TableHead>
+  );
+
+  if (workspaces.length === 0) {
+    return <p className="text-muted-foreground">No workspaces found</p>;
+  }
+
+  return (
+    <>
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search workspaces…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[60px]">Icon</TableHead>
+            <SortableHeader field="name">Name</SortableHeader>
+            <TableHead>Slug</TableHead>
+            <TableHead>Created By</TableHead>
+            <SortableHeader field="members">Members</SortableHeader>
+            <SortableHeader field="pods">Pods</SortableHeader>
+            <SortableHeader field="tasks">Tasks</SortableHeader>
+            <SortableHeader field="createdAt">Created</SortableHeader>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+      <TableBody>
+        {filteredWorkspaces.length === 0 && workspaces.length > 0 && (
+          <TableRow>
+            <TableCell colSpan={9} className="text-center">
+              <p className="text-muted-foreground text-sm py-4">No workspaces match your search.</p>
+            </TableCell>
+          </TableRow>
+        )}
+        {filteredWorkspaces.map((workspace) => (
+          <TableRow key={workspace.id}>
+            <TableCell>
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
+                {workspace.logoKey ? (
+                  <PresignedImage
+                    src={logoUrls[workspace.slug]}
+                    alt={workspace.name}
+                    className="w-full h-full object-cover rounded-lg"
+                    onRefetchUrl={() => refetchLogo(workspace.slug)}
+                    fallback={<Building2 className="w-4 h-4" />}
+                  />
+                ) : (
+                  <Building2 className="w-4 h-4" />
+                )}
+              </div>
+            </TableCell>
+            <TableCell className="font-medium">{workspace.name}</TableCell>
+            <TableCell>
+              <code className="text-xs">{workspace.slug}</code>
+            </TableCell>
+            <TableCell>
+              <span className="text-sm text-muted-foreground">
+                {workspace.owner.name ?? workspace.owner.email}
+              </span>
+            </TableCell>
+            <TableCell>{workspace._count.members + 1}</TableCell>
+            <TableCell>{workspace.swarm?._count.pods ?? 0}</TableCell>
+            <TableCell>{workspace._count.tasks}</TableCell>
+            <TableCell>
+              {new Date(workspace.createdAt).toLocaleDateString()}
+            </TableCell>
+            <TableCell>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/admin/workspaces/${workspace.slug}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  View workspace →
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    setDeletingWorkspace({ id: workspace.id, name: workspace.name });
+                    setDeleteConfirmText("");
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+    <Dialog
+      open={!!deletingWorkspace}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeletingWorkspace(null);
+          setDeleteConfirmText("");
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-5 h-5" />
+            Delete Workspace
+          </DialogTitle>
+          <DialogDescription>
+            This will permanently delete &ldquo;{deletingWorkspace?.name}&rdquo; and all its data. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+            <p className="text-sm text-destructive">
+              <strong>Warning:</strong> All data will be permanently lost.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Type <strong>{deletingWorkspace?.name}</strong> to confirm:
+            </Label>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deletingWorkspace?.name}
+              disabled={isDeleting}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDeletingWorkspace(null);
+              setDeleteConfirmText("");
+            }}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleAdminDelete}
+            disabled={deleteConfirmText !== deletingWorkspace?.name || isDeleting}
+          >
+            {isDeleting ? "Deleting..." : "Delete Workspace"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
+  );
+}

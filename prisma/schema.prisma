@@ -66,6 +66,7 @@ model User {
   poolApiKey       String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
   lightningPubkey  String?   @unique @map("lightning_pubkey") // Lightning Network public key for Sphinx auth
   sphinxAlias      String?   @map("sphinx_alias") // Sphinx tribe username for @mentions
+  voiceSignatureKey String?  @map("voice_signature_key") // S3 key for user's voice signature WAV file
 
   // Authentication relationships
   accounts   Account[]
@@ -736,6 +737,7 @@ enum ArtifactType {
   BOUNTY
   PLAN
   TASKS
+  VERIFY
 }
 
 // =============================================
@@ -757,7 +759,7 @@ model JanitorConfig {
   // Task Coordinator automation
   taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
   recommendationSweepEnabled Boolean @default(false) @map("recommendation_sweep_enabled")
-  ticketSweepEnabled         Boolean @default(false) @map("ticket_sweep_enabled")
+  ticketSweepEnabled         Boolean @default(true) @map("ticket_sweep_enabled")
 
   // PR Monitor automation
   prMonitorEnabled      Boolean @default(false) @map("pr_monitor_enabled")
@@ -850,6 +852,7 @@ enum UserRole {
   USER
   ADMIN
   MODERATOR
+  SUPER_ADMIN
 }
 
 enum WorkspaceRole {
@@ -1099,6 +1102,9 @@ model Feature {
   status   FeatureStatus   @default(BACKLOG)
   priority FeaturePriority @default(LOW)
 
+  // Fast Track toggle for auto-chained workflows
+  isFastTrack Boolean @default(false) @map("is_fast_track")
+
   // Audit fields
   createdById String @map("created_by_id")
   createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
@@ -1112,6 +1118,7 @@ model Feature {
   stakworkRuns StakworkRun[]
   whiteboard   Whiteboard?
   chatMessages ChatMessage[]
+  screenshots  Screenshot[]
 
   deleted   Boolean   @default(false)
   deletedAt DateTime? @map("deleted_at")
@@ -1250,6 +1257,8 @@ model Screenshot {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   taskId      String?   @map("task_id")
   task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  featureId   String?   @map("feature_id")
+  feature     Feature?  @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   // S3 Storage
   s3Key        String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
@@ -1271,6 +1280,7 @@ model Screenshot {
 
   @@index([workspaceId])
   @@index([taskId])
+  @@index([featureId])
   @@index([hash])
   @@index([pageUrl])
   @@index([createdAt])

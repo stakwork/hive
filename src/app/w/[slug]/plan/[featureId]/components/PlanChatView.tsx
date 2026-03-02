@@ -1,34 +1,34 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { diffWords } from "diff";
-import { ChatArea, ArtifactsPanel } from "@/components/chat";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { ArtifactsPanel, ChatArea } from "@/components/chat";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
+import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
+  ArtifactType,
   ChatMessage,
   ChatRole,
   ChatStatus,
-  WorkflowStatus,
-  ArtifactType,
   createChatMessage,
+  WorkflowStatus,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
-import { InvitePopover } from "./InvitePopover";
+import { diffWords } from "diff";
+import { ClipboardList } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
-const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "VERIFY"];
 
 const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
 
@@ -96,7 +96,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sectionHighlights, setSectionHighlights] = useState<SectionHighlights | null>(null);
   const prevFeatureRef = useRef<FeatureDetail | null>(null);
   const [sphinxReady, setSphinxReady] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -241,7 +241,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             data.sphinxEnabled &&
             data.sphinxChatPubkey &&
             data.sphinxBotId &&
-            data.sphinxBotSecret
+            data.hasBotSecret
           );
           setSphinxReady(isReady);
         }
@@ -317,11 +317,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         status: ChatStatus.SENDING,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -341,7 +341,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -375,11 +375,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         replyId: messageId,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -402,7 +402,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -455,6 +455,53 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const inputDisabled =
     isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
 
+  const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
+
+  const handleTitleSave = useCallback(
+    async (newTitle: string) => {
+      await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      updateFeature({ title: newTitle });
+    },
+    [featureId, updateFeature]
+  );
+
+  const chatAreaProps = {
+    messages,
+    onSend: sendMessage,
+    onArtifactAction: handleArtifactAction,
+    inputDisabled,
+    collaborators,
+    isLoading,
+    workflowStatus,
+    taskTitle: featureTitle,
+    workspaceSlug,
+    featureId,
+    featureTitle,
+    taskMode: "live" as const,
+    isChainVisible,
+    lastLogLine,
+    logs,
+    sphinxInviteEnabled: sphinxReady,
+    onTitleSave: handleTitleSave,
+  };
+
+  const artifactsPanelProps = {
+    artifacts: allArtifacts,
+    workspaceId,
+    taskId: featureId,
+    planData,
+    feature,
+    featureId,
+    onFeatureUpdate: setFeature,
+    controlledTab: activeTab,
+    onControlledTabChange: handleTabChange,
+    sectionHighlights,
+  };
+
   if (!initialLoadDone) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -463,61 +510,43 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     );
   }
 
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-4rem)]">
+        {showPreview ? (
+          <ArtifactsPanel
+            {...artifactsPanelProps}
+            isMobile
+            onTogglePreview={togglePreview}
+          />
+        ) : (
+          <ChatArea
+            {...chatAreaProps}
+            isPlanChat
+            showPreviewToggle
+            showPreview={showPreview}
+            onTogglePreview={togglePreview}
+            previewToggleIcon={ClipboardList}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      <InvitePopover
-        open={inviteOpen}
-        onOpenChange={setInviteOpen}
-        workspaceSlug={workspaceSlug}
-        featureId={featureId}
-      >
-        <div style={{ display: "none" }} />
-      </InvitePopover>
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
-        <ResizablePanel defaultSize={isMobile ? 100 : 50} minSize={30}>
+        <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
-            <ChatArea
-              messages={messages}
-              onSend={sendMessage}
-              onArtifactAction={handleArtifactAction}
-              inputDisabled={inputDisabled}
-              collaborators={collaborators}
-              isLoading={isLoading}
-              workflowStatus={workflowStatus}
-              taskTitle={featureTitle}
-              workspaceSlug={workspaceSlug}
-              featureId={featureId}
-              featureTitle={featureTitle}
-              taskMode="live"
-              isChainVisible={isChainVisible}
-              lastLogLine={lastLogLine}
-              logs={logs}
-              sphinxInviteEnabled={sphinxReady}
-              onInvite={() => setInviteOpen(true)}
-            />
+            <ChatArea {...chatAreaProps} isPlanChat />
           </div>
         </ResizablePanel>
-        {!isMobile && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={50} minSize={25}>
-              <div className="h-full min-h-0 min-w-0">
-                <ArtifactsPanel
-                  artifacts={allArtifacts}
-                  workspaceId={workspaceId}
-                  taskId={featureId}
-                  planData={planData}
-                  feature={feature}
-                  featureId={featureId}
-                  onFeatureUpdate={setFeature}
-                  controlledTab={activeTab}
-                  onControlledTabChange={handleTabChange}
-                  sectionHighlights={sectionHighlights}
-                />
-              </div>
-            </ResizablePanel>
-          </>
-        )}
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={60} minSize={25}>
+          <div className="h-full min-h-0 min-w-0">
+            <ArtifactsPanel {...artifactsPanelProps} />
+          </div>
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );

@@ -4,17 +4,20 @@ import { useMemo, useEffect, useState, useCallback, useRef, type ReactNode } fro
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Monitor, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
+import { VerifyPanel } from "@/app/w/[slug]/plan/[featureId]/components/VerifyPanel";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import type { FeatureDetail } from "@/types/roadmap";
+
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -142,6 +145,7 @@ export function ArtifactsPanel({
   const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
+  const showVerifyTab = hasTasks;
 
   // Clear the API-calling flag once the run status has taken over
   useEffect(() => {
@@ -258,6 +262,7 @@ export function ArtifactsPanel({
     const tabs: ArtifactType[] = [];
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
+    if (hasFeature && showVerifyTab) tabs.push("VERIFY");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -265,13 +270,16 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
   useEffect(() => {
     if (availableTabs.length > 0 && (!activeTab || !availableTabs.includes(activeTab))) {
       if (hasInitiatedGeneration) return; // Prevent fallback during generation handoff
+      // Don't reset a valid controlled tab (e.g. TASKS from URL) just because
+      // the tab isn't available yet — wait for data to load
+      if (isControlled && activeTab && VALID_PLAN_TABS.includes(activeTab as ArtifactType)) return;
       if (isControlled && onControlledTabChange) {
         onControlledTabChange(availableTabs[0]);
       } else {
@@ -294,23 +302,9 @@ export function ArtifactsPanel({
       className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {!isMobile && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
-          >
-            <ArtifactsHeader
-              availableArtifacts={availableTabs}
-              activeArtifact={activeTab}
-              onArtifactChange={setActiveTab}
-              headerAction={renderGenerateTasksButton()}
-            />
-          </motion.div>
-        )}
         {isMobile && onTogglePreview && (
           <motion.div
-            className="border-b bg-background/80 backdrop-blur px-3 py-2"
+            className="border-b bg-background/80 backdrop-blur px-3 py-2 flex items-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
@@ -319,13 +313,25 @@ export function ArtifactsPanel({
               variant="ghost"
               size="sm"
               onClick={onTogglePreview}
-              className="gap-2"
+              className="gap-1"
             >
-              <Monitor className="w-4 h-4" />
-              Back to Chat
+              <ArrowLeft className="w-4 h-4" />
+              Chat
             </Button>
           </motion.div>
         )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          <ArtifactsHeader
+            availableArtifacts={availableTabs}
+            activeArtifact={activeTab}
+            onArtifactChange={setActiveTab}
+            headerAction={renderGenerateTasksButton()}
+          />
+        </motion.div>
 
         <motion.div
           className="flex-1 overflow-hidden min-h-0"
@@ -357,6 +363,13 @@ export function ArtifactsPanel({
               </div>
             </div>
           )}
+          {hasFeature && showVerifyTab && (
+            <div className="h-full" hidden={activeTab !== "VERIFY"}>
+              <div className="h-full overflow-auto p-4">
+                <VerifyPanel feature={feature!} workspaceId={workspaceId!} />
+              </div>
+            </div>
+          )}
           {codeArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "CODE"}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
@@ -368,6 +381,7 @@ export function ArtifactsPanel({
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                featureId={featureId}
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
@@ -381,6 +395,7 @@ export function ArtifactsPanel({
                 ide={true}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                featureId={featureId}
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}

@@ -14,11 +14,7 @@ export function RepositoryCard() {
 
   const { workspace, slug } = useWorkspace();
 
-  console.log('slug-is-here', slug);
-  console.log('workspace-slug-is-here', workspace?.slug);
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
-  console.log('hasGithubAppTokens-is-here', hasGithubAppTokens);
-  console.log('isGithubAppLoading-is-here', isGithubAppLoading);
   const [isInstalling, setIsInstalling] = useState(false);
   // Handle GitHub App installation
   const handleGithubAppInstall = async () => {

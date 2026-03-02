@@ -19,6 +19,7 @@ export interface CreateTestSwarmOptions {
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
   swarmApiKey?: string;
+  swarmPassword?: string;
   containerFilesSetUp?: boolean;
   containerFiles?: any; // JSON array of container config files
   poolName?: string;
@@ -77,6 +78,13 @@ export async function createTestSwarm(
   if (options.poolApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.poolApiKey = JSON.stringify(
       encryptionService.encryptField("poolApiKey", options.poolApiKey)
+    );
+  }
+
+  // Encrypt swarm password if provided
+  if (options.swarmPassword && process.env.TOKEN_ENCRYPTION_KEY) {
+    createData.swarmPassword = JSON.stringify(
+      encryptionService.encryptField("swarmPassword", options.swarmPassword)
     );
   }
 

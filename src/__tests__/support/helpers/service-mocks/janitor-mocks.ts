@@ -12,7 +12,10 @@ export interface MockJanitorConfigOptions {
   e2eTestsEnabled?: boolean;
   securityReviewEnabled?: boolean;
   mockGenerationEnabled?: boolean;
+  generalRefactoringEnabled?: boolean;
   taskCoordinatorEnabled?: boolean;
+  recommendationSweepEnabled?: boolean;
+  ticketSweepEnabled?: boolean;
   // PR Monitor settings
   prMonitorEnabled?: boolean;
   prConflictFixEnabled?: boolean;
@@ -66,7 +69,10 @@ export const janitorMocks = {
       e2eTestsEnabled: overrides.e2eTestsEnabled ?? false,
       securityReviewEnabled: overrides.securityReviewEnabled ?? false,
       mockGenerationEnabled: overrides.mockGenerationEnabled ?? false,
+      generalRefactoringEnabled: overrides.generalRefactoringEnabled ?? false,
       taskCoordinatorEnabled: overrides.taskCoordinatorEnabled ?? false,
+      recommendationSweepEnabled: overrides.recommendationSweepEnabled ?? false,
+      ticketSweepEnabled: overrides.ticketSweepEnabled ?? true,
       // PR Monitor settings
       prMonitorEnabled: overrides.prMonitorEnabled ?? false,
       prConflictFixEnabled: overrides.prConflictFixEnabled ?? false,

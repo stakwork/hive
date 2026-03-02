@@ -16,6 +16,9 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { toast } from "sonner";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { detectAndWrapCode } from "@/lib/utils/detect-code-paste";
 
 interface PendingImage {
   id: string;
@@ -44,6 +47,8 @@ interface ChatInputProps {
   taskId?: string;
   featureId?: string;
   onOpenBountyRequest?: () => void;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
 }
 
 export function ChatInput({
@@ -61,6 +66,8 @@ export function ChatInput({
   taskId,
   featureId,
   onOpenBountyRequest,
+  onRetry,
+  isRetrying = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -76,6 +83,9 @@ export function ChatInput({
 
   // Image upload is disabled in agent mode
   const isImageUploadEnabled = taskMode !== "agent";
+  
+  // Feature flags
+  const codeFormattingEnabled = useFeatureFlag(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
 
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -261,23 +271,37 @@ export function ChatInput({
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    if (!isImageUploadEnabled) return;
-    
-    const items = e.clipboardData.items;
-    const files: File[] = [];
+    // Handle image paste first
+    if (isImageUploadEnabled) {
+      const items = e.clipboardData.items;
+      const files: File[] = [];
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          files.push(file);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            files.push(file);
+          }
         }
+      }
+
+      if (files.length > 0) {
+        handleFiles(files);
+        return;
       }
     }
 
-    if (files.length > 0) {
-      handleFiles(files);
+    // Handle code/JSON paste if feature is enabled
+    if (codeFormattingEnabled) {
+      const text = e.clipboardData.getData('text');
+      if (text) {
+        const wrapped = detectAndWrapCode(text);
+        if (wrapped !== text) {
+          e.preventDefault();
+          setInput(prev => prev + wrapped);
+        }
+      }
     }
   };
 
@@ -411,14 +435,31 @@ export function ChatInput({
             <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
             <span>{getTerminalMessage()}</span>
           </div>
-          {workspaceSlug && (
-            <Button asChild size="sm">
-              <Link href={`/w/${workspaceSlug}/task/new`}>
-                <Plus className="h-3 w-3 mr-1" />
-                New Task
-              </Link>
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {onRetry && (
+              <Button
+                onClick={onRetry}
+                disabled={isRetrying}
+                size="sm"
+                variant="outline"
+              >
+                {isRetrying ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Retry
+              </Button>
+            )}
+            {workspaceSlug && (
+              <Button asChild size="sm">
+                <Link href={`/w/${workspaceSlug}/task/new`}>
+                  <Plus className="h-3 w-3 mr-1" />
+                  New Task
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -562,7 +603,7 @@ export function ChatInput({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="flex-1 resize-none min-h-[56px] md:min-h-[40px]"
+          className="flex-1 resize-none min-h-[36px]"
           style={{
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
@@ -583,7 +624,7 @@ export function ChatInput({
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={disabled}
-                    className="h-11 w-11 rounded-full shrink-0"
+                    className="h-9 w-9 rounded-full shrink-0"
                   >
                     <ImageIcon className="w-5 h-5" />
                   </Button>
@@ -604,7 +645,7 @@ export function ChatInput({
                     variant={isListening ? "default" : "outline"}
                     onClick={toggleListening}
                     disabled={disabled}
-                    className="h-11 w-11 rounded-full shrink-0"
+                    className="h-9 w-9 rounded-full shrink-0"
                   >
                     {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </Button>
@@ -624,7 +665,7 @@ export function ChatInput({
               disabled ||
               pendingImages.some(img => img.uploading || img.error)
             }
-            className={isMobile ? "h-11 w-11 rounded-full shrink-0" : ""}
+            className={isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0"}
             data-testid="chat-message-submit"
           >
             {isMobile ? (

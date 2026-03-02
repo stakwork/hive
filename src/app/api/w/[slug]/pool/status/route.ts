@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
@@ -21,7 +22,10 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
+    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
+
+
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin });
 
     if (!workspace) {
       return NextResponse.json(

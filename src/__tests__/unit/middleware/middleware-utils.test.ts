@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import {
   getMiddlewareContext,
   requireAuth,
   patternToRegex,
+  checkIsSuperAdmin,
 } from "@/lib/middleware/utils";
 import type { AuthStatus } from "@/types/middleware";
 
@@ -418,5 +419,133 @@ describe("patternToRegex", () => {
       expect(regex.test("/files/image2/download/png")).toBe(true);
       expect(regex.test("/files/document1/view/pdf")).toBe(false);
     });
+  });
+});
+
+describe("checkIsSuperAdmin", () => {
+  let mockIsSuperAdminEnv: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    
+    // Reset the env mock
+    mockIsSuperAdminEnv = vi.fn(() => false);
+    vi.doMock("@/config/env", () => ({
+      isSuperAdmin: mockIsSuperAdminEnv,
+    }));
+  });
+
+  it("returns true when user has SUPER_ADMIN role in database", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "SUPER_ADMIN" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "regular-user" });
+
+    const result = await checkIsSuperAdmin("user-123");
+
+    expect(result).toBe(true);
+    expect(mockDb.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-123" },
+      select: { role: true },
+    });
+  });
+
+  it("returns true when GitHub username is in POOL_SUPERADMINS env var", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "USER" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "super-admin-gh" });
+
+    // Mock the env function to return true for this specific test
+    mockIsSuperAdminEnv.mockImplementation((username: string) => username === "super-admin-gh");
+
+    const result = await checkIsSuperAdmin("user-456");
+
+    expect(result).toBe(true);
+    expect(mockDb.gitHubAuth.findUnique).toHaveBeenCalledWith({
+      where: { userId: "user-456" },
+      select: { githubUsername: true },
+    });
+  });
+
+  it("returns true when both conditions are true", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "SUPER_ADMIN" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "super-admin-gh" });
+    mockIsSuperAdminEnv.mockReturnValue(true);
+
+    const result = await checkIsSuperAdmin("user-789");
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when neither condition is true", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "USER" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "regular-user" });
+    mockIsSuperAdminEnv.mockReturnValue(false);
+
+    const result = await checkIsSuperAdmin("user-000");
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when user is not found in database", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue(null);
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue(null);
+    mockIsSuperAdminEnv.mockReturnValue(false);
+
+    const result = await checkIsSuperAdmin("non-existent-user");
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when GitHub auth is not found", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "USER" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue(null);
+    mockIsSuperAdminEnv.mockReturnValue(false);
+
+    const result = await checkIsSuperAdmin("user-no-gh");
+
+    expect(result).toBe(false);
+  });
+
+  it("handles empty GitHub username gracefully", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "USER" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "" });
+    mockIsSuperAdminEnv.mockImplementation((username: string) => username === "admin");
+
+    const result = await checkIsSuperAdmin("user-empty-gh");
+
+    expect(result).toBe(false);
+  });
+
+  it("runs both database queries in parallel", async () => {
+    const { db } = await import("@/lib/db");
+    const mockDb = db as any;
+
+    const promiseAllSpy = vi.spyOn(Promise, "all");
+
+    mockDb.user.findUnique = vi.fn().mockResolvedValue({ role: "USER" });
+    mockDb.gitHubAuth.findUnique = vi.fn().mockResolvedValue({ githubUsername: "user" });
+
+    await checkIsSuperAdmin("user-parallel");
+
+    expect(promiseAllSpy).toHaveBeenCalled();
   });
 });

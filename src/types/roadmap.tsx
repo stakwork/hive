@@ -207,6 +207,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             title: true;
             description: true;
             status: true;
+            workflowStatus: true;
             priority: true;
             order: true;
             featureId: true;
@@ -350,6 +351,7 @@ export interface CreateFeatureRequest {
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string;
+  isFastTrack?: boolean;
 }
 
 export interface UpdateFeatureRequest {
@@ -430,6 +432,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         title: true;
         description: true;
         status: true;
+        workflowStatus: true;
         priority: true;
         order: true;
         featureId: true;
@@ -513,6 +516,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     deploymentStatus: true;
     deployedToStagingAt: true;
     deployedToProductionAt: true;
+    workflowStatus: true;
     createdAt: true;
     updatedAt: true;
     systemAssigneeType: true;

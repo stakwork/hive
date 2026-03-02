@@ -32,6 +32,7 @@ export function BrowserArtifactPanel({
   ide,
   workspaceId,
   taskId,
+  featureId,
   podId,
   onDebugMessage,
   onUserJourneySave,
@@ -43,6 +44,7 @@ export function BrowserArtifactPanel({
   ide?: boolean;
   workspaceId?: string;
   taskId?: string;
+  featureId?: string;
   podId?: string | null;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (testName: string, generatedCode: string) => void;
@@ -121,7 +123,7 @@ export function BrowserArtifactPanel({
     replayActions,
     previewActions,
     previewPlaywrightReplay,
-  } = usePlaywrightReplay(iframeRef, workspaceId, taskId, (message) => {
+  } = usePlaywrightReplay(iframeRef, workspaceId, taskId, featureId, (message) => {
     showActionToast("Screenshot Error", message);
   });
 

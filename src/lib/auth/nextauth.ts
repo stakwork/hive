@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace } from "@/utils/mockSetup";
+import { isSuperAdminUserId } from "@/config/env";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import axios from "axios";
 import { NextAuthOptions } from "next-auth";
@@ -483,13 +484,16 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (session.user) {
+        // Surface isSuperAdmin from JWT token
+        (session.user as { isSuperAdmin?: boolean }).isSuperAdmin = token.role === "SUPER_ADMIN";
+
         // Add Lightning pubkey and Sphinx alias to session if user authenticated via Sphinx
         // This needs to happen BEFORE any early returns
         if (userId) {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true, sphinxAlias: true },
+              select: { lightningPubkey: true, sphinxAlias: true, voiceSignatureKey: true },
             });
 
             if (userRecord?.lightningPubkey) {
@@ -500,6 +504,9 @@ export const authOptions: NextAuthOptions = {
             if (userRecord?.sphinxAlias) {
               (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
             }
+
+            // Surface voice signature existence flag (not the raw S3 key)
+            (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord?.voiceSignatureKey;
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
               userId,
@@ -697,6 +704,24 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.name = user.name;
         token.picture = user.image;
+
+        // Fetch user role from DB and apply SUPER_ADMIN env override
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id },
+          select: { role: true },
+        });
+        let role = dbUser?.role ?? "USER";
+
+        // Bootstrap SUPER_ADMIN role from environment variable
+        if (isSuperAdminUserId(user.id as string) && role !== "SUPER_ADMIN") {
+          await db.user.update({
+            where: { id: user.id },
+            data: { role: "SUPER_ADMIN" },
+          });
+          role = "SUPER_ADMIN";
+        }
+
+        token.role = role;
 
         // For mock provider, add mock GitHub data
         if (account?.provider === "mock") {

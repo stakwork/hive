@@ -65,7 +65,7 @@ export async function createJanitorConfig(
   const defaults = {
     taskCoordinatorEnabled: false,
     recommendationSweepEnabled: false,
-    ticketSweepEnabled: false,
+    ticketSweepEnabled: true,
     unitTestsEnabled: true,
     integrationTestsEnabled: false,
     e2eTestsEnabled: false,

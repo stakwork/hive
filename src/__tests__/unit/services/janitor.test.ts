@@ -128,6 +128,27 @@ describe("Janitor Service", () => {
       expect(result).toEqual(mockConfig);
     });
 
+    test("should create new config with ticketSweepEnabled defaulted to true", async () => {
+      const mockConfig = janitorMocks.createMockConfig({ ticketSweepEnabled: true });
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigCreate(mockedDb, mockConfig);
+
+      const result = await getOrCreateJanitorConfig("test-workspace", "user-1");
+
+      expect(db.janitorConfig.create).toHaveBeenCalledWith({
+        data: { workspaceId: "ws-1" },
+      });
+      expect(result.ticketSweepEnabled).toBe(true);
+    });
+
     test("should throw error when workspace not found", async () => {
       const mockValidation = {
         hasAccess: false,

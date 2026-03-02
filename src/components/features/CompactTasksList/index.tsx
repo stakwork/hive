@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Play, Trash2 } from "lucide-react";
+import { ExternalLink, Play, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -18,7 +18,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import type { FeatureDetail, PrArtifact } from "@/types/roadmap";
-import type { TaskStatus } from "@prisma/client";
+import type { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { toast } from "sonner";
 
 type TaskWithPrArtifact = FeatureDetail["phases"][0]["tasks"][0] & {
@@ -80,6 +80,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
   const [assigningTasks, setAssigningTasks] = useState(false);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
 
   const defaultPhase = feature.phases?.[0];
 
@@ -119,7 +120,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               ...task,
               ...(update.newTitle !== undefined && { title: update.newTitle }),
               ...(update.status !== undefined && { status: update.status as TaskStatus }),
-              ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus }),
+              ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus as WorkflowStatus | null }),
             };
           }
           return task;
@@ -226,6 +227,31 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       }
     } catch (error) {
       console.error("Failed to delete task:", error);
+    }
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+    if (retryingTaskId) return;
+    setRetryingTaskId(taskId);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retryWorkflow: true }),
+      });
+      if (!response.ok) throw new Error("Failed to retry task");
+      
+      // Refresh feature data to get updated workflowStatus
+      const featureResponse = await fetch(`/api/features/${featureId}`);
+      const featureResult = await featureResponse.json();
+      if (featureResult.success) {
+        onUpdate(featureResult.data);
+      }
+    } catch (error) {
+      console.error("Failed to retry task:", error);
+      toast.error("Failed to retry task");
+    } finally {
+      setRetryingTaskId(null);
     }
   };
 
@@ -352,6 +378,9 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             },
           ];
 
+          const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
+          const isRetrying = retryingTaskId === task.id;
+
           return (
             <div
               key={task.id}
@@ -381,6 +410,20 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     url={prArtifact.content.url}
                     status={prArtifact.content.status}
                   />
+                )}
+                {isTerminalWorkflow && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRetryTask(task.id);
+                    }}
+                    disabled={isRetrying}
+                    className="h-6 w-6 shrink-0"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                  </Button>
                 )}
                 <ActionMenu
                   actions={actionMenuItems}
