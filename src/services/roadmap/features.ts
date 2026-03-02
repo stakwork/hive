@@ -424,6 +424,15 @@ export async function updateFeature(
     }
   }
 
+  // Stamp planUpdatedAt only when user explicitly edits plan content
+  const isPlanEdit =
+    data.brief !== undefined ||
+    data.requirements !== undefined ||
+    data.architecture !== undefined;
+  if (isPlanEdit) {
+    updateData.planUpdatedAt = new Date();
+  }
+
   const updatedFeature = await db.feature.update({
     where: {
       id: featureId,

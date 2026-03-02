@@ -12,6 +12,8 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -23,7 +25,7 @@ vi.mock("@/services/workspace", () => ({
 // Import after mocks
 import { db } from "@/lib/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { createFeature, listFeatures } from "@/services/roadmap/features";
+import { createFeature, listFeatures, updateFeature } from "@/services/roadmap/features";
 
 describe("createFeature", () => {
   const mockUserId = "user-123";
@@ -1069,6 +1071,261 @@ describe("listFeatures", () => {
         mockUserId
       );
       expect(db.feature.findMany).toHaveBeenCalled();
+    });
+  });
+});
+
+describe("updateFeature - planUpdatedAt", () => {
+  const mockFeatureId = "feature-123";
+  const mockUserId = "user-123";
+  const mockWorkspaceId = "workspace-123";
+
+  const mockFeature = {
+    id: mockFeatureId,
+    title: "Test Feature",
+    workspaceId: mockWorkspaceId,
+    createdById: mockUserId,
+    brief: null,
+    requirements: null,
+    architecture: null,
+    personas: null,
+    status: "PLANNED",
+    priority: "MEDIUM",
+    assigneeId: null,
+    systemAssigneeId: null,
+    deleted: false,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    planUpdatedAt: null,
+    workspace: {
+      id: mockWorkspaceId,
+      ownerId: mockUserId,
+      deleted: false,
+      members: [{ role: "OWNER" }],
+    },
+  };
+
+  const mockUpdatedFeature = {
+    ...mockFeature,
+    assignee: null,
+    systemAssignee: null,
+    userStories: [],
+    phases: [],
+    tasks: [],
+    createdBy: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+    },
+    updatedBy: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+    });
+    vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature as any);
+  });
+
+  describe("plan field updates", () => {
+    test("stamps planUpdatedAt when updating brief", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { brief: "Updated brief" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            brief: "Updated brief",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
+    });
+
+    test("stamps planUpdatedAt when updating requirements", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { requirements: "Updated requirements" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            requirements: "Updated requirements",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
+    });
+
+    test("stamps planUpdatedAt when updating architecture", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { architecture: "Updated architecture" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            architecture: "Updated architecture",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
+    });
+
+    test("stamps planUpdatedAt when updating multiple plan fields", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, {
+        brief: "New brief",
+        requirements: "New requirements",
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            brief: "New brief",
+            requirements: "New requirements",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
+    });
+  });
+
+  describe("non-plan field updates", () => {
+    test("does NOT stamp planUpdatedAt when updating only title", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { title: "New Title" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            title: "New Title",
+          }),
+        })
+      );
+
+      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
+    });
+
+    test("does NOT stamp planUpdatedAt when updating only status", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { status: "IN_PROGRESS" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            status: "IN_PROGRESS",
+          }),
+        })
+      );
+
+      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
+    });
+
+    test("does NOT stamp planUpdatedAt when updating only priority", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { priority: "HIGH" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            priority: "HIGH",
+          }),
+        })
+      );
+
+      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
+    });
+
+    test("does NOT stamp planUpdatedAt when updating only assigneeId", async () => {
+      const assigneeUser = {
+        id: "user-456",
+        name: "New Assignee",
+        email: "assignee@example.com",
+        deleted: false,
+      };
+      
+      vi.mocked(db.user.findFirst).mockResolvedValue(assigneeUser as any);
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, { assigneeId: "user-456" });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+        })
+      );
+
+      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
+    });
+  });
+
+  describe("mixed updates", () => {
+    test("stamps planUpdatedAt when updating plan field along with non-plan fields", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, {
+        brief: "Updated brief",
+        status: "IN_PROGRESS",
+        priority: "HIGH",
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            brief: "Updated brief",
+            status: "IN_PROGRESS",
+            priority: "HIGH",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
+    });
+
+    test("stamps planUpdatedAt when updating architecture with title", async () => {
+      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+
+      await updateFeature(mockFeatureId, mockUserId, {
+        title: "New Title",
+        architecture: "New Architecture",
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockFeatureId },
+          data: expect.objectContaining({
+            title: "New Title",
+            architecture: "New Architecture",
+            planUpdatedAt: expect.any(Date),
+          }),
+        })
+      );
     });
   });
 });
