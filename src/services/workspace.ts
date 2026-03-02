@@ -244,8 +244,7 @@ export async function getWorkspaceById(
  * Gets a workspace by slug if user has access (owner or member)
  * @param slug - The workspace slug
  * @param userId - The user ID
- * @param options - Optional configuration
- * @param options.isSuperAdmin - If true, bypasses membership check and grants OWNER permissions
+ * @param options - Optional configuration (isSuperAdmin bypasses membership check)
  */
 export async function getWorkspaceBySlug(
   slug: string,
@@ -282,8 +281,8 @@ export async function getWorkspaceBySlug(
     return null;
   }
 
-  // Superadmin bypass - grant full access without membership check
-  if (options?.isSuperAdmin) {
+  // Check if user is owner
+  if (workspace.ownerId === userId) {
     return {
       id: workspace.id,
       name: workspace.name,
@@ -293,7 +292,7 @@ export async function getWorkspaceBySlug(
       ownerId: workspace.ownerId,
       createdAt: workspace.createdAt.toISOString(),
       updatedAt: workspace.updatedAt.toISOString(),
-      userRole: "OWNER", // Grant full permissions to superadmin
+      userRole: "OWNER",
       owner: workspace.owner,
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
       repositoryDraft: workspace.repositoryDraft || null,
@@ -315,8 +314,8 @@ export async function getWorkspaceBySlug(
     };
   }
 
-  // Check if user is owner
-  if (workspace.ownerId === userId) {
+  // Superadmin bypass: grant OWNER-level access without membership check
+  if (options?.isSuperAdmin) {
     return {
       id: workspace.id,
       name: workspace.name,
@@ -525,6 +524,7 @@ export async function getUserWorkspaces(
  * @param slug - Workspace slug
  * @param userId - User ID
  * @param allowOwner - If false, owners must meet role requirements via actual membership role (default: true)
+ * @param options - Optional configuration (isSuperAdmin bypasses membership check)
  */
 export async function validateWorkspaceAccess(
   slug: string,
