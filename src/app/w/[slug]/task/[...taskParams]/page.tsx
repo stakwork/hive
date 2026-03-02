@@ -1004,12 +1004,15 @@ export default function TaskChatPage() {
         );
 
         setSelectedStep(null); // Clear step after sending
+        setIsChainVisible(true);
+        clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
+        setIsChainVisible(false);
       } finally {
         setIsLoading(false);
       }
@@ -1075,12 +1078,15 @@ export default function TaskChatPage() {
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
+        setIsChainVisible(true);
+        clearLogs();
       } catch (error) {
         console.error("Error in project debugger:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send project debugger request. Please try again." });
+        setIsChainVisible(false);
       } finally {
         setIsLoading(false);
       }
