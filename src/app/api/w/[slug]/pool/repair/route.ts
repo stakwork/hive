@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { isRepairInProgress, triggerPodRepair } from "@/services/pod-repair-cron";
 import { poolManagerService } from "@/lib/service-factory";
@@ -24,10 +23,9 @@ export async function POST(
       );
     }
 
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin });
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(
