@@ -5,6 +5,7 @@ import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import type { FeatureWithWorkspace } from "@/types/roadmap";
 
 /**
  * Lists features for a workspace with pagination, filtering, and sorting
@@ -270,7 +271,7 @@ export async function createFeature(
     personas?: string[];
     isFastTrack?: boolean;
   }
-) {
+): Promise<FeatureWithWorkspace> {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
     throw new Error("Access denied");

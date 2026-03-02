@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/lib/auth/nextauth";
 import { checkRepositoryAccess } from "@/lib/githubApp";
 
 /**
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
       checks.map(async (check) => {
         try {
           // Find the user by GitHub username
-          const githubAuth = await db.gitHubAuth.findUnique({
-            where: { login: check.githubUsername },
+          const githubAuth = await db.gitHubAuth.findFirst({
+            where: { githubUsername: check.githubUsername },
             select: { userId: true },
           });
 

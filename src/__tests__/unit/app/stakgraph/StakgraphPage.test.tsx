@@ -328,7 +328,7 @@ describe("StakgraphPage", () => {
       await userEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(saveSettingsMock).toHaveBeenCalledWith("test-workspace");
+        expect(saveSettingsMock).toHaveBeenCalledWith("test-workspace", false);
         expect(refreshWorkspaceMock).toHaveBeenCalled();
       });
     });
