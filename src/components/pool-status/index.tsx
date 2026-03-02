@@ -14,14 +14,12 @@ import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
 import { PoolStatusResponse } from "@/types";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
-interface VMConfigSectionProps {
-  isSuperAdmin?: boolean;
-}
-
-export function VMConfigSection({ isSuperAdmin = false }: VMConfigSectionProps) {
+export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
   const open = useModal();
+  const { data: session } = useSession();
 
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,6 +30,7 @@ export function VMConfigSection({ isSuperAdmin = false }: VMConfigSectionProps) 
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const servicesReady = workspace?.containerFilesSetUp === true;
+  const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
 
   const fetchPoolConfig = useCallback(async () => {
     if (!slug || !isPoolActive || !isSuperAdmin) return;
