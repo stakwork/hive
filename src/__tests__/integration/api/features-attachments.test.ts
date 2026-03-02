@@ -6,6 +6,14 @@ import { ChatRole } from "@/lib/chat";
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
 
+// Mock S3Service
+const mockGeneratePresignedDownloadUrl = vi.fn();
+vi.mock("@/services/s3", () => ({
+  getS3Service: vi.fn(() => ({
+    generatePresignedDownloadUrl: mockGeneratePresignedDownloadUrl,
+  })),
+}));
+
 // Mock next-auth
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
@@ -23,6 +31,13 @@ describe("GET /api/features/[featureId]/attachments", () => {
   let testTask: Awaited<ReturnType<typeof db.task.create>>;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+    
+    // Reset mock implementations
+    mockGeneratePresignedDownloadUrl.mockResolvedValue(
+      "https://mock-s3.example.com/test-screenshot.jpg?expires=123456789"
+    );
+    
     testUser = await createTestUser();
     testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
 
@@ -62,7 +77,6 @@ describe("GET /api/features/[featureId]/attachments", () => {
   });
 
   afterEach(async () => {
-    vi.clearAllMocks();
     await db.attachment.deleteMany({ where: { message: { taskId: testTask.id } } });
     await db.chatMessage.deleteMany({ where: { taskId: testTask.id } });
     await db.task.delete({ where: { id: testTask.id } });
