@@ -1291,4 +1291,32 @@ describe("WhiteboardChatPanel", () => {
       });
     });
   });
+
+  describe("Pusher error handling", () => {
+    it("should handle getPusherClient throwing error gracefully", async () => {
+      const pusherLib = await import("@/lib/pusher");
+      
+      // Mock getPusherClient to throw
+      vi.mocked(pusherLib.getPusherClient).mockImplementation(() => {
+        throw new Error("Pusher environment variables are not configured");
+      });
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      // Component should render without error
+      expect(() => {
+        render(<WhiteboardChatPanel {...defaultProps} />);
+      }).not.toThrow();
+
+      await waitFor(() => {
+        expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
+      });
+
+      // No subscription should be attempted
+      expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
+    });
+  });
 });
