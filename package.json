@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint ./src --max-warnings=999",
     "lint:fix": "eslint ./src --max-warnings=999 --fix",
