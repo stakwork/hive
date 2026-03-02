@@ -483,4 +483,25 @@ describe("usePlanPresence", () => {
       });
     });
   });
+
+  describe("Pusher error handling", () => {
+    it("should handle getPusherClient throwing error gracefully", async () => {
+      // Import the mocked module
+      const pusher = await import("@/lib/pusher");
+      
+      // Mock getPusherClient to throw
+      vi.mocked(pusher.getPusherClient).mockImplementation(() => {
+        throw new Error("Pusher environment variables are not configured");
+      });
+
+      // Hook should render without error
+      expect(() => {
+        renderHook(() => usePlanPresence({ featureId }));
+      }).not.toThrow();
+
+      // No subscription should be attempted
+      expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
+      expect(mockChannel.bind).not.toHaveBeenCalled();
+    });
+  });
 });
