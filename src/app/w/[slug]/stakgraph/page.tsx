@@ -7,12 +7,23 @@ import { PodRepairSection } from "@/components/pod-repair";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Webhook, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
@@ -37,6 +48,12 @@ export default function StakgraphPage() {
     handleFileChange,
   } = useStakgraphStore();
 
+  // State for access warning dialog
+  const [accessWarning, setAccessWarning] = useState<{
+    message: string;
+    details: Array<{ username: string; repositoryUrls: string[] }>;
+  } | null>(null);
+
   // Load existing settings on component mount
   useEffect(() => {
     if (slug) {
@@ -44,13 +61,36 @@ export default function StakgraphPage() {
     }
   }, [slug, loadSettings]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, bypassWarning = false) => {
     e.preventDefault();
 
     if (!slug) return;
 
-    await saveSettings(slug);
-    refreshCurrentWorkspace();
+    try {
+      await saveSettings(slug, bypassWarning);
+      refreshCurrentWorkspace();
+    } catch (error: any) {
+      if (error?.type === "MEMBER_ACCESS_WARNING") {
+        setAccessWarning({
+          message: error.message,
+          details: error.details,
+        });
+      } else {
+        console.error("Failed to save settings:", error);
+      }
+    }
+  };
+
+  const handleBypassWarning = async () => {
+    if (!slug) return;
+    setAccessWarning(null);
+    
+    try {
+      await saveSettings(slug, true);
+      refreshCurrentWorkspace();
+    } catch (error) {
+      console.error("Failed to save settings with bypass:", error);
+    }
   };
 
   const handleEnsureWebhooks = async () => {
@@ -243,6 +283,55 @@ export default function StakgraphPage() {
           <PodRepairSection />
         </div>
       </div>
+
+      {/* Access Warning Dialog */}
+      <AlertDialog open={accessWarning !== null} onOpenChange={(open) => !open && setAccessWarning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Repository Access Warning
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{accessWarning?.message}</p>
+                {accessWarning?.details && accessWarning.details.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="font-medium text-foreground">Users without access:</p>
+                    <ul className="space-y-2">
+                      {accessWarning.details.map((item, idx) => (
+                        <li key={idx} className="text-sm">
+                          <span className="font-medium text-foreground">@{item.username}</span>
+                          <span className="text-muted-foreground"> cannot access:</span>
+                          <ul className="ml-4 mt-1 space-y-1">
+                            {item.repositoryUrls.map((url, urlIdx) => (
+                              <li key={urlIdx} className="text-xs text-muted-foreground">
+                                {url}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    These users may have trouble creating plans or tasks for these repositories. Consider granting them access or removing them from the workspace.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBypassWarning} className="bg-amber-600 hover:bg-amber-700">
+              Add Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

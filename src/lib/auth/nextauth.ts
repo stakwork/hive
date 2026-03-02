@@ -493,7 +493,7 @@ export const authOptions: NextAuthOptions = {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true, sphinxAlias: true, voiceSignatureKey: true },
+              select: { lightningPubkey: true, sphinxAlias: true }, // voiceSignatureKey temporarily disabled
             });
 
             if (userRecord?.lightningPubkey) {
@@ -506,7 +506,7 @@ export const authOptions: NextAuthOptions = {
             }
 
             // Surface voice signature existence flag (not the raw S3 key)
-            (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord?.voiceSignatureKey;
+            // (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord?.voiceSignatureKey;
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
               userId,

@@ -73,6 +73,7 @@ function parseSwarmServices(
 // Validation schema for stakgraph settings - all fields optional for partial updates
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
+  bypassAccessWarning: z.boolean().optional(),
   repositories: z
     .array(
       z.object({
@@ -468,6 +469,91 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const incomingRepoIds = incomingRepos.filter((r) => r.id).map((r) => r.id!);
 
       reposToCreate = incomingRepos.filter((r) => !r.id);
+      
+      // Validate member access to new repositories (skip for API token auth)
+      if (reposToCreate.length > 0 && !isApiTokenAuth && !settings.bypassAccessWarning) {
+        // Get all workspace members
+        const workspaceMembers = await db.workspaceMember.findMany({
+          where: {
+            workspaceId: workspace.id,
+            deleted: false,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                githubUsername: true,
+              },
+            },
+          },
+        });
+
+        // Check access for each member to each new repository
+        const accessChecks = [];
+        for (const member of workspaceMembers) {
+          if (!member.user.githubUsername) continue;
+          
+          for (const repo of reposToCreate) {
+            accessChecks.push({
+              username: member.user.githubUsername,
+              repositoryUrl: repo.repositoryUrl,
+            });
+          }
+        }
+
+        if (accessChecks.length > 0) {
+          try {
+            const bulkCheckResponse = await fetch(
+              `${request.nextUrl.origin}/api/github/bulk-access-check`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ checks: accessChecks }),
+              }
+            );
+
+            if (bulkCheckResponse.ok) {
+              const bulkCheckData = await bulkCheckResponse.json();
+              
+              if (bulkCheckData.summary.inaccessibleCount > 0) {
+                // Group inaccessible results by user
+                const inaccessibleByUser = new Map<string, string[]>();
+                
+                for (const result of bulkCheckData.results) {
+                  if (!result.hasAccess) {
+                    if (!inaccessibleByUser.has(result.username)) {
+                      inaccessibleByUser.set(result.username, []);
+                    }
+                    inaccessibleByUser.get(result.username)!.push(result.repositoryUrl);
+                  }
+                }
+
+                // Build warning message
+                const affectedUsers = Array.from(inaccessibleByUser.entries()).map(
+                  ([username, repos]) => ({
+                    username,
+                    inaccessibleRepositories: repos,
+                  })
+                );
+
+                return NextResponse.json(
+                  {
+                    error: "repository_access_warning",
+                    message: `${affectedUsers.length} workspace member(s) do not have access to one or more repositories being added.`,
+                    affectedUsers,
+                    requiresBypass: true,
+                  },
+                  { status: 422 }
+                );
+              }
+            }
+          } catch (error) {
+            console.warn("[Stakgraph] Failed to check repository access:", error);
+            // Continue with repository creation if bulk check fails
+          }
+        }
+      }
+      
       if (reposToCreate.length > 0) {
         await db.repository.createMany({
           data: reposToCreate.map((repo) => ({

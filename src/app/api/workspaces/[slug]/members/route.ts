@@ -64,7 +64,7 @@ export async function POST(
     const userId = (session.user as { id: string }).id;
     const body = await request.json();
 
-    const { githubUsername, role } = body;
+    const { githubUsername, role, bypassAccessWarning } = body;
 
     if (!githubUsername || !role) {
       return NextResponse.json(
@@ -87,6 +87,73 @@ export async function POST(
 
     if (!access.workspace) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    // Check repository access for the new user if workspace has repositories
+    const repositories = await db.repository.findMany({
+      where: { workspaceId: access.workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+      },
+    });
+
+    if (repositories.length > 0 && !bypassAccessWarning) {
+      const { checkRepositoryAccess } = await import("@/lib/githubApp");
+      
+      // Find the user first to get their userId
+      const githubAuth = await db.gitHubAuth.findUnique({
+        where: { login: githubUsername },
+        select: { userId: true },
+      });
+
+      if (!githubAuth) {
+        return NextResponse.json(
+          { error: "User not found. They must sign up to Hive first." },
+          { status: 400 }
+        );
+      }
+
+      // Check access to all workspace repositories
+      const accessChecks = await Promise.all(
+        repositories.map(async (repo) => {
+          try {
+            const accessCheck = await checkRepositoryAccess(
+              githubAuth.userId,
+              repo.repositoryUrl
+            );
+            return {
+              repositoryUrl: repo.repositoryUrl,
+              repositoryName: repo.name,
+              hasAccess: accessCheck.hasAccess,
+              error: accessCheck.error,
+            };
+          } catch (error) {
+            console.error(`Error checking access to ${repo.repositoryUrl}:`, error);
+            return {
+              repositoryUrl: repo.repositoryUrl,
+              repositoryName: repo.name,
+              hasAccess: false,
+              error: "Failed to check access",
+            };
+          }
+        })
+      );
+
+      const inaccessibleRepos = accessChecks.filter((check) => !check.hasAccess);
+
+      if (inaccessibleRepos.length > 0) {
+        return NextResponse.json(
+          {
+            error: "access_validation_failed",
+            message: `User @${githubUsername} does not have access to ${inaccessibleRepos.length} repository/repositories in this workspace`,
+            inaccessibleRepositories: inaccessibleRepos,
+            requiresBypass: true,
+          },
+          { status: 422 }
+        );
+      }
     }
 
     const member = await addWorkspaceMember(access.workspace.id, githubUsername, role);

@@ -55,7 +55,7 @@ type StakgraphStore = {
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
-  saveSettings: (slug: string) => Promise<void>;
+  saveSettings: (slug: string, bypassAccessWarning?: boolean) => Promise<void>;
   resetForm: () => void;
 
   // Form change handlers
@@ -184,7 +184,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
     },
 
     // Save settings
-    saveSettings: async (slug: string) => {
+    saveSettings: async (slug: string, bypassAccessWarning = false) => {
       const state = get();
 
       if (!slug) {
@@ -285,7 +285,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           {} as Record<string, string>,
         );
 
-        const payload: Partial<StakgraphSettings> = {
+        const payload: Partial<StakgraphSettings> & { bypassAccessWarning?: boolean } = {
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
           repositories: state.formData.repositories,
@@ -300,6 +300,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           })),
           services: state.formData.services,
           containerFiles: base64EncodedFiles,
+          bypassAccessWarning,
         };
         if (state.formData.swarmApiKey) {
           payload.swarmApiKey = state.formData.swarmApiKey.trim();
@@ -331,6 +332,14 @@ export const useStakgraphStore = create<StakgraphStore>()(
               },
             }));
           }
+        } else if (response.status === 422 && result.error === "MEMBER_ACCESS_WARNING") {
+          // Handle member access warning - return the error so the UI can show a confirmation dialog
+          set({ loading: false });
+          throw {
+            type: "MEMBER_ACCESS_WARNING",
+            message: result.message,
+            details: result.details,
+          };
         } else {
           // Handle validation errors
           if (result.error === "VALIDATION_ERROR" && result.details) {
