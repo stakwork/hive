@@ -259,6 +259,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                         workspaceSlug={workspaceSlug}
                         isArchived={false}
                         onUndoArchive={refetch}
+                        onRetry={refetch}
                       />
                     ))}
 
@@ -323,6 +324,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                     workspaceSlug={workspaceSlug}
                     isArchived={activeTab === "archived"}
                     onUndoArchive={refetch}
+                    onRetry={refetch}
                   />
                 )}
                 sortItems={(a, b) => {

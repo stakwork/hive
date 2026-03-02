@@ -3,7 +3,7 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
-import type { FeatureWithDetails } from "@/types/roadmap";
+import type { FeatureDetail } from "@/types/roadmap";
 import type { WorkspaceWithAccess } from "@/types/workspace";
 import { TaskStatus } from "@prisma/client";
 import userEvent from "@testing-library/user-event";
@@ -161,16 +161,27 @@ describe("CompactTasksList", () => {
     ...overrides,
   });
 
-  const createMockFeature = (tasks: any[] = []): FeatureWithDetails => ({
+  const createMockFeature = (tasks: any[] = []): FeatureDetail => ({
     id: "feature-1",
     title: "Test Feature",
-    brief: "Test Brief",
+    brief: null,
+    requirements: null,
+    architecture: null,
+    personas: [],
+    diagramUrl: null,
+    diagramS3Key: null,
+    status: "BACKLOG",
+    priority: "MEDIUM",
+    workflowStatus: null,
+    assignee: null,
+    userStories: [],
     phases: [
       {
         id: "phase-1",
         name: "Phase 1",
         description: null,
         order: 0,
+        status: "NOT_STARTED",
         featureId: "feature-1",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -179,12 +190,6 @@ describe("CompactTasksList", () => {
     ],
     createdAt: new Date(),
     updatedAt: new Date(),
-    workspaceId: "workspace-1",
-    createdBy: "user-1",
-    requirements: null,
-    architecture: null,
-    userStories: [],
-    whiteboardId: null,
   });
 
   describe("getTaskRoute helper - Status-based routing", () => {
@@ -195,7 +200,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -203,7 +207,7 @@ describe("CompactTasksList", () => {
       );
 
       const taskCard = screen.getByText("Test Task").closest("div[class*='cursor-pointer']");
-      taskCard?.click();
+      (taskCard as HTMLElement)?.click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/tickets/task-todo");
     });
@@ -215,7 +219,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -223,7 +226,7 @@ describe("CompactTasksList", () => {
       );
 
       const taskCard = screen.getByText("Test Task").closest("div[class*='cursor-pointer']");
-      taskCard?.click();
+      (taskCard as HTMLElement)?.click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/task-in-progress");
     });
@@ -235,7 +238,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -243,7 +245,7 @@ describe("CompactTasksList", () => {
       );
 
       const taskCard = screen.getByText("Test Task").closest("div[class*='cursor-pointer']");
-      taskCard?.click();
+      (taskCard as HTMLElement)?.click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/task-done");
     });
@@ -255,7 +257,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -263,7 +264,7 @@ describe("CompactTasksList", () => {
       );
 
       const taskCard = screen.getByText("Test Task").closest("div[class*='cursor-pointer']");
-      taskCard?.click();
+      (taskCard as HTMLElement)?.click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/tickets/task-cancelled");
     });
@@ -275,7 +276,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -283,7 +283,7 @@ describe("CompactTasksList", () => {
       );
 
       const taskCard = screen.getByText("Test Task").closest("div[class*='cursor-pointer']");
-      taskCard?.click();
+      (taskCard as HTMLElement)?.click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/tickets/task-blocked");
     });
@@ -297,7 +297,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -305,7 +304,7 @@ describe("CompactTasksList", () => {
       );
 
       const viewTaskButton = screen.getByTestId("action-view-task");
-      viewTaskButton.click();
+      (viewTaskButton as HTMLElement).click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/tickets/task-todo");
     });
@@ -317,7 +316,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -325,7 +323,7 @@ describe("CompactTasksList", () => {
       );
 
       const viewTaskButton = screen.getByTestId("action-view-task");
-      viewTaskButton.click();
+      (viewTaskButton as HTMLElement).click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/task-in-progress");
     });
@@ -337,7 +335,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -345,7 +342,7 @@ describe("CompactTasksList", () => {
       );
 
       const viewTaskButton = screen.getByTestId("action-view-task");
-      viewTaskButton.click();
+      (viewTaskButton as HTMLElement).click();
 
       expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/task/task-done");
     });
@@ -377,7 +374,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -407,7 +403,6 @@ describe("CompactTasksList", () => {
       const { rerender } = render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -427,7 +422,6 @@ describe("CompactTasksList", () => {
       rerender(
         <CompactTasksList
           feature={updatedFeature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -457,7 +451,6 @@ describe("CompactTasksList", () => {
       const { rerender } = render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -478,7 +471,6 @@ describe("CompactTasksList", () => {
       rerender(
         <CompactTasksList
           feature={updatedFeature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -508,7 +500,6 @@ describe("CompactTasksList", () => {
       const { rerender } = render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -529,7 +520,6 @@ describe("CompactTasksList", () => {
       rerender(
         <CompactTasksList
           feature={updatedFeature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -548,7 +538,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -576,7 +565,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -602,7 +590,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -630,7 +617,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}
@@ -658,7 +644,6 @@ describe("CompactTasksList", () => {
       render(
         <CompactTasksList
           feature={feature}
-          workspace={{} as WorkspaceWithAccess}
           featureId="feature-1"
           isGenerating={false}
           onUpdate={vi.fn()}

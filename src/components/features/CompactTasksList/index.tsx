@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Play, Trash2, RefreshCw } from "lucide-react";
+import { ExternalLink, Play, Trash2, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -413,16 +413,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 )}
                 {isTerminalWorkflow && (
                   <Button
-                    size="icon"
-                    variant="ghost"
+                    size="sm"
+                    variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleRetryTask(task.id);
                     }}
                     disabled={isRetrying}
-                    className="h-6 w-6 shrink-0"
+                    className="h-6 shrink-0"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                    {isRetrying ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                    Retry
                   </Button>
                 )}
                 <ActionMenu

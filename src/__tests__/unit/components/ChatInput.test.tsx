@@ -496,7 +496,7 @@ describe("ChatInput - Task Mode", () => {
       const buttons = screen.getAllByRole("button");
       const imageButton = buttons.find(btn => 
         btn.className.includes("rounded-full") && 
-        btn.type === "button"
+        (btn as HTMLButtonElement).type === "button"
       );
       
       expect(imageButton).toBeTruthy();
@@ -694,6 +694,148 @@ describe("ChatInput - Task Mode", () => {
       
       // Should populate with just the new message (ref was cleared on send)
       expect(textarea.value).toBe("New message");
+    });
+  });
+
+  describe("Terminal State Retry Button", () => {
+    test("shows Retry button when workflowStatus is ERROR", () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="ERROR"
+          onRetry={onRetry}
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    test("shows Retry button when workflowStatus is FAILED", () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="FAILED"
+          onRetry={onRetry}
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    test("shows Retry button when workflowStatus is HALTED", () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="HALTED"
+          onRetry={onRetry}
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    test("shows Retry button for feature-linked tasks with terminal workflow status", () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="ERROR"
+          featureId="feature-123"
+          onRetry={onRetry}
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    test("shows Retry button for standalone tasks with terminal workflow status", () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="FAILED"
+          featureId={undefined}
+          onRetry={onRetry}
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    test("does NOT show Retry button when workflowStatus is COMPLETED", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="COMPLETED"
+        />
+      );
+
+      expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    test("does NOT show Retry button when workflowStatus is PENDING", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="PENDING"
+        />
+      );
+
+      expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    test("does NOT show Retry button when workflowStatus is IN_PROGRESS", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="IN_PROGRESS"
+        />
+      );
+
+      expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    test("shows terminal state message when workflow is in error state", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="ERROR"
+        />
+      );
+
+      expect(screen.getByText(/workflow error/i)).toBeInTheDocument();
+    });
+
+    test("shows terminal state message when workflow has ended", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="HALTED"
+        />
+      );
+
+      expect(screen.getByText(/workflow halted/i)).toBeInTheDocument();
+    });
+
+    test("calls onRetry when Retry button is clicked", async () => {
+      const user = userEvent.setup();
+      const onRetry = vi.fn();
+
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus="ERROR"
+          onRetry={onRetry}
+        />
+      );
+
+      const retryButton = screen.getByRole("button", { name: /retry/i });
+      await user.click(retryButton);
+
+      expect(onRetry).toHaveBeenCalledTimes(1);
     });
   });
 });

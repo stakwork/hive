@@ -424,7 +424,7 @@ export function ChatInput({
     }
   };
 
-  if (isTerminalState && !featureId) {
+  if (isTerminalState) {
     return (
       <div className={cn(
         "px-4 py-4 border-t bg-background",

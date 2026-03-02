@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -21,11 +21,13 @@ interface TaskCardProps {
   hideWorkflowStatus?: boolean;
   isArchived?: boolean;
   onUndoArchive?: () => void;
+  onRetry?: () => void;
 }
 
-export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
+export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive, onRetry }: TaskCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Derive task href from conditional logic
   const taskHref = task.status === "TODO" && task.featureId
@@ -79,6 +81,27 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
       setIsUpdating(false);
     }
   };
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsRetrying(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retryWorkflow: true }),
+      });
+      if (!res.ok) throw new Error('Retry failed');
+      onRetry?.();
+    } catch {
+      toast.error('Failed to retry task. Please try again.');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
 
   return (
     <Link href={taskHref} className="block">
@@ -277,6 +300,14 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        )}
+
+        {/* Retry Button - show for terminal workflow states */}
+        {!hideWorkflowStatus && isTerminalWorkflow && !task.prArtifact && task.status !== 'TODO' && (
+          <Button size="sm" variant="outline" className="h-5 shrink-0" onClick={handleRetry} disabled={isRetrying}>
+            {isRetrying ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+            Retry
+          </Button>
         )}
       </div>
       </motion.div>
