@@ -188,13 +188,64 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
 }
 
 /**
- * Check if a GitHub App installation has access to a specific repository
- * @param userId - The user ID
+ * Check if a user has access to a specific repository through the GitHub App.
+ * This is a wrapper that retrieves the installation ID and returns structured results.
+ *
+ * @param userId - The user's ID in our database
+ * @param repositoryUrl - The GitHub repository URL to check access for
+ * @returns Promise with hasAccess boolean and optional error message
+ */
+export async function checkRepositoryAccess(
+  userId: string,
+  repositoryUrl: string,
+): Promise<{ hasAccess: boolean; error?: string }> {
+  try {
+    // Get the user's source control token to find the installation ID
+    const sourceControlToken = await db.sourceControlToken.findFirst({
+      where: { userId },
+      include: {
+        sourceControlOrg: {
+          select: {
+            githubInstallationId: true,
+          },
+        },
+      },
+    });
+    
+    if (!sourceControlToken?.sourceControlOrg?.githubInstallationId) {
+      return {
+        hasAccess: false,
+        error: "GitHub App not installed for this user",
+      };
+    }
+
+    // Call the implementation with all required parameters
+    const hasAccess = await checkRepositoryAccessWithInstallation(
+      userId,
+      sourceControlToken.sourceControlOrg.githubInstallationId.toString(),
+      repositoryUrl,
+    );
+
+    return { hasAccess };
+  } catch (error) {
+    console.error("[REPO ACCESS] Error in checkRepositoryAccess:", error);
+    return {
+      hasAccess: false,
+      error: error instanceof Error ? error.message : "Failed to check repository access",
+    };
+  }
+}
+
+/**
+ * Check repository access with explicit installation ID.
+ * Use this when you already have the installation ID.
+ * 
+ * @param userId - The user's ID in our database
  * @param installationId - The GitHub App installation ID
  * @param repositoryUrl - The repository URL to check access for
  * @returns Promise<boolean> - true if the installation has access to the repository
  */
-export async function checkRepositoryAccess(
+export async function checkRepositoryAccessWithInstallation(
   userId: string,
   installationId: string,
   repositoryUrl: string,

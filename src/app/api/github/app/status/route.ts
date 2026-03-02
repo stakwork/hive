@@ -1,5 +1,5 @@
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
+import { checkRepositoryAccessWithInstallation, getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
@@ -145,7 +145,7 @@ export async function GET(request: Request) {
             repoUrl,
           });
 
-          hasRepoAccess = await checkRepositoryAccess(
+          hasRepoAccess = await checkRepositoryAccessWithInstallation(
             session.user.id,
             workspace.sourceControlOrg.githubInstallationId.toString(),
             repoUrl,
@@ -234,7 +234,7 @@ export async function GET(request: Request) {
                 githubOwner,
               });
 
-              hasRepoAccess = await checkRepositoryAccess(
+              hasRepoAccess = await checkRepositoryAccessWithInstallation(
                 session.user.id,
                 sourceControlOrg.githubInstallationId.toString(),
                 repoUrl,

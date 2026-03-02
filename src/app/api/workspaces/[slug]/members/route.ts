@@ -9,6 +9,7 @@ import {
   getWorkspaceBySlug,
 } from "@/services/workspace";
 import { isAssignableMemberRole } from "@/lib/auth/roles";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -103,8 +104,8 @@ export async function POST(
       const { checkRepositoryAccess } = await import("@/lib/githubApp");
       
       // Find the user first to get their userId
-      const githubAuth = await db.gitHubAuth.findUnique({
-        where: { login: githubUsername },
+      const githubAuth = await db.gitHubAuth.findFirst({
+        where: { githubUsername: githubUsername },
         select: { userId: true },
       });
 

@@ -17,7 +17,7 @@ import {
   expectForbidden,
 } from "@/__tests__/support/helpers/api-assertions";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
-import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
+import { getUserAppTokens, checkRepositoryAccessWithInstallation } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
@@ -26,7 +26,7 @@ import { resetDatabase } from "@/__tests__/support/utilities/database";
 vi.mock("next-auth/next");
 vi.mock("@/lib/githubApp", () => ({
   getUserAppTokens: vi.fn(),
-  checkRepositoryAccess: vi.fn(),
+  checkRepositoryAccessWithInstallation: vi.fn(),
 }));
 vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccess: vi.fn(),
@@ -52,7 +52,7 @@ describe("GET /api/github/app/status", () => {
         hasRepoAccess: false,
       });
       expect(vi.mocked(getUserAppTokens)).not.toHaveBeenCalled();
-      expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).not.toHaveBeenCalled();
     });
 
     it("should return hasTokens=false and hasRepoAccess=false when session exists but no user.id", async () => {
@@ -285,7 +285,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: { ...workspace, sourceControlOrg },
       });
-      vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
+      vi.mocked(checkRepositoryAccessWithInstallation).mockResolvedValue(true);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -296,7 +296,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(true);
       expect(data.hasRepoAccess).toBe(true);
-      expect(vi.mocked(checkRepositoryAccess)).toHaveBeenCalledWith(
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).toHaveBeenCalledWith(
         testUser.id,
         "12345",
         "https://github.com/test-org/test-repo"
@@ -331,7 +331,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: { ...workspace, sourceControlOrg },
       });
-      vi.mocked(checkRepositoryAccess).mockResolvedValue(false);
+      vi.mocked(checkRepositoryAccessWithInstallation).mockResolvedValue(false);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -371,7 +371,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: { ...workspace, sourceControlOrg },
       });
-      vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
+      vi.mocked(checkRepositoryAccessWithInstallation).mockResolvedValue(true);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -383,7 +383,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(true);
       expect(data.hasRepoAccess).toBe(true);
-      expect(vi.mocked(checkRepositoryAccess)).toHaveBeenCalledWith(
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).toHaveBeenCalledWith(
         testUser.id,
         "12345",
         "https://github.com/test-org/custom-repo"
@@ -427,7 +427,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(true);
       expect(data.hasRepoAccess).toBe(false);
-      expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).not.toHaveBeenCalled();
     });
 
     // NOTE: Test disabled because githubInstallationId is required in Prisma schema (cannot be null)
@@ -485,7 +485,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(true);
       expect(data.hasRepoAccess).toBe(false);
-      expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).not.toHaveBeenCalled();
     });
   });
 
@@ -517,7 +517,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: workspace,
       });
-      vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
+      vi.mocked(checkRepositoryAccessWithInstallation).mockResolvedValue(true);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -535,7 +535,7 @@ describe("GET /api/github/app/status", () => {
       });
       expect(updatedWorkspace?.sourceControlOrgId).toBe(sourceControlOrg.id);
 
-      expect(vi.mocked(checkRepositoryAccess)).toHaveBeenCalledWith(
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).toHaveBeenCalledWith(
         testUser.id,
         "98765",
         "https://github.com/existing-org/test-repo"
@@ -575,7 +575,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(false);
       expect(data.hasRepoAccess).toBe(false);
-      expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).not.toHaveBeenCalled();
     });
 
     it("should return hasTokens=false and hasRepoAccess=false when workspace has no repository URL", async () => {
@@ -639,7 +639,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: workspace,
       });
-      vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
+      vi.mocked(checkRepositoryAccessWithInstallation).mockResolvedValue(true);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -711,7 +711,7 @@ describe("GET /api/github/app/status", () => {
         hasAccess: true,
         workspace: { ...workspace, sourceControlOrg },
       });
-      vi.mocked(checkRepositoryAccess).mockRejectedValue(new Error("GitHub API error"));
+      vi.mocked(checkRepositoryAccessWithInstallation).mockRejectedValue(new Error("GitHub API error"));
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
         workspaceSlug: workspace.slug,
@@ -776,7 +776,7 @@ describe("GET /api/github/app/status", () => {
       const data = await response.json();
       expect(data.hasTokens).toBe(false);
       expect(data.hasRepoAccess).toBe(false);
-      expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
+      expect(vi.mocked(checkRepositoryAccessWithInstallation)).not.toHaveBeenCalled();
     });
 
     it("should handle validateWorkspaceAccess returning null workspace gracefully", async () => {

@@ -476,13 +476,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const workspaceMembers = await db.workspaceMember.findMany({
           where: {
             workspaceId: workspace.id,
-            deleted: false,
+            leftAt: null,
           },
           include: {
             user: {
               select: {
                 id: true,
-                githubUsername: true,
+                githubAuth: {
+                  select: {
+                    githubUsername: true,
+                  },
+                },
               },
             },
           },
@@ -491,11 +495,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         // Check access for each member to each new repository
         const accessChecks = [];
         for (const member of workspaceMembers) {
-          if (!member.user.githubUsername) continue;
+          const githubUsername = member.user.githubAuth?.githubUsername;
+          if (!githubUsername) continue;
           
           for (const repo of reposToCreate) {
             accessChecks.push({
-              username: member.user.githubUsername,
+              username: githubUsername,
               repositoryUrl: repo.repositoryUrl,
             });
           }
