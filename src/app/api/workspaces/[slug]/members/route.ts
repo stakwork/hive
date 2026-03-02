@@ -100,7 +100,10 @@ export async function POST(
       },
     });
 
-    if (repositories.length > 0 && !bypassAccessWarning) {
+    // Skip repository access check in mock mode (E2E tests)
+    const isMockMode = Boolean(process.env.POD_URL);
+    
+    if (repositories.length > 0 && !bypassAccessWarning && !isMockMode) {
       const { checkRepositoryAccess } = await import("@/lib/githubApp");
       
       // Find the user first to get their userId
