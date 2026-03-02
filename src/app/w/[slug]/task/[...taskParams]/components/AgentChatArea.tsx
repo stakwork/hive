@@ -48,6 +48,7 @@ interface AgentChatAreaProps {
   onOpenBountyRequest?: () => void;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
+  stakworkProjectId?: string | null;
 }
 
 export function AgentChatArea({
@@ -76,6 +77,7 @@ export function AgentChatArea({
   onOpenBountyRequest,
   onRetry,
   isRetrying = false,
+  stakworkProjectId,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -309,10 +311,8 @@ export function AgentChatArea({
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
-        workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
-        onRetry={onRetry}
-        isRetrying={isRetrying}
+        stakworkProjectId={stakworkProjectId}
       />
 
       {onReleasePod && (
