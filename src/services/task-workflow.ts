@@ -256,6 +256,8 @@ export async function startTaskWorkflow(params: {
       runBuild: true,
       runTestSuite: true,
       autoMerge: true,
+      podId: true,
+      agentPassword: true,
       repository: {
         select: {
           name: true,

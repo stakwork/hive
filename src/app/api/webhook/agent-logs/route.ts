@@ -9,7 +9,7 @@ export const fetchCache = "force-no-store";
  *
  * Receives agent log traces from Stakwork workflows, uploads them to
  * Vercel Blob storage, and creates an AgentLog record linked to the
- * relevant StakworkRun and/or Task.
+ * relevant StakworkRun and/or Task and/or Feature.
  *
  * Auth: x-api-token header checked against API_TOKEN (same as /api/chat/response)
  *
@@ -18,7 +18,10 @@ export const fetchCache = "force-no-store";
  *   workspace_id:   string   — workspace this log belongs to
  *   stakwork_run_id?: string — optional StakworkRun to associate with
  *   task_id?:       string   — optional Task to associate with
+ *   feature_id?:    string   — optional Feature to associate with
  *   logs:           unknown  — the actual log data (JSON array, JSONL string, etc.)
+ *
+ * At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
       ? Number(body.stakwork_run_id)
       : undefined;
     const task_id = body.task_id ? String(body.task_id) : undefined;
+    const feature_id = body.feature_id ? String(body.feature_id) : undefined;
 
     // Validate required fields
     if (!agent || typeof agent !== "string") {
@@ -59,9 +63,9 @@ export async function POST(request: NextRequest) {
     }
 
     // At least one association must be provided
-    if (!stakwork_run_id && !task_id) {
+    if (!stakwork_run_id && !task_id && !feature_id) {
       return NextResponse.json(
-        { error: "At least one of 'stakwork_run_id' or 'task_id' is required" },
+        { error: "At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required" },
         { status: 400 }
       );
     }
@@ -109,10 +113,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If feature_id provided, verify it exists and belongs to this workspace
+    if (feature_id) {
+      const feature = await db.feature.findFirst({
+        where: { id: feature_id, workspaceId: workspace_id, deleted: false },
+        select: { id: true },
+      });
+      if (!feature) {
+        return NextResponse.json(
+          { error: "Feature not found or does not belong to workspace" },
+          { status: 404 }
+        );
+      }
+    }
+
     const logContent = typeof logs === "string" ? logs : JSON.stringify(logs);
 
     // Upload to Vercel Blob
-    const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id}/${agent}.json`;
+    const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id || feature_id}/${agent}.json`;
 
     const blob = await put(blobPath, logContent, {
       access: "private",
@@ -121,13 +139,14 @@ export async function POST(request: NextRequest) {
       allowOverwrite: true,
     });
 
-    // Upsert the AgentLog record (overwrite if same agent + run/task)
+    // Upsert the AgentLog record (overwrite if same agent + run/task/feature)
     const existing = await db.agentLog.findFirst({
       where: {
         agent,
         workspaceId: workspace_id,
         stakworkRunId: resolvedStakworkRunId,
         taskId: task_id || null,
+        featureId: feature_id || null,
       },
       select: { id: true },
     });
@@ -143,6 +162,7 @@ export async function POST(request: NextRequest) {
             agent,
             stakworkRunId: resolvedStakworkRunId,
             taskId: task_id || null,
+            featureId: feature_id || null,
             workspaceId: workspace_id,
           },
         });

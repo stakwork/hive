@@ -1647,11 +1647,6 @@ export default function TaskChatPage() {
     | undefined;
   const prLink = prUrl?.url || null;
 
-  const isTerminalState =
-    workflowStatus === WorkflowStatus.HALTED ||
-    workflowStatus === WorkflowStatus.FAILED ||
-    workflowStatus === WorkflowStatus.ERROR;
-
   // Live mode: restrict input based on workflow state and pod availability
   const liveModeSendAllowed =
     !started || // Fresh task - can send to kick off
@@ -1662,7 +1657,6 @@ export default function TaskChatPage() {
   const inputDisabled =
     isLoading ||
     !isConnected ||
-    isTerminalState ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1745,6 +1739,7 @@ export default function TaskChatPage() {
                     }
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
                   />
                 )}
               </div>
@@ -1777,6 +1772,7 @@ export default function TaskChatPage() {
                       }
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
                     />
                   </div>
                 </ResizablePanel>
@@ -1821,6 +1817,7 @@ export default function TaskChatPage() {
                 }
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
+                stakworkProjectId={projectId}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1870,6 +1867,7 @@ export default function TaskChatPage() {
                     }
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
                   />
                 )}
               </div>
@@ -1906,6 +1904,7 @@ export default function TaskChatPage() {
                       }
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
                     />
                   </div>
                 </ResizablePanel>
@@ -1955,6 +1954,7 @@ export default function TaskChatPage() {
                 }
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
+                stakworkProjectId={projectId}
               />
             </div>
           )}
