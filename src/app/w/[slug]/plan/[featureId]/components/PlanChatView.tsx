@@ -487,6 +487,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     logs,
     sphinxInviteEnabled: sphinxReady,
     onTitleSave: handleTitleSave,
+    stakworkProjectId: projectId,
   };
 
   const artifactsPanelProps = {

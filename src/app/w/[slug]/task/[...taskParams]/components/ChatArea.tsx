@@ -55,6 +55,7 @@ interface ChatAreaProps {
   isRetrying?: boolean;
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
+  stakworkProjectId?: string | null;
 }
 
 export function ChatArea({
@@ -91,6 +92,7 @@ export function ChatArea({
   isRetrying = false,
   isPlanChat = false,
   onTitleSave,
+  stakworkProjectId,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -395,11 +397,8 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
-        featureId={featureId ?? undefined}
-        workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
-        onRetry={onRetry}
-        isRetrying={isRetrying}
+        stakworkProjectId={stakworkProjectId}
       />
 
       {onReleasePod && (
