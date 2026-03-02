@@ -147,7 +147,11 @@ export function usePusherConnection({
       channelRef.current.unbind_all();
 
       // Unsubscribe from the channel
-      getPusherClient().unsubscribe(channelName);
+      try {
+        getPusherClient().unsubscribe(channelName);
+      } catch {
+        // Pusher env vars may not be configured (e.g. dev, E2E)
+      }
 
       channelRef.current = null;
       currentChannelIdRef.current = null;
