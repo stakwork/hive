@@ -1,5 +1,4 @@
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
@@ -79,8 +78,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Get workspace and verify user has access
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
-    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+    const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
     }

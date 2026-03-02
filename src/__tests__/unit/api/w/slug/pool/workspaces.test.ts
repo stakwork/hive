@@ -221,7 +221,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data).toEqual({
         error: "Workspace not found or access denied",
       });
-      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id, { isSuperAdmin: undefined });
+      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id);
     });
 
     it("should return 400 when slug parameter is missing", async () => {
