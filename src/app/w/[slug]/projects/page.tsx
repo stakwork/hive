@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Workflow, Plus, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ProjectsPage() {
   const { slug } = useWorkspace();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [projectId, setProjectId] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [validationState, setValidationState] = useState<"idle" | "valid" | "invalid">("idle");
@@ -61,6 +62,12 @@ export default function ProjectsPage() {
       setProjectName("");
     }
   };
+
+  // Pre-fill from ?id= URL parameter on mount
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (id) setProjectId(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounce validation effect
   useEffect(() => {
