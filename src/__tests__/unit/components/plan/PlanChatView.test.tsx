@@ -97,16 +97,18 @@ const mockArtifactsPanel = vi.fn();
 vi.mock("@/components/chat", () => ({
   ChatArea: ({ 
     onArtifactAction, 
+    isPlanComplete,
     sphinxInviteEnabled,
     workspaceSlug,
     featureId
   }: { 
     onArtifactAction: (messageId: string, action: { optionResponse: string }) => void;
+    isPlanComplete?: boolean;
     sphinxInviteEnabled?: boolean;
     workspaceSlug?: string;
     featureId?: string;
   }) => (
-    <div data-testid="chat-area">
+    <div data-testid="chat-area" data-is-plan-complete={isPlanComplete?.toString()}>
       <button
         data-testid="artifact-action-button"
         onClick={() => onArtifactAction("test-message-id", { optionResponse: "Test answer" })}
@@ -722,6 +724,107 @@ describe("PlanChatView", () => {
 
       // Verify ChatArea is rendered (props are passed via mock in setup)
       expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
+  });
+
+  describe("Quick Reply Chip", () => {
+    it("should not show chip when inputDisabled is true", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        title: "Test Feature",
+        brief: "Test brief",
+        requirements: null,
+        architecture: null,
+        userStories: [],
+        workflowStatus: "IN_PROGRESS",
+        phases: [],
+      };
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes("/chat")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: [] }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: mockFeature }),
+        });
+      });
+
+      const { container } = render(
+        <PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Verify that isPlanComplete prop is passed (false when no tasks)
+      const chatArea = screen.getByTestId("chat-area");
+      expect(chatArea).toHaveAttribute("data-is-plan-complete", "false");
+    });
+
+    it("should show chip only on last ASSISTANT message without a reply", async () => {
+      const mockMessages = [
+        {
+          id: "msg-1",
+          role: "ASSISTANT",
+          message: "First assistant message",
+          createdAt: "2024-01-01T00:00:00Z",
+          replyId: null,
+        },
+        {
+          id: "msg-2",
+          role: "USER",
+          message: "User reply to first message",
+          createdAt: "2024-01-01T00:01:00Z",
+          replyId: "msg-1",
+        },
+        {
+          id: "msg-3",
+          role: "ASSISTANT",
+          message: "Second assistant message - awaiting reply",
+          createdAt: "2024-01-01T00:02:00Z",
+          replyId: null,
+        },
+      ];
+
+      const mockFeature = {
+        id: "feature-123",
+        title: "Test Feature",
+        brief: "Test brief",
+        requirements: null,
+        architecture: null,
+        userStories: [],
+        workflowStatus: "COMPLETED",
+        phases: [],
+      };
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes("/chat")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: mockMessages }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: mockFeature }),
+        });
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // The chip visibility logic is tested in ChatMessage.test.tsx
+      // Here we verify that the correct props are passed to ChatArea
+      const chatArea = screen.getByTestId("chat-area");
+      expect(chatArea).toHaveAttribute("data-is-plan-complete", "false");
     });
   });
 

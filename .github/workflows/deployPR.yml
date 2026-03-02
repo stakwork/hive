@@ -238,8 +238,9 @@ jobs:
           fi
 
       - name: Build
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.connection_uri }}
         run: |
-          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
           npx prisma migrate deploy
@@ -250,9 +251,9 @@ jobs:
       ############################################################
       - name: Deploy
         id: deploy
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.connection_uri }}
         run: |
-          export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-
           DEPLOYMENT_URL=$(vercel deploy \
             --prebuilt \
             --scope=${{ secrets.VERCEL_ORG_ID }} \
@@ -308,6 +309,8 @@ jobs:
         if: success() && steps.deploy.outputs.deployment_url
         uses: actions/github-script@v7
         with:
+          retries: 3
+          retry-exempt-status-codes: 400,401,403,404,422
           script: |
             const marker = '<!-- hive-preview-deploy -->';
             const { data: comments } = await github.rest.issues.listComments({
