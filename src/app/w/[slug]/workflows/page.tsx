@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
@@ -14,6 +15,7 @@ import { ArtifactType } from "@prisma/client";
 
 export default function WorkflowsPage() {
   const { slug } = useWorkspace();
+  const searchParams = useSearchParams();
   const { workflows } = useWorkflowNodes(slug, true);
 
   // Workflow ID input state
@@ -28,6 +30,12 @@ export default function WorkflowsPage() {
     if (isNaN(searchId)) return null;
     return workflows.find((w) => w.properties.workflow_id === searchId) || null;
   }, [workflowIdValue, workflows]);
+
+  // Pre-fill from ?id= URL parameter on mount
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (id) setWorkflowIdValue(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [debouncedWorkflowId, setDebouncedWorkflowId] = useState<number | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
