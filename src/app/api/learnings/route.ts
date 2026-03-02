@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "./utils";
 import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repository";
 import { parseOwnerRepo } from "@/lib/ai/utils";
@@ -12,7 +11,6 @@ export async function GET(request: NextRequest) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
     
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
@@ -60,7 +58,6 @@ export async function POST(request: NextRequest) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
     
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
@@ -77,7 +74,7 @@ export async function POST(request: NextRequest) {
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
     // Get workspace access to retrieve workspace ID
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id, true);
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
-import { config, isSuperAdmin } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import { isSuperAdmin } from "@/config/env";
+import config from "@/config";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -24,14 +25,9 @@ export async function GET(
       );
     }
 
-    // Check if user is super admin
     const { db } = await import("@/lib/db");
-    const githubAuth = await db.gitHubAuth.findUnique({
-      where: { userId: userOrResponse.id },
-    });
-    const userIsSuperAdmin = isSuperAdmin(githubAuth?.githubUsername ?? "");
-
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(
@@ -50,7 +46,6 @@ export async function GET(
       success: true,
       data: {
         minimumVms: swarm?.minimumVms ?? 2,
-        isSuperAdmin: userIsSuperAdmin,
       },
     });
   } catch (error) {
@@ -100,7 +95,7 @@ export async function PATCH(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(

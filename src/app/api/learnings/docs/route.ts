@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "../utils";
 
 export async function GET(request: NextRequest) {
@@ -8,7 +7,6 @@ export async function GET(request: NextRequest) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const { searchParams } = new URL(request.url);
     const workspace = searchParams.get("workspace");
@@ -51,7 +49,6 @@ export async function PUT(request: NextRequest) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const body = await request.json();
     const { repo, documentation, workspace } = body;
