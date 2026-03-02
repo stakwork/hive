@@ -13,6 +13,7 @@ import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider
 import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
 /**
  * Provenance data types

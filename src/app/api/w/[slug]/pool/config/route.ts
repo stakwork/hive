@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { EncryptionService } from "@/lib/encryption";
-import { isSuperAdmin } from "@/config/env";
-import config from "@/config";
+import { isSuperAdmin, config } from "@/config/env";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
