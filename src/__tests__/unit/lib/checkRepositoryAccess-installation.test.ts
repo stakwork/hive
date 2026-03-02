@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
+import { checkRepositoryAccessWithInstallation, getUserAppTokens } from "@/lib/githubApp";
 import {
   mockGitHubApiResponses,
   resetGitHubApiMocks,
@@ -69,7 +69,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
       expect(mockDb.sourceControlToken.findFirst).toHaveBeenCalledWith({
@@ -89,7 +89,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     test("should return false when no tokens found", async () => {
       mockDb.sourceControlToken.findFirst.mockResolvedValue(null);
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
       expect(global.fetch).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: "encrypted-refresh",
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
       expect(global.fetch).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         decryptField: mockDecryptField,
       } as any);
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
       // Note: We don't check if fetch was called because the mock might have side effects
@@ -144,7 +144,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
       expect(global.fetch).toHaveBeenCalledWith(
@@ -165,7 +165,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.ssh);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.ssh);
 
       expect(result).toBe(true);
     });
@@ -176,7 +176,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.invalid);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.invalid);
 
       expect(result).toBe(false);
       expect(global.fetch).not.toHaveBeenCalled();
@@ -188,7 +188,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, "");
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, "");
 
       expect(result).toBe(false);
       expect(global.fetch).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.malformed);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.malformed);
 
       expect(result).toBe(false);
       expect(global.fetch).not.toHaveBeenCalled();
@@ -223,7 +223,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       );
       global.fetch = mockFetch;
 
-      await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
         `https://api.github.com/user/installations/${testInstallationId}/repositories?per_page=100&page=1`,
@@ -245,7 +245,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
     });
@@ -258,7 +258,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -266,7 +266,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     test("should handle empty repositories list", async () => {
       global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.installationRepositoriesEmpty());
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -274,7 +274,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     test("should handle API error responses", async () => {
       global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.installationRepositoriesError(500));
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -282,7 +282,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     test("should handle 404 error for installation not found", async () => {
       global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.installationRepositoriesError(404, "Not Found"));
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -290,7 +290,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     test("should handle network errors", async () => {
       global.fetch = vi.fn().mockRejectedValue(new Error("Network failure"));
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -311,7 +311,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
     });
@@ -323,7 +323,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
     });
@@ -335,7 +335,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -347,7 +347,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -359,7 +359,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         ]),
       );
 
-      const result = await checkRepositoryAccess(
+      const result = await checkRepositoryAccessWithInstallation(
         testUserId,
         testInstallationId,
         "https://github.com/test-owner/test-repo-123",
@@ -378,7 +378,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         }),
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
@@ -394,7 +394,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       const mockFetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.installationRepositoriesEmpty());
       global.fetch = mockFetch;
 
-      await checkRepositoryAccess(testUserId, "", testRepositoryUrls.https);
+      await checkRepositoryAccessWithInstallation(testUserId, "", testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
         "https://api.github.com/user/installations//repositories?per_page=100&page=1",
@@ -416,7 +416,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       global.fetch = mockFetch;
 
       const customInstallationId = "87654321";
-      await checkRepositoryAccess(testUserId, customInstallationId, testRepositoryUrls.https);
+      await checkRepositoryAccessWithInstallation(testUserId, customInstallationId, testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
         `https://api.github.com/user/installations/${customInstallationId}/repositories?per_page=100&page=1`,
@@ -439,7 +439,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
     });
@@ -459,7 +459,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
+      const result = await checkRepositoryAccessWithInstallation(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(false);
     });
