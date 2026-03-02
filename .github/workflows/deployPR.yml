@@ -260,7 +260,7 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Deployment attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES..."
             
-            if DEPLOYMENT_URL=$(vercel deploy \
+            if DEPLOY_OUTPUT=$(vercel deploy \
               --prebuilt \
               --scope=${{ secrets.VERCEL_ORG_ID }} \
               --token=${{ secrets.VERCEL_TOKEN }} \
@@ -269,6 +269,13 @@ jobs:
               --env "DATABASE_URL=$DATABASE_URL" \
               --env "PREVIEW_LINK_BRANCH=${{ github.event.pull_request.head.ref }}" \
               --yes 2>&1); then
+              # Extract the Preview URL from the output
+              DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Preview: \Khttps://[^\s]+' | head -1)
+              if [ -z "$DEPLOYMENT_URL" ]; then
+                echo "Failed to extract deployment URL from output:"
+                echo "$DEPLOY_OUTPUT"
+                exit 1
+              fi
               echo "Deployment URL: $DEPLOYMENT_URL"
               break
             else
@@ -279,7 +286,7 @@ jobs:
                 sleep $WAIT_TIME
               else
                 echo "Deployment failed after $MAX_RETRIES attempts"
-                echo "$DEPLOYMENT_URL"
+                echo "$DEPLOY_OUTPUT"
                 exit 1
               fi
             fi
