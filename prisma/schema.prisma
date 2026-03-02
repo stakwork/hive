@@ -1119,6 +1119,7 @@ model Feature {
   whiteboard   Whiteboard?
   chatMessages ChatMessage[]
   screenshots  Screenshot[]
+  agentLogs    AgentLog[]
 
   deleted   Boolean   @default(false)
   deletedAt DateTime? @map("deleted_at")
@@ -1375,6 +1376,8 @@ model AgentLog {
   stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id], onDelete: SetNull)
   taskId        String?      @map("task_id")
   task          Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  featureId     String?      @map("feature_id")
+  feature       Feature?     @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   // Always scoped to a workspace
   workspaceId String    @map("workspace_id")
@@ -1384,6 +1387,7 @@ model AgentLog {
 
   @@index([stakworkRunId])
   @@index([taskId])
+  @@index([featureId])
   @@index([workspaceId])
   @@index([createdAt])
   @@map("agent_logs")
