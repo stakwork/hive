@@ -1365,6 +1365,24 @@ model EnvironmentVariable {
 }
 
 // =============================================
+// EC2 ALERTS
+// =============================================
+
+model Ec2Alert {
+  id          String   @id @default(cuid())
+  instanceId  String   @unique @map("instance_id")
+  alarmName   String   @map("alarm_name")
+  alarmState  String   @map("alarm_state") // ALARM | OK | INSUFFICIENT_DATA
+  alarmType   String   @map("alarm_type")  // high-cpu | low-cpu
+  stateReason String   @map("state_reason")
+  triggeredAt DateTime @map("triggered_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("ec2_alerts")
+}
+
+// =============================================
 // AGENT LOG TRACES
 // =============================================
 
