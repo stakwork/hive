@@ -217,7 +217,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px]" data-testid="add-member-modal">
           <DialogHeader>
             <DialogTitle>Add Member to Workspace</DialogTitle>
             <DialogDescription>

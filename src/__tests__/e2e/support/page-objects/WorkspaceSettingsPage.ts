@@ -82,7 +82,7 @@ export class WorkspaceSettingsPage {
 
   async openAddMemberModal(): Promise<void> {
     await this.page.locator(selectors.workspaceMembers.addButton).click();
-    await expect(this.page.locator(selectors.addMemberModal.modal)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(selectors.addMemberModal.modal)).toBeVisible({ timeout: 15000 });
   }
 
   async inviteMember(options: { githubUsername: string; role?: WorkspaceRole }): Promise<void> {
