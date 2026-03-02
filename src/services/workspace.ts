@@ -244,10 +244,12 @@ export async function getWorkspaceById(
  * Gets a workspace by slug if user has access (owner or member)
  * @param slug - The workspace slug
  * @param userId - The user ID
+ * @param options - Optional configuration (isSuperAdmin bypasses membership check)
  */
 export async function getWorkspaceBySlug(
   slug: string,
   userId: string,
+  options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
@@ -281,6 +283,39 @@ export async function getWorkspaceBySlug(
 
   // Check if user is owner
   if (workspace.ownerId === userId) {
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      hasKey: hasValidApiKey(workspace.stakworkApiKey),
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt.toISOString(),
+      updatedAt: workspace.updatedAt.toISOString(),
+      userRole: "OWNER",
+      owner: workspace.owner,
+      containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+      repositoryDraft: workspace.repositoryDraft || null,
+      swarmId: workspace.swarm?.id || null,
+      isCodeGraphSetup:
+        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
+      poolState: workspace.swarm?.poolState || null,
+      podState: workspace.swarm?.podState || "NOT_STARTED",
+      swarmUrl: workspace.swarm?.swarmUrl || null,
+      logoKey: workspace.logoKey,
+      logoUrl: workspace.logoUrl,
+      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
+    };
+  }
+
+  // Superadmin bypass: grant OWNER-level access without membership check
+  if (options?.isSuperAdmin) {
     return {
       id: workspace.id,
       name: workspace.name,
@@ -489,13 +524,15 @@ export async function getUserWorkspaces(
  * @param slug - Workspace slug
  * @param userId - User ID
  * @param allowOwner - If false, owners must meet role requirements via actual membership role (default: true)
+ * @param options - Optional configuration (isSuperAdmin bypasses membership check)
  */
 export async function validateWorkspaceAccess(
   slug: string,
   userId: string,
   allowOwner: boolean = true,
+  options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceAccessValidation> {
-  const workspace = await getWorkspaceBySlug(slug, userId);
+  const workspace = await getWorkspaceBySlug(slug, userId, options);
 
   if (!workspace) {
     return {

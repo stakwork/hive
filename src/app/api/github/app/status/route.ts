@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 // import { EncryptionService } from "@/lib/encryption";
@@ -54,7 +55,8 @@ export async function GET(request: Request) {
       });
 
       const userId = (session.user as { id: string }).id;
-      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true);
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true, { isSuperAdmin });
       if (!workspaceAccess.hasAccess) {
         console.warn("[github-app-status] Workspace access denied", {
           ...requestLogContext,

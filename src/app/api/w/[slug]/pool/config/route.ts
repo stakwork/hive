@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { EncryptionService } from "@/lib/encryption";
 import { isSuperAdmin, config } from "@/config/env";
@@ -25,6 +25,7 @@ export async function GET(
     }
 
     const { db } = await import("@/lib/db");
+    const { checkIsSuperAdmin } = await import("@/lib/middleware/utils");
     
     const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
@@ -34,6 +35,9 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Check if user is superadmin
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     // Get swarm config
     const swarm = await db.swarm.findFirst({
@@ -45,6 +49,7 @@ export async function GET(
       success: true,
       data: {
         minimumVms: swarm?.minimumVms ?? 2,
+        isSuperAdmin: userIsSuperAdmin,
       },
     });
   } catch (error) {
