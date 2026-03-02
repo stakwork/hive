@@ -95,7 +95,7 @@ export const selectors = {
   addMemberModal: {
     modal: '[data-testid="add-member-modal"]',
     form: '[data-testid="add-member-form"]',
-    githubInput: '[data-testid="add-member-github-input"]',
+    githubInput: '[data-testid="add-member-username-input"]',
     roleTrigger: '[data-testid="add-member-role-trigger"]',
     roleOptionViewer: '[data-testid="role-option-viewer"]',
     roleOptionDeveloper: '[data-testid="role-option-developer"]',
