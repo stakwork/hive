@@ -1,0 +1,17 @@
+ ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+Error: No response is returned from route handler '/workspaces/hive/src/app/api/workspaces/route.ts'. Ensure you return a `Response` or a `NextResponse` in all branches of your handler.
+    at async k (.next/server/app/api/workspaces/route.js:1:6916)
+    at async g (.next/server/app/api/workspaces/route.js:1:7919)
+    at async M (.next/server/app/api/workspaces/route.js:1:9041)
+Error: No response is returned from route handler '/workspaces/hive/src/app/api/workspaces/[slug]/route.ts'. Ensure you return a `Response` or a `NextResponse` in all branches of your handler.
+    at async k (.next/server/app/api/workspaces/[slug]/route.js:1:5586)
+    at async g (.next/server/app/api/workspaces/[slug]/route.js:1:6589)
+    at async H (.next/server/app/api/workspaces/[slug]/route.js:1:7711)
+Error: No response is returned from route handler '/workspaces/hive/src/app/api/workspaces/[slug]/route.ts'. Ensure you return a `Response` or a `NextResponse` in all branches of your handler.
+    at async k (.next/server/app/api/workspaces/[slug]/route.js:1:5586)
+    at async g (.next/server/app/api/workspaces/[slug]/route.js:1:6589)
+    at async H (.next/server/app/api/workspaces/[slug]/route.js:1:7711)
+Error: No response is returned from route handler '/workspaces/hive/src/app/api/workspaces/[slug]/route.ts'. Ensure you return a `Response` or a `NextResponse` in all branches of your handler.
+    at async k (.next/server/app/api/workspaces/[slug]/route.js:1:5586)
+    at async g (.next/server/app/api/workspaces/[slug]/route.js:1:6589)
+    at async H (.next/server/app/api/workspaces/[slug]/route.js:1:7711)

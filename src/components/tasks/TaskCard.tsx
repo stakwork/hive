@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -222,6 +222,14 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <Badge variant="secondary" className="gap-1 h-5">
             <Sparkles className="w-3 h-3" />
             Janitor
+          </Badge>
+        )}
+
+        {/* Optional: Prototype badge */}
+        {!hideWorkflowStatus && task.sourceType === "PROTOTYPE" && (
+          <Badge variant="secondary" className="gap-1 h-5">
+            <FlaskConical className="w-3 h-3" />
+            Prototype
           </Badge>
         )}
 

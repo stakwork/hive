@@ -45,7 +45,7 @@ export interface TaskData {
   status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH";
   workflowStatus: WorkflowStatus | null;
-  sourceType: "USER" | "JANITOR" | "TASK_COORDINATOR" | "SYSTEM";
+  sourceType: "USER" | "JANITOR" | "TASK_COORDINATOR" | "SYSTEM" | "USER_JOURNEY" | "PROTOTYPE";
   mode: string;
   podId?: string | null;
   stakworkProjectId?: number | null;
