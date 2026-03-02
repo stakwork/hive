@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
@@ -42,13 +42,10 @@ interface ChatInputProps {
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;
-  workspaceSlug?: string;
   taskMode?: string;
   taskId?: string;
-  featureId?: string;
   onOpenBountyRequest?: () => void;
-  onRetry?: () => Promise<void>;
-  isRetrying?: boolean;
+  stakworkProjectId?: string | null;
 }
 
 export function ChatInput({
@@ -61,16 +58,12 @@ export function ChatInput({
   onRemoveStepAttachment,
   workflowStatus,
   hasPrArtifact = false,
-  workspaceSlug,
   taskMode,
   taskId,
-  featureId,
   onOpenBountyRequest,
-  onRetry,
-  isRetrying = false,
+  stakworkProjectId,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState("live");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,11 +82,6 @@ export function ChatInput({
 
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-  useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    setMode(mode || "live");
-  }, []);
 
   useEffect(() => {
     if (transcript) {
@@ -393,95 +381,35 @@ export function ChatInput({
     }
   };
 
-  const getModeConfig = (mode: string) => {
-    if (mode === "agent") {
-      return { icon: Bot, label: "Agent" };
-    }
-    return { icon: Workflow, label: "Workflow" };
-  };
-
-  const modeConfig = getModeConfig(mode);
-  const ModeIcon = modeConfig.icon;
-
-  // Show simplified ended state for terminal workflow statuses
   const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const getTerminalMessage = () => {
-    if (taskMode === "agent") {
-      return "Session expired.";
-    }
-    switch (workflowStatus) {
-      case WorkflowStatus.HALTED:
-        return "Workflow halted.";
-      case WorkflowStatus.FAILED:
-        return "Workflow failed.";
-      case WorkflowStatus.ERROR:
-        return "Workflow error.";
-      default:
-        return "Workflow ended.";
-    }
-  };
-
-  if (isTerminalState && !featureId) {
-    return (
-      <div className={cn(
-        "px-4 py-4 border-t bg-background",
-        isMobile && "fixed bottom-0 left-0 right-0 z-10 pb-[env(safe-area-inset-bottom)]"
-      )}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
-            <span>{getTerminalMessage()}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {onRetry && (
-              <Button
-                onClick={onRetry}
-                disabled={isRetrying}
-                size="sm"
-                variant="outline"
-              >
-                {isRetrying ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                )}
-                Retry
-              </Button>
-            )}
-            {workspaceSlug && (
-              <Button asChild size="sm">
-                <Link href={`/w/${workspaceSlug}/task/new`}>
-                  <Plus className="h-3 w-3 mr-1" />
-                  New Task
-                </Link>
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const showStatusIndicator = !hasPrArtifact && (
+    workflowStatus === WorkflowStatus.IN_PROGRESS ||
+    isTerminalState
+  );
 
   return (
     <div className={cn(
       isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
     )}>
-      <div className={cn(
-        "flex items-center gap-2 text-sm text-muted-foreground",
-        isMobile && "px-4"
-      )}>
-        <ModeIcon className="h-4 w-4" />
-        <span>{modeConfig.label}</span>
-        {!hasPrArtifact && workflowStatus !== WorkflowStatus.COMPLETED && (
-          <>
-            <span>|</span>
-            <WorkflowStatusBadge status={workflowStatus} />
-          </>
+      {/* Animated status indicator */}
+      <AnimatePresence>
+        {showStatusIndicator && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: 12, height: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className={cn("px-4 py-2 md:px-6")}>
+              <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* Debug attachment display */}
       {pendingDebugAttachment && (
