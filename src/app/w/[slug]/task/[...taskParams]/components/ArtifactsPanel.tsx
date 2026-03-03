@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState, useCallback, useRef, type ReactNode } fro
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Sparkles, Loader2, FlaskConical } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
@@ -35,9 +35,6 @@ interface ArtifactsPanelProps {
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
-  isPrototypeTask?: boolean;
-  isSavingPlan?: boolean;
-  onSaveAndPlan?: () => void;
 }
 
 export function ArtifactsPanel({
@@ -56,9 +53,6 @@ export function ArtifactsPanel({
   controlledTab,
   onControlledTabChange,
   sectionHighlights,
-  isPrototypeTask,
-  isSavingPlan,
-  onSaveAndPlan,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -218,21 +212,6 @@ export function ArtifactsPanel({
     }
   }, [featureId, workspaceId, refetchRun, isGenerating, isControlled, onControlledTabChange]);
 
-  function renderSaveAndPlanButton(): ReactNode {
-    if (!isPrototypeTask || diffArtifacts.length === 0) return undefined;
-    return (
-      <Button
-        size="sm"
-        onClick={onSaveAndPlan}
-        disabled={isSavingPlan}
-        className="gap-1.5 h-7 text-xs text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
-      >
-        {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
-        {isSavingPlan ? "Saving…" : "Save and Plan"}
-      </Button>
-    );
-  }
-
   function renderGenerateTasksButton(): ReactNode {
     if (!hasFeature || hasTasks) return undefined;
 
@@ -350,7 +329,7 @@ export function ArtifactsPanel({
             availableArtifacts={availableTabs}
             activeArtifact={activeTab}
             onArtifactChange={setActiveTab}
-            headerAction={renderSaveAndPlanButton() ?? renderGenerateTasksButton()}
+            headerAction={renderGenerateTasksButton()}
           />
         </motion.div>
 
