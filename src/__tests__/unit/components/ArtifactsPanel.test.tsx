@@ -5,8 +5,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ArtifactsPanel } from "@/app/w/[slug]/task/[...taskParams]/components/ArtifactsPanel";
-import { ArtifactType } from "@/lib/chat";
+import { ChatArea } from "@/app/w/[slug]/task/[...taskParams]/components/ChatArea";
 
 globalThis.React = React;
 
@@ -20,73 +19,62 @@ vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock("@/hooks/useAutoSave", () => ({
-  useAutoSave: () => ({ saving: false, saved: false, savedField: null, triggerSaved: vi.fn() }),
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useStakworkGeneration", () => ({
-  useStakworkGeneration: () => ({ latestRun: null, refetch: vi.fn() }),
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: () => false,
 }));
 
-vi.mock("@/app/w/[slug]/plan/[featureId]/components/PlanArtifact", () => ({
-  PlanArtifactPanel: () => React.createElement("div", { "data-testid": "plan-artifact-panel" }),
+vi.mock("@/components/plan/InvitePopover", () => ({
+  InvitePopover: () => null,
 }));
 
-vi.mock("@/components/features/CompactTasksList", () => ({
-  CompactTasksList: () => React.createElement("div", { "data-testid": "compact-tasks-list" }),
+vi.mock("@/components/whiteboard/CollaboratorAvatars", () => ({
+  CollaboratorAvatars: () => null,
 }));
 
-vi.mock("@/app/w/[slug]/plan/[featureId]/components/VerifyPanel", () => ({
-  VerifyPanel: () => React.createElement("div", { "data-testid": "verify-panel" }),
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
+  ChatInput: () => React.createElement("div", { "data-testid": "chat-input" }),
 }));
 
-vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ArtifactsHeader", () => ({
-  ArtifactsHeader: ({
-    headerAction,
-  }: {
-    availableArtifacts: string[];
-    activeArtifact: string | null;
-    onArtifactChange: (tab: string) => void;
-    headerAction?: React.ReactNode;
-  }) =>
-    React.createElement("div", { "data-testid": "artifacts-header" }, headerAction ?? null),
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
+  ChatMessage: () => React.createElement("div", { "data-testid": "chat-message" }),
 }));
 
-vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts", () => ({
-  CodeArtifactPanel: () => React.createElement("div", { "data-testid": "code-panel" }),
-  BrowserArtifactPanel: () => React.createElement("div", { "data-testid": "browser-panel" }),
-  GraphArtifactPanel: () => React.createElement("div", { "data-testid": "graph-panel" }),
-  WorkflowArtifactPanel: () => React.createElement("div", { "data-testid": "workflow-panel" }),
-  DiffArtifactPanel: () => React.createElement("div", { "data-testid": "diff-panel" }),
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/TaskBreadcrumbs", () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+vi.mock("@/lib/icons", () => ({
+  getAgentIcon: () => null,
 }));
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeDiffArtifact(id = "diff-1") {
-  return {
-    id,
-    type: ArtifactType.DIFF,
-    content: { files: [] },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    chatMessageId: "msg-1",
-    icon: null,
-  };
-}
+const baseProps = {
+  messages: [],
+  onSend: vi.fn(),
+  onArtifactAction: vi.fn(),
+  taskTitle: "Test Task",
+  workspaceSlug: "test-workspace",
+};
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("ArtifactsPanel — Save and Plan button", () => {
+describe("ChatArea — Save and Plan button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders 'Save and Plan' button when isPrototypeTask=true and a DIFF artifact is present", () => {
+  it("renders 'Save and Plan' button when isPrototypeTask=true and onSaveAndPlan is provided", () => {
     render(
-      <ArtifactsPanel
-        artifacts={[makeDiffArtifact()]}
+      <ChatArea
+        {...baseProps}
         isPrototypeTask={true}
         onSaveAndPlan={vi.fn()}
       />,
@@ -100,8 +88,8 @@ describe("ArtifactsPanel — Save and Plan button", () => {
     const onSaveAndPlan = vi.fn();
 
     render(
-      <ArtifactsPanel
-        artifacts={[makeDiffArtifact()]}
+      <ChatArea
+        {...baseProps}
         isPrototypeTask={true}
         onSaveAndPlan={onSaveAndPlan}
       />,
@@ -111,10 +99,10 @@ describe("ArtifactsPanel — Save and Plan button", () => {
     expect(onSaveAndPlan).toHaveBeenCalledOnce();
   });
 
-  it("does NOT render 'Save and Plan' when isPrototypeTask=false even with a DIFF artifact", () => {
+  it("does NOT render 'Save and Plan' when isPrototypeTask=false", () => {
     render(
-      <ArtifactsPanel
-        artifacts={[makeDiffArtifact()]}
+      <ChatArea
+        {...baseProps}
         isPrototypeTask={false}
         onSaveAndPlan={vi.fn()}
       />,
@@ -123,16 +111,29 @@ describe("ArtifactsPanel — Save and Plan button", () => {
     expect(screen.queryByRole("button", { name: /save and plan/i })).not.toBeInTheDocument();
   });
 
-  it("does NOT render 'Save and Plan' when isPrototypeTask=true but no DIFF artifact is present", () => {
+  it("does NOT render 'Save and Plan' when onSaveAndPlan is not provided", () => {
     render(
-      <ArtifactsPanel
-        artifacts={[]}
+      <ChatArea
+        {...baseProps}
         isPrototypeTask={true}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /save and plan/i })).not.toBeInTheDocument();
+  });
+
+  it("shows 'Saving…' and disables button when isSavingPlan=true", () => {
+    render(
+      <ChatArea
+        {...baseProps}
+        isPrototypeTask={true}
+        isSavingPlan={true}
         onSaveAndPlan={vi.fn()}
       />,
     );
 
-    // No tabs → component renders null
-    expect(screen.queryByRole("button", { name: /save and plan/i })).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: /saving/i });
+    expect(button).toBeInTheDocument();
+    expect(button).toBeDisabled();
   });
 });
