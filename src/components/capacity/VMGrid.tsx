@@ -60,8 +60,6 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
     window.open(vm.url, "_blank", "noopener,noreferrer");
   };
 
-  const isActive = vm.state !== "pending";
-
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4 space-y-3">
@@ -75,7 +73,7 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
             {vm.state === "pending" && (
               <Badge variant="outline" className="text-xs">Pending</Badge>
             )}
-            {isActive && vm.password && vm.url && (
+            {vm.password && vm.url && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6">

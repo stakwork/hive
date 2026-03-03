@@ -25,6 +25,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/admin", strategy: "prefix", access: "superadmin" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)
+  { path: "/person", strategy: "exact", access: "webhook" }, // Sphinx app post-link profile sync
   { path: "/api/auth/sphinx/token", strategy: "exact", access: "webhook" }, // Sphinx app token exchange (has own auth, bypasses landing page)
   { path: "/api/auth", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },
@@ -40,6 +41,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
   { path: "/api/bounty/webhook", strategy: "prefix", access: "webhook" },
+  { path: "/api/ec2/alerts", strategy: "prefix", access: "webhook" },
   { path: "/api/tasks/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/recording", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
