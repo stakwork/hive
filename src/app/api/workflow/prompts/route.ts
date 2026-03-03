@@ -37,28 +37,31 @@ interface CreatePromptResponse {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
-    // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
-
     const devMode = isDevelopmentMode();
 
-    if (!stakworkWorkspace && !devMode) {
-      return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
+    // In dev mode, skip authentication checks
+    if (!devMode) {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
+
+      // Verify user has access to stakwork workspace
+      const stakworkWorkspace = await db.workspace.findFirst({
+        where: {
+          slug: "stakwork",
+          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+        },
+      });
+
+      if (!stakworkWorkspace) {
+        return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
+      }
     }
 
     // Get pagination and filter params
@@ -68,8 +71,15 @@ export async function GET(request: NextRequest) {
     const includeUsages = searchParams.get("include_usages") === "true";
     const search = searchParams.get("search");
 
+    // In dev mode, call mock API directly to avoid SSL issues
+    if (devMode) {
+      const { GET: mockGET } = await import("@/app/api/mock/stakwork/prompts/route");
+      return mockGET(request);
+    }
+
     // Fetch prompts from Stakwork API
     let promptsUrl = `${config.STAKWORK_BASE_URL}/prompts?page=${page}`;
+    
     if (workflowId) {
       promptsUrl += `&workflow_id=${workflowId}`;
     }
@@ -120,28 +130,31 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
-    // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
-
     const devMode = isDevelopmentMode();
 
-    if (!stakworkWorkspace && !devMode) {
-      return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
+    // In dev mode, skip authentication checks
+    if (!devMode) {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
+
+      // Verify user has access to stakwork workspace
+      const stakworkWorkspace = await db.workspace.findFirst({
+        where: {
+          slug: "stakwork",
+          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+        },
+      });
+
+      if (!stakworkWorkspace) {
+        return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
+      }
     }
 
     const body: CreatePromptRequest = await request.json();
@@ -150,12 +163,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name and value are required" }, { status: 400 });
     }
 
-    // Create prompt via Stakwork API
-    const promptsUrl = `${config.STAKWORK_BASE_URL}/prompts/`;
+    // Create prompt via Stakwork API (or mock in dev mode)
+    const promptsUrl = devMode
+      ? `${request.nextUrl.origin}/api/mock/stakwork/prompts`
+      : `${config.STAKWORK_BASE_URL}/prompts/`;
 
     const response = await fetch(promptsUrl, {
       method: "POST",
-      headers: {
+      headers: devMode ? { "Content-Type": "application/json" } : {
         Authorization: `Token token=${config.STAKWORK_API_KEY}`,
         "Content-Type": "application/json",
       },
