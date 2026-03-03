@@ -543,7 +543,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       const diffContent = data.message.artifacts[0].content;
-      expect(diffContent.diffs).toBeInstanceOf(Array);
+      expect(Array.isArray(diffContent.diffs)).toBe(true);
       expect(diffContent.diffs).toHaveLength(2);
       expect(diffContent.diffs[0]).toHaveProperty("file");
       expect(diffContent.diffs[0]).toHaveProperty("action");

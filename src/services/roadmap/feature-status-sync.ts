@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { FeatureStatus, TaskStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import { updateFeature } from "./features";
+import { createAndSendNotification } from "@/services/notifications";
 
 /**
  * Calculates the appropriate Feature status based on child Task statuses
@@ -96,8 +97,12 @@ export async function updateFeatureStatusFromTasks(featureId: string): Promise<v
       select: {
         id: true,
         status: true,
+        assigneeId: true,
+        createdById: true,
+        title: true,
         workspace: {
           select: {
+            id: true,
             ownerId: true,
             slug: true,
           },
@@ -122,14 +127,29 @@ export async function updateFeatureStatusFromTasks(featureId: string): Promise<v
       status: computedStatus,
     });
 
-    // Step 9: Optional - Broadcast Pusher event
-    // TODO: Implement Pusher event broadcast if needed
-    // const pusher = getPusherInstance();
-    // await pusher.trigger(`workspace-${feature.workspace.slug}`, 'FEATURE_STATUS_UPDATE', {
-    //   featureId,
-    //   newStatus: computedStatus,
-    //   timestamp: new Date().toISOString(),
-    // });
+    // Fire FEATURE_COMPLETED notification (fire-and-forget)
+    if (computedStatus === FeatureStatus.COMPLETED) {
+      const targetUserId = feature.assigneeId ?? feature.createdById;
+      const featureUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${featureId}`;
+      void (async () => {
+        try {
+          const targetUser = await db.user.findUnique({
+            where: { id: targetUserId },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+          await createAndSendNotification({
+            targetUserId,
+            featureId,
+            workspaceId: feature.workspace.id,
+            notificationType: NotificationTriggerType.FEATURE_COMPLETED,
+            message: `@${alias} — Feature '${feature.title}' has been marked Complete. ${featureUrl}`,
+          });
+        } catch (notifError) {
+          console.error(`[feature-status-sync] Error firing FEATURE_COMPLETED notification:`, notifError);
+        }
+      })();
+    }
 
     console.log(`[feature-status-sync] Successfully updated feature ${featureId} to status ${computedStatus}`);
   } catch (error) {

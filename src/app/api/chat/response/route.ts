@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma, PodUsageStatus, WorkflowStatus } from "@prisma/client";
+import { Prisma, PodUsageStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -16,6 +16,7 @@ import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceCh
 import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
+import { createAndSendNotification } from "@/services/notifications";
 
 export const fetchCache = "force-no-store";
 
@@ -47,14 +48,14 @@ export async function POST(request: NextRequest) {
     } = body;
 
     let taskMode: string | undefined;
-    let task: { id: string; workspaceId: string; mode: string } | null = null;
+    let task: { id: string; workspaceId: string; mode: string; assigneeId: string | null; createdById: string; title: string } | null = null;
     if (taskId) {
       task = await db.task.findFirst({
         where: {
           id: taskId,
           deleted: false,
         },
-        select: { id: true, workspaceId: true, mode: true },
+        select: { id: true, workspaceId: true, mode: true, assigneeId: true, createdById: true, title: true },
       });
 
       if (!task) {
@@ -498,6 +499,85 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.error("Error broadcasting feature update to Pusher:", error);
+      }
+
+      // Fire plan-page notifications based on artifact types (fire-and-forget)
+      try {
+        const feature = await db.feature.findUnique({
+          where: { id: featureId },
+          select: { createdById: true, workspaceId: true, title: true, workspace: { select: { slug: true } } },
+        });
+        if (feature) {
+          const planUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${featureId}`;
+          const targetUser = await db.user.findUnique({
+            where: { id: feature.createdById },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+
+          for (const dbArtifact of chatMessage.artifacts) {
+            if (dbArtifact.type === ArtifactType.FORM) {
+              void createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
+                message: `@${alias} — Your plan for '${feature.title}' has a question waiting for your input: ${planUrl}`,
+              });
+            } else if (dbArtifact.type === ArtifactType.PLAN) {
+              void createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_AWAITING_APPROVAL,
+                message: `@${alias} — Your plan for '${feature.title}' is ready for your review: ${planUrl}`,
+              });
+            } else if (dbArtifact.type === ArtifactType.TASKS) {
+              void createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_TASKS_GENERATED,
+                message: `@${alias} — Tasks have been generated for '${feature.title}' and are ready to assign: ${planUrl}`,
+              });
+            }
+          }
+        }
+      } catch (notifError) {
+        console.error("Error firing plan notifications:", notifError);
+      }
+    }
+
+    // Fire GRAPH_CHAT_RESPONSE notification when taskId is present and no plan artifacts
+    if (taskId && !featureId && task) {
+      const hasPlanArtifact = chatMessage.artifacts.some(
+        (a) => a.type === ArtifactType.FORM || a.type === ArtifactType.PLAN || a.type === ArtifactType.TASKS,
+      );
+      if (!hasPlanArtifact) {
+        try {
+          const targetUserId = task.assigneeId ?? task.createdById;
+          const workspace = await db.workspace.findUnique({
+            where: { id: task.workspaceId },
+            select: { slug: true },
+          });
+          const targetUser = await db.user.findUnique({
+            where: { id: targetUserId },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+          if (workspace) {
+            const taskUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/task/${taskId}`;
+            void createAndSendNotification({
+              targetUserId,
+              workspaceId: task.workspaceId,
+              taskId,
+              notificationType: NotificationTriggerType.GRAPH_CHAT_RESPONSE,
+              message: `@${alias} — The assistant has responded to your question about '${task.title}': ${taskUrl}`,
+            });
+          }
+        } catch (notifError) {
+          console.error("Error firing graph chat notification:", notifError);
+        }
       }
     }
 
