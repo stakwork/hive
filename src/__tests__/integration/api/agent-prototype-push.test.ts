@@ -46,6 +46,10 @@ vi.mock("@/lib/ai/commit-msg", () => ({
   generateCommitMessage: vi.fn(),
 }));
 
+vi.mock("@/lib/pods/utils", () => ({
+  releaseTaskPod: vi.fn().mockResolvedValue({ success: true, podDropped: true, taskCleared: true }),
+}));
+
 const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
 
 describe("POST /api/agent/prototype-push/[taskId]", () => {
@@ -365,6 +369,94 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
         undefined,
         "prototype",
       );
+    });
+
+    test("marks task as DONE and releases pod after successful push", async () => {
+      const podId = `pod-${generateUniqueId()}`;
+      const { user, task } = await createTestData({ podId });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
+      vi.mocked(generateCommitMessage).mockResolvedValue({
+        commit_message: "feat: prototype done",
+        branch_name: "prototype/done-branch",
+      });
+
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId,
+        password: "test-password",
+        portMappings: [3010],
+      } as any);
+
+      const { getUserAppTokens } = await import("@/lib/githubApp");
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken: "github_pat_test_token",
+      });
+
+      const { releaseTaskPod } = await import("@/lib/pods/utils");
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: { "test-repo": "prototype/done-branch" } }),
+      } as Response);
+
+      const response = await POST(createRequest(task.id), buildParams(task.id));
+      expect(response.status).toBe(200);
+
+      // Task should be marked DONE in DB
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.status).toBe(TaskStatus.DONE);
+
+      // releaseTaskPod should have been called
+      expect(vi.mocked(releaseTaskPod)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: task.id,
+          podId,
+          verifyOwnership: false,
+          clearTaskFields: true,
+          newWorkflowStatus: "COMPLETED",
+        }),
+      );
+    });
+
+    test("still returns 200 with branchName even if post-push side effects throw", async () => {
+      const podId = `pod-${generateUniqueId()}`;
+      const { user, task } = await createTestData({ podId });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
+      vi.mocked(generateCommitMessage).mockResolvedValue({
+        commit_message: "feat: prototype error",
+        branch_name: "prototype/error-branch",
+      });
+
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId,
+        password: "test-password",
+        portMappings: [3010],
+      } as any);
+
+      const { getUserAppTokens } = await import("@/lib/githubApp");
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken: "github_pat_test_token",
+      });
+
+      // Simulate releaseTaskPod failure — route uses Promise.allSettled so response must still succeed
+      const { releaseTaskPod } = await import("@/lib/pods/utils");
+      vi.mocked(releaseTaskPod).mockRejectedValueOnce(new Error("Pod release failure"));
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: { "test-repo": "prototype/error-branch" } }),
+      } as Response);
+
+      const response = await POST(createRequest(task.id), buildParams(task.id));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.branchName).toBe("prototype/error-branch");
     });
 
     test("falls back to Object.values(branches)[0] when repo name key missing", async () => {
