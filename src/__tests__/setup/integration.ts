@@ -32,9 +32,7 @@ const fetchState: Array<typeof globalThis.fetch> = [];
 
 beforeAll(async () => {
   // Ensure database URL is set for Prisma
-  if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-  }
+  process.env.DATABASE_URL = TEST_DATABASE_URL;
 
   try {
     execSync("npx prisma db push --accept-data-loss", {
@@ -45,7 +43,13 @@ beforeAll(async () => {
     console.error("Failed to setup test database schema:", error);
     throw error;
   }
-}, 30_000);
+
+  // Explicitly connect the Prisma client after schema push.
+  // Prisma 6 does not reliably lazy-connect in forked Vitest workers;
+  // calling $connect() here ensures the engine is live before any
+  // beforeEach hook tries to use it.
+  await db.$connect();
+}, 60_000);
 
 // Reset database before each test to ensure clean state.
 // No afterEach needed - beforeEach provides full isolation.
