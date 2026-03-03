@@ -1,6 +1,5 @@
 import "./global";
 import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { execSync } from "child_process";
 import { db } from "@/lib/db";
 import { resetDatabase } from "../support/utilities/database";
 import { ensureTestEnv } from "./env";
@@ -23,7 +22,8 @@ if (
   );
 }
 
-// Set environment variables for integration tests using shared helper
+// Set environment variables for integration tests using shared helper.
+// Must happen before any module imports @/lib/db so Prisma reads the right URL.
 ensureTestEnv();
 process.env.DATABASE_URL = TEST_DATABASE_URL;
 
@@ -31,28 +31,31 @@ const initialFetch = globalThis.fetch;
 const fetchState: Array<typeof globalThis.fetch> = [];
 
 beforeAll(async () => {
-  // Ensure database URL is set for Prisma
+  // Re-assert DATABASE_URL in case something reset it between module load and
+  // beforeAll execution (e.g. dotenv/config in setupFiles).
   process.env.DATABASE_URL = TEST_DATABASE_URL;
 
-  try {
-    execSync("npx prisma db push --accept-data-loss", {
-      stdio: "pipe",
-      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
-    });
-  } catch (error) {
-    console.error("Failed to setup test database schema:", error);
-    throw error;
+  // Explicitly connect and verify the Prisma client.
+  // In Prisma 6 with Vitest forked workers the query engine binary can take
+  // a moment to become reachable after $connect() resolves (especially on CI).
+  // We retry with back-off so transient "Engine is not yet connected" errors
+  // don't abort the whole suite.
+  const maxAttempts = 10;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await db.$connect();
+      await db.$queryRaw`SELECT 1`;
+      break; // success
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      // Disconnect so the next attempt gets a fresh engine handshake
+      await db.$disconnect().catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+    }
   }
-
-  // Explicitly connect the Prisma client after schema push.
-  // Prisma 6 does not reliably lazy-connect in forked Vitest workers;
-  // calling $connect() here ensures the engine is live before any
-  // beforeEach hook tries to use it.
-  await db.$connect();
-}, 60_000);
+}, 30_000);
 
 // Reset database before each test to ensure clean state.
-// No afterEach needed - beforeEach provides full isolation.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
