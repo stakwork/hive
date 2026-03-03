@@ -66,12 +66,12 @@ const baseProps = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("ChatArea — Save and Plan button", () => {
+describe("ChatArea — Save button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders 'Save and Plan' button when isPrototypeTask=true and onSaveAndPlan is provided", () => {
+  it("renders 'Save' button when isPrototypeTask=true and onSaveAndPlan is provided (DIFF artifact present)", () => {
     render(
       <ChatArea
         {...baseProps}
@@ -80,7 +80,7 @@ describe("ChatArea — Save and Plan button", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /save and plan/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
   });
 
   it("calls onSaveAndPlan when the button is clicked", async () => {
@@ -95,11 +95,11 @@ describe("ChatArea — Save and Plan button", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /save and plan/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
     expect(onSaveAndPlan).toHaveBeenCalledOnce();
   });
 
-  it("does NOT render 'Save and Plan' when isPrototypeTask=false", () => {
+  it("does NOT render 'Save' button when isPrototypeTask=false", () => {
     render(
       <ChatArea
         {...baseProps}
@@ -108,10 +108,10 @@ describe("ChatArea — Save and Plan button", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: /save and plan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
   });
 
-  it("does NOT render 'Save and Plan' when onSaveAndPlan is not provided", () => {
+  it("does NOT render 'Save' button when onSaveAndPlan is not provided (no DIFF artifact)", () => {
     render(
       <ChatArea
         {...baseProps}
@@ -119,7 +119,7 @@ describe("ChatArea — Save and Plan button", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: /save and plan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
   });
 
   it("shows 'Saving…' and disables button when isSavingPlan=true", () => {
