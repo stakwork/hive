@@ -87,6 +87,8 @@ describe("createAndSendNotification", () => {
 
   describe("idempotency", () => {
     it("returns early without creating a record when a PENDING record already exists", async () => {
+      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
+      userFindUnique.mockResolvedValue(userWithAlias);
       findFirst.mockResolvedValue(mockRecord);
 
       await createAndSendNotification(baseInput);
@@ -96,6 +98,8 @@ describe("createAndSendNotification", () => {
     });
 
     it("uses explicit null for taskId and featureId in the idempotency query", async () => {
+      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
+      userFindUnique.mockResolvedValue(userWithAlias);
       findFirst.mockResolvedValue(mockRecord);
 
       await createAndSendNotification({
@@ -111,9 +115,7 @@ describe("createAndSendNotification", () => {
   });
 
   describe("Sphinx not configured — workspace", () => {
-    it("creates PENDING record but does NOT call sendToSphinx when workspace Sphinx is disabled", async () => {
-      findFirst.mockResolvedValue(null);
-      create.mockResolvedValue(mockRecord);
+    it("returns early without creating a record when Sphinx is disabled", async () => {
       workspaceFindUnique.mockResolvedValue({
         sphinxEnabled: false,
         sphinxBotId: null,
@@ -124,14 +126,12 @@ describe("createAndSendNotification", () => {
 
       await createAndSendNotification(baseInput);
 
-      expect(create).toHaveBeenCalledOnce();
+      expect(create).not.toHaveBeenCalled();
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
 
-    it("leaves record as PENDING when sphinxEnabled but credentials are missing", async () => {
-      findFirst.mockResolvedValue(null);
-      create.mockResolvedValue(mockRecord);
+    it("returns early without creating a record when Sphinx credentials are missing", async () => {
       workspaceFindUnique.mockResolvedValue({
         sphinxEnabled: true,
         sphinxBotId: null,
@@ -142,21 +142,20 @@ describe("createAndSendNotification", () => {
 
       await createAndSendNotification(baseInput);
 
+      expect(create).not.toHaveBeenCalled();
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
   });
 
   describe("Sphinx not configured — user has no sphinxAlias", () => {
-    it("creates PENDING record but does NOT call sendToSphinx when user has no sphinxAlias", async () => {
-      findFirst.mockResolvedValue(null);
-      create.mockResolvedValue(mockRecord);
+    it("returns early without creating a record when user has no sphinxAlias", async () => {
       workspaceFindUnique.mockResolvedValue(configuredWorkspace);
       userFindUnique.mockResolvedValue(userWithoutAlias);
 
       await createAndSendNotification(baseInput);
 
-      expect(create).toHaveBeenCalledOnce();
+      expect(create).not.toHaveBeenCalled();
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
@@ -247,6 +246,8 @@ describe("createAndSendNotification", () => {
     });
 
     it("resolves without throwing even when db.notificationTrigger.create throws", async () => {
+      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
+      userFindUnique.mockResolvedValue(userWithAlias);
       findFirst.mockResolvedValue(null);
       create.mockRejectedValue(new Error("constraint violation"));
 
