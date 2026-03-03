@@ -96,7 +96,8 @@ export async function POST(request: NextRequest) {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     current_version_id: mockPrompts.length + 10,
-    versions: [],
+    version_count: 1,
+    versions: [] as { id: number; prompt_id: number; value: string; created_at: string }[],
   };
 
   mockPrompts.push(newPrompt);
