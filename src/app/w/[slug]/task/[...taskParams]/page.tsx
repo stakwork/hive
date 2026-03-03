@@ -1918,7 +1918,7 @@ export default function TaskChatPage() {
                     stakworkProjectId={projectId}
                     isPrototypeTask={isPrototypeTask}
                     isSavingPlan={isSavingPlan}
-                    onSaveAndPlan={handleSaveAndPlan}
+                    onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                   />
                 )}
               </div>
@@ -1958,7 +1958,7 @@ export default function TaskChatPage() {
                       stakworkProjectId={projectId}
                       isPrototypeTask={isPrototypeTask}
                       isSavingPlan={isSavingPlan}
-                      onSaveAndPlan={handleSaveAndPlan}
+                      onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                     />
                   </div>
                 </ResizablePanel>
@@ -2011,7 +2011,7 @@ export default function TaskChatPage() {
                 stakworkProjectId={projectId}
                 isPrototypeTask={isPrototypeTask}
                 isSavingPlan={isSavingPlan}
-                onSaveAndPlan={handleSaveAndPlan}
+                onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
               />
             </div>
           )}

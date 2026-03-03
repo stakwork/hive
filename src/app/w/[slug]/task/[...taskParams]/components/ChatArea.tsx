@@ -339,7 +339,7 @@ export function ChatArea({
                 className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
               >
                 {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
-                {isSavingPlan ? "Saving…" : "Save and Plan"}
+                {isSavingPlan ? "Saving…" : "Save"}
               </Button>
             )}
           </div>
