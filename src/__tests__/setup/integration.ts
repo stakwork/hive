@@ -45,6 +45,10 @@ beforeAll(async () => {
     console.error("Failed to setup test database schema:", error);
     throw error;
   }
+
+  // Explicitly connect the Prisma client so the engine is ready before
+  // any beforeEach hooks run (Prisma lazy-connects by default).
+  await db.$connect();
 });
 
 // Reset database before each test to ensure clean state.
