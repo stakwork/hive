@@ -11,6 +11,7 @@ import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
+import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -96,6 +97,17 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
+  // Check if we have changes to show
+  const hasChanges = !!(originalWorkflowJson && workflowJson);
+
+  // Compute changed step/connection IDs for orange graph highlights (editor tab only)
+  const { changedStepIds, changedConnectionIds } = useMemo(() => {
+    if (!hasChanges) {
+      return { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
+    }
+    return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
+  }, [hasChanges, originalWorkflowJson, workflowJson]);
+
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
     if (!workflowJson) return null;
@@ -155,9 +167,6 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       );
     }
 
-    // Check if we have changes to show
-    const hasChanges = !!(originalWorkflowJson && workflowJson);
-
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         {projectId && (
@@ -196,6 +205,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 useAssistantDimensions: false,
                 rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                 onStepClick: onStepSelect ? handleStepClick : undefined,
+                changedStepIds,
+                changedConnectionIds,
               }}
             />
             <StepDetailsModal
