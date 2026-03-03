@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, useState, useCallback } from "react";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
@@ -20,6 +21,7 @@ interface WorkflowArtifactPanelProps {
 }
 
 export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+  const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork">("editor");
@@ -174,7 +176,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
             <StakworkRunDropdown
               projectId={projectId}
               workflowId={workflowId}
-              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              hiveUrl={`/w/${slug}/projects?id=${projectId}`}
               variant="button"
             />
           </div>
@@ -312,7 +314,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
             <StakworkRunDropdown
               projectId={projectId}
               workflowId={workflowId}
-              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              hiveUrl={`/w/${slug}/projects?id=${projectId}`}
               variant="button"
             />
           </div>
