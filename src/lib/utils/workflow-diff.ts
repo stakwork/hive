@@ -63,9 +63,15 @@ export function computeWorkflowDiff(
     if (!inOrig || !inUpdated) {
       // Added or removed
       changedStepIds.add(key);
+      const stepVal = (inUpdated ? updatedTransitions[key] : origTransitions[key]) as Record<string, unknown> | null;
+      const stepId = stepVal?.id as string | undefined;
+      if (stepId && stepId !== key) changedStepIds.add(stepId);
     } else if (JSON.stringify(origTransitions[key]) !== JSON.stringify(updatedTransitions[key])) {
       // Modified
       changedStepIds.add(key);
+      const stepVal = updatedTransitions[key] as Record<string, unknown> | null;
+      const stepId = stepVal?.id as string | undefined;
+      if (stepId && stepId !== key) changedStepIds.add(stepId);
     }
   }
 
