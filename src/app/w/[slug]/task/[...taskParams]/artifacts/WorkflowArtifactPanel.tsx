@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
@@ -8,6 +8,9 @@ import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
@@ -24,7 +27,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork">("editor");
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -142,6 +145,20 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     }
   }, [workflowJson]);
 
+  // Extract child workflows from loop-type steps in parsed transitions
+  const childWorkflows = useMemo(() => {
+    if (!parsedWorkflowData?.transitions) return [];
+    const transitions = Object.values(parsedWorkflowData.transitions) as WorkflowTransition[];
+    return transitions
+      .filter((t) => t.skill?.type === "loop" && t.step?.attributes?.workflow_id)
+      .map((t) => ({
+        id: String(t.step.attributes.workflow_id),
+        name: (t.step.attributes.workflow_name as string) || `Workflow ${t.step.attributes.workflow_id}`,
+      }));
+  }, [parsedWorkflowData]);
+
+  const hasChildWorkflows = childWorkflows.length > 0;
+
   // Polling hook - in editor mode, only poll when on stakwork tab
   const shouldPoll = isEditorMode
     ? isActive && activeDisplayTab === "stakwork" && !!projectId
@@ -183,14 +200,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
         )}
         <Tabs
           value={activeDisplayTab}
-          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "children")}
           className="flex flex-col h-full"
         >
-          <TabsList className={`grid w-full flex-shrink-0 ${hasChanges ? "grid-cols-4" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full flex-shrink-0 grid-cols-${3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0)}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
             {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
+            {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
@@ -225,6 +243,38 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 originalJson={originalWorkflowJson || null}
                 updatedJson={workflowJson || null}
               />
+            </TabsContent>
+          )}
+
+          {hasChildWorkflows && (
+            <TabsContent value="children" className="flex-1 overflow-auto mt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>ID</TableHead>
+                    <TableHead className="w-16">Open</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {childWorkflows.map((wf) => (
+                    <TableRow key={wf.id}>
+                      <TableCell className="font-medium">{wf.name}</TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">{wf.id}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Open child workflow"
+                          onClick={() => window.open(`https://hive.sphinx.chat/w/stakwork/workflows?id=${wf.id}`, "_blank")}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </TabsContent>
           )}
 
