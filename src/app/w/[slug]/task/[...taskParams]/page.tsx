@@ -137,6 +137,7 @@ export default function TaskChatPage() {
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
   const [isPrototypeTask, setIsPrototypeTask] = useState(false);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -1440,8 +1441,9 @@ export default function TaskChatPage() {
   };
 
   const handleSaveAndPlan = useCallback(async () => {
-    if (!currentTaskId || !effectiveWorkspaceId || !slug) return;
+    if (!currentTaskId || !effectiveWorkspaceId || !slug || isSavingPlan) return;
 
+    setIsSavingPlan(true);
     try {
       // 1. Push prototype branch
       const pushRes = await fetch(`/api/agent/prototype-push/${currentTaskId}`, { method: "POST" });
@@ -1475,8 +1477,9 @@ export default function TaskChatPage() {
     } catch (error) {
       console.error("Save and Plan failed:", error);
       toast.error("Failed to save and plan", { description: "Please try again." });
+      setIsSavingPlan(false);
     }
-  }, [currentTaskId, effectiveWorkspaceId, slug, taskTitle, messages, router]);
+  }, [currentTaskId, effectiveWorkspaceId, slug, taskTitle, messages, router, isSavingPlan]);
 
   const handleRetry = async () => {
     if (!currentTaskId || isRetrying) return;
@@ -1755,6 +1758,7 @@ export default function TaskChatPage() {
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     isPrototypeTask={isPrototypeTask}
+                    isSavingPlan={isSavingPlan}
                     onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
@@ -1833,6 +1837,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       isPrototypeTask={isPrototypeTask}
+                      isSavingPlan={isSavingPlan}
                       onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
@@ -1883,6 +1888,7 @@ export default function TaskChatPage() {
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                     isPrototypeTask={isPrototypeTask}
+                    isSavingPlan={isSavingPlan}
                     onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
@@ -1970,6 +1976,7 @@ export default function TaskChatPage() {
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                       isPrototypeTask={isPrototypeTask}
+                      isSavingPlan={isSavingPlan}
                       onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
