@@ -17,6 +17,10 @@ vi.mock("@/hooks/useWorkflowPolling", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ slug: "test-workspace" }),
+}));
+
 vi.mock("@/hooks/use-theme", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
 }));
