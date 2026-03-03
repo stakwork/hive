@@ -54,7 +54,7 @@ export async function GET() {
     }
 
     // Proxy to Stakwork API
-    const recentUrl = `${config.STAKWORK_BASE_URL}/workflow/recent`;
+    const recentUrl = `${config.STAKWORK_BASE_URL}/workflows/recent`;
 
     const response = await fetch(recentUrl, {
       method: "GET",
