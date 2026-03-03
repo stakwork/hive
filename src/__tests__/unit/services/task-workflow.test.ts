@@ -52,6 +52,15 @@ vi.mock("@/lib/helpers/chat-history", () => ({
   fetchChatHistory: vi.fn(),
 }));
 
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: {
+    getInstance: vi.fn(() => ({
+      decryptField: vi.fn((field: string, value: string) => `decrypted-${value}`),
+      encryptField: vi.fn(),
+    })),
+  },
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
@@ -4576,6 +4585,87 @@ describe("startTaskWorkflow with includeHistory", () => {
       expect(mockFetchChatHistory).not.toHaveBeenCalled();
       expect(result).toBeDefined();
       TestHelpers.expectStakworkCalled();
+    });
+  });
+
+  describe("Pod Credentials Forwarding", () => {
+    test("should forward podId to Stakwork when task has podId set", async () => {
+      const taskWithPodId = TestDataFactory.createValidTask({
+        podId: "workspace-abc",
+        agentPassword: null,
+      });
+
+      mockDb.task.findFirst.mockResolvedValue(taskWithPodId as any);
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        podId: "workspace-abc",
+      });
+    });
+
+    test("should decrypt and forward podPassword to Stakwork when task has agentPassword set", async () => {
+      const taskWithPassword = TestDataFactory.createValidTask({
+        podId: "workspace-abc",
+        agentPassword: "encrypted-value",
+      });
+
+      mockDb.task.findFirst.mockResolvedValue(taskWithPassword as any);
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        podId: "workspace-abc",
+        podPassword: "decrypted-encrypted-value",
+      });
+    });
+
+    test("should not include podId or podPassword when task has neither", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars).not.toHaveProperty("podId");
+      expect(vars).not.toHaveProperty("podPassword");
     });
   });
 });

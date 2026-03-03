@@ -15,9 +15,12 @@ const mockRouter = {
   prefetch: vi.fn(),
 };
 
+let mockSearchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
   usePathname: () => "/w/test-workspace/projects",
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock useWorkspace
@@ -73,6 +76,7 @@ describe("ProjectsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock = {};
+    mockSearchParams = new URLSearchParams();
 
     // Mock localStorage
     global.localStorage = {
@@ -374,5 +378,28 @@ describe("ProjectsPage", () => {
       },
       { timeout: 1000 }
     );
+  });
+
+  describe("URL parameter pre-fill", () => {
+    it("should pre-fill project ID input when ?id= is present in URL", async () => {
+      mockSearchParams = new URLSearchParams("id=141652040");
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project: { name: "Test Project" } } }),
+      });
+
+      render(<ProjectsPage />);
+
+      const input = screen.getByPlaceholderText("e.g., 141652040");
+      expect(input).toHaveValue("141652040");
+    });
+
+    it("should leave input empty when no ?id= param is present", () => {
+      // mockSearchParams is already empty from beforeEach
+      render(<ProjectsPage />);
+
+      const input = screen.getByPlaceholderText("e.g., 141652040");
+      expect(input).toHaveValue("");
+    });
   });
 });

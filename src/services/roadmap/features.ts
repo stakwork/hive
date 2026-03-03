@@ -1,10 +1,11 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, NotificationTriggerType } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import { createAndSendNotification } from "@/services/notifications";
 
 /**
  * Lists features for a workspace with pagination, filtering, and sorting
@@ -424,6 +425,15 @@ export async function updateFeature(
     }
   }
 
+  // Stamp planUpdatedAt only when user explicitly edits plan content
+  const isPlanEdit =
+    data.brief !== undefined ||
+    data.requirements !== undefined ||
+    data.architecture !== undefined;
+  if (isPlanEdit) {
+    updateData.planUpdatedAt = new Date();
+  }
+
   const updatedFeature = await db.feature.update({
     where: {
       id: featureId,
@@ -550,6 +560,37 @@ export async function updateFeature(
       return task;
     }),
   };
+
+  // Fire FEATURE_ASSIGNED notification (fire-and-forget)
+  if (data.assigneeId && typeof data.assigneeId === "string" && data.assigneeId !== userId) {
+    void (async () => {
+      try {
+        const featureForNotif = await db.feature.findUnique({
+          where: { id: featureId },
+          select: { workspaceId: true, title: true, workspace: { select: { slug: true } } },
+        });
+        if (featureForNotif) {
+          const featureUrl = `${process.env.NEXTAUTH_URL}/w/${featureForNotif.workspace.slug}/plan/${featureId}`;
+          const [targetUser, originatingUser] = await Promise.all([
+            db.user.findUnique({ where: { id: data.assigneeId! }, select: { sphinxAlias: true, name: true } }),
+            db.user.findUnique({ where: { id: userId }, select: { name: true } }),
+          ]);
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+          const originatorName = originatingUser?.name ?? "Someone";
+          await createAndSendNotification({
+            targetUserId: data.assigneeId!,
+            originatingUserId: userId,
+            featureId,
+            workspaceId: featureForNotif.workspaceId,
+            notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
+            message: `@${alias} — ${originatorName} has assigned you to the feature '${featureForNotif.title}': ${featureUrl}`,
+          });
+        }
+      } catch (notifError) {
+        console.error("[updateFeature] Error firing FEATURE_ASSIGNED notification:", notifError);
+      }
+    })();
+  }
 
   return transformedFeature;
 }

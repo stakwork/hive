@@ -4,12 +4,13 @@ import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync, AsyncSyncResult, SyncOptions } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
-import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { releaseTaskPod } from "@/lib/pods/utils";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { createAndSendNotification } from "@/services/notifications";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -216,11 +217,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               feature_id: string | null;
               artifact_id: string;
               workflow_status: WorkflowStatus | null;
+              assignee_id: string | null;
+              created_by_id: string;
+              title: string;
             }>
           >(
             Prisma.sql`
               SELECT t.id as task_id, t.pod_id, t.workspace_id, t.status, t.feature_id, 
-                     a.id as artifact_id, t.workflow_status
+                     a.id as artifact_id, t.workflow_status,
+                     t.assignee_id, t.created_by_id, t.title
               FROM artifacts a
               JOIN chat_messages m ON a.message_id = m.id
               JOIN tasks t ON m.task_id = t.id
@@ -381,6 +386,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               });
               continue; // Skip to next task
             }
+
+            // Fire TASK_PR_MERGED notification (fire-and-forget)
+            void (async () => {
+              try {
+                const targetUserId = task.assignee_id ?? task.created_by_id;
+                const wsForNotif = await db.workspace.findUnique({
+                  where: { id: task.workspace_id },
+                  select: { slug: true },
+                });
+                if (wsForNotif) {
+                  const taskUrl = `${process.env.NEXTAUTH_URL}/w/${wsForNotif.slug}/task/${task.task_id}`;
+                  const targetUser = await db.user.findUnique({
+                    where: { id: targetUserId },
+                    select: { sphinxAlias: true, name: true },
+                  });
+                  const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+                  await createAndSendNotification({
+                    targetUserId,
+                    taskId: task.task_id,
+                    workspaceId: task.workspace_id,
+                    notificationType: NotificationTriggerType.TASK_PR_MERGED,
+                    message: `@${alias} — PR merged: '${task.title}' is complete. ${taskUrl}`,
+                  });
+                }
+              } catch (notifError) {
+                console.error("[GithubWebhook] Error firing TASK_PR_MERGED notification:", notifError);
+              }
+            })();
 
             // Update PR artifact content status to "DONE"
             try {
@@ -877,11 +910,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           pr_url: string;
           merge_commit_sha: string;
           current_deployment_status: string | null;
+          feature_id: string | null;
         }>>`
           SELECT DISTINCT t.id as task_id, t.workspace_id, t.repository_id,
                  a.id as artifact_id, a.content->>'url' as pr_url,
                  a.content->>'merge_commit_sha' as merge_commit_sha,
-                 t.deployment_status as current_deployment_status
+                 t.deployment_status as current_deployment_status,
+                 t.feature_id
           FROM artifacts a
           JOIN chat_messages m ON a.message_id = m.id
           JOIN tasks t ON m.task_id = t.id
@@ -1041,6 +1076,48 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               environment,
               totalTasks: tasks.length,
             });
+          }
+
+          // Fire FEATURE_DEPLOYED_PRODUCTION notifications (fire-and-forget)
+          if (environment === "production" && tasksToUpdate.length > 0) {
+            void (async () => {
+              try {
+                // Collect unique feature IDs from updated tasks
+                const featureTaskMap = tasksToUpdate.filter(t => t.feature_id);
+                const uniqueFeatureIds = [...new Set(featureTaskMap.map(t => t.feature_id as string))];
+                for (const fId of uniqueFeatureIds) {
+                  const feat = await db.feature.findUnique({
+                    where: { id: fId },
+                    select: {
+                      id: true,
+                      title: true,
+                      assigneeId: true,
+                      createdById: true,
+                      workspaceId: true,
+                      workspace: { select: { slug: true } },
+                    },
+                  });
+                  if (feat) {
+                    const targetUserId = feat.assigneeId ?? feat.createdById;
+                    const featureUrl = `${process.env.NEXTAUTH_URL}/w/${feat.workspace.slug}/plan/${feat.id}`;
+                    const targetUser = await db.user.findUnique({
+                      where: { id: targetUserId },
+                      select: { sphinxAlias: true, name: true },
+                    });
+                    const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+                    await createAndSendNotification({
+                      targetUserId,
+                      featureId: feat.id,
+                      workspaceId: feat.workspaceId,
+                      notificationType: NotificationTriggerType.FEATURE_DEPLOYED_PRODUCTION,
+                      message: `@${alias} — A task in '${feat.title}' has been deployed to Production. ${featureUrl}`,
+                    });
+                  }
+                }
+              } catch (notifError) {
+                console.error("[GithubWebhook] Error firing FEATURE_DEPLOYED_PRODUCTION notification:", notifError);
+              }
+            })();
           }
 
           // Broadcast Pusher events only for tasks that were actually updated

@@ -275,9 +275,9 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByText("Send")).toBeInTheDocument();
     });
 
-    test("renders workflow status badge", () => {
-      render(<ChatInput {...defaultProps} />);
-      
+    test("renders workflow status badge when in progress", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={"IN_PROGRESS" as WorkflowStatus} />);
+
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
     });
   });

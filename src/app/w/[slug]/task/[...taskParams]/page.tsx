@@ -136,6 +136,8 @@ export default function TaskChatPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [isPrototypeTask, setIsPrototypeTask] = useState(false);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -342,6 +344,11 @@ export default function TaskChatPage() {
         if (result.data.task?.featureId && result.data.task?.feature?.title) {
           setFeatureId(result.data.task.featureId);
           setFeatureTitle(result.data.task.feature.title);
+        }
+
+        // Detect prototype task
+        if (result.data.task?.sourceType) {
+          setIsPrototypeTask(result.data.task.sourceType === "PROTOTYPE");
         }
 
         // Restore workflow context for workflow_editor mode
@@ -1004,12 +1011,15 @@ export default function TaskChatPage() {
         );
 
         setSelectedStep(null); // Clear step after sending
+        setIsChainVisible(true);
+        clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
+        setIsChainVisible(false);
       } finally {
         setIsLoading(false);
       }
@@ -1075,12 +1085,15 @@ export default function TaskChatPage() {
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
+        setIsChainVisible(true);
+        clearLogs();
       } catch (error) {
         console.error("Error in project debugger:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send project debugger request. Please try again." });
+        setIsChainVisible(false);
       } finally {
         setIsLoading(false);
       }
@@ -1427,6 +1440,47 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleSaveAndPlan = useCallback(async () => {
+    if (!currentTaskId || !effectiveWorkspaceId || !slug || isSavingPlan) return;
+
+    setIsSavingPlan(true);
+    try {
+      // 1. Push prototype branch
+      const pushRes = await fetch(`/api/agent/prototype-push/${currentTaskId}`, { method: "POST" });
+      if (!pushRes.ok) throw new Error("Failed to push prototype branch");
+      const { branchName } = await pushRes.json();
+
+      // 2. Create Feature record
+      const featureRes = await fetch("/api/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: taskTitle, workspaceId: effectiveWorkspaceId }),
+      });
+      if (!featureRes.ok) throw new Error("Failed to create feature");
+      const { data: feature } = await featureRes.json();
+
+      // 3. Format messages — lowercase roles
+      const formattedHistory = messages
+        .filter((m) => m.message && m.role)
+        .map((m) => ({ role: m.role.toLowerCase() as "user" | "assistant", content: m.message }));
+
+      // 4. Seed Plan Mode with prototype history and branch reference
+      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`. The prototype contains a throwaway test page — delete it entirely. Use the prototype only as a visual design reference and build the real production component from scratch.`;
+      await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: seedMessage, history: formattedHistory }),
+      });
+
+      // 5. Navigate to Plan Mode
+      router.push(`/w/${slug}/plan/${feature.id}`);
+    } catch (error) {
+      console.error("Save and Plan failed:", error);
+      toast.error("Failed to save and plan", { description: "Please try again." });
+      setIsSavingPlan(false);
+    }
+  }, [currentTaskId, effectiveWorkspaceId, slug, taskTitle, messages, router, isSavingPlan]);
+
   const handleRetry = async () => {
     if (!currentTaskId || isRetrying) return;
     setIsRetrying(true);
@@ -1641,11 +1695,6 @@ export default function TaskChatPage() {
     | undefined;
   const prLink = prUrl?.url || null;
 
-  const isTerminalState =
-    workflowStatus === WorkflowStatus.HALTED ||
-    workflowStatus === WorkflowStatus.FAILED ||
-    workflowStatus === WorkflowStatus.ERROR;
-
   // Live mode: restrict input based on workflow state and pod availability
   const liveModeSendAllowed =
     !started || // Fresh task - can send to kick off
@@ -1656,7 +1705,6 @@ export default function TaskChatPage() {
   const inputDisabled =
     isLoading ||
     !isConnected ||
-    isTerminalState ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1739,6 +1787,7 @@ export default function TaskChatPage() {
                     }
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
                   />
                 )}
               </div>
@@ -1771,6 +1820,7 @@ export default function TaskChatPage() {
                       }
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
                     />
                   </div>
                 </ResizablePanel>
@@ -1815,6 +1865,7 @@ export default function TaskChatPage() {
                 }
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
+                stakworkProjectId={projectId}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1864,6 +1915,10 @@ export default function TaskChatPage() {
                     }
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
+                    isPrototypeTask={isPrototypeTask}
+                    isSavingPlan={isSavingPlan}
+                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 )}
               </div>
@@ -1900,6 +1955,10 @@ export default function TaskChatPage() {
                       }
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
+                      isPrototypeTask={isPrototypeTask}
+                      isSavingPlan={isSavingPlan}
+                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
@@ -1949,6 +2008,10 @@ export default function TaskChatPage() {
                 }
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
+                stakworkProjectId={projectId}
+                isPrototypeTask={isPrototypeTask}
+                isSavingPlan={isSavingPlan}
+                onSaveAndPlan={handleSaveAndPlan}
               />
             </div>
           )}

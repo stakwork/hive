@@ -124,37 +124,48 @@ export function WhiteboardChatPanel({
 
   // Pusher subscription for real-time ASSISTANT messages
   useEffect(() => {
-    const pusher = getPusherClient();
-    pusherRef.current = pusher;
-    const channelName = getWhiteboardChannelName(whiteboardId);
-    const channel = pusher.subscribe(channelName);
+    let pusher: ReturnType<typeof getPusherClient> | null = null;
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
 
-    channel.bind(
-      PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE,
-      async (data: { message: WhiteboardMessage }) => {
-        // Append the assistant message
-        setMessages((prev) => [...prev, data.message]);
-        setGenerating(false);
+    try {
+      pusher = getPusherClient();
+      pusherRef.current = pusher;
+      const channelName = getWhiteboardChannelName(whiteboardId);
+      channel = pusher.subscribe(channelName);
 
-        // Reload whiteboard and scroll to fit
-        await onReloadWhiteboard();
-        if (excalidrawAPI) {
-          parsedDiagramRef.current = extractParsedDiagram(
-            excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
-          );
-          excalidrawAPI.scrollToContent(undefined, {
-            fitToViewport: true,
-            viewportZoomFactor: 0.9,
-            animate: true,
-            duration: 300,
-          });
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE,
+        async (data: { message: WhiteboardMessage }) => {
+          // Append the assistant message
+          setMessages((prev) => [...prev, data.message]);
+          setGenerating(false);
+
+          // Reload whiteboard and scroll to fit
+          await onReloadWhiteboard();
+          if (excalidrawAPI) {
+            parsedDiagramRef.current = extractParsedDiagram(
+              excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+            );
+            excalidrawAPI.scrollToContent(undefined, {
+              fitToViewport: true,
+              viewportZoomFactor: 0.9,
+              animate: true,
+              duration: 300,
+            });
+          }
         }
-      }
-    );
+      );
+    } catch {
+      // Pusher not configured in this environment
+      return;
+    }
 
     return () => {
-      channel.unbind(PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE);
-      pusher.unsubscribe(channelName);
+      channel?.unbind(PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE);
+      if (pusher && channel) {
+        const channelName = getWhiteboardChannelName(whiteboardId);
+        pusher.unsubscribe(channelName);
+      }
     };
   }, [whiteboardId, excalidrawAPI, onReloadWhiteboard]);
 

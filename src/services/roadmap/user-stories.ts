@@ -52,6 +52,12 @@ export async function createUserStory(
     },
   });
 
+  // Stamp planUpdatedAt when user creates a story
+  await db.feature.update({
+    where: { id: featureId },
+    data: { planUpdatedAt: new Date() },
+  });
+
   return userStory;
 }
 
@@ -67,7 +73,7 @@ export async function updateUserStory(
     completed?: boolean;
   }
 ) {
-  await validateUserStoryAccess(storyId, userId);
+  const story = await validateUserStoryAccess(storyId, userId);
 
   const updateData: any = {
     updatedById: userId,
@@ -114,6 +120,15 @@ export async function updateUserStory(
     },
   });
 
+  // Stamp planUpdatedAt only when content fields changed (not order-only)
+  const isContentEdit = data.title !== undefined || data.completed !== undefined;
+  if (isContentEdit) {
+    await db.feature.update({
+      where: { id: story.featureId },
+      data: { planUpdatedAt: new Date() },
+    });
+  }
+
   return updatedStory;
 }
 
@@ -124,10 +139,16 @@ export async function deleteUserStory(
   storyId: string,
   userId: string
 ): Promise<void> {
-  await validateUserStoryAccess(storyId, userId);
+  const story = await validateUserStoryAccess(storyId, userId);
 
   await db.userStory.delete({
     where: { id: storyId },
+  });
+
+  // Stamp planUpdatedAt when user deletes a story
+  await db.feature.update({
+    where: { id: story.featureId },
+    data: { planUpdatedAt: new Date() },
   });
 }
 

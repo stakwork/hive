@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
         agentPassword: true,
         featureId: true,
         phaseId: true,
+        sourceType: true,
         repository: {
           select: {
             name: true,
@@ -322,6 +323,7 @@ export async function POST(request: NextRequest) {
         repo2GraphUrl,
         attachments: attachmentUrls,
         mode,
+        taskSource: task.sourceType,
         featureContext,
         workspaceId: task.workspaceId,
         repoUrl,
