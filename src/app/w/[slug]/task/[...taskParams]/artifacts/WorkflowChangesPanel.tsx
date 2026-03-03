@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
 import { diffLines } from "diff";
 import { FileCode, Plus, Minus, Equal } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface DiffPart {
   value: string;
@@ -57,6 +58,7 @@ const hideScrollbarStyle: React.CSSProperties = {
 export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChangesPanelProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+  const [viewMode, setViewMode] = useState<'diff' | 'full'>('diff');
 
   const { changes, stats } = useMemo(() => {
     const original = parseAndFormat(originalJson);
@@ -126,15 +128,44 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
           <FileCode className="w-5 h-5" />
           <span className="text-sm font-medium">Workflow Changes</span>
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-            <Plus className="w-3 h-3" />
-            {stats.additions}
-          </span>
-          <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
-            <Minus className="w-3 h-3" />
-            {stats.deletions}
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 text-xs">
+            <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+              <Plus className="w-3 h-3" />
+              {stats.additions}
+            </span>
+            <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+              <Minus className="w-3 h-3" />
+              {stats.deletions}
+            </span>
+          </div>
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-md border border-border overflow-hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-6 rounded-none px-2 text-xs border-r border-border ${
+                viewMode === 'diff'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setViewMode('diff')}
+            >
+              Changes only
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-6 rounded-none px-2 text-xs ${
+                viewMode === 'full'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setViewMode('full')}
+            >
+              Full JSON
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -151,6 +182,11 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
         <table className="w-full border-collapse hide-scrollbar">
           <tbody>
             {changes.map((part: DiffPart, index: number) => {
+              // In diff mode, skip unchanged chunks
+              if (viewMode === 'diff' && !part.added && !part.removed) {
+                return null;
+              }
+
               const lines = part.value.split('\n');
               // Remove last empty line from split
               if (lines[lines.length - 1] === '') {
@@ -181,7 +217,7 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
                       {Icon && <Icon className="w-3 h-3 inline" />}
                       {!Icon && <span className="opacity-30">{prefix}</span>}
                     </td>
-                    <td className={`px-3 py-0.5 whitespace-pre ${textColor}`}>
+                    <td className={`px-3 py-0.5 whitespace-pre ${textColor || "text-muted-foreground/50"}`}>
                       {line || " "}
                     </td>
                   </tr>
