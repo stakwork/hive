@@ -110,6 +110,10 @@ model User {
   createdApiKeys WorkspaceApiKey[] @relation("ApiKeyCreator")
   revokedApiKeys WorkspaceApiKey[] @relation("ApiKeyRevoker")
 
+  // Notification relationships
+  receivedNotifications   NotificationTrigger[] @relation("NotificationTarget")
+  originatedNotifications NotificationTrigger[] @relation("NotificationOrigin")
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
@@ -609,6 +613,8 @@ model Task {
   @@index([layerType])
   @@index([deploymentStatus])
   @@map("tasks")
+
+  notifications NotificationTrigger[]
 }
 
 // =============================================
@@ -1129,6 +1135,8 @@ model Feature {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
+  notifications NotificationTrigger[]
+
   @@index([workspaceId])
   @@index([assigneeId])
   @@index([status])
@@ -1412,4 +1420,55 @@ model AgentLog {
   @@index([workspaceId])
   @@index([createdAt])
   @@map("agent_logs")
+}
+
+// =============================================
+// NOTIFICATION TRIGGERS
+// =============================================
+
+enum NotificationTriggerType {
+  PLAN_AWAITING_CLARIFICATION
+  PLAN_AWAITING_APPROVAL
+  PLAN_TASKS_GENERATED
+  GRAPH_CHAT_RESPONSE
+  TASK_PR_MERGED
+  FEATURE_ASSIGNED
+  TASK_ASSIGNED
+  FEATURE_COMPLETED
+  FEATURE_DEPLOYED_PRODUCTION
+  WORKFLOW_HALTED
+}
+
+enum NotificationTriggerStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum NotificationMethod {
+  SPHINX
+}
+
+model NotificationTrigger {
+  id                     String                    @id @default(cuid())
+  targetUserId           String                    @map("target_user_id")
+  targetUser             User                      @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  originatingUserId      String?                   @map("originating_user_id")
+  originatingUser        User?                     @relation("NotificationOrigin", fields: [originatingUserId], references: [id], onDelete: SetNull)
+  taskId                 String?                   @map("task_id")
+  task                   Task?                     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  featureId              String?                   @map("feature_id")
+  feature                Feature?                  @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  notificationType       NotificationTriggerType   @map("notification_type")
+  status                 NotificationTriggerStatus @default(PENDING) @map("status")
+  notificationMethod     NotificationMethod        @map("notification_method")
+  notificationTimestamps DateTime[]                @default([]) @map("notification_timestamps")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+
+  @@index([targetUserId])
+  @@index([status])
+  @@index([notificationType])
+  @@index([targetUserId, notificationType, status])
+  @@map("notification_triggers")
 }
