@@ -12,6 +12,11 @@ interface DiffPart {
   removed?: boolean;
 }
 
+interface FlatLine {
+  type: 'added' | 'removed' | 'context' | 'separator';
+  content: string;
+}
+
 interface WorkflowChangesPanelProps {
   originalJson: string | null;
   updatedJson: string | null;
@@ -60,12 +65,12 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
   const isDark = resolvedTheme === "dark";
   const [viewMode, setViewMode] = useState<'diff' | 'full'>('diff');
 
-  const { changes, stats } = useMemo(() => {
+  const { changes, contextLines, stats } = useMemo(() => {
     const original = parseAndFormat(originalJson);
     const updated = parseAndFormat(updatedJson);
 
     if (!original && !updated) {
-      return { changes: [] as DiffPart[], stats: { additions: 0, deletions: 0 } };
+      return { changes: [] as DiffPart[], contextLines: [] as FlatLine[], stats: { additions: 0, deletions: 0 } };
     }
 
     const diff = diffLines(original, updated) as DiffPart[];
@@ -79,7 +84,47 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
       if (part.removed) deletions += lines;
     });
 
-    return { changes: diff, stats: { additions, deletions } };
+    // Build flat line array with context for diff mode
+    const CONTEXT = 5;
+    const flat: FlatLine[] = [];
+
+    diff.forEach((part: DiffPart, i: number) => {
+      const lines = part.value.split('\n');
+      // Remove trailing empty string from split
+      if (lines[lines.length - 1] === '') lines.pop();
+
+      if (part.added) {
+        lines.forEach((line) => flat.push({ type: 'added', content: line }));
+      } else if (part.removed) {
+        lines.forEach((line) => flat.push({ type: 'removed', content: line }));
+      } else {
+        // Unchanged chunk — determine how much context to show
+        const prevChanged = i > 0 && (diff[i - 1].added || diff[i - 1].removed);
+        const nextChanged = i < diff.length - 1 && (diff[i + 1].added || diff[i + 1].removed);
+
+        if (!prevChanged && !nextChanged) return; // no adjacent changes — skip entirely
+
+        if (prevChanged && nextChanged) {
+          if (lines.length <= CONTEXT * 2) {
+            // Short enough to show in full
+            lines.forEach((line) => flat.push({ type: 'context', content: line }));
+          } else {
+            // Show trailing context of previous change + separator + leading context of next change
+            lines.slice(0, CONTEXT).forEach((line) => flat.push({ type: 'context', content: line }));
+            flat.push({ type: 'separator', content: '...' });
+            lines.slice(-CONTEXT).forEach((line) => flat.push({ type: 'context', content: line }));
+          }
+        } else if (prevChanged) {
+          // Only show leading context (first N lines after the prev change)
+          lines.slice(0, CONTEXT).forEach((line) => flat.push({ type: 'context', content: line }));
+        } else {
+          // nextChanged only — show trailing context (last N lines before the next change)
+          lines.slice(-CONTEXT).forEach((line) => flat.push({ type: 'context', content: line }));
+        }
+      }
+    });
+
+    return { changes: diff, contextLines: flat, stats: { additions, deletions } };
   }, [originalJson, updatedJson]);
 
   if (!originalJson && !updatedJson) {
@@ -181,49 +226,75 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
         `}</style>
         <table className="w-full border-collapse hide-scrollbar">
           <tbody>
-            {changes.map((part: DiffPart, index: number) => {
-              // In diff mode, skip unchanged chunks
-              if (viewMode === 'diff' && !part.added && !part.removed) {
-                return null;
-              }
+            {viewMode === 'diff'
+              ? contextLines.map((entry: FlatLine, index: number) => {
+                  if (entry.type === 'separator') {
+                    return (
+                      <tr key={`sep-${index}`}>
+                        <td colSpan={2} className="text-muted-foreground text-center py-0.5 text-xs select-none border-y border-border/30">
+                          ...
+                        </td>
+                      </tr>
+                    );
+                  }
 
-              const lines = part.value.split('\n');
-              // Remove last empty line from split
-              if (lines[lines.length - 1] === '') {
-                lines.pop();
-              }
+                  let bgColor = "";
+                  let textColor = "";
+                  let Icon: typeof Plus | typeof Minus | null = null;
 
-              return lines.map((line: string, lineIndex: number) => {
-                let bgColor = "";
-                let textColor = "";
-                let prefix = " ";
-                let Icon: typeof Plus | typeof Minus | null = null;
+                  if (entry.type === 'added') {
+                    bgColor = isDark ? "bg-green-950/50" : "bg-green-50";
+                    textColor = isDark ? "text-green-300" : "text-green-800";
+                    Icon = Plus;
+                  } else if (entry.type === 'removed') {
+                    bgColor = isDark ? "bg-red-950/50" : "bg-red-50";
+                    textColor = isDark ? "text-red-300" : "text-red-800";
+                    Icon = Minus;
+                  }
 
-                if (part.added) {
-                  bgColor = isDark ? "bg-green-950/50" : "bg-green-50";
-                  textColor = isDark ? "text-green-300" : "text-green-800";
-                  prefix = "+";
-                  Icon = Plus;
-                } else if (part.removed) {
-                  bgColor = isDark ? "bg-red-950/50" : "bg-red-50";
-                  textColor = isDark ? "text-red-300" : "text-red-800";
-                  prefix = "-";
-                  Icon = Minus;
-                }
+                  return (
+                    <tr key={`flat-${index}`} className={bgColor}>
+                      <td className={`w-8 px-2 py-0.5 text-right select-none border-r border-border/50 ${textColor || "text-muted-foreground"}`}>
+                        {Icon ? <Icon className="w-3 h-3 inline" /> : <span className="opacity-30"> </span>}
+                      </td>
+                      <td className={`px-3 py-0.5 whitespace-pre ${textColor || "text-muted-foreground/50"}`}>
+                        {entry.content || " "}
+                      </td>
+                    </tr>
+                  );
+                })
+              : changes.map((part: DiffPart, index: number) => {
+                  const lines = part.value.split('\n');
+                  if (lines[lines.length - 1] === '') lines.pop();
 
-                return (
-                  <tr key={`${index}-${lineIndex}`} className={bgColor}>
-                    <td className={`w-8 px-2 py-0.5 text-right select-none border-r border-border/50 ${textColor || "text-muted-foreground"}`}>
-                      {Icon && <Icon className="w-3 h-3 inline" />}
-                      {!Icon && <span className="opacity-30">{prefix}</span>}
-                    </td>
-                    <td className={`px-3 py-0.5 whitespace-pre ${textColor || "text-muted-foreground/50"}`}>
-                      {line || " "}
-                    </td>
-                  </tr>
-                );
-              });
-            })}
+                  return lines.map((line: string, lineIndex: number) => {
+                    let bgColor = "";
+                    let textColor = "";
+                    let Icon: typeof Plus | typeof Minus | null = null;
+
+                    if (part.added) {
+                      bgColor = isDark ? "bg-green-950/50" : "bg-green-50";
+                      textColor = isDark ? "text-green-300" : "text-green-800";
+                      Icon = Plus;
+                    } else if (part.removed) {
+                      bgColor = isDark ? "bg-red-950/50" : "bg-red-50";
+                      textColor = isDark ? "text-red-300" : "text-red-800";
+                      Icon = Minus;
+                    }
+
+                    return (
+                      <tr key={`${index}-${lineIndex}`} className={bgColor}>
+                        <td className={`w-8 px-2 py-0.5 text-right select-none border-r border-border/50 ${textColor || "text-muted-foreground"}`}>
+                          {Icon ? <Icon className="w-3 h-3 inline" /> : <span className="opacity-30"> </span>}
+                        </td>
+                        <td className={`px-3 py-0.5 whitespace-pre ${textColor || "text-muted-foreground/50"}`}>
+                          {line || " "}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })
+            }
           </tbody>
         </table>
       </div>

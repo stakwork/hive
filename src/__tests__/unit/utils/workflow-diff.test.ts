@@ -68,6 +68,14 @@ describe("computeWorkflowDiff", () => {
       const { changedStepIds } = computeWorkflowDiff(original, updated);
       expect(changedStepIds.size).toBe(0);
     });
+
+    it("includes step.id from value in changedStepIds when key differs from step.id", () => {
+      const original = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 10 } });
+      const updated = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 20 } });
+      const { changedStepIds } = computeWorkflowDiff(original, updated);
+      expect(changedStepIds.has("stepAlias")).toBe(true);
+      expect(changedStepIds.has("stepAliasId")).toBe(true);
+    });
   });
 
   describe("connection diffs", () => {
