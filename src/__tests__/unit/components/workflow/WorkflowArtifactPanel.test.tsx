@@ -1,13 +1,20 @@
+/**
+ * @vitest-environment jsdom
+ */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WorkflowArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowArtifactPanel";
-import type { Artifact } from "@/lib/chat";
+
+globalThis.React = React;
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
+
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ slug: "test-workspace" }),
+}));
 
 vi.mock("@/hooks/useWorkflowPolling", () => ({
   useWorkflowPolling: () => ({
@@ -15,10 +22,6 @@ vi.mock("@/hooks/useWorkflowPolling", () => ({
     isLoading: false,
     error: null,
   }),
-}));
-
-vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({ slug: "test-workspace" }),
 }));
 
 vi.mock("@/hooks/use-theme", () => ({
@@ -34,7 +37,8 @@ vi.mock("@/lib/utils/workflow-diff", () => ({
 
 // Heavy visual components not relevant to these tests
 vi.mock("@/components/workflow", () => ({
-  default: () => <div data-testid="workflow-component" />,
+  __esModule: true,
+  default: () => React.createElement("div", { "data-testid": "workflow-component" }),
 }));
 
 vi.mock("@/components/StepDetailsModal", () => ({
@@ -42,20 +46,27 @@ vi.mock("@/components/StepDetailsModal", () => ({
 }));
 
 vi.mock("@/components/prompts", () => ({
-  PromptsPanel: () => <div data-testid="prompts-panel" />,
+  PromptsPanel: () => null,
 }));
 
 vi.mock("@/components/ProjectInfoCard", () => ({
-  ProjectInfoCard: () => <div data-testid="project-info-card" />,
+  ProjectInfoCard: () => null,
 }));
 
 vi.mock("@/components/StakworkRunDropdown", () => ({
-  StakworkRunDropdown: () => <div data-testid="stakwork-run-dropdown" />,
+  StakworkRunDropdown: () => null,
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
-  WorkflowChangesPanel: () => <div data-testid="workflow-changes-panel" />,
+  WorkflowChangesPanel: () => null,
 }));
+
+// ---------------------------------------------------------------------------
+// Component import (after all vi.mock calls)
+// ---------------------------------------------------------------------------
+
+import { WorkflowArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowArtifactPanel";
+import type { Artifact } from "@/lib/chat";
 
 // ---------------------------------------------------------------------------
 // Helpers
