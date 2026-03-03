@@ -59,6 +59,7 @@ export function BrowserArtifactPanel({
   const [urlInput, setUrlInput] = useState("");
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [ideAuthUrl, setIdeAuthUrl] = useState<string | null>(null);
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -66,6 +67,26 @@ export function BrowserArtifactPanel({
 
   // Track URL loading status
   const { isReady: isUrlReady } = useBrowserLoadingStatus(activeContent?.url);
+
+  // IDE auto-login: fetch a short-lived HMAC token and construct the /ide-auth URL
+  useEffect(() => {
+    if (!ide || !isUrlReady || !taskId || ideAuthUrl !== null) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/ide-token`, { method: "POST" });
+        if (!res.ok) throw new Error("ide-token fetch failed");
+        const { token, expires, ideUrl } = await res.json();
+        if (token) {
+          setIdeAuthUrl(`${ideUrl}/ide-auth?token=${token}&expires=${expires}`);
+        } else {
+          setIdeAuthUrl(activeContent?.url ?? null);
+        }
+      } catch {
+        setIdeAuthUrl(activeContent?.url ?? null);
+      }
+    })();
+  }, [ide, isUrlReady, taskId, ideAuthUrl, activeContent?.url]);
 
   // Local toast handler for all action types
   const showActionToast = useCallback((type: string, text: string) => {
@@ -489,7 +510,7 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={isUrlReady ? content.url : "about:blank"}
+                  src={ide ? (ideAuthUrl ?? "about:blank") : (isUrlReady ? content.url : "about:blank")}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                   allow="camera *; microphone *; clipboard-read *; clipboard-write *"
