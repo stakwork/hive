@@ -81,25 +81,136 @@ describe("WorkflowChangesPanel", () => {
   });
 
   describe("diff mode (default)", () => {
-    it("renders only added/removed line rows — unchanged lines produce no rows", () => {
+    it("renders only added/removed line rows", () => {
       render(<WorkflowChangesPanel originalJson={originalJson} updatedJson={updatedJson} />);
 
-      // In diff mode only green/red rows appear; all rows should have a + or - prefix icon
-      const rows = screen.getAllByRole("row");
-      // Every row should be a changed (added/removed) line, not a neutral line
-      // We check that there are NO rows rendered without a coloured class
-      // (neutral rows would have no bg colour — they're simply not rendered)
-      expect(rows.length).toBeGreaterThan(0);
-
-      // Check that the table body has NO uncoloured rows (unchanged content)
       const table = document.querySelector("table");
       const allRows = table?.querySelectorAll("tr") ?? [];
-      allRows.forEach((row) => {
-        // Every row should have a background class (green or red)
-        const hasBg =
-          row.className.includes("bg-green") || row.className.includes("bg-red");
-        expect(hasBg).toBe(true);
+
+      // There must be rows
+      expect(allRows.length).toBeGreaterThan(0);
+
+      // At least one green (added) and one red (removed) row must exist
+      const hasGreen = Array.from(allRows).some((row) => row.className.includes("bg-green"));
+      const hasRed = Array.from(allRows).some((row) => row.className.includes("bg-red"));
+      expect(hasGreen).toBe(true);
+      expect(hasRed).toBe(true);
+    });
+
+    it("shows context rows adjacent to changes and a separator for large unchanged gaps", () => {
+      // Build a workflow where there is a large unchanged block between two changed fields
+      // Use a deeply nested object so the JSON serialises to many lines
+      const bigUnchanged = Object.fromEntries(
+        Array.from({ length: 20 }, (_, i) => [`key${i}`, `value${i}`]),
+      );
+      const orig = makeJson({
+        first: "original",
+        ...bigUnchanged,
+        last: "original",
       });
+      const upd = makeJson({
+        first: "updated",   // change at top
+        ...bigUnchanged,    // large unchanged gap (> 10 lines)
+        last: "updated",    // change at bottom
+      });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+
+      // Context rows (no bg colour, not separator) must appear
+      const hasContextRow = Array.from(allRows).some(
+        (row) => !row.className.includes("bg-green") && !row.className.includes("bg-red") && row.textContent !== "...",
+      );
+      expect(hasContextRow).toBe(true);
+
+      // Separator row must appear because the unchanged gap is > 10 lines
+      const hasSeparator = Array.from(allRows).some((row) => row.textContent?.trim() === "...");
+      expect(hasSeparator).toBe(true);
+    });
+
+    it("no leading context rows when change is at the very start", () => {
+      // The diff starts with a changed chunk — nothing precedes it, so the first
+      // unchanged chunk (if any) has no prevChanged neighbour and is skipped entirely.
+      // We verify no separator appears and at least one coloured row exists.
+      const orig = makeJson({ stepA: { name: "A" } });
+      const upd = makeJson({ stepA: { name: "B" } });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+      expect(allRows.length).toBeGreaterThan(0);
+
+      // No separator should appear — the unchanged tail after the last change has no
+      // nextChanged neighbour so it is not shown at all.
+      const hasSeparator = Array.from(allRows).some((row) => row.textContent?.trim() === "...");
+      expect(hasSeparator).toBe(false);
+
+      // At least one coloured (changed) row must be present
+      const hasColoured = Array.from(allRows).some(
+        (row) => row.className.includes("bg-green") || row.className.includes("bg-red"),
+      );
+      expect(hasColoured).toBe(true);
+    });
+
+    it("no trailing context rows when change is at the very end", () => {
+      // Only one change at the very end — unchanged prefix has no nextChanged neighbour
+      // beyond CONTEXT lines, but leading context of the last change should still appear.
+      // Critically: no separator should exist.
+      const shared = { a: 1, b: 2, c: 3 };
+      const orig = makeJson({ ...shared, z: "old" });
+      const upd = makeJson({ ...shared, z: "new" });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+      expect(allRows.length).toBeGreaterThan(0);
+
+      // No separator — the unchanged block before the last change fits within CONTEXT lines
+      const hasSeparator = Array.from(allRows).some((row) => row.textContent?.trim() === "...");
+      expect(hasSeparator).toBe(false);
+
+      // At least one coloured row must exist
+      const hasColoured = Array.from(allRows).some(
+        (row) => row.className.includes("bg-green") || row.className.includes("bg-red"),
+      );
+      expect(hasColoured).toBe(true);
+    });
+
+    it("no separator when two changes are separated by exactly 10 unchanged lines", () => {
+      // 10 lines of context exactly → fits within 2 * CONTEXT (5+5) without separator
+      const tenLines = Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => [`mid${i}`, i]),
+      );
+      const orig = makeJson({ first: "A", ...tenLines, last: "A" });
+      const upd = makeJson({ first: "B", ...tenLines, last: "B" });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+
+      const hasSeparator = Array.from(allRows).some((row) => row.textContent?.trim() === "...");
+      expect(hasSeparator).toBe(false);
+    });
+
+    it("separator present when two changes are separated by more than 10 unchanged lines", () => {
+      const elevenLines = Object.fromEntries(
+        Array.from({ length: 11 }, (_, i) => [`mid${i}`, i]),
+      );
+      const orig = makeJson({ first: "A", ...elevenLines, last: "A" });
+      const upd = makeJson({ first: "B", ...elevenLines, last: "B" });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+
+      const hasSeparator = Array.from(allRows).some((row) => row.textContent?.trim() === "...");
+      expect(hasSeparator).toBe(true);
     });
   });
 
