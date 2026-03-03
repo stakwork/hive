@@ -2,8 +2,6 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
@@ -143,46 +141,43 @@ function SignInContent() {
             {hasMockProvider && (
               <>
                 {providers?.github && (
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">Or for development</span>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-medium select-none">
+                      dev only
+                    </span>
+                    <div className="flex-1 h-px bg-border" />
                   </div>
                 )}
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="mock-username">Username (optional)</Label>
-                    <Input
-                      id="mock-username"
-                      type="text"
-                      placeholder="Enter username (defaults to 'dev-user')"
-                      value={mockUsername}
-                      onChange={(e) => setMockUsername(e.target.value)}
-                      disabled={isMockSigningIn || isSigningIn}
-                    />
-                  </div>
-                  <Button
+                <div className="space-y-3">
+                  <input
+                    id="mock-username"
+                    type="text"
+                    placeholder="Username (defaults to 'dev-user')"
+                    value={mockUsername}
+                    onChange={(e) => setMockUsername(e.target.value)}
+                    disabled={isMockSigningIn || isSigningIn}
+                    className="w-full h-9 px-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-orange-400 transition-colors disabled:opacity-50"
+                  />
+                  <button
                     data-testid="mock-signin-button"
                     onClick={handleMockSignIn}
                     disabled={isMockSigningIn || isSigningIn}
-                    className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    className="w-full h-9 flex items-center justify-center gap-2 rounded-md border border-dashed border-orange-400/60 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 text-sm font-medium hover:bg-orange-100 dark:hover:bg-orange-950/50 transition-colors disabled:opacity-50"
                   >
                     {isMockSigningIn ? (
                       <>
-                        <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                        Signing in...
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Signing in…
                       </>
                     ) : (
                       <>
-                        <UserCheck className="w-5 h-5 mr-3" />
-                        Mock Sign In (Dev)
+                        <UserCheck className="w-4 h-4" />
+                        Mock Sign In
                       </>
                     )}
-                  </Button>
+                  </button>
                 </div>
               </>
             )}
