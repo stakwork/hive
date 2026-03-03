@@ -6,10 +6,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
+import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import { ArtifactType } from "@prisma/client";
 
@@ -17,11 +19,17 @@ export default function WorkflowsPage() {
   const { slug } = useWorkspace();
   const searchParams = useSearchParams();
   const { workflows } = useWorkflowNodes(slug, true);
+  const {
+    workflows: recentWorkflows,
+    isLoading: isLoadingRecent,
+    error: recentError,
+  } = useRecentWorkflows();
 
   // Workflow ID input state
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Find matching workflow as user types
   const matchedWorkflow = useMemo(() => {
@@ -75,6 +83,15 @@ export default function WorkflowsPage() {
 
   const handleVersionSelect = useCallback((versionId: string) => {
     setSelectedVersionId(versionId);
+  }, []);
+
+  const handleRecentWorkflowClick = useCallback((id: number) => {
+    setWorkflowIdValue(String(id));
+    // Focus the input so the user can see the autofilled value
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
   }, []);
 
   const handleSubmit = async () => {
@@ -158,6 +175,8 @@ export default function WorkflowsPage() {
 
   const canSubmit = parsedWorkflowId !== null && selectedVersionId && !isSubmitting;
 
+  const showEmptyState = !isLoadingRecent && (recentError !== null || recentWorkflows.length === 0);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -170,6 +189,7 @@ export default function WorkflowsPage() {
         <div className="space-y-4">
           <div className="relative">
             <Input
+              ref={inputRef}
               type="text"
               placeholder="Enter workflow ID..."
               value={workflowIdValue}
@@ -182,12 +202,18 @@ export default function WorkflowsPage() {
             <div className="space-y-2">
               {matchedWorkflow && (
                 <p className="text-sm text-muted-foreground">
-                  Workflow: <span className="font-medium text-foreground">{matchedWorkflow.properties.workflow_name || `Workflow ${matchedWorkflow.properties.workflow_id}`}</span>
+                  Workflow:{" "}
+                  <span className="font-medium text-foreground">
+                    {matchedWorkflow.properties.workflow_name ||
+                      `Workflow ${matchedWorkflow.properties.workflow_id}`}
+                  </span>
                 </p>
               )}
 
               <WorkflowVersionSelector
-                workflowName={matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`}
+                workflowName={
+                  matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`
+                }
                 versions={versions}
                 selectedVersionId={selectedVersionId}
                 onVersionSelect={handleVersionSelect}
@@ -208,6 +234,40 @@ export default function WorkflowsPage() {
           )}
         </div>
       </Card>
+
+      {/* Recent Workflows Section */}
+      <div className="max-w-2xl space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">Recent Workflows</h2>
+
+        {isLoadingRecent && (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
+            ))}
+          </div>
+        )}
+
+        {showEmptyState && (
+          <p className="text-sm text-muted-foreground">No recent workflows found</p>
+        )}
+
+        {!isLoadingRecent && recentWorkflows.length > 0 && (
+          <div className="space-y-1">
+            {recentWorkflows.map((workflow) => (
+              <button
+                key={workflow.id}
+                onClick={() => handleRecentWorkflowClick(workflow.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-md text-left hover:bg-muted/50 transition-colors border border-transparent hover:border-border"
+              >
+                <span className="text-xs font-mono text-muted-foreground w-16 shrink-0">
+                  #{workflow.id}
+                </span>
+                <span className="text-sm text-foreground truncate">{workflow.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
