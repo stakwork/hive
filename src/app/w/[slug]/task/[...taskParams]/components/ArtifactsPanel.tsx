@@ -36,6 +36,7 @@ interface ArtifactsPanelProps {
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
   isPrototypeTask?: boolean;
+  isSavingPlan?: boolean;
   onSaveAndPlan?: () => void;
 }
 
@@ -56,6 +57,7 @@ export function ArtifactsPanel({
   onControlledTabChange,
   sectionHighlights,
   isPrototypeTask,
+  isSavingPlan,
   onSaveAndPlan,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
@@ -222,10 +224,11 @@ export function ArtifactsPanel({
       <Button
         size="sm"
         onClick={onSaveAndPlan}
+        disabled={isSavingPlan}
         className="gap-1.5 h-7 text-xs text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
       >
-        <FlaskConical className="h-3 w-3" />
-        Save and Plan
+        {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+        {isSavingPlan ? "Saving…" : "Save and Plan"}
       </Button>
     );
   }
