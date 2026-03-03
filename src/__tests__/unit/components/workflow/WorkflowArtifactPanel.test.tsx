@@ -1,0 +1,283 @@
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { WorkflowArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowArtifactPanel";
+import type { Artifact } from "@/lib/chat";
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+vi.mock("@/hooks/useWorkflowPolling", () => ({
+  useWorkflowPolling: () => ({
+    workflowData: null,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/hooks/use-theme", () => ({
+  useTheme: () => ({ resolvedTheme: "light" }),
+}));
+
+vi.mock("@/lib/utils/workflow-diff", () => ({
+  computeWorkflowDiff: () => ({
+    changedStepIds: new Set<string>(),
+    changedConnectionIds: new Set<string>(),
+  }),
+}));
+
+// Heavy visual components not relevant to these tests
+vi.mock("@/components/workflow", () => ({
+  default: () => <div data-testid="workflow-component" />,
+}));
+
+vi.mock("@/components/StepDetailsModal", () => ({
+  StepDetailsModal: () => null,
+}));
+
+vi.mock("@/components/prompts", () => ({
+  PromptsPanel: () => <div data-testid="prompts-panel" />,
+}));
+
+vi.mock("@/components/ProjectInfoCard", () => ({
+  ProjectInfoCard: () => <div data-testid="project-info-card" />,
+}));
+
+vi.mock("@/components/StakworkRunDropdown", () => ({
+  StakworkRunDropdown: () => <div data-testid="stakwork-run-dropdown" />,
+}));
+
+vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
+  WorkflowChangesPanel: () => <div data-testid="workflow-changes-panel" />,
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeWorkflowJson(transitions: Record<string, unknown>): string {
+  return JSON.stringify({ transitions });
+}
+
+function makeArtifact(overrides: Partial<Artifact["content"]> = {}): Artifact {
+  return {
+    id: "art-1",
+    type: "workflow",
+    content: {
+      workflowJson: makeWorkflowJson({}),
+      ...overrides,
+    } as Artifact["content"],
+  } as Artifact;
+}
+
+const loopTransition = {
+  id: "step-loop",
+  unique_id: "step-loop",
+  display_id: "step-loop",
+  display_name: "Loop Step",
+  name: "LoopStep",
+  title: "Loop Step",
+  skill: { type: "loop" },
+  position: { x: 0, y: 0 },
+  connections: {},
+  step: {
+    attributes: { workflow_id: 42, workflow_name: "Child Workflow Alpha" },
+    params: {},
+  },
+};
+
+const loopTransitionNoName = {
+  ...loopTransition,
+  id: "step-loop-noname",
+  unique_id: "step-loop-noname",
+  step: {
+    attributes: { workflow_id: 99 },
+    params: {},
+  },
+};
+
+const nonLoopTransition = {
+  id: "step-auto",
+  unique_id: "step-auto",
+  display_id: "step-auto",
+  display_name: "Auto Step",
+  name: "AutoStep",
+  title: "Auto Step",
+  skill: { type: "automated" },
+  position: { x: 0, y: 0 },
+  connections: {},
+  step: { attributes: {}, params: {} },
+};
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("WorkflowArtifactPanel — Child Workflows tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Stub window.open
+    vi.stubGlobal("open", vi.fn());
+  });
+
+  describe("tab visibility", () => {
+    it("does NOT show Child Workflows tab when there are no loop steps", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+      expect(screen.queryByRole("tab", { name: /child workflows/i })).toBeNull();
+    });
+
+    it("does NOT show Child Workflows tab when loop step has no workflow_id", () => {
+      const loopNoId = {
+        ...loopTransition,
+        step: { attributes: {}, params: {} },
+      };
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopNoId }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+      expect(screen.queryByRole("tab", { name: /child workflows/i })).toBeNull();
+    });
+
+    it("shows Child Workflows tab when a loop step has workflow_id", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+      expect(screen.getByRole("tab", { name: /child workflows/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("table content", () => {
+    it("renders workflow name and ID after switching to the tab", async () => {
+      const user = userEvent.setup();
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /child workflows/i }));
+
+      const childPanel = container.querySelector('[data-slot="tabs-content"][id*="children"]');
+      expect(childPanel?.textContent).toContain("Child Workflow Alpha");
+      expect(childPanel?.textContent).toContain("42");
+    });
+
+    it("falls back to 'Workflow {id}' when workflow_name is absent", async () => {
+      const user = userEvent.setup();
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransitionNoName }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /child workflows/i }));
+
+      const childPanel = container.querySelector('[data-slot="tabs-content"][id*="children"]');
+      expect(childPanel?.textContent).toContain("Workflow 99");
+      expect(childPanel?.textContent).toContain("99");
+    });
+
+    it("renders multiple child workflow rows", async () => {
+      const user = userEvent.setup();
+      const secondLoop = {
+        ...loopTransition,
+        id: "step-loop-2",
+        unique_id: "step-loop-2",
+        step: { attributes: { workflow_id: 77, workflow_name: "Child Beta" }, params: {} },
+      };
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({
+          stepLoop1: loopTransition,
+          stepLoop2: secondLoop,
+        }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /child workflows/i }));
+
+      const childPanel = container.querySelector('[data-slot="tabs-content"][id*="children"]');
+      expect(childPanel?.textContent).toContain("Child Workflow Alpha");
+      expect(childPanel?.textContent).toContain("Child Beta");
+    });
+  });
+
+  describe("open button", () => {
+    it("calls window.open with the correct URL when the open button is clicked", async () => {
+      const user = userEvent.setup();
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+
+      await user.click(screen.getByRole("tab", { name: /child workflows/i }));
+
+      // Icon-only button inside the active children panel
+      const openBtn = screen.getByRole("button", { name: /open/i });
+      await user.click(openBtn);
+
+      expect(window.open).toHaveBeenCalledWith(
+        "https://hive.sphinx.chat/w/stakwork/workflows?id=42",
+        "_blank",
+      );
+    });
+  });
+
+  describe("grid-cols calculation", () => {
+    it("uses grid-cols-3 when neither Changes nor Children tabs are visible", () => {
+      // No originalWorkflowJson → no Changes; no loop steps → no Children
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+      const tabsList = container.querySelector('[role="tablist"]');
+      expect(tabsList?.className).toContain("grid-cols-3");
+    });
+
+    it("uses grid-cols-4 when only the Changes tab is visible", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+        originalWorkflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+      const tabsList = container.querySelector('[role="tablist"]');
+      expect(tabsList?.className).toContain("grid-cols-4");
+    });
+
+    it("uses grid-cols-4 when only the Children tab is visible", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+      const tabsList = container.querySelector('[role="tablist"]');
+      expect(tabsList?.className).toContain("grid-cols-4");
+    });
+
+    it("uses grid-cols-5 when both Changes and Children tabs are visible", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+        originalWorkflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
+      });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+      const tabsList = container.querySelector('[role="tablist"]');
+      expect(tabsList?.className).toContain("grid-cols-5");
+    });
+  });
+});
