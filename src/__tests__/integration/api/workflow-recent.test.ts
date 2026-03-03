@@ -240,7 +240,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
       await GET();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.stakwork.test/workflow/recent",
+        "https://api.stakwork.test/workflows/recent",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
