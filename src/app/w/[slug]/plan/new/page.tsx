@@ -36,6 +36,22 @@ export default function NewPlanPage() {
         }
 
         const { data: task } = await res.json();
+
+        // Send the first message to trigger the Stakwork workflow
+        const chatRes = await fetch("/api/chat/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId: task.id,
+            message,
+            mode: "live",
+          }),
+        });
+
+        if (!chatRes.ok) {
+          console.error("Failed to send initial prototype message, but task was created");
+        }
+
         router.push(`/w/${workspaceSlug}/task/${task.id}`);
         return;
       }
