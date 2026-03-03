@@ -34,12 +34,19 @@ beforeAll(async () => {
   // reset it between module load and beforeAll execution.
   process.env.DATABASE_URL = TEST_DATABASE_URL;
 
-  // Explicitly connect the Prisma client and verify with a ping query so the
-  // engine is fully live before any beforeEach hooks run.
-  // Prisma lazy-connects by default; without this, the first beforeEach in
-  // each test file fails with "Engine is not yet connected".
-  await db.$connect();
-  await db.$queryRaw`SELECT 1`;
+  // Connect with retry — Prisma's query engine can take a moment to start,
+  // especially in forked worker processes on CI.
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await db.$connect();
+      await db.$queryRaw`SELECT 1`;
+      break;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  }
 }, 30_000);
 
 // Reset database before each test to ensure clean state.
