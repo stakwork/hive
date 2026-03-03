@@ -464,12 +464,13 @@ describe("Pod Queries", () => {
       expect(releasedPod?.usageStatusMarkedBy).toBeNull();
       expect(releasedPod?.usageStatusReason).toBeNull();
 
-      // Verify task's podId is cleared
+      // Verify task's podId and agentPassword are cleared
       const updatedTask = await db.task.findUnique({
         where: { id: task.id },
       });
 
       expect(updatedTask?.podId).toBeNull();
+      expect(updatedTask?.agentPassword).toBeNull();
     });
 
     it("should use transaction (both pod and task updates)", async () => {
@@ -484,8 +485,8 @@ describe("Pod Queries", () => {
         },
       });
 
-      // Create multiple tasks
-      await Promise.all([
+      // Create multiple tasks with agentPassword set
+      const [task1, task2] = await Promise.all([
         db.task.create({
           data: {
             title: "Task 1",
@@ -493,6 +494,7 @@ describe("Pod Queries", () => {
             createdBy: { connect: { id: testUserId } },
             updatedBy: { connect: { id: testUserId } },
             podId: pod.podId,
+            agentPassword: "encrypted-password-1",
           },
         }),
         db.task.create({
@@ -502,6 +504,7 @@ describe("Pod Queries", () => {
             createdBy: { connect: { id: testUserId } },
             updatedBy: { connect: { id: testUserId } },
             podId: pod.podId,
+            agentPassword: "encrypted-password-2",
           },
         }),
       ]);
@@ -518,6 +521,12 @@ describe("Pod Queries", () => {
       });
 
       expect(tasksWithPod).toBe(0);
+
+      // Verify all tasks also have agentPassword cleared
+      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
+      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+      expect(updatedTask1?.agentPassword).toBeNull();
+      expect(updatedTask2?.agentPassword).toBeNull();
     });
 
     it("should return null for non-existent pods", async () => {
