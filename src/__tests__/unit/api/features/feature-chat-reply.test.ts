@@ -12,6 +12,12 @@ vi.mock("@/lib/auth/api-token", () => ({
   }),
 }));
 
+vi.mock("@/services/s3", () => ({
+  getS3Service: vi.fn(() => ({
+    generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/signed"),
+  })),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     feature: {

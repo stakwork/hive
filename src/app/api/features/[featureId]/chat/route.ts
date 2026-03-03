@@ -9,6 +9,14 @@ import { buildFeatureContext } from "@/services/task-coordinator";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
+import { getS3Service } from "@/services/s3";
+
+interface AttachmentRequest {
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -173,7 +181,7 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, attachments = [] as AttachmentRequest[] } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -190,6 +198,14 @@ export async function POST(
         status: ChatStatus.SENT,
         sourceWebsocketID,
         replyId,
+        attachments: {
+          create: (attachments as AttachmentRequest[]).map((a) => ({
+            path: a.path,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            size: a.size,
+          })),
+        },
       },
       include: {
         artifacts: true,
@@ -205,8 +221,17 @@ export async function POST(
       },
     });
 
+    // Generate presigned download URLs for attachments
+    const attachmentsWithUrls = await Promise.all(
+      chatMessage.attachments.map(async (att) => ({
+        ...att,
+        url: await getS3Service().generatePresignedDownloadUrl(att.path),
+      })),
+    );
+
     const clientMessage = {
       ...chatMessage,
+      attachments: attachmentsWithUrls,
       createdBy: chatMessage.createdBy || undefined,
       contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({

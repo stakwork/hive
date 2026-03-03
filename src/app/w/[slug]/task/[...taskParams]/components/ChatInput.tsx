@@ -44,6 +44,7 @@ interface ChatInputProps {
   hasPrArtifact?: boolean;
   taskMode?: string;
   taskId?: string;
+  featureId?: string;
   onOpenBountyRequest?: () => void;
   stakworkProjectId?: string | null;
 }
@@ -60,6 +61,7 @@ export function ChatInput({
   hasPrArtifact = false,
   taskMode,
   taskId,
+  featureId,
   onOpenBountyRequest,
   stakworkProjectId,
 }: ChatInputProps) {
@@ -74,8 +76,8 @@ export function ChatInput({
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
-  // Image upload is disabled in agent mode
-  const isImageUploadEnabled = taskMode !== "agent";
+  // Image upload is disabled in agent mode and when neither taskId nor featureId is present
+  const isImageUploadEnabled = taskMode !== "agent" && (!!taskId || !!featureId);
   
   // Feature flags
   const codeFormattingEnabled = useFeatureFlag(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
@@ -117,8 +119,8 @@ export function ChatInput({
   };
 
   const uploadToS3 = async (image: PendingImage): Promise<string> => {
-    if (!taskId) {
-      throw new Error("Task ID is required for image upload");
+    if (!taskId && !featureId) {
+      throw new Error("Task ID or Feature ID is required for image upload");
     }
 
     // Request presigned URL
@@ -126,7 +128,7 @@ export function ChatInput({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        taskId,
+        ...(taskId ? { taskId } : { featureId }),
         filename: image.filename,
         contentType: image.mimeType,
         size: image.size,

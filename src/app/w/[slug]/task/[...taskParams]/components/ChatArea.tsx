@@ -397,6 +397,7 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
+        featureId={featureId ?? undefined}
         onOpenBountyRequest={onOpenBountyRequest}
         stakworkProjectId={stakworkProjectId}
       />
