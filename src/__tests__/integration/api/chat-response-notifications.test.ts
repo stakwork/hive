@@ -64,14 +64,14 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     process.env.API_TOKEN = API_TOKEN;
 
     owner = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner" },
+      data: { email: "owner@test.com", name: "Owner", sphinxAlias: "owner-alias" },
     });
-    workspace = await db.workspace.create({
-      data: {
-        name: "Test Workspace",
-        slug: "test-ws-chat-notif",
-        ownerId: owner.id,
-      },
+
+    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createSphinxEnabledWorkspace({
+      ownerId: owner.id,
+      name: "Test Workspace",
+      slug: "test-ws-chat-notif",
     });
     feature = await db.feature.create({
       data: {
@@ -110,7 +110,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 
   it("creates PLAN_AWAITING_APPROVAL notification for PLAN artifact with featureId", async () => {
@@ -132,7 +132,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 
   it("creates PLAN_TASKS_GENERATED notification for TASKS artifact with featureId", async () => {
@@ -154,7 +154,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 
   it("creates GRAPH_CHAT_RESPONSE notification for task response without plan artifacts", async () => {
@@ -186,6 +186,6 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 });
