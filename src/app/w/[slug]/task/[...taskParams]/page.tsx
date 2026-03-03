@@ -1469,7 +1469,7 @@ export default function TaskChatPage() {
       await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: seedMessage, history: formattedHistory }),
+        body: JSON.stringify({ message: seedMessage, history: formattedHistory, isPrototype: true }),
       });
 
       // 5. Navigate to Plan Mode
