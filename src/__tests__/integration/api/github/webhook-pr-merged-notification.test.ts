@@ -56,6 +56,25 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
 
     testSetup = await createWebhookTestScenario();
 
+    // Enable Sphinx on workspace and set sphinxAlias on user so notifications are created
+    const { EncryptionService } = await import("@/lib/encryption");
+    const encryptedSecret = JSON.stringify(
+      EncryptionService.getInstance().encryptField("sphinxBotSecret", "test-bot-secret")
+    );
+    await db.workspace.update({
+      where: { id: testSetup.workspace.id },
+      data: {
+        sphinxEnabled: true,
+        sphinxBotId: "test-bot-id",
+        sphinxBotSecret: encryptedSecret,
+        sphinxChatPubkey: "test-chat-pubkey",
+      },
+    });
+    await db.user.update({
+      where: { id: testSetup.user.id },
+      data: { sphinxAlias: "user-alias" },
+    });
+
     // Create task with the test workspace owner as creator
     task = await db.task.create({
       data: {
@@ -137,6 +156,6 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(testSetup.user.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 });

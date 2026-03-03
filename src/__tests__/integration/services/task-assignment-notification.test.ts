@@ -41,15 +41,16 @@ describe("TASK_ASSIGNED notification", () => {
       data: { email: "owner@test.com", name: "Owner" },
     });
     assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee" },
+      data: { email: "assignee@test.com", name: "Assignee", sphinxAlias: "assignee-alias" },
     });
-    workspace = await db.workspace.create({
-      data: {
-        name: "Test Workspace",
-        slug: "test-ws-task-assign",
-        ownerId: owner.id,
-      },
+
+    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createSphinxEnabledWorkspace({
+      ownerId: owner.id,
+      name: "Test Workspace",
+      slug: "test-ws-task-assign",
     });
+
     await db.workspaceMember.create({
       data: { workspaceId: workspace.id, userId: owner.id, role: "OWNER" },
     });
@@ -91,7 +92,7 @@ describe("TASK_ASSIGNED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 
   it("does NOT create a notification when self-assigning", async () => {
