@@ -136,6 +136,7 @@ export default function TaskChatPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [isPrototypeTask, setIsPrototypeTask] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -342,6 +343,11 @@ export default function TaskChatPage() {
         if (result.data.task?.featureId && result.data.task?.feature?.title) {
           setFeatureId(result.data.task.featureId);
           setFeatureTitle(result.data.task.feature.title);
+        }
+
+        // Detect prototype task
+        if (result.data.task?.sourceType) {
+          setIsPrototypeTask(result.data.task.sourceType === "PROTOTYPE");
         }
 
         // Restore workflow context for workflow_editor mode
@@ -1433,6 +1439,45 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleSaveAndPlan = useCallback(async () => {
+    if (!currentTaskId || !effectiveWorkspaceId || !slug) return;
+
+    try {
+      // 1. Push prototype branch
+      const pushRes = await fetch(`/api/agent/prototype-push/${currentTaskId}`, { method: "POST" });
+      if (!pushRes.ok) throw new Error("Failed to push prototype branch");
+      const { branchName } = await pushRes.json();
+
+      // 2. Create Feature record
+      const featureRes = await fetch("/api/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: taskTitle, workspaceId: effectiveWorkspaceId }),
+      });
+      if (!featureRes.ok) throw new Error("Failed to create feature");
+      const { data: feature } = await featureRes.json();
+
+      // 3. Format messages — lowercase roles
+      const formattedHistory = messages
+        .filter((m) => m.message && m.role)
+        .map((m) => ({ role: m.role.toLowerCase() as "user" | "assistant", content: m.message }));
+
+      // 4. Seed Plan Mode with prototype history and branch reference
+      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`. The prototype contains a throwaway test page — delete it entirely. Use the prototype only as a visual design reference and build the real production component from scratch.`;
+      await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: seedMessage, history: formattedHistory }),
+      });
+
+      // 5. Navigate to Plan Mode
+      router.push(`/w/${slug}/plan/${feature.id}`);
+    } catch (error) {
+      console.error("Save and Plan failed:", error);
+      toast.error("Failed to save and plan", { description: "Please try again." });
+    }
+  }, [currentTaskId, effectiveWorkspaceId, slug, taskTitle, messages, router]);
+
   const handleRetry = async () => {
     if (!currentTaskId || isRetrying) return;
     setIsRetrying(true);
@@ -1709,6 +1754,8 @@ export default function TaskChatPage() {
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    isPrototypeTask={isPrototypeTask}
+                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
                   <AgentChatArea
@@ -1785,6 +1832,8 @@ export default function TaskChatPage() {
                       taskId={currentTaskId || undefined}
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
+                      isPrototypeTask={isPrototypeTask}
+                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
@@ -1833,6 +1882,8 @@ export default function TaskChatPage() {
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    isPrototypeTask={isPrototypeTask}
+                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
                   <ChatArea
@@ -1918,6 +1969,8 @@ export default function TaskChatPage() {
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      isPrototypeTask={isPrototypeTask}
+                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
