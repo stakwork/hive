@@ -173,7 +173,7 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -248,7 +248,8 @@ export async function POST(
       const baseBranch = repos[0]?.branch || null;
       const repoName = repos[0]?.name || null;
 
-      const history = await fetchFeatureChatHistory(featureId, chatMessage.id);
+      const dbHistory = await fetchFeatureChatHistory(featureId, chatMessage.id);
+      const mergedHistory = [...dbHistory, ...(bodyHistory ?? [])];
 
       // Build feature context using the auto-created Phase 1
       let featureContext = undefined;
@@ -289,7 +290,7 @@ export async function POST(
         repoUrl,
         baseBranch,
         repoName,
-        history,
+        history: mergedHistory,
         webhook,
         featureId,
         featureContext,
