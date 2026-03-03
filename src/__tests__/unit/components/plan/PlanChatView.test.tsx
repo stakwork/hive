@@ -796,6 +796,69 @@ describe("PlanChatView", () => {
         expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
       });
     });
+
+    it("hides Invite button when Sphinx status fetch returns 403 (non-admin prior to fix)", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch returning 403 (simulating old behaviour for non-admins)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: "Admin access required" }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Invite button must NOT appear when the fetch fails
+      await waitFor(() => {
+        expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
+      });
+    });
+
+    it("shows Invite button for non-admin member when Sphinx is fully configured (post-fix)", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch returning 200 with all fields set
+      // (simulates the fixed GET endpoint accessible to DEVELOPER/VIEWER roles)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sphinxEnabled: true,
+          sphinxChatPubkey: "test-pubkey",
+          sphinxBotId: "test-bot-id",
+          hasBotSecret: true,
+        }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Invite button MUST appear for non-admin members when Sphinx is fully configured
+      await waitFor(() => {
+        expect(screen.getByTestId("invite-button")).toBeInTheDocument();
+      });
+    });
   });
 
   // Section Highlights feature is comprehensively tested in sectionHighlights.test.ts

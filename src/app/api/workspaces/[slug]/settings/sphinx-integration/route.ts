@@ -25,7 +25,7 @@ export async function GET(
   const { slug } = await params;
   const access = await validateWorkspaceAccess(slug, session.user.id, true);
 
-  if (!access.canAdmin) {
+  if (!access.canRead) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
