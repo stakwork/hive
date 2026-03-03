@@ -4,9 +4,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, History, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, History, Clock, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { diffLines } from "diff";
+
+// Sentinel ID for representing the current live version
+const CURRENT_VERSION_SENTINEL = -1;
 
 interface PromptUsage {
   workflow_id: number;
@@ -330,11 +333,6 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     
     setViewMode("history");
     await fetchVersionList(selectedPrompt.id);
-    
-    // Pre-select current version as version A
-    if (selectedPrompt.current_version_id) {
-      setSelectedVersionAId(selectedPrompt.current_version_id);
-    }
   };
 
   const handleBackToDetail = () => {
@@ -383,9 +381,16 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     const fetchDiff = async () => {
       setIsLoadingDiff(true);
       try {
+        const resolveContent = (versionId: number): Promise<string | null> => {
+          if (versionId === CURRENT_VERSION_SENTINEL) {
+            return Promise.resolve(selectedPrompt.value);
+          }
+          return fetchVersionContent(selectedPrompt.id, versionId);
+        };
+
         const [contentA, contentB] = await Promise.all([
-          fetchVersionContent(selectedPrompt.id, selectedVersionAId),
-          fetchVersionContent(selectedPrompt.id, selectedVersionBId),
+          resolveContent(selectedVersionAId),
+          resolveContent(selectedVersionBId),
         ]);
         setVersionAContent(contentA);
         setVersionBContent(contentB);
@@ -717,13 +722,6 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             <span className="ml-2 text-muted-foreground text-sm">Loading versions...</span>
           </div>
-        ) : versions.length === 0 ? (
-          <div className="flex items-center justify-center flex-1 p-8">
-            <div className="text-center">
-              <Clock className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-              <div className="text-muted-foreground text-sm">No history yet</div>
-            </div>
-          </div>
         ) : (
           <div className="flex-1 overflow-hidden flex flex-col">
             {/* Version List */}
@@ -732,36 +730,73 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                 Select two versions to compare
               </div>
               <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                {versions.map((version) => {
-                  const isSelectedA = selectedVersionAId === version.id;
-                  const isSelectedB = selectedVersionBId === version.id;
-                  const isSelected = isSelectedA || isSelectedB;
+                {/* Current Version Button */}
+                {(() => {
+                  const isCurrentA = selectedVersionAId === CURRENT_VERSION_SENTINEL;
+                  const isCurrentB = selectedVersionBId === CURRENT_VERSION_SENTINEL;
+                  const isCurrentSelected = isCurrentA || isCurrentB;
 
                   return (
                     <button
-                      key={version.id}
-                      onClick={() => handleVersionClick(version.id)}
+                      onClick={() => handleVersionClick(CURRENT_VERSION_SENTINEL)}
                       className={cn(
                         "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                         "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                        isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                        isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
-                        !isSelected && "bg-muted/50"
+                        isCurrentA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
+                        isCurrentB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        !isCurrentSelected && "bg-muted/50"
                       )}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-medium">v{version.version_number}</span>
-                          {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                          {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                          <Zap className="w-3 h-3" />
+                          <span className="font-mono font-medium">Current</span>
+                          {isCurrentA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
+                          {isCurrentB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
                         </div>
-                        <span className="text-xs text-muted-foreground">
-                          {formatTimestamp(version.created_at)}
-                        </span>
+                        <span className="text-xs text-muted-foreground">Live</span>
                       </div>
                     </button>
                   );
-                })}
+                })()}
+
+                {/* Historical Versions */}
+                {versions.length > 0 ? (
+                  versions.map((version) => {
+                    const isSelectedA = selectedVersionAId === version.id;
+                    const isSelectedB = selectedVersionBId === version.id;
+                    const isSelected = isSelectedA || isSelectedB;
+
+                    return (
+                      <button
+                        key={version.id}
+                        onClick={() => handleVersionClick(version.id)}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded transition-colors text-sm",
+                          "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
+                          isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
+                          isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                          !isSelected && "bg-muted/50"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-medium">v{version.version_number}</span>
+                            {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
+                            {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatTimestamp(version.created_at)}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-4">
+                    <div className="text-xs text-muted-foreground">No previous versions</div>
+                  </div>
+                )}
               </div>
             </div>
 
