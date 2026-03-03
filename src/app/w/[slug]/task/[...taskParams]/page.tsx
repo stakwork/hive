@@ -1757,9 +1757,6 @@ export default function TaskChatPage() {
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
-                    isPrototypeTask={isPrototypeTask}
-                    isSavingPlan={isSavingPlan}
-                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
                   <AgentChatArea
@@ -1836,9 +1833,6 @@ export default function TaskChatPage() {
                       taskId={currentTaskId || undefined}
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
-                      isPrototypeTask={isPrototypeTask}
-                      isSavingPlan={isSavingPlan}
-                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
@@ -1887,9 +1881,6 @@ export default function TaskChatPage() {
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
-                    isPrototypeTask={isPrototypeTask}
-                    isSavingPlan={isSavingPlan}
-                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 ) : (
                   <ChatArea
@@ -1925,6 +1916,9 @@ export default function TaskChatPage() {
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
                     stakworkProjectId={projectId}
+                    isPrototypeTask={isPrototypeTask}
+                    isSavingPlan={isSavingPlan}
+                    onSaveAndPlan={handleSaveAndPlan}
                   />
                 )}
               </div>
@@ -1962,6 +1956,9 @@ export default function TaskChatPage() {
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
                       stakworkProjectId={projectId}
+                      isPrototypeTask={isPrototypeTask}
+                      isSavingPlan={isSavingPlan}
+                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
@@ -1975,9 +1972,6 @@ export default function TaskChatPage() {
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
-                      isPrototypeTask={isPrototypeTask}
-                      isSavingPlan={isSavingPlan}
-                      onSaveAndPlan={handleSaveAndPlan}
                     />
                   </div>
                 </ResizablePanel>
@@ -2015,6 +2009,9 @@ export default function TaskChatPage() {
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
                 stakworkProjectId={projectId}
+                isPrototypeTask={isPrototypeTask}
+                isSavingPlan={isSavingPlan}
+                onSaveAndPlan={handleSaveAndPlan}
               />
             </div>
           )}

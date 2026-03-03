@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
+import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
@@ -56,6 +56,9 @@ interface ChatAreaProps {
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
   stakworkProjectId?: string | null;
+  isPrototypeTask?: boolean;
+  isSavingPlan?: boolean;
+  onSaveAndPlan?: () => void;
 }
 
 export function ChatArea({
@@ -93,6 +96,9 @@ export function ChatArea({
   isPlanChat = false,
   onTitleSave,
   stakworkProjectId,
+  isPrototypeTask = false,
+  isSavingPlan = false,
+  onSaveAndPlan,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -322,6 +328,19 @@ export function ChatArea({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+            )}
+
+            {/* Save and Plan (Prototype tasks only) */}
+            {isPrototypeTask && onSaveAndPlan && (
+              <Button
+                size="sm"
+                onClick={onSaveAndPlan}
+                disabled={isSavingPlan}
+                className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
+              >
+                {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                {isSavingPlan ? "Saving…" : "Save and Plan"}
+              </Button>
             )}
           </div>
         </div>
