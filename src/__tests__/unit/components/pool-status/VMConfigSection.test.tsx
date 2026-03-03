@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { SessionProvider } from 'next-auth/react';
 import { VMConfigSection } from '@/components/pool-status';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useModal } from '@/components/modals/ModlaProvider';
@@ -18,6 +19,34 @@ vi.mock('sonner', () => ({
 
 // Mock fetch globally
 global.fetch = vi.fn();
+
+// Helper to render with SessionProvider
+function renderWithSession(component: React.ReactElement, isSuperAdmin = false) {
+  const mockSession = {
+    user: { id: 'user-123', email: 'test@example.com', isSuperAdmin },
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+  
+  return render(
+    <SessionProvider session={mockSession}>
+      {component}
+    </SessionProvider>
+  );
+}
+
+// Helper to rerender with SessionProvider
+function rerenderWithSession(component: React.ReactElement, rerenderFn: any, isSuperAdmin = false) {
+  const mockSession = {
+    user: { id: 'user-123', email: 'test@example.com', isSuperAdmin },
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+  
+  return rerenderFn(
+    <SessionProvider session={mockSession}>
+      {component}
+    </SessionProvider>
+  );
+}
 
 describe('VMConfigSection', () => {
   const mockSlug = 'test-workspace';
@@ -44,7 +73,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.getByText('In progress')).toBeInTheDocument();
       expect(screen.queryByText('Launch Pods')).not.toBeInTheDocument();
@@ -59,7 +88,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.queryByText('In progress')).not.toBeInTheDocument();
       expect(screen.getByText('Launch Pods')).toBeInTheDocument();
@@ -74,7 +103,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      const { rerender } = render(<VMConfigSection />);
+      const { rerender } = renderWithSession(<VMConfigSection />);
 
       // Initially in progress
       expect(screen.getByText('In progress')).toBeInTheDocument();
@@ -89,7 +118,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      rerender(<VMConfigSection />);
+      rerenderWithSession(<VMConfigSection />, rerender);
 
       // Now only Launch Pods should show
       expect(screen.queryByText('In progress')).not.toBeInTheDocument();
@@ -105,7 +134,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.getByText('Services are being set up.')).toBeInTheDocument();
     });
@@ -119,7 +148,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.getByText('Complete your pool setup to get started.')).toBeInTheDocument();
     });
@@ -154,7 +183,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       await waitFor(() => {
         expect(screen.getByText('3 in use')).toBeInTheDocument();
@@ -193,7 +222,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       await waitFor(() => {
         expect(screen.getByText('2 pending')).toBeInTheDocument();
@@ -210,7 +239,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       await waitFor(() => {
         const dropdown = screen.getByRole('button', { name: '' });
@@ -235,7 +264,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       await waitFor(() => {
         expect(screen.getByText('Unable to fetch pool data')).toBeInTheDocument();
@@ -253,7 +282,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.getByText('In progress')).toBeInTheDocument();
     });
@@ -269,7 +298,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -283,7 +312,7 @@ describe('VMConfigSection', () => {
         },
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -294,7 +323,7 @@ describe('VMConfigSection', () => {
         workspace: null,
       } as any);
 
-      render(<VMConfigSection />);
+      renderWithSession(<VMConfigSection />);
 
       expect(screen.getByText('Services are being set up.')).toBeInTheDocument();
       expect(screen.getByText('In progress')).toBeInTheDocument();
@@ -350,7 +379,7 @@ describe('VMConfigSection', () => {
     });
 
     it('should render Amount of Pods input and Save button for superadmin with active pool', async () => {
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -362,7 +391,7 @@ describe('VMConfigSection', () => {
     });
 
     it('should NOT render Amount of Pods input for non-superadmin with active pool', async () => {
-      render(<VMConfigSection isSuperAdmin={false} />);
+      renderWithSession(<VMConfigSection />, false);
 
       await waitFor(() => {
         expect(screen.getByText('3 in use')).toBeInTheDocument();
@@ -415,7 +444,7 @@ describe('VMConfigSection', () => {
         });
       });
 
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -440,7 +469,7 @@ describe('VMConfigSection', () => {
     });
 
     it('should disable Save button when pendingVms equals minimumVms', async () => {
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -491,7 +520,7 @@ describe('VMConfigSection', () => {
         });
       });
 
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -549,7 +578,7 @@ describe('VMConfigSection', () => {
         });
       });
 
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -567,7 +596,7 @@ describe('VMConfigSection', () => {
     });
 
     it('should enforce minimum value of 1 client-side', async () => {
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();
@@ -627,7 +656,7 @@ describe('VMConfigSection', () => {
         });
       });
 
-      render(<VMConfigSection isSuperAdmin={true} />);
+      renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
         expect(screen.getByLabelText('Amount of Pods')).toBeInTheDocument();

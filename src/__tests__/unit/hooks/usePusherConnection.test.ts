@@ -999,4 +999,47 @@ describe("usePusherConnection Hook", () => {
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("workspace-test-workspace");
     });
   });
+
+  describe("Error Handling", () => {
+    test("should handle getPusherClient throwing error in disconnect gracefully", async () => {
+      // First, connect successfully
+      const { result, unmount } = renderHook(() =>
+        usePusherConnection({
+          taskId: "task-123",
+          enabled: true,
+          connectionReadyDelay: 0,
+        })
+      );
+
+      expect(mockPusherClient.subscribe).toHaveBeenCalledWith("task-task-123");
+
+      // Trigger subscription_succeeded
+      const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
+        (call) => call[0] === "pusher:subscription_succeeded"
+      )?.[1];
+      subscriptionSuccessCallback?.();
+
+      await waitFor(() => {
+        expect(result.current.isConnected).toBe(true);
+      });
+
+      // Now mock getPusherClient to throw on the next call (during disconnect)
+      vi.mocked(getPusherClient).mockImplementation(() => {
+        throw new Error("Pusher environment variables are not configured");
+      });
+
+      // Disconnect should not throw
+      expect(() => {
+        act(() => {
+          result.current.disconnect();
+        });
+      }).not.toThrow();
+
+      // State should be cleaned up
+      expect(result.current.isConnected).toBe(false);
+
+      // Cleanup on unmount should also not throw
+      expect(() => unmount()).not.toThrow();
+    });
+  });
 });

@@ -285,7 +285,7 @@ describe("POST /api/mock/gemini/v1beta/models/[modelId]/generateContent - Integr
 
       // Verify response structure
       expect(data).toHaveProperty("candidates");
-      expect(data.candidates).toBeInstanceOf(Array);
+      expect(Array.isArray(data.candidates)).toBe(true);
       expect(data.candidates).toHaveLength(1);
     });
 
@@ -316,7 +316,7 @@ describe("POST /api/mock/gemini/v1beta/models/[modelId]/generateContent - Integr
       // Verify candidate structure
       expect(candidate).toHaveProperty("content");
       expect(candidate.content).toHaveProperty("parts");
-      expect(candidate.content.parts).toBeInstanceOf(Array);
+      expect(Array.isArray(candidate.content.parts)).toBe(true);
       expect(candidate.content.parts).toHaveLength(1);
 
       // Verify inline data
@@ -408,7 +408,7 @@ describe("POST /api/mock/gemini/v1beta/models/[modelId]/generateContent - Integr
       const data = await expectSuccess(response, 200);
       const safetyRatings = data.candidates[0].safetyRatings;
 
-      expect(safetyRatings).toBeInstanceOf(Array);
+      expect(Array.isArray(safetyRatings)).toBe(true);
       expect(safetyRatings.length).toBeGreaterThanOrEqual(4);
 
       const categories = safetyRatings.map((rating: any) => rating.category);

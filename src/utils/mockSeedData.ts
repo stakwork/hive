@@ -2197,4 +2197,92 @@ async function seedAttachments(
   }
 
   console.log(`[MockSeed] Created ${attachmentCount} attachments`);
+
+  // Seed image attachments for feature tasks (for Verify tab)
+  // Query ASSISTANT chat messages from tasks that belong to features
+  const featureTaskMessages = await db.chatMessage.findMany({
+    where: {
+      role: "ASSISTANT",
+      taskId: { not: null },
+      task: {
+        featureId: { not: null },
+        deleted: false,
+      },
+    },
+    select: {
+      id: true,
+      taskId: true,
+    },
+    take: 5,
+  });
+
+  if (featureTaskMessages.length === 0) {
+    console.log("[MockSeed] No feature task messages found for image attachments");
+    return;
+  }
+
+  // Image attachment templates (2-3 per message)
+  const imageTemplates = [
+    [
+      { filename: "screenshot-1.jpg", mimeType: "image/jpeg", size: 245000 },
+      { filename: "screenshot-2.png", mimeType: "image/png", size: 198000 },
+      { filename: "screenshot-3.jpg", mimeType: "image/jpeg", size: 312000 },
+    ],
+    [
+      { filename: "ui-snapshot-1.png", mimeType: "image/png", size: 156000 },
+      { filename: "ui-snapshot-2.jpg", mimeType: "image/jpeg", size: 223000 },
+    ],
+    [
+      { filename: "result-1.jpg", mimeType: "image/jpeg", size: 189000 },
+      { filename: "result-2.png", mimeType: "image/png", size: 267000 },
+      { filename: "result-3.jpg", mimeType: "image/jpeg", size: 234000 },
+    ],
+    [
+      { filename: "test-output-1.png", mimeType: "image/png", size: 178000 },
+      { filename: "test-output-2.jpg", mimeType: "image/jpeg", size: 201000 },
+    ],
+    [
+      { filename: "verification-1.jpg", mimeType: "image/jpeg", size: 215000 },
+      { filename: "verification-2.png", mimeType: "image/png", size: 192000 },
+      { filename: "verification-3.jpg", mimeType: "image/jpeg", size: 248000 },
+    ],
+  ];
+
+  let imageAttachmentCount = 0;
+
+  for (let i = 0; i < featureTaskMessages.length; i++) {
+    const message = featureTaskMessages[i];
+    const templates = imageTemplates[i % imageTemplates.length];
+
+    for (const template of templates) {
+      // Check uniqueness before insert
+      const exists = await db.attachment.findFirst({
+        where: {
+          AND: [
+            { messageId: message.id },
+            { filename: template.filename },
+          ],
+        },
+      });
+
+      if (exists) {
+        continue;
+      }
+
+      // Create image attachment
+      await db.attachment.create({
+        data: {
+          messageId: message.id,
+          filename: template.filename,
+          mimeType: template.mimeType,
+          size: template.size,
+          path: `attachments/${workspaceId}/${message.taskId}/${template.filename}`,
+        },
+      });
+
+      imageAttachmentCount++;
+    }
+  }
+
+  console.log(`[MockSeed] Created ${imageAttachmentCount} image attachments for feature tasks`);
 }

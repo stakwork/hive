@@ -81,37 +81,44 @@ export function useStakworkGeneration({
   useEffect(() => {
     if (!enabled || !workspace?.slug) return;
 
-    const pusher = getPusherClient();
-    const channelName = `workspace-${workspace.slug}`;
-    const channel = pusher.subscribe(channelName);
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
 
-    const handleRunUpdate = (data: {
-      runId: string;
-      type: StakworkRunType;
-      status: WorkflowStatus;
-      featureId: string;
-    }) => {
-      if (data.featureId === featureId && data.type === type) {
-        queryLatestRunRef.current?.();
-      }
-    };
+    try {
+      const pusher = getPusherClient();
+      const channelName = `workspace-${workspace.slug}`;
+      channel = pusher.subscribe(channelName);
 
-    const handleRunDecision = (data: {
-      runId: string;
-      decision: StakworkRunDecision;
-      featureId: string;
-    }) => {
-      if (data.featureId === featureId) {
-        queryLatestRunRef.current?.();
-      }
-    };
+      const handleRunUpdate = (data: {
+        runId: string;
+        type: StakworkRunType;
+        status: WorkflowStatus;
+        featureId: string;
+      }) => {
+        if (data.featureId === featureId && data.type === type) {
+          queryLatestRunRef.current?.();
+        }
+      };
 
-    channel.bind("stakwork-run-update", handleRunUpdate);
-    channel.bind("stakwork-run-decision", handleRunDecision);
+      const handleRunDecision = (data: {
+        runId: string;
+        decision: StakworkRunDecision;
+        featureId: string;
+      }) => {
+        if (data.featureId === featureId) {
+          queryLatestRunRef.current?.();
+        }
+      };
+
+      channel.bind("stakwork-run-update", handleRunUpdate);
+      channel.bind("stakwork-run-decision", handleRunDecision);
+    } catch {
+      // Pusher not configured in this environment
+      return;
+    }
 
     return () => {
-      channel.unbind("stakwork-run-update", handleRunUpdate);
-      channel.unbind("stakwork-run-decision", handleRunDecision);
+      channel?.unbind("stakwork-run-update");
+      channel?.unbind("stakwork-run-decision");
     };
   }, [enabled, workspace?.slug, featureId, type]);
 

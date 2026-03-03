@@ -13,6 +13,7 @@ import { fetchBlobContent } from "@/lib/utils/blob-fetch";
  *   workspace_id:     string  — required, for access control
  *   stakwork_run_id?: string  — optional filter by StakworkRun
  *   task_id?:         string  — optional filter by Task
+ *   feature_id?:      string  — optional filter by Feature
  *   limit?:           number  — pagination limit (default: 20, max: 100)
  *   skip?:            number  — pagination offset (default: 0)
  *   start_date?:      string  — ISO date string, filter logs after this date
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspace_id");
     const stakworkRunId = searchParams.get("stakwork_run_id");
     const taskId = searchParams.get("task_id");
+    const featureId = searchParams.get("feature_id");
     const search = searchParams.get("search");
     const startDateParam = searchParams.get("start_date");
     const endDateParam = searchParams.get("end_date");
@@ -67,6 +69,7 @@ export async function GET(request: NextRequest) {
       workspaceId: string;
       stakworkRunId?: string;
       taskId?: string;
+      featureId?: string;
       createdAt?: {
         gte?: Date;
         lte?: Date;
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest) {
 
     if (stakworkRunId) where.stakworkRunId = stakworkRunId;
     if (taskId) where.taskId = taskId;
+    if (featureId) where.featureId = featureId;
 
     // Add date range filtering
     if (startDateParam || endDateParam) {
@@ -114,6 +118,7 @@ export async function GET(request: NextRequest) {
           agent: true,
           stakworkRunId: true,
           taskId: true,
+          featureId: true,
           createdAt: true,
           stakworkRun: {
             select: {
@@ -124,15 +129,20 @@ export async function GET(request: NextRequest) {
               },
             },
           },
+          feature: {
+            select: {
+              title: true,
+            },
+          },
         },
       }),
       db.agentLog.count({ where }),
     ]);
 
-    // Flatten the feature title from the StakworkRun relation
-    const flattenedLogs = logs.map(({ stakworkRun, ...log }) => ({
+    // Flatten the feature title from either the StakworkRun relation or direct feature relation
+    const flattenedLogs = logs.map(({ stakworkRun, feature, ...log }) => ({
       ...log,
-      featureTitle: stakworkRun?.feature?.title ?? null,
+      featureTitle: stakworkRun?.feature?.title ?? feature?.title ?? null,
     }));
 
     // ⚠️ PERFORMANCE WARNING:

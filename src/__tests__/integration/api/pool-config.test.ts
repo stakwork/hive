@@ -8,10 +8,11 @@ import { db } from "@/lib/db";
 
 // Mock the middleware utils
 const getMockedRequireAuth = vi.hoisted(() => vi.fn());
+const getMockedCheckIsSuperAdmin = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn((req: NextRequest) => ({ user: null })),
   requireAuth: getMockedRequireAuth,
-  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
+  checkIsSuperAdmin: getMockedCheckIsSuperAdmin,
 }));
 
 describe("Pool Config API", () => {
@@ -100,6 +101,7 @@ describe("Pool Config API", () => {
         email: regularUser.email!,
         name: regularUser.name!,
       });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
 
       const request = createAuthenticatedGetRequest(
         `/api/w/${workspace.slug}/pool/config`,
@@ -126,6 +128,7 @@ describe("Pool Config API", () => {
         email: superadminUser.email!,
         name: superadminUser.name!,
       });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
 
       const request = createAuthenticatedGetRequest(
         `/api/w/${workspace.slug}/pool/config`,

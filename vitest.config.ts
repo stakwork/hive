@@ -9,11 +9,15 @@ export default defineConfig({
     // Use 'jsdom' for unit tests (requires DOM APIs)
     environment: testSuite === "integration" ? "node" : "jsdom",
     globals: true,
-    // Run integration tests sequentially to avoid database conflicts
-    pool: testSuite === "integration" ? "forks" : "threads",
+    // Run integration tests sequentially to avoid database conflicts.
+    // vmThreads (vs forks) keeps everything in one Node process, which means
+    // the Prisma library engine (.so.node native addon) is initialised once and
+    // shared — avoiding the "Engine is not yet connected" race that occurs when
+    // Prisma 6's library engine is re-initialised inside a forked child process.
+    pool: testSuite === "integration" ? "vmThreads" : "threads",
     poolOptions: testSuite === "integration" ? {
-      forks: {
-        singleFork: true,
+      vmThreads: {
+        singleThread: true,
       },
     } : undefined,
     include:
@@ -24,10 +28,10 @@ export default defineConfig({
         : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
-        ? ["./src/__tests__/setup/integration.ts", 'dotenv/config']
+        ? ['dotenv/config', "./src/__tests__/setup/integration.ts"]
         : testSuite === "api"
-        ? ["./src/__tests__/setup/unit.ts", 'dotenv/config'] // API tests can use unit test setup
-        : ["./src/__tests__/setup/unit.ts", 'dotenv/config'],
+        ? ['dotenv/config', "./src/__tests__/setup/unit.ts"]
+        : ['dotenv/config', "./src/__tests__/setup/unit.ts"],
   },
   resolve: {
     alias: {

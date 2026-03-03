@@ -136,7 +136,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.data.feature.workspaceId).toBe(workspaceId);
 
       // Verify tickets
-      expect(result.data.tasks).toBeInstanceOf(Array);
+      expect(Array.isArray(result.data.tasks)).toBe(true);
       expect(result.data.tasks).toHaveLength(2);
       expect(result.data.tasks[0].title).toBe("Ticket 1");
       expect(result.data.tasks[0].phaseId).toBe(phaseId);

@@ -1,0 +1,1 @@
+ALTER TYPE "TaskSourceType" ADD VALUE 'PROTOTYPE';
