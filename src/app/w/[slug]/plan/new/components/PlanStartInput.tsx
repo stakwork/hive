@@ -5,22 +5,41 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUp, Mic, MicOff, Loader2 } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, GitBranch } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface PlanStartInputProps {
-  onSubmit: (message: string) => void;
+  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null }) => void;
   isLoading?: boolean;
 }
 
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
+  const [isPrototype, setIsPrototype] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
+
+  const { workspace } = useWorkspace();
+  const repositories = workspace?.repositories ?? [];
+  const showRepositoryDropdown = repositories.length > 1;
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
+    repositories[0]?.id ?? null,
+  );
+
+  // Keep selectedRepositoryId in sync when repositories load
+  useEffect(() => {
+    if (repositories.length > 0 && !selectedRepositoryId) {
+      setSelectedRepositoryId(repositories[0].id);
+    }
+  }, [repositories, selectedRepositoryId]);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -63,7 +82,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         stopListening();
       }
       resetTranscript();
-      onSubmit(value.trim());
+      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
       setValue("");
     }
   };
@@ -111,6 +130,49 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               data-testid="plan-start-input"
             />
           </motion.div>
+
+          {/* Prototype toggle row */}
+          <div className="px-8 pb-4 flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="prototype-toggle"
+                checked={isPrototype}
+                onCheckedChange={setIsPrototype}
+                data-testid="prototype-toggle"
+              />
+              <Label htmlFor="prototype-toggle" className="text-sm cursor-pointer select-none">
+                Prototype
+              </Label>
+            </div>
+
+            {isPrototype && showRepositoryDropdown && (
+              <Select
+                value={selectedRepositoryId || undefined}
+                onValueChange={(value) => setSelectedRepositoryId(value)}
+              >
+                <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    <span className="truncate">
+                      {repositories.find((r) => r.id === selectedRepositoryId)?.name ||
+                        "Select repository"}
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {repositories.map((repo) => (
+                    <SelectItem key={repo.id} value={repo.id}>
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        <span>{repo.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
           <div className="absolute bottom-6 right-8 z-10 flex gap-2">
             {isSupported && (
               <TooltipProvider>
