@@ -549,6 +549,7 @@ export async function callStakworkAPI(params: {
   podPassword?: string | null;
   featureId?: string | null;
   planEdited?: boolean;
+  isPrototype?: boolean;
 }) {
   const {
     taskId,
@@ -579,6 +580,7 @@ export async function callStakworkAPI(params: {
     podPassword = null,
     featureId = null,
     planEdited,
+    isPrototype,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -644,6 +646,9 @@ export async function callStakworkAPI(params: {
   }
   if (planEdited !== undefined) {
     vars.planEdited = planEdited;
+  }
+  if (isPrototype) {
+    vars.isPrototype = true;
   }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;

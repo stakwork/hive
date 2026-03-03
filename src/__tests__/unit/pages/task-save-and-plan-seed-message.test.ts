@@ -9,6 +9,13 @@ function buildSeedMessage(branchName: string): string {
   return `A UI prototype has been built on branch \`${branchName}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`;
 }
 
+function buildFeatureChatPostBody(
+  seedMessage: string,
+  formattedHistory: unknown[]
+): Record<string, unknown> {
+  return { message: seedMessage, history: formattedHistory, isPrototype: true };
+}
+
 describe("handleSaveAndPlan — seed message", () => {
   it("instructs the AI to check out the branch first", () => {
     const msg = buildSeedMessage("prototype/my-feature");
@@ -42,5 +49,22 @@ describe("handleSaveAndPlan — seed message", () => {
     expect(buildSeedMessage(branch)).toBe(
       `A UI prototype has been built on branch \`${branch}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`
     );
+  });
+});
+
+describe("handleSaveAndPlan — POST body to feature chat API", () => {
+  it("includes isPrototype: true in the POST body sent to the feature chat API", () => {
+    const msg = buildSeedMessage("prototype/my-feature");
+    const body = buildFeatureChatPostBody(msg, []);
+    expect(body.isPrototype).toBe(true);
+  });
+
+  it("includes the seed message and history alongside isPrototype", () => {
+    const msg = buildSeedMessage("prototype/my-feature");
+    const history = [{ role: "user", content: "hello" }];
+    const body = buildFeatureChatPostBody(msg, history);
+    expect(body.message).toBe(msg);
+    expect(body.history).toEqual(history);
+    expect(body.isPrototype).toBe(true);
   });
 });
