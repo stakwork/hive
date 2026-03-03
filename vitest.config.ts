@@ -16,18 +16,25 @@ export default defineConfig({
         singleFork: true,
       },
     } : undefined,
+    // globalSetup runs in the main process BEFORE the fork starts.
+    // Used to push the DB schema so the Prisma engine is ready in the fork.
+    globalSetup: testSuite === "integration"
+      ? ["./src/__tests__/setup/global-setup.ts"]
+      : undefined,
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.{ts,tsx}"]
         : testSuite === "api"
         ? ["src/__tests__/api/**/*.test.ts"]
         : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
+    // dotenv/config must come first so DATABASE_URL is in process.env
+    // before integration.ts imports @/lib/db and reads it.
     setupFiles:
       testSuite === "integration"
-        ? ["./src/__tests__/setup/integration.ts", 'dotenv/config']
+        ? ['dotenv/config', "./src/__tests__/setup/integration.ts"]
         : testSuite === "api"
-        ? ["./src/__tests__/setup/unit.ts", 'dotenv/config'] // API tests can use unit test setup
-        : ["./src/__tests__/setup/unit.ts", 'dotenv/config'],
+        ? ['dotenv/config', "./src/__tests__/setup/unit.ts"]
+        : ['dotenv/config', "./src/__tests__/setup/unit.ts"],
   },
   resolve: {
     alias: {

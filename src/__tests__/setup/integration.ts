@@ -1,6 +1,5 @@
 import "./global";
 import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { execSync } from "child_process";
 import { db } from "@/lib/db";
 import { resetDatabase } from "../support/utilities/database";
 import { ensureTestEnv } from "./env";
@@ -23,7 +22,7 @@ if (
   );
 }
 
-// Set environment variables for integration tests using shared helper
+// Set environment variables before any modules read them.
 ensureTestEnv();
 process.env.DATABASE_URL = TEST_DATABASE_URL;
 
@@ -31,28 +30,19 @@ const initialFetch = globalThis.fetch;
 const fetchState: Array<typeof globalThis.fetch> = [];
 
 beforeAll(async () => {
-  // Ensure database URL is set for Prisma
-  if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-  }
+  // Re-assert DATABASE_URL so Prisma engine picks it up even if something
+  // reset it between module load and beforeAll execution.
+  process.env.DATABASE_URL = TEST_DATABASE_URL;
 
-  try {
-    execSync("npx prisma db push --accept-data-loss", {
-      stdio: "pipe",
-      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
-    });
-  } catch (error) {
-    console.error("Failed to setup test database schema:", error);
-    throw error;
-  }
-
-  // Explicitly connect the Prisma client so the engine is ready before
-  // any beforeEach hooks run (Prisma lazy-connects by default).
+  // Explicitly connect the Prisma client and verify with a ping query so the
+  // engine is fully live before any beforeEach hooks run.
+  // Prisma lazy-connects by default; without this, the first beforeEach in
+  // each test file fails with "Engine is not yet connected".
   await db.$connect();
-});
+  await db.$queryRaw`SELECT 1`;
+}, 30_000);
 
 // Reset database before each test to ensure clean state.
-// No afterEach needed - beforeEach provides full isolation.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
