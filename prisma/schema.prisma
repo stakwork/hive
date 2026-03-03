@@ -1076,6 +1076,7 @@ enum TaskSourceType {
   SYSTEM
   TASK_COORDINATOR
   USER_JOURNEY
+  PROTOTYPE
 }
 
 enum SourceControlOrgType {

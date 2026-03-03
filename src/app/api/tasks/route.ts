@@ -424,6 +424,7 @@ export async function POST(request: NextRequest) {
       runBuild,
       runTestSuite,
       autoMerge,
+      sourceType,
     } = body;
 
     // Validate required fields
@@ -537,6 +538,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate sourceType if provided
+    if (sourceType !== undefined && !Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
+      return NextResponse.json(
+        { error: `Invalid sourceType. Must be one of: ${Object.values(TaskSourceType).join(", ")}` },
+        { status: 400 },
+      );
+    }
+
     // Validate model if provided
     const taskModel = model && VALID_MODELS.includes(model) ? model : null;
 
@@ -557,6 +566,7 @@ export async function POST(request: NextRequest) {
         runBuild: runBuild ?? true,
         runTestSuite: runTestSuite ?? true,
         autoMerge: autoMerge ?? false, // Auto-merge PR when CI passes
+        ...(sourceType !== undefined && { sourceType: sourceType as TaskSourceType }),
         createdById: userId,
         updatedById: userId,
       },
