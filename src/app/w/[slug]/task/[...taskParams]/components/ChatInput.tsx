@@ -46,6 +46,8 @@ interface ChatInputProps {
   taskId?: string;
   onOpenBountyRequest?: () => void;
   stakworkProjectId?: string | null;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
 }
 
 export function ChatInput({
@@ -62,6 +64,8 @@ export function ChatInput({
   taskId,
   onOpenBountyRequest,
   stakworkProjectId,
+  onRetry,
+  isRetrying = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -377,7 +381,7 @@ export function ChatInput({
     // On desktop, Enter submits, Shift+Enter for new lines
     if (e.key === "Enter" && !e.shiftKey && !isMobile) {
       e.preventDefault();
-      handleSubmit(e);
+      if (!disabled) handleSubmit(e);
     }
   };
 
@@ -405,7 +409,17 @@ export function ChatInput({
             className="overflow-hidden"
           >
             <div className={cn("px-4 py-2 md:px-6")}>
-              <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+              {isTerminalState && onRetry ? (
+                <div className="flex items-center gap-2">
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
+                    {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+              )}
             </div>
           </motion.div>
         )}
@@ -536,7 +550,6 @@ export function ChatInput({
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
           }}
-          disabled={disabled}
           autoFocus
           rows={1}
           data-testid="chat-message-input"

@@ -32,7 +32,6 @@ export default function CapacityPage() {
 
   // Track if metrics have been fetched to prevent infinite loop
   const metricsFetched = useRef(false);
-  const metricsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleViewChange = (mode: '2d' | '3d') => {
     setViewMode(mode);
@@ -94,19 +93,7 @@ export default function CapacityPage() {
         setMetricsLoading(true);
         setMetricsError(false);
 
-        // Set 5-second timeout matching API timeout
-        metricsTimeoutRef.current = setTimeout(() => {
-          setMetricsError(true);
-          setMetricsLoading(false);
-        }, 5000);
-
         const response = await fetch(`/api/w/${slug}/pool/workspaces`);
-
-        // Clear timeout on response
-        if (metricsTimeoutRef.current) {
-          clearTimeout(metricsTimeoutRef.current);
-          metricsTimeoutRef.current = null;
-        }
 
         if (!response.ok) {
           console.warn("Failed to fetch real-time metrics");
@@ -116,22 +103,15 @@ export default function CapacityPage() {
 
         const result = await response.json();
 
-        // Check for warning about unavailable metrics
-        if (result.warning) {
+        // Only error if warning AND no workspace data was returned
+        if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
           setMetricsError(true);
-        }
-
-        if (result.success && result.data) {
+        } else if (result.success && result.data) {
           setVmData(result.data.workspaces || []);
         }
       } catch (err) {
         console.warn("Failed to load real-time metrics:", err);
         setMetricsError(true);
-        // Clear timeout on error
-        if (metricsTimeoutRef.current) {
-          clearTimeout(metricsTimeoutRef.current);
-          metricsTimeoutRef.current = null;
-        }
       } finally {
         setMetricsLoading(false);
         metricsFetched.current = true;
@@ -150,19 +130,7 @@ export default function CapacityPage() {
     setMetricsLoading(true);
     
     try {
-      // Set 5-second timeout matching API timeout
-      metricsTimeoutRef.current = setTimeout(() => {
-        setMetricsError(true);
-        setMetricsLoading(false);
-      }, 5000);
-
       const response = await fetch(`/api/w/${slug}/pool/workspaces`);
-
-      // Clear timeout on response
-      if (metricsTimeoutRef.current) {
-        clearTimeout(metricsTimeoutRef.current);
-        metricsTimeoutRef.current = null;
-      }
 
       if (!response.ok) {
         console.warn("Failed to fetch real-time metrics");
@@ -172,22 +140,15 @@ export default function CapacityPage() {
 
       const result = await response.json();
 
-      // Check for warning about unavailable metrics
-      if (result.warning) {
+      // Only error if warning AND no workspace data was returned
+      if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
         setMetricsError(true);
-      }
-
-      if (result.success && result.data) {
+      } else if (result.success && result.data) {
         setVmData(result.data.workspaces || []);
       }
     } catch (err) {
       console.warn("Failed to load real-time metrics:", err);
       setMetricsError(true);
-      // Clear timeout on error
-      if (metricsTimeoutRef.current) {
-        clearTimeout(metricsTimeoutRef.current);
-        metricsTimeoutRef.current = null;
-      }
     } finally {
       setMetricsLoading(false);
       metricsFetched.current = true;

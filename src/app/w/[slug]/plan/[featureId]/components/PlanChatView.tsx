@@ -97,6 +97,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const prevFeatureRef = useRef<FeatureDetail | null>(null);
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -469,6 +470,21 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId, updateFeature]
   );
 
+  const handleRetry = useCallback(async () => {
+    if (isRetrying || messages.length === 0) return;
+    const hasAssistantMessage = messages.some((m) => m.role === ChatRole.ASSISTANT);
+    const messageText = hasAssistantMessage
+      ? [...messages].reverse().find((m) => m.role === ChatRole.USER)?.message
+      : messages[0]?.message;
+    if (!messageText) return;
+    setIsRetrying(true);
+    try {
+      await sendMessage(messageText);
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [isRetrying, messages, sendMessage]);
+
   const chatAreaProps = {
     messages,
     onSend: sendMessage,
@@ -488,6 +504,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     sphinxInviteEnabled: sphinxReady,
     onTitleSave: handleTitleSave,
     stakworkProjectId: projectId,
+    onRetry: handleRetry,
+    isRetrying,
   };
 
   const artifactsPanelProps = {

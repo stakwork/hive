@@ -966,6 +966,46 @@ describe('ChatMessage', () => {
       });
     });
 
+    it('image enlargement DialogContent uses sm:max-w-[90vw] to override base sm:max-w-lg on desktop', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with image for dialog width test',
+        attachments: [
+          {
+            id: 'attachment-dialog-width',
+            path: 's3/path/to/wide.png',
+            filename: 'wide.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      const { container } = render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Click to open the dialog
+      const imageContainer = screen.getByAltText('wide.png').parentElement;
+      fireEvent.click(imageContainer!);
+
+      // Find the DialogContent element — it renders into a portal outside container
+      const dialogContent = document.body.querySelector('[role="dialog"]');
+      expect(dialogContent).not.toBeNull();
+
+      const className = dialogContent!.className;
+      // Must contain the desktop-width override
+      expect(className).toContain('sm:max-w-[90vw]');
+      // Must NOT contain the unoverridden base sm:max-w-lg
+      expect(className).not.toContain('sm:max-w-lg');
+    });
+
     it('does not trigger enlarge dialog when clicking failed image', () => {
       const message = createTestMessage({
         role: ChatRole.USER,

@@ -173,7 +173,7 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -249,6 +249,7 @@ export async function POST(
       const repoName = repos[0]?.name || null;
 
       const dbHistory = await fetchFeatureChatHistory(featureId, chatMessage.id);
+      const isFirstMessage = dbHistory.length === 0;
       const mergedHistory = [...dbHistory, ...(bodyHistory ?? [])];
 
       // Build feature context using the auto-created Phase 1
@@ -295,6 +296,7 @@ export async function POST(
         featureId,
         featureContext,
         planEdited,
+        isPrototype: isPrototype && isFirstMessage,
       });
 
       // Set workflow status to IN_PROGRESS as soon as Stakwork is called

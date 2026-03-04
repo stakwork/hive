@@ -260,7 +260,66 @@ describe("CapacityPage - Timeout Handling", () => {
     }, { timeout: 2000 });
   });
 
-  it("should set metricsError when API returns warning", async () => {
+  it("should not show error banner when warning is returned with valid VM data", async () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { poolState: "COMPLETE" },
+      slug: "test-workspace",
+    });
+    mockUsePoolStatus.mockReturnValue({
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            workspaces: [
+              {
+                id: "vm-1",
+                subdomain: "pod-1",
+                resource_usage: { available: false },
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          warning: "Real-time metrics partially unavailable",
+          data: {
+            workspaces: [
+              {
+                id: "vm-1",
+                subdomain: "pod-1",
+                resource_usage: {
+                  available: true,
+                  usage: { cpu: "500m", memory: "512Mi" },
+                  requests: { cpu: "1000m", memory: "1Gi" },
+                },
+              },
+            ],
+          },
+        }),
+      });
+
+    render(<CapacityPage />);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    }, { timeout: 2000 });
+
+    // Warning + populated workspaces → NO error banner
+    await waitFor(() => {
+      expect(screen.queryByText("Metrics unavailable")).not.toBeInTheDocument();
+    }, { timeout: 2000 });
+  });
+
+  it("should show error banner when warning is returned with empty workspaces", async () => {
     mockUseWorkspace.mockReturnValue({
       workspace: { poolState: "COMPLETE" },
       slug: "test-workspace",
@@ -291,15 +350,7 @@ describe("CapacityPage - Timeout Handling", () => {
         json: async () => ({
           success: true,
           warning: "Real-time metrics unavailable",
-          data: {
-            workspaces: [
-              {
-                id: "vm-1",
-                subdomain: "pod-1",
-                resource_usage: { available: false },
-              },
-            ],
-          },
+          data: { workspaces: [] },
         }),
       });
 
@@ -309,14 +360,13 @@ describe("CapacityPage - Timeout Handling", () => {
       expect(global.fetch).toHaveBeenCalledTimes(2);
     }, { timeout: 2000 });
 
-    // Wait for error state to be set - use getAllByText since text appears in VM cards
     await waitFor(() => {
       const elements = screen.getAllByText("Metrics unavailable");
       expect(elements.length).toBeGreaterThan(0);
     }, { timeout: 2000 });
   });
 
-  it("should clear timeout on successful response", async () => {
+  it("should not show error banner on clean success", async () => {
     mockUseWorkspace.mockReturnValue({
       workspace: { poolState: "COMPLETE" },
       slug: "test-workspace",

@@ -325,12 +325,8 @@ describe("ChatInput - Task Mode", () => {
   });
 
   describe("Disabled States", () => {
-    test("disables textarea when disabled prop is true", () => {
-      render(<ChatInput {...defaultProps} disabled={true} />);
-      
-      const textarea = screen.getByTestId("chat-message-input");
-      expect(textarea).toBeDisabled();
-    });
+    // Note: Textarea is now always enabled to allow typing while blocking send
+    // See "Textarea typing while blocking send" test suite for new behavior
 
     test("disables send button when disabled prop is true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
@@ -496,7 +492,7 @@ describe("ChatInput - Task Mode", () => {
       const buttons = screen.getAllByRole("button");
       const imageButton = buttons.find(btn => 
         btn.className.includes("rounded-full") && 
-        btn.type === "button"
+        (btn as HTMLButtonElement).type === "button"
       );
       
       expect(imageButton).toBeTruthy();
@@ -694,6 +690,240 @@ describe("ChatInput - Task Mode", () => {
       
       // Should populate with just the new message (ref was cleared on send)
       expect(textarea.value).toBe("New message");
+    });
+  });
+
+  describe("Retry button", () => {
+    test("renders Retry button when isTerminalState and onRetry is provided (HALTED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (FAILED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (ERROR)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("does not render Retry button when onRetry is not provided", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("does not render Retry button when workflow is IN_PROGRESS even if onRetry provided", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} onRetry={onRetry} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("Retry button is disabled and shows spinner when isRetrying is true", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={true} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).toBeDisabled();
+    });
+
+    test("Retry button is enabled when isRetrying is false", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={false} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).not.toBeDisabled();
+    });
+
+    test("clicking Retry button calls onRetry", async () => {
+      const user = userEvent.setup();
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      await user.click(screen.getByText("Retry"));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    test("WorkflowStatusBadge is still rendered alongside Retry button", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+  });
+
+  describe("Textarea typing while blocking send", () => {
+    beforeEach(() => {
+      // Reset speech recognition state between tests
+      mockSpeechRecognitionState.transcript = "";
+      mockSpeechRecognitionState.isListening = false;
+    });
+
+    test("textarea remains enabled when disabled=true", () => {
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should not have disabled attribute
+      expect(textarea).not.toBeDisabled();
+    });
+
+    test("allows typing in textarea when disabled=true", async () => {
+      const user = userEvent.setup();
+      
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Clear any existing content
+      await user.clear(textarea);
+      
+      // Should be able to type
+      await user.type(textarea, "Queued message");
+      
+      expect(textarea.value).toBe("Queued message");
+    });
+
+    test("Enter key does not submit when disabled=true", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Clear any existing content
+      await user.clear(textarea);
+      
+      // Type message
+      await user.type(textarea, "Test message");
+      
+      // Press Enter (without Shift)
+      await user.keyboard("{Enter}");
+      
+      // onSend should NOT be called
+      expect(onSend).not.toHaveBeenCalled();
+      
+      // Message should still be in textarea
+      expect(textarea.value).toBe("Test message");
+    });
+
+    test("Enter key submits when disabled=false", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Clear any existing content
+      await user.clear(textarea);
+      
+      // Type message
+      await user.type(textarea, "Test message");
+      
+      // Press Enter
+      await user.keyboard("{Enter}");
+      
+      // onSend should be called
+      expect(onSend).toHaveBeenCalledWith("Test message", undefined);
+    });
+
+    test("handleSubmit early returns when disabled=true", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      const sendButton = screen.getByTestId("chat-message-submit");
+      
+      // Clear and type message
+      await user.clear(textarea);
+      await user.type(textarea, "Test message");
+      
+      // Try to click send button (it should be disabled, but test the guard)
+      expect(sendButton).toBeDisabled();
+      
+      // Verify onSend is not called
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    test("Send button remains disabled when disabled=true", async () => {
+      const user = userEvent.setup();
+      
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      const sendButton = screen.getByTestId("chat-message-submit");
+      
+      // Clear and type some text
+      await user.clear(textarea);
+      await user.type(textarea, "Test message");
+      
+      // Send button should still be disabled
+      expect(sendButton).toBeDisabled();
+    });
+
+    test("typed content is preserved when disabled changes from true to false", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      const { rerender } = render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Clear and type while disabled
+      await user.clear(textarea);
+      await user.type(textarea, "Queued message");
+      expect(textarea.value).toBe("Queued message");
+      
+      // Re-render with disabled=false
+      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      
+      // Content should be preserved
+      expect(textarea.value).toBe("Queued message");
+      
+      // Now should be able to send
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("Queued message", undefined);
+    });
+
+    test("Shift+Enter adds newline even when disabled=true", async () => {
+      const user = userEvent.setup();
+      
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Type message and press Shift+Enter
+      await user.type(textarea, "Line 1{Shift>}{Enter}{/Shift}Line 2");
+      
+      // Should contain newline
+      expect(textarea.value).toContain("\n");
+    });
+
+    test("mic button remains disabled when disabled=true", () => {
+      mockSpeechRecognitionState.isSupported = true;
+      
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      // Mic button is wrapped in Tooltip - find by its icon content
+      const buttons = screen.getAllByRole("button");
+      const micButton = buttons.find(btn => btn.querySelector("svg.lucide-mic"));
+      
+      expect(micButton).toBeDisabled();
+    });
+
+    test("image upload button remains disabled when disabled=true", () => {
+      render(<ChatInput {...defaultProps} disabled={true} taskMode="task" />);
+      
+      // Image button is wrapped in Tooltip - find by its icon content
+      const buttons = screen.getAllByRole("button");
+      const imageButton = buttons.find(btn => btn.querySelector("svg.lucide-image"));
+      
+      expect(imageButton).toBeDisabled();
     });
   });
 });
