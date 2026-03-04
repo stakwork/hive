@@ -82,7 +82,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No repository found for this task" }, { status: 400 });
     }
 
-    // Generate AI commit message + branch name with prototype prefix
+    // Generate AI commit message + branch name
     const protocol = request.headers.get("x-forwarded-proto") || "http";
     const host = request.headers.get("host");
     const baseUrl = host ? `${protocol}://${host}` : undefined;
@@ -91,7 +91,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       taskId,
       baseUrl,
       undefined,
-      "prototype",
     );
 
     // Get pod details (password + port mappings)
