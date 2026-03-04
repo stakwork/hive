@@ -116,9 +116,10 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         json: async () => ({
           success: true,
           data: {
-            workflows: [
-              { id: 100, name: "Owner Workflow" },
-            ],
+            results: [{ id: 100, name: "Owner Workflow" }],
+            period_days: 30,
+            limit: 25,
+            type: "all",
           },
         }),
       } as Response);
@@ -148,7 +149,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { workflows: [{ id: 200, name: "Member Workflow" }] },
+          data: { results: [{ id: 200, name: "Member Workflow" }], period_days: 30, limit: 25, type: "all" },
         }),
       } as Response);
 
@@ -202,9 +203,9 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         user: { id: testUser.id, email: testUser.email },
       } as any);
 
-      const stakworkWorkflows = [
-        { id: 501, name: "Prod Workflow 1" },
-        { id: 502, name: "Prod Workflow 2" },
+      const stakworkResults = [
+        { id: 501, name: "Prod Workflow 1", run_count: 42 },
+        { id: 502, name: "Prod Workflow 2", run_count: 7 },
       ];
 
       mockFetch.mockResolvedValueOnce({
@@ -212,7 +213,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { workflows: stakworkWorkflows },
+          data: { results: stakworkResults, period_days: 30, limit: 25, type: "all" },
         }),
       } as Response);
 
@@ -220,7 +221,15 @@ describe("GET /api/workflow/recent Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       expect(data.success).toBe(true);
-      expect(data.data.workflows).toEqual(stakworkWorkflows);
+      expect(data.data.workflows).toEqual([
+        { id: 501, name: "Prod Workflow 1" },
+        { id: 502, name: "Prod Workflow 2" },
+      ]);
+      // Ensure run_count and other extra fields are stripped
+      for (const workflow of data.data.workflows) {
+        expect(workflow).not.toHaveProperty("run_count");
+        expect(Object.keys(workflow)).toEqual(["id", "name"]);
+      }
     });
 
     test("calls Stakwork API with correct URL and Authorization header", async () => {
@@ -233,7 +242,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { workflows: [] },
+          data: { results: [], period_days: 30, limit: 25, type: "all" },
         }),
       } as Response);
 
