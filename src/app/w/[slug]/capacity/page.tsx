@@ -18,7 +18,7 @@ import { VMData } from "@/types/pool-manager";
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
   const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
+  const { poolStatus, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [basicDataLoading, setBasicDataLoading] = useState(true);
@@ -193,9 +193,15 @@ export default function CapacityPage() {
     );
   }
 
+  const queuedCountActions = poolStatus?.queuedCount ? (
+    <span className="text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span> queued
+    </span>
+  ) : undefined;
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Capacity" />
+      <PageHeader title="Capacity" actions={queuedCountActions} />
 
       {/* Loading skeleton while fetching basic data */}
       {basicDataLoading && (
