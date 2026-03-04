@@ -233,14 +233,7 @@ function createServer(): McpServer {
           ),
       },
     },
-    async (
-      {
-        featureId,
-        message,
-        user,
-      }: { featureId: string; message: string; user?: string },
-      extra,
-    ) => {
+    async ({ featureId, message, user }: { featureId: string; message: string; user?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "send_message", user);
       if (result.error) return result.error;
