@@ -1,5 +1,6 @@
 import { listConcepts } from "@/lib/ai/askTools";
 import { db } from "@/lib/db";
+import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 
 export interface SwarmCredentials {
@@ -284,6 +285,43 @@ export async function mcpReadFeature(
   } catch (error) {
     console.error("Error reading feature:", error);
     return mcpError("Error: Could not read feature");
+  }
+}
+
+/**
+ * Create a new feature with a brief and optional requirements.
+ */
+export async function mcpCreateFeature(
+  auth: WorkspaceAuth,
+  title: string,
+  brief: string,
+  requirements?: string,
+): Promise<McpToolResult> {
+  try {
+    const feature = await createFeature(auth.userId, {
+      title,
+      workspaceId: auth.workspaceId,
+      brief,
+      requirements: requirements || undefined,
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            { id: feature.id, title: feature.title, status: feature.status },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  } catch (error) {
+    console.error("Error creating feature:", error);
+    const msg =
+      error instanceof Error ? error.message : "Could not create feature";
+    return mcpError(`Error: ${msg}`);
   }
 }
 

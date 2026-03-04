@@ -11,6 +11,7 @@ import {
   mcpLearnConcept,
   mcpListFeatures,
   mcpReadFeature,
+  mcpCreateFeature,
   mcpSendMessage,
   resolveWorkspaceUser,
   type SwarmCredentials,
@@ -24,6 +25,7 @@ const AVAILABLE_TOOLS = [
   "learn_concept",
   "list_features",
   "read_feature",
+  "create_feature",
   "send_message",
 ] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
@@ -209,6 +211,43 @@ function createServer(): McpServer {
       const result = await getWorkspaceAuth(authExtra, "read_feature");
       if (result.error) return result.error;
       return mcpReadFeature(result.auth!, featureId);
+    },
+  );
+
+  server.registerTool(
+    "create_feature",
+    {
+      title: "Create Feature",
+      description:
+        "Create a new feature in the workspace with a brief description and optional requirements.",
+      inputSchema: {
+        title: z.string().describe("The title of the feature"),
+        brief: z.string().describe("A brief description of the feature"),
+        requirements: z
+          .string()
+          .optional()
+          .describe("Optional detailed requirements for the feature"),
+        user: z
+          .string()
+          .optional()
+          .describe(
+            "Username of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        title,
+        brief,
+        requirements,
+        user,
+      }: { title: string; brief: string; requirements?: string; user?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "create_feature", user);
+      if (result.error) return result.error;
+      return mcpCreateFeature(result.auth!, title, brief, requirements);
     },
   );
 
