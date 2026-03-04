@@ -21,7 +21,7 @@ interface WorkflowArtifactPanelProps {
 export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork">("editor");
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "childWorkflows">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -158,6 +158,23 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     // Check if we have changes to show
     const hasChanges = !!(originalWorkflowJson && workflowJson);
 
+    // Derive child workflows from loop steps — handle skill as string or object
+    const transitions = (parsedWorkflowData as any)?.transitions ?? {};
+    const childWorkflows = Object.values(transitions).filter((t: any) => {
+      const skillType = typeof t.skill === "string" ? t.skill : t.skill?.type;
+      return skillType === "loop" && t.step?.attributes?.workflow_id;
+    });
+    const hasChildWorkflows = childWorkflows.length > 0;
+
+    // Static lookup so Tailwind sees all class names at build time
+    const TAB_GRID_COLS: Record<string, string> = {
+      "3": "grid-cols-3",
+      "4": "grid-cols-4",
+      "5": "grid-cols-5",
+    };
+    const colCount = 3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
+
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         {projectId && (
@@ -172,14 +189,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
         )}
         <Tabs
           value={activeDisplayTab}
-          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "childWorkflows")}
           className="flex flex-col h-full"
         >
-          <TabsList className={`grid w-full flex-shrink-0 ${hasChanges ? "grid-cols-4" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
             {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
+            {hasChildWorkflows && <TabsTrigger value="childWorkflows">Child Workflows</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
@@ -253,6 +271,35 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
               />
             )}
           </TabsContent>
+
+          {hasChildWorkflows && (
+            <TabsContent value="childWorkflows" className="flex-1 overflow-auto mt-0 p-4">
+              <div className="flex flex-col gap-2">
+                {childWorkflows.map((t: any) => {
+                  const childWorkflowId = t.step?.attributes?.workflow_id;
+                  return (
+                    <div
+                      key={t.unique_id ?? t.id}
+                      className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">{t.display_name ?? t.name}</span>
+                        <span className="text-xs text-muted-foreground">ID: {childWorkflowId}</span>
+                      </div>
+                      <a
+                        href={`/workflow/${childWorkflowId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Open ↗
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     );
