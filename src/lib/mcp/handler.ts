@@ -1,9 +1,6 @@
-import {
-  createMcpHandler,
-  experimental_withMcpAuth as withMcpAuth,
-} from "mcp-handler";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import { validateApiKey } from "@/lib/api-keys";
@@ -26,7 +23,7 @@ interface McpAuthExtra {
   apiKeyId: string;
   swarmUrl?: string;
   swarmApiKey?: string;
-  toolsFilter?: string[]; // Serialized as array for authInfo
+  toolsFilter?: string[];
 }
 
 // Parse tools filter from URL
@@ -85,63 +82,51 @@ function getCredentialsFromAuth(
   };
 }
 
-const handler = createMcpHandler(
-  (server: McpServer) => {
-    // Register list_concepts tool
-    server.registerTool(
-      "list_concepts",
-      {
-        title: "List Concepts",
-        description:
-          "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
-        inputSchema: {},
-      },
-      async (_args, extra) => {
-        const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-        const result = getCredentialsFromAuth(authExtra, "list_concepts");
-        if (result.error) return result.error;
-        return mcpListConcepts(result.credentials);
-      },
-    );
+// Create a fresh McpServer with tools registered
+function createServer(): McpServer {
+  const server = new McpServer(
+    { name: "hive", version: "1.0.0" },
+    { capabilities: { tools: {} } },
+  );
 
-    // Register learn_concept tool
-    server.registerTool(
-      "learn_concept",
-      {
-        title: "Learn Concept",
-        description:
-          "Fetch documentation for a specific concept by ID. Returns the documentation content for the concept.",
-        inputSchema: {
-          conceptId: z
-            .string()
-            .describe("The ID of the concept to retrieve documentation for"),
-        },
-      },
-      async ({ conceptId }: { conceptId: string }, extra) => {
-        const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-        const result = getCredentialsFromAuth(authExtra, "learn_concept");
-        if (result.error) return result.error;
-        return mcpLearnConcept(result.credentials, conceptId);
-      },
-    );
-  },
-  {
-    capabilities: {
-      tools: {},
+  server.registerTool(
+    "list_concepts",
+    {
+      title: "List Concepts",
+      description:
+        "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
+      inputSchema: {},
     },
-    serverInfo: {
-      name: "hive",
-      version: "1.0.0",
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "list_concepts");
+      if (result.error) return result.error;
+      return mcpListConcepts(result.credentials);
     },
-  },
-  {
-    streamableHttpEndpoint: "/mcp",
-    sseEndpoint: "/mcp/sse",
-    sseMessageEndpoint: "/mcp/message",
-    maxDuration: 60,
-    verboseLogs: process.env.NODE_ENV === "development",
-  },
-);
+  );
+
+  server.registerTool(
+    "learn_concept",
+    {
+      title: "Learn Concept",
+      description:
+        "Fetch documentation for a specific concept by ID. Returns the documentation content for the concept.",
+      inputSchema: {
+        conceptId: z
+          .string()
+          .describe("The ID of the concept to retrieve documentation for"),
+      },
+    },
+    async ({ conceptId }: { conceptId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "learn_concept");
+      if (result.error) return result.error;
+      return mcpLearnConcept(result.credentials, conceptId);
+    },
+  );
+
+  return server;
+}
 
 // Verify a short-lived JWT (signed by generate-link) and resolve workspace
 async function verifyJwt(
@@ -185,7 +170,7 @@ async function verifyJwt(
       extra: {
         workspaceId: workspace.id,
         workspaceSlug: workspace.slug,
-        apiKeyId: "jwt", // no persistent key record for JWTs
+        apiKeyId: "jwt",
         swarmUrl: swarmAccess.success ? swarmAccess.data.swarmUrl : undefined,
         swarmApiKey: swarmAccess.success
           ? swarmAccess.data.swarmApiKey
@@ -194,21 +179,18 @@ async function verifyJwt(
       } as McpAuthExtra,
     };
   } catch {
-    // expired / invalid signature / malformed
     return undefined;
   }
 }
 
-const verifyToken = async (
-  req: Request,
-  bearerToken?: string,
-): Promise<AuthInfo | undefined> => {
+async function verifyToken(req: Request): Promise<AuthInfo | undefined> {
   const url = new URL(req.url);
 
-  console.log("[MCP] verifyToken called", {
-    url: req.url,
-    bearerToken: !!bearerToken,
-  });
+  // Extract bearer token from Authorization header
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : undefined;
 
   const token =
     url.searchParams.get("apiKey") ||
@@ -261,8 +243,39 @@ const verifyToken = async (
 
   // Fall back to short-lived JWT
   return verifyJwt(token, url);
-};
+}
 
-export const authHandler = withMcpAuth(handler, verifyToken, {
-  required: true,
-});
+const UNAUTHORIZED = () =>
+  new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+
+/**
+ * Handle an MCP request using the SDK's web-standard transport directly.
+ * Each invocation gets a fresh stateless transport — no leaked state, no
+ * monkey-patched globals, no fake Node.js HTTP objects.
+ */
+export async function handleMcpRequest(req: Request): Promise<Response> {
+  // Authenticate
+  const authInfo = await verifyToken(req);
+  if (!authInfo) return UNAUTHORIZED();
+
+  // Fresh server + stateless transport per request
+  const server = createServer();
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless
+  });
+
+  await server.connect(transport);
+
+  try {
+    return await transport.handleRequest(req, { authInfo });
+  } catch (error) {
+    console.error("[MCP] Transport error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
