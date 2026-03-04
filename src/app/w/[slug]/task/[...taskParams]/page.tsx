@@ -417,6 +417,17 @@ export default function TaskChatPage() {
     }
   }, [taskIdFromUrl, loadTaskMessages]);
 
+  // Re-subscribe to WebSocket on tab restore by reloading messages (which calls setProjectId)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentTaskId) {
+        loadTaskMessages(currentTaskId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentTaskId, loadTaskMessages]);
+
   // Handle project selection in project_debugger mode
   const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
     if (isLoading) return;

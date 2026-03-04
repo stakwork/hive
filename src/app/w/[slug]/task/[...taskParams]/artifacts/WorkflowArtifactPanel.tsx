@@ -146,11 +146,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   }, [workflowJson]);
 
   // Extract child workflows from loop-type steps in parsed transitions
+  // Handle skill as either a plain string ("loop") or an object ({ type: "loop" })
   const childWorkflows = useMemo(() => {
     if (!parsedWorkflowData?.transitions) return [];
     const transitions = Object.values(parsedWorkflowData.transitions) as WorkflowTransition[];
     return transitions
-      .filter((t) => t.skill?.type === "loop" && t.step?.attributes?.workflow_id)
+      .filter((t) => {
+        const skillType = typeof t.skill === "string" ? t.skill : t.skill?.type;
+        return skillType === "loop" && t.step?.attributes?.workflow_id;
+      })
       .map((t) => ({
         id: String(t.step.attributes.workflow_id),
         name: (t.step.attributes.workflow_name as string) || `Workflow ${t.step.attributes.workflow_id}`,
@@ -186,6 +190,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       );
     }
 
+    // Static lookup so Tailwind sees all class names at build time
+    const TAB_GRID_COLS: Record<string, string> = {
+      "3": "grid-cols-3",
+      "4": "grid-cols-4",
+      "5": "grid-cols-5",
+    };
+    const colCount = 3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
+
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         {projectId && (
@@ -203,7 +216,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
           onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "children")}
           className="flex flex-col h-full"
         >
-          <TabsList className={`grid w-full flex-shrink-0 grid-cols-${3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0)}`}>
+          <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
             {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
@@ -316,6 +329,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
               />
             )}
           </TabsContent>
+
         </Tabs>
       </div>
     );
