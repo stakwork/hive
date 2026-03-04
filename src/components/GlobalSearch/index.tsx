@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
@@ -10,13 +10,15 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from "@/components/ui/command";
 import {
   Circle,
   CheckCircle,
   Loader2,
   AlertCircle,
-  XCircle
+  XCircle,
+  PlusCircle,
 } from "lucide-react";
 import type { SearchResponse, SearchResult } from "@/types/search";
 import type { TaskStatus, FeatureStatus, PhaseStatus } from "@prisma/client";
@@ -176,6 +178,19 @@ export function GlobalSearch() {
         onValueChange={setQuery}
       />
       <CommandList>
+        <CommandGroup heading="Quick Create" forceMount>
+          <CommandItem
+            value="create-new-feature"
+            onSelect={() => handleSelect(`/w/${workspace.slug}/plan/new`)}
+            className="flex items-center gap-3 px-3 py-2 cursor-pointer"
+            forceMount
+          >
+            <PlusCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="font-medium">New Feature</span>
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+
         {loading && (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -183,7 +198,7 @@ export function GlobalSearch() {
         )}
 
         {showEmpty && (
-          <CommandEmpty>No results found for "{query}"</CommandEmpty>
+          <CommandEmpty>No results found for &quot;{query}&quot;</CommandEmpty>
         )}
 
         {!loading && hasResults && (
