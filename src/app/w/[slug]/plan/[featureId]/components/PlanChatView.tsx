@@ -209,7 +209,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     if (feature?.workflowStatus) {
       setWorkflowStatus(feature.workflowStatus);
     }
-  }, [feature?.workflowStatus]);
+    if (feature?.stakworkProjectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  }, [feature?.workflowStatus, feature?.stakworkProjectId]);
 
   // Load existing messages - promoted to useCallback for visibility refetch
   const loadMessages = useCallback(async () => {
