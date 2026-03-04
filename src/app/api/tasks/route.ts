@@ -425,6 +425,7 @@ export async function POST(request: NextRequest) {
       runTestSuite,
       autoMerge,
       sourceType,
+      branch,
     } = body;
 
     // Validate required fields
@@ -566,6 +567,7 @@ export async function POST(request: NextRequest) {
         runBuild: runBuild ?? true,
         runTestSuite: runTestSuite ?? true,
         autoMerge: autoMerge ?? false, // Auto-merge PR when CI passes
+        branch: branch || null, // Selected branch for the task workflow
         ...(sourceType !== undefined && { sourceType: sourceType as TaskSourceType }),
         createdById: userId,
         updatedById: userId,
