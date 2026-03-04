@@ -139,10 +139,7 @@ export async function sendFeatureChatMessage({
   }
 
   // Prevent sending while the planning workflow is already running
-  if (
-    feature.workflowStatus === "IN_PROGRESS" ||
-    feature.workflowStatus === "PENDING"
-  ) {
+  if (feature.workflowStatus === "IN_PROGRESS") {
     throw new Error("A planning workflow is already running for this feature");
   }
 
