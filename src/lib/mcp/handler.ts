@@ -9,11 +9,23 @@ import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import {
   mcpListConcepts,
   mcpLearnConcept,
+  mcpListFeatures,
+  mcpReadFeature,
+  mcpSendMessage,
+  resolveWorkspaceUser,
   type SwarmCredentials,
+  type WorkspaceAuth,
+  type McpToolResult,
 } from "@/lib/ai/mcpTools";
 
 // Available tools registry
-const AVAILABLE_TOOLS = ["list_concepts", "learn_concept"] as const;
+const AVAILABLE_TOOLS = [
+  "list_concepts",
+  "learn_concept",
+  "list_features",
+  "read_feature",
+  "send_message",
+] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
 
 interface McpAuthExtra {
@@ -82,6 +94,43 @@ function getCredentialsFromAuth(
   };
 }
 
+/**
+ * Extract workspace auth for DB-direct tools (no swarm required).
+ * Resolves the acting user via fuzzy name match, falling back to workspace owner.
+ */
+async function getWorkspaceAuth(
+  extra: McpAuthExtra | undefined,
+  toolName: ToolName,
+  userHint?: string,
+): Promise<{ error?: McpToolResult; auth?: WorkspaceAuth }> {
+  if (!extra) {
+    return {
+      error: {
+        content: [{ type: "text" as const, text: "Error: Not authenticated" }],
+        isError: true,
+      },
+    };
+  }
+
+  if (extra.toolsFilter && !extra.toolsFilter.includes(toolName)) {
+    return {
+      error: {
+        content: [{ type: "text" as const, text: "Error: Tool not available" }],
+        isError: true,
+      },
+    };
+  }
+
+  const userId = await resolveWorkspaceUser(extra.workspaceId, userHint);
+
+  return {
+    auth: {
+      workspaceId: extra.workspaceId,
+      userId,
+    },
+  };
+}
+
 // Create a fresh McpServer with tools registered
 function createServer(): McpServer {
   const server = new McpServer(
@@ -122,6 +171,80 @@ function createServer(): McpServer {
       const result = getCredentialsFromAuth(authExtra, "learn_concept");
       if (result.error) return result.error;
       return mcpLearnConcept(result.credentials, conceptId);
+    },
+  );
+
+  // ----- Feature tools (DB-direct) -----
+
+  server.registerTool(
+    "list_features",
+    {
+      title: "List Features",
+      description:
+        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, and last-updated timestamps. Maximum 40 results.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "list_features");
+      if (result.error) return result.error;
+      return mcpListFeatures(result.auth!);
+    },
+  );
+
+  server.registerTool(
+    "read_feature",
+    {
+      title: "Read Feature",
+      description:
+        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe("The ID of the feature to read"),
+      },
+    },
+    async ({ featureId }: { featureId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "read_feature");
+      if (result.error) return result.error;
+      return mcpReadFeature(result.auth!, featureId);
+    },
+  );
+
+  server.registerTool(
+    "send_message",
+    {
+      title: "Send Message",
+      description:
+        "Send a message in a feature's planning chat. This triggers the AI planning workflow, which will update the feature's plan asynchronously.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe("The ID of the feature to send a message to"),
+        message: z
+          .string()
+          .describe("The message text to send"),
+        user: z
+          .string()
+          .optional()
+          .describe(
+            "Username of the sender (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        featureId,
+        message,
+        user,
+      }: { featureId: string; message: string; user?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "send_message", user);
+      if (result.error) return result.error;
+      return mcpSendMessage(result.auth!, featureId, message);
     },
   );
 
