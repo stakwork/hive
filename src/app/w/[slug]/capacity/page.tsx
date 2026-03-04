@@ -195,7 +195,7 @@ export default function CapacityPage() {
 
   const queuedCountActions = poolStatus?.queuedCount ? (
     <span className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span> queued
+      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span> {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
     </span>
   ) : undefined;
 

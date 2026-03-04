@@ -271,7 +271,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         toast.info("All tasks already assigned");
       } else {
         toast.info("Tasks queued for coordinator", {
-          description: "Processing begins when a machine is available",
+          description: "Processing begins when a pod is available",
         });
         if (workspaceSlug) {
           const statusResponse = await fetch(`/api/w/${workspaceSlug}/pool/status`);
@@ -357,7 +357,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
       {queueStats !== null && queueStats.queuedCount > 0 && (
         <p className="text-xs text-muted-foreground text-center">
-          {queueStats.queuedCount} queued · {queueStats.unusedVms} machine{queueStats.unusedVms !== 1 ? "s" : ""} available
+          {queueStats.queuedCount} {queueStats.queuedCount === 1 ? "task" : "tasks"} in workspace queue · {queueStats.unusedVms} pod{queueStats.unusedVms !== 1 ? "s" : ""} available
         </p>
       )}
 
