@@ -212,7 +212,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     if (feature?.workflowStatus) {
       setWorkflowStatus(feature.workflowStatus);
     }
-  }, [feature?.workflowStatus]);
+    if (feature?.stakworkProjectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  }, [feature?.workflowStatus, feature?.stakworkProjectId]);
 
   // Hydrate projectId on initial load (via useDetailResource) so WebSocket can re-subscribe after refresh
   useEffect(() => {
