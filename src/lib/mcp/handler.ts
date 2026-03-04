@@ -135,7 +135,9 @@ const handler = createMcpHandler(
     },
   },
   {
-    basePath: "/api/mcp",
+    streamableHttpEndpoint: "/mcp",
+    sseEndpoint: "/mcp/sse",
+    sseMessageEndpoint: "/mcp/message",
     maxDuration: 60,
     verboseLogs: process.env.NODE_ENV === "development",
   },
