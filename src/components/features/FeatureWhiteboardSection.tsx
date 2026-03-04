@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -46,6 +47,7 @@ interface WhiteboardData {
   name: string;
   elements: unknown[];
   appState: Record<string, unknown>;
+  files: Record<string, unknown>;
   version: number;
 }
 
@@ -77,6 +79,7 @@ export function FeatureWhiteboardSection({
   const versionRef = useRef<number>(0);
   const parsedDiagramRef = useRef<ParsedDiagram | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const resolvedFilesRef = useRef<BinaryFiles>({});
 
   // Collaboration hook
   const {
@@ -117,6 +120,17 @@ export function FeatureWhiteboardSection({
         versionRef.current = data.data.version || 0;
         if (Array.isArray(data.data.elements) && data.data.elements.length > 0) {
           parsedDiagramRef.current = extractParsedDiagram(data.data.elements);
+        }
+
+        // Resolve stored S3 image references to presigned URLs
+        const files = (data.data.files as Record<string, unknown>) || {};
+        if (Object.keys(files).length > 0) {
+          const resolved = await resolveFilesForDisplay(data.data.id, files);
+          resolvedFilesRef.current = resolved;
+          // Inject into canvas if API already mounted
+          if (excalidrawAPIRef.current && Object.keys(resolved).length > 0) {
+            excalidrawAPIRef.current.addFiles(Object.values(resolved));
+          }
         }
       } else {
         setWhiteboard(null);
@@ -230,13 +244,16 @@ export function FeatureWhiteboardSection({
       setSaving(true);
       setSaved(false);
       try {
+        // Upload any new images to S3 before saving; store only s3Key refs in DB
+        const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files,
+          files: cleanedFiles,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
         };
@@ -776,10 +793,19 @@ export function FeatureWhiteboardSection({
             </div>
           )}
           <Excalidraw
-            excalidrawAPI={(api: ExcalidrawImperativeAPI) => { setExcalidrawAPI(api); excalidrawAPIRef.current = api; }}
+            excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
+              setExcalidrawAPI(api);
+              excalidrawAPIRef.current = api;
+              // Inject any already-resolved images when the API mounts
+              const resolved = resolvedFilesRef.current;
+              if (Object.keys(resolved).length > 0) {
+                api.addFiles(Object.values(resolved));
+              }
+            }}
             initialData={{
               elements: (whiteboard.elements || []) as readonly ExcalidrawElement[],
               appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
+              files: resolvedFilesRef.current,
             }}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
