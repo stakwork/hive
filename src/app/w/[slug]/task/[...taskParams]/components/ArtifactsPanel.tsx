@@ -19,6 +19,10 @@ import type { FeatureDetail } from "@/types/roadmap";
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
 
+// Tabs that should auto-switch when they first become available,
+// overriding whatever tab is currently active (e.g. ephemeral WORKFLOW).
+const PRIORITY_TABS: ArtifactType[] = ["IDE"];
+
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
   workspaceId?: string;
@@ -62,6 +66,15 @@ export function ArtifactsPanel({
   const isControlled = controlledTab !== undefined;
   const activeTab = isControlled ? controlledTab : internalTab;
   const setActiveTab = isControlled && onControlledTabChange ? onControlledTabChange : setInternalTab;
+
+  // Tracks whether the user has manually clicked a tab — suppresses priority auto-switch after that.
+  const hasUserSelectedTabRef = useRef(false);
+
+  const handleUserTabSelect = useCallback((tab: ArtifactType) => {
+    hasUserSelectedTabRef.current = true;
+    setActiveTab(tab);
+  }, [setActiveTab]);
+
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
   const toastedRunIdRef = useRef<string | null>(null);
@@ -290,6 +303,17 @@ export function ArtifactsPanel({
     }
   }, [availableTabs, activeTab, isControlled, onControlledTabChange, hasInitiatedGeneration]);
 
+  // Priority tab auto-switch: when a high-priority tab (e.g. IDE) first appears,
+  // override the current selection — but only until the user manually picks a tab.
+  useEffect(() => {
+    if (hasUserSelectedTabRef.current) return; // user has taken control — don't interfere
+    const priorityTab = availableTabs.find((t) => PRIORITY_TABS.includes(t));
+    if (priorityTab && activeTab !== priorityTab) {
+      setActiveTab(priorityTab);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTabs]);
+
   if (availableTabs.length === 0) {
     return null;
   }
@@ -330,7 +354,7 @@ export function ArtifactsPanel({
           <ArtifactsHeader
             availableArtifacts={availableTabs}
             activeArtifact={activeTab}
-            onArtifactChange={setActiveTab}
+            onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
           />
         </motion.div>
