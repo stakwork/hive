@@ -200,3 +200,72 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
     expect(callArg.history[1]).toMatchObject({ id: "msg-db-2" });
   });
 });
+
+describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.feature.update).mockResolvedValue({} as any);
+    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
+  });
+
+  it("forwards isPrototype: true to callStakworkAPI when dbHistory is empty (first message)", async () => {
+    // No prior DB messages — this is the first message in the conversation
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+
+    const request = createChatRequest({
+      message: "Seed Plan Mode",
+      history: [{ role: "user", content: "prototype msg" }],
+      isPrototype: true,
+    });
+
+    const response = await POST(request, { params: featureParams });
+    expect(response.status).toBe(201);
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.isPrototype).toBe(true);
+  });
+
+  it("does NOT forward isPrototype when dbHistory is non-empty (subsequent message)", async () => {
+    // DB already has a message — this is not the first message
+    const dbMsg = {
+      id: "msg-db-1",
+      message: "Previous message",
+      role: ChatRole.ASSISTANT,
+      status: ChatStatus.SENT,
+      createdAt: new Date("2025-01-01T09:00:00Z"),
+      contextTags: "[]",
+      artifacts: [],
+      attachments: [],
+    };
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([dbMsg] as any);
+
+    const request = createChatRequest({
+      message: "Follow-up message",
+      isPrototype: true,
+    });
+
+    const response = await POST(request, { params: featureParams });
+    expect(response.status).toBe(201);
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.isPrototype).toBeFalsy();
+  });
+
+  it("does NOT forward isPrototype for a standard (non-prototype) plan flow", async () => {
+    // No prior DB messages but isPrototype not sent
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+
+    const request = createChatRequest({ message: "Standard plan message" });
+
+    const response = await POST(request, { params: featureParams });
+    expect(response.status).toBe(201);
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.isPrototype).toBeFalsy();
+  });
+});

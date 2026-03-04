@@ -5,7 +5,9 @@ import {
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
 import { validateApiKey } from "@/lib/api-keys";
+import { db } from "@/lib/db";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import {
   mcpListConcepts,
@@ -133,11 +135,69 @@ const handler = createMcpHandler(
     },
   },
   {
-    basePath: "/api/mcp",
+    streamableHttpEndpoint: "/mcp",
+    sseEndpoint: "/mcp/sse",
+    sseMessageEndpoint: "/mcp/message",
     maxDuration: 60,
     verboseLogs: process.env.NODE_ENV === "development",
   },
 );
+
+// Verify a short-lived JWT (signed by generate-link) and resolve workspace
+async function verifyJwt(
+  token: string,
+  url: URL,
+): Promise<AuthInfo | undefined> {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) return undefined;
+
+  try {
+    const payload = jwt.verify(token, jwtSecret) as { slug?: string };
+    if (!payload.slug) return undefined;
+
+    const workspace = await db.workspace.findFirst({
+      where: { slug: payload.slug, deleted: false },
+      select: { id: true, slug: true, name: true },
+    });
+    if (!workspace) {
+      console.log("[MCP] JWT workspace not found:", payload.slug);
+      return undefined;
+    }
+    console.log("[MCP] JWT verified for workspace:", workspace.slug);
+
+    const swarmAccess = await getSwarmAccessByWorkspaceId(workspace.id);
+    if (!swarmAccess.success) {
+      console.log(
+        "[MCP] Swarm access failed:",
+        swarmAccess.error,
+        "- tools will be unavailable",
+      );
+    } else {
+      console.log("[MCP] Swarm access obtained");
+    }
+
+    const toolsFilter = parseToolsFilter(url);
+
+    return {
+      token,
+      clientId: workspace.id,
+      scopes: [],
+      extra: {
+        workspaceId: workspace.id,
+        workspaceSlug: workspace.slug,
+        apiKeyId: "jwt", // no persistent key record for JWTs
+        swarmUrl: swarmAccess.success ? swarmAccess.data.swarmUrl : undefined,
+        swarmApiKey: swarmAccess.success
+          ? swarmAccess.data.swarmApiKey
+          : undefined,
+        toolsFilter: toolsFilter ?? undefined,
+      } as McpAuthExtra,
+    };
+  } catch {
+    // expired / invalid signature / malformed
+    return undefined;
+  }
+}
 
 const verifyToken = async (
   req: Request,
@@ -150,55 +210,59 @@ const verifyToken = async (
     bearerToken: !!bearerToken,
   });
 
-  const apiKey = url.searchParams.get("apiKey") || bearerToken;
+  const token =
+    url.searchParams.get("apiKey") ||
+    url.searchParams.get("hiveToken") ||
+    bearerToken;
 
-  if (!apiKey) {
-    console.log("[MCP] No API key provided");
+  if (!token) {
+    console.log("[MCP] No token provided");
     return undefined;
   }
 
-  const result = await validateApiKey(apiKey);
-  if (!result) {
-    console.log("[MCP] API key validation failed");
-    return undefined;
+  // Try long-lived workspace API key first
+  if (token.startsWith("hive_")) {
+    const result = await validateApiKey(token);
+    if (!result) {
+      console.log("[MCP] API key validation failed");
+      return undefined;
+    }
+    console.log("[MCP] API key validated for workspace:", result.workspace.slug);
+
+    const swarmAccess = await getSwarmAccessByWorkspaceId(result.workspace.id);
+    if (!swarmAccess.success) {
+      console.log(
+        "[MCP] Swarm access failed:",
+        swarmAccess.error,
+        "- tools will be unavailable",
+      );
+    } else {
+      console.log("[MCP] Swarm access obtained");
+    }
+
+    const toolsFilter = parseToolsFilter(url);
+
+    return {
+      token,
+      clientId: result.workspace.id,
+      scopes: [],
+      extra: {
+        workspaceId: result.workspace.id,
+        workspaceSlug: result.workspace.slug,
+        apiKeyId: result.apiKey.id,
+        swarmUrl: swarmAccess.success ? swarmAccess.data.swarmUrl : undefined,
+        swarmApiKey: swarmAccess.success
+          ? swarmAccess.data.swarmApiKey
+          : undefined,
+        toolsFilter: toolsFilter ?? undefined,
+      } as McpAuthExtra,
+    };
   }
-  console.log("[MCP] API key validated for workspace:", result.workspace.slug);
 
-  // Get swarm access for this workspace
-  const swarmAccess = await getSwarmAccessByWorkspaceId(result.workspace.id);
-  if (!swarmAccess.success) {
-    console.log(
-      "[MCP] Swarm access failed:",
-      swarmAccess.error,
-      "- tools will be unavailable",
-    );
-  } else {
-    console.log("[MCP] Swarm access obtained");
-  }
-
-  // Parse tools filter
-  const toolsFilter = parseToolsFilter(url);
-
-  // Pass credentials through authInfo.extra (works in serverless)
-  return {
-    token: apiKey,
-    clientId: result.workspace.id,
-    scopes: [],
-    extra: {
-      workspaceId: result.workspace.id,
-      workspaceSlug: result.workspace.slug,
-      apiKeyId: result.apiKey.id,
-      swarmUrl: swarmAccess.success ? swarmAccess.data.swarmUrl : undefined,
-      swarmApiKey: swarmAccess.success
-        ? swarmAccess.data.swarmApiKey
-        : undefined,
-      toolsFilter: toolsFilter ?? undefined,
-    } as McpAuthExtra,
-  };
+  // Fall back to short-lived JWT
+  return verifyJwt(token, url);
 };
 
-const authHandler = withMcpAuth(handler, verifyToken, {
+export const authHandler = withMcpAuth(handler, verifyToken, {
   required: true,
 });
-
-export { authHandler as GET, authHandler as POST };

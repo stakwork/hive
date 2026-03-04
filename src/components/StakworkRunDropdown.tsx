@@ -92,7 +92,7 @@ export function StakworkRunDropdown({
           disabled={!isWorkflowReady || isWorkflowLoading}
           onClick={() =>
             isWorkflowReady &&
-            handleMenuItemClick(`https://jobs.stakwork.com/admin/workflows/${workflowId}`)
+            handleMenuItemClick(`https://jobs.stakwork.com/admin/workflows/${workflowId}/edit`)
           }
         >
           {isWorkflowLoading ? (

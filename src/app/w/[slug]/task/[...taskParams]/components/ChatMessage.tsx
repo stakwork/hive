@@ -329,7 +329,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
         })}
       {/* Image Enlargement Dialog */}
       <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] max-h-[95vh] p-0 overflow-hidden">
           <VisuallyHidden>
             <DialogTitle>Image Preview</DialogTitle>
           </VisuallyHidden>

@@ -44,7 +44,7 @@ describe("StakworkRunDropdown", () => {
     // Click the workflow item
     await user.click(workflowItem);
     expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/42",
+      "https://jobs.stakwork.com/admin/workflows/42/edit",
       "_blank"
     );
   });
@@ -87,7 +87,7 @@ describe("StakworkRunDropdown", () => {
     const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
     await user.click(workflowItem);
     expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/99",
+      "https://jobs.stakwork.com/admin/workflows/99/edit",
       "_blank"
     );
   });
@@ -225,7 +225,7 @@ describe("StakworkRunDropdown", () => {
     const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
     await user.click(workflowItem);
     expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/42",
+      "https://jobs.stakwork.com/admin/workflows/42/edit",
       "_blank"
     );
   });

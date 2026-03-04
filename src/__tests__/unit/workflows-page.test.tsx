@@ -6,11 +6,13 @@ import WorkflowsPage from "@/app/w/[slug]/workflows/page";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
+import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 
 // Mock the hooks
 vi.mock("@/hooks/useWorkspace");
 vi.mock("@/hooks/useWorkflowNodes");
 vi.mock("@/hooks/useWorkflowVersions");
+vi.mock("@/hooks/useRecentWorkflows");
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -48,6 +50,13 @@ vi.mock("@/components/workflow/WorkflowVersionSelector", () => ({
 const mockUseWorkspace = useWorkspace as ReturnType<typeof vi.fn>;
 const mockUseWorkflowNodes = useWorkflowNodes as ReturnType<typeof vi.fn>;
 const mockUseWorkflowVersions = useWorkflowVersions as ReturnType<typeof vi.fn>;
+const mockUseRecentWorkflows = useRecentWorkflows as ReturnType<typeof vi.fn>;
+
+const mockRecentWorkflows = [
+  { id: 1001, name: "Recent Workflow Alpha" },
+  { id: 1002, name: "Recent Workflow Beta" },
+  { id: 1003, name: "Recent Workflow Gamma" },
+];
 
 const mockWorkflows = [
   {
@@ -122,6 +131,11 @@ describe("WorkflowsPage", () => {
     });
     mockUseWorkflowVersions.mockReturnValue({
       versions: [],
+      isLoading: false,
+      error: null,
+    });
+    mockUseRecentWorkflows.mockReturnValue({
+      workflows: [],
       isLoading: false,
       error: null,
     });
@@ -611,5 +625,119 @@ describe("WorkflowsPage", () => {
         );
       });
     }, 10000);
+  });
+
+  describe("Recent Workflows", () => {
+    it("renders the Recent Workflows section heading", () => {
+      render(<WorkflowsPage />);
+      expect(screen.getByText("Recent Workflows")).toBeInTheDocument();
+    });
+
+    it("renders skeleton rows when isLoading is true", () => {
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: [],
+        isLoading: true,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+
+      // 4 skeleton divs with animate-pulse class
+      const skeletons = document.querySelectorAll(".animate-pulse");
+      expect(skeletons.length).toBeGreaterThanOrEqual(4);
+      // Empty/error state should not show while loading
+      expect(screen.queryByText("No recent workflows found")).not.toBeInTheDocument();
+    });
+
+    it("renders empty state when workflows array is empty", () => {
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: [],
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+      expect(screen.getByText("No recent workflows found")).toBeInTheDocument();
+    });
+
+    it("renders empty state when error is present", () => {
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: [],
+        isLoading: false,
+        error: "Failed to fetch",
+      });
+
+      render(<WorkflowsPage />);
+      expect(screen.getByText("No recent workflows found")).toBeInTheDocument();
+    });
+
+    it("renders workflow names and IDs when populated", () => {
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: mockRecentWorkflows,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+
+      expect(screen.getByText("Recent Workflow Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Recent Workflow Beta")).toBeInTheDocument();
+      expect(screen.getByText("Recent Workflow Gamma")).toBeInTheDocument();
+      expect(screen.getByText("#1001")).toBeInTheDocument();
+      expect(screen.getByText("#1002")).toBeInTheDocument();
+      expect(screen.getByText("#1003")).toBeInTheDocument();
+    });
+
+    it("clicking a recent workflow row sets the workflow ID input value", async () => {
+      const user = userEvent.setup();
+
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: mockRecentWorkflows,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+
+      const input = screen.getByPlaceholderText("Enter workflow ID...");
+      expect(input).toHaveValue("");
+
+      const row = screen.getByText("Recent Workflow Alpha").closest("button")!;
+      await user.click(row);
+
+      expect(input).toHaveValue("1001");
+    });
+
+    it("clicking a different row updates the input to that workflow's ID", async () => {
+      const user = userEvent.setup();
+
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: mockRecentWorkflows,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+
+      const input = screen.getByPlaceholderText("Enter workflow ID...");
+
+      await user.click(screen.getByText("Recent Workflow Beta").closest("button")!);
+      expect(input).toHaveValue("1002");
+
+      await user.click(screen.getByText("Recent Workflow Gamma").closest("button")!);
+      expect(input).toHaveValue("1003");
+    });
+
+    it("does not render skeleton or empty state when populated", () => {
+      mockUseRecentWorkflows.mockReturnValue({
+        workflows: mockRecentWorkflows,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+
+      expect(screen.queryByText("No recent workflows found")).not.toBeInTheDocument();
+    });
   });
 });

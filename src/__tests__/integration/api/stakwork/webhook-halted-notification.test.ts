@@ -50,15 +50,15 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     await resetDatabase();
 
     user = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner" },
+      data: { email: "owner@test.com", name: "Owner", sphinxAlias: "owner-alias" },
     });
-    workspace = await db.workspace.create({
-      data: {
-        name: "Test Workspace",
-        slug: generateUniqueSlug("ws-halted"),
-        ownerId: user.id,
-      },
+
+    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createSphinxEnabledWorkspace({
+      ownerId: user.id,
+      slug: generateUniqueSlug("ws-halted"),
     });
+
     await db.workspaceMember.create({
       data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" },
     });
@@ -95,7 +95,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(user.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 
   it("creates a WORKFLOW_HALTED notification for feature (plan mode) path", async () => {
@@ -124,6 +124,6 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(user.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
   });
 });

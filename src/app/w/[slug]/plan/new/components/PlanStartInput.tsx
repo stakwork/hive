@@ -125,14 +125,14 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-16 rounded-3xl shadow-none"
+              className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
               autoFocus
               data-testid="plan-start-input"
             />
           </motion.div>
 
           {/* Prototype toggle row */}
-          <div className="px-8 pb-4 flex items-center gap-4 flex-wrap">
+          <div className="px-8 pb-6 flex items-center gap-4 flex-wrap" data-testid="bottom-row">
             <div className="flex items-center gap-2">
               <Switch
                 id="prototype-toggle"
@@ -171,48 +171,52 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                 </SelectContent>
               </Select>
             )}
-          </div>
 
-          <div className="absolute bottom-6 right-8 z-10 flex gap-2">
-            {isSupported && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant={isListening ? "default" : "outline"}
-                      size="icon"
-                      className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
-                      style={{ width: 32, height: 32 }}
-                      onClick={toggleListening}
-                      disabled={isLoading}
-                    >
-                      {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            <Button
-              type="button"
-              variant="default"
-              size="icon"
-              className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
-              style={{ width: 32, height: 32 }}
-              disabled={!hasText || isLoading}
-              onClick={handleSubmit}
-              tabIndex={0}
-              data-testid="plan-start-submit"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <ArrowUp className="w-4 h-4" />
+            <div className="ml-auto flex gap-2">
+              {isSupported && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant={isListening ? "default" : "outline"}
+                        size="icon"
+                        className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+                        style={{ width: 32, height: 32 }}
+                        onClick={toggleListening}
+                        disabled={isLoading}
+                      >
+                        {isListening ? (
+                          <MicOff className="w-4 h-4" />
+                        ) : (
+                          <Mic className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
-            </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="icon"
+                className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+                style={{ width: 32, height: 32 }}
+                disabled={!hasText || isLoading}
+                onClick={handleSubmit}
+                tabIndex={0}
+                data-testid="plan-start-submit"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
