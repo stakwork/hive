@@ -1123,6 +1123,7 @@ async function applyAcceptResult(
             status: "TODO",
             dependsOnTaskIds,
             repositoryId,
+            branch: task.branch || null,
             createdById: userId,
             updatedById: userId,
             autoMerge: isFastTrack ? true : undefined,
