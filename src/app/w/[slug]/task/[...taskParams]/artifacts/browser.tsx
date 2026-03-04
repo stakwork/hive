@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useCallback, useEffect } from "react";
@@ -489,7 +490,7 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={isUrlReady ? content.url : "about:blank"}
+                  src={isUrlReady ? (isActive ? (displayUrl || content.url) : content.url) : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                   allow="camera *; microphone *; clipboard-read *; clipboard-write *"
