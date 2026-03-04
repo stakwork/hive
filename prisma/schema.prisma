@@ -77,10 +77,12 @@ model User {
   createdUserStories       UserStory[]             @relation("UserStoryCreator")
   updatedUserStories       UserStory[]             @relation("UserStoryUpdater")
   whiteboardMessages       WhiteboardMessage[]
-  createdApiKeys           WorkspaceApiKey[]       @relation("ApiKeyCreator")
-  revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
-  workspaceMembers         WorkspaceMember[]
-  ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
+  createdApiKeys                WorkspaceApiKey[]        @relation("ApiKeyCreator")
+  revokedApiKeys                WorkspaceApiKey[]        @relation("ApiKeyRevoker")
+  workspaceMembers              WorkspaceMember[]
+  ownedWorkspaces               Workspace[]              @relation("WorkspaceOwner")
+  targetedNotifications         NotificationTrigger[]    @relation("NotificationTarget")
+  originatedNotifications       NotificationTrigger[]    @relation("NotificationOriginator")
 
   @@index([createdAt])
   @@index([deleted])
@@ -411,6 +413,7 @@ model Task {
   chatMessages           ChatMessage[]
   deployments            Deployment[]
   screenshots            Screenshot[]
+  notifications          NotificationTrigger[]
   assignee               User?               @relation("TaskAssignee", fields: [assigneeId], references: [id])
   createdBy              User                @relation("TaskCreator", fields: [createdById], references: [id])
   feature                Feature?            @relation(fields: [featureId], references: [id])
@@ -651,6 +654,7 @@ model Feature {
   planUpdatedAt       DateTime?       @map("plan_updated_at")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
+  notifications       NotificationTrigger[]
   assignee            User?           @relation("FeatureAssignee", fields: [assigneeId], references: [id])
   createdBy           User            @relation("FeatureCreator", fields: [createdById], references: [id])
   updatedBy           User            @relation("FeatureUpdater", fields: [updatedById], references: [id])
@@ -1048,6 +1052,7 @@ enum TaskSourceType {
   SYSTEM
   TASK_COORDINATOR
   USER_JOURNEY
+  PROTOTYPE
 }
 
 enum SourceControlOrgType {
@@ -1114,4 +1119,52 @@ enum StakworkRunDecision {
   ACCEPTED
   REJECTED
   FEEDBACK
+}
+
+enum NotificationTriggerType {
+  TASK_ASSIGNED
+  FEATURE_ASSIGNED
+  PLAN_AWAITING_CLARIFICATION
+  PLAN_AWAITING_APPROVAL
+  PLAN_TASKS_GENERATED
+  GRAPH_CHAT_RESPONSE
+  TASK_PR_MERGED
+  WORKFLOW_HALTED
+  FEATURE_COMPLETED
+  FEATURE_DEPLOYED_PRODUCTION
+}
+
+enum NotificationTriggerStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum NotificationMethod {
+  SPHINX
+}
+
+model NotificationTrigger {
+  id                      String                    @id @default(cuid())
+  targetUserId            String                    @map("target_user_id")
+  originatingUserId       String?                   @map("originating_user_id")
+  taskId                  String?                   @map("task_id")
+  featureId               String?                   @map("feature_id")
+  notificationType        NotificationTriggerType   @map("notification_type")
+  status                  NotificationTriggerStatus @default(PENDING)
+  notificationMethod      NotificationMethod        @map("notification_method")
+  notificationTimestamps  DateTime[]                @default([]) @map("notification_timestamps")
+  createdAt               DateTime                  @default(now()) @map("created_at")
+  updatedAt               DateTime                  @updatedAt @map("updated_at")
+
+  targetUser        User     @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  originatingUser   User?    @relation("NotificationOriginator", fields: [originatingUserId], references: [id], onDelete: SetNull)
+  task              Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  feature           Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId])
+  @@index([status])
+  @@index([notificationType])
+  @@index([targetUserId, notificationType, status])
+  @@map("notification_triggers")
 }
