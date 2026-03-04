@@ -101,6 +101,24 @@ export async function PATCH(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Guard: reject empty element saves when whiteboard already has content.
+    // This prevents accidental data wipes from client-side race conditions
+    // (e.g. Excalidraw firing onChange during initialization with empty elements).
+    // To intentionally clear a whiteboard, send clearElements: true.
+    if (body.elements !== undefined) {
+      const existingElements = whiteboard.elements as unknown[];
+      const incomingElements = body.elements as unknown[];
+      const hasExistingContent = Array.isArray(existingElements) && existingElements.length > 0;
+      const incomingIsEmpty = !Array.isArray(incomingElements) || incomingElements.length === 0;
+
+      if (hasExistingContent && incomingIsEmpty && !body.clearElements) {
+        return NextResponse.json(
+          { error: "Cannot save empty elements over existing content" },
+          { status: 409 }
+        );
+      }
+    }
+
     // Optimistic locking: reject stale saves when elements are being updated.
     // The frontend sends expectedVersion (its last-known version). If the DB
     // version is higher (e.g. webhook saved newer data), reject with 409.
