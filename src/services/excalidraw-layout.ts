@@ -246,11 +246,12 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
       return {
         ...common,
         "elk.algorithm": "force",
-        "elk.force.temperature": "0.1",
+        "elk.force.temperature": "0.001",
         "elk.force.iterations": "300",
-        "elk.force.repulsion": "5.0",
-        "elk.spacing.nodeNode": "80",
-        "elk.spacing.componentComponent": "100",
+        "elk.force.repulsion": "2.0",
+        "elk.force.idealEdgeLength": "100",
+        "elk.spacing.nodeNode": "40",
+        "elk.spacing.componentComponent": "60",
       };
     case "stress":
       return {

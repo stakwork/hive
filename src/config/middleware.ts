@@ -56,7 +56,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
-  { path: "/api/mcp/*", strategy: "pattern", access: "webhook" },
+  { path: "/mcp", strategy: "prefix", access: "webhook" },
 ] as const;
 
 function normalizePath(pathname: string): string {

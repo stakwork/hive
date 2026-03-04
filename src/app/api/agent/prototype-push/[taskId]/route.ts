@@ -3,8 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { getPodDetails, POD_PORTS, buildPodUrl } from "@/lib/pods";
+import { releaseTaskPod } from "@/lib/pods/utils";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { generateCommitMessage } from "@/lib/ai/commit-msg";
+import { TaskStatus } from "@prisma/client";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -160,6 +162,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       pushData.branches?.[repo.name] ??
       (pushData.branches ? Object.values(pushData.branches)[0] : branchName) ??
       branchName;
+
+    // Mark task DONE and release pod (best-effort — does not block response)
+    await Promise.allSettled([
+      db.task.update({
+        where: { id: taskId },
+        data: { status: TaskStatus.DONE },
+      }),
+      releaseTaskPod({
+        taskId,
+        podId: task.podId,
+        workspaceId: workspace.id,
+        verifyOwnership: false,
+        clearTaskFields: true,
+        newWorkflowStatus: "COMPLETED",
+      }),
+    ]);
 
     return NextResponse.json(
       { success: true, branchName: resolvedBranchName, commitMessage },

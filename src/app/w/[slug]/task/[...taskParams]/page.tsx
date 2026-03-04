@@ -1465,11 +1465,11 @@ export default function TaskChatPage() {
         .map((m) => ({ role: m.role.toLowerCase() as "user" | "assistant", content: m.message }));
 
       // 4. Seed Plan Mode with prototype history and branch reference
-      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`. The prototype contains a throwaway test page — delete it entirely. Use the prototype only as a visual design reference and build the real production component from scratch.`;
+      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`;
       await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: seedMessage, history: formattedHistory }),
+        body: JSON.stringify({ message: seedMessage, history: formattedHistory, isPrototype: true }),
       });
 
       // 5. Navigate to Plan Mode
@@ -1918,7 +1918,7 @@ export default function TaskChatPage() {
                     stakworkProjectId={projectId}
                     isPrototypeTask={isPrototypeTask}
                     isSavingPlan={isSavingPlan}
-                    onSaveAndPlan={handleSaveAndPlan}
+                    onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                   />
                 )}
               </div>
@@ -1958,7 +1958,7 @@ export default function TaskChatPage() {
                       stakworkProjectId={projectId}
                       isPrototypeTask={isPrototypeTask}
                       isSavingPlan={isSavingPlan}
-                      onSaveAndPlan={handleSaveAndPlan}
+                      onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                     />
                   </div>
                 </ResizablePanel>
@@ -2011,7 +2011,7 @@ export default function TaskChatPage() {
                 stakworkProjectId={projectId}
                 isPrototypeTask={isPrototypeTask}
                 isSavingPlan={isSavingPlan}
-                onSaveAndPlan={handleSaveAndPlan}
+                onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
               />
             </div>
           )}

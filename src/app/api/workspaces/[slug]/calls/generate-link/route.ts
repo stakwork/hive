@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
+import jwt from "jsonwebtoken";
 
 export async function POST(
   request: NextRequest,
@@ -82,9 +83,19 @@ export async function POST(
       );
     }
 
-    // Generate call URL
+    // Mint a short-lived JWT for the agent to authenticate with the Hive API
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return NextResponse.json(
+        { error: "JWT secret not configured" },
+        { status: 500 },
+      );
+    }
+    const hiveToken = jwt.sign({ slug }, jwtSecret, { expiresIn: "4h" });
+
+    // Generate call URL with token
     const timestamp = Math.floor(Date.now() / 1000);
-    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
+    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}?hiveToken=${encodeURIComponent(hiveToken)}`;
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {
