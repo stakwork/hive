@@ -418,6 +418,8 @@ export function ChatArea({
         taskId={taskId ?? undefined}
         onOpenBountyRequest={onOpenBountyRequest}
         stakworkProjectId={stakworkProjectId}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
       />
 
       {onReleasePod && (
