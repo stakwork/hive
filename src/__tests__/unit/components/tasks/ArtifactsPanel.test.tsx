@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 /**
  * Unit tests for ArtifactsPanel race condition fix logic.
@@ -448,6 +448,173 @@ describe("ArtifactsPanel - Failure UX (Amber Button & Toast)", () => {
     expect(result.current.isRunFailed).toBe(true);
     expect(result.current.toastedRunId).toBe("run-102");
     expect(result.current.getButtonColor()).toBe("bg-amber-500");
+  });
+});
+
+/**
+ * Unit tests for ArtifactsPanel priority tab auto-switch (IDE auto-select).
+ *
+ * These tests verify the PRIORITY_TABS logic that auto-switches to the IDE tab
+ * the first time it appears, but backs off once the user has manually selected a tab.
+ */
+describe("ArtifactsPanel - Priority Tab Auto-Switch (IDE)", () => {
+  type ArtifactType = "PLAN" | "TASKS" | "CODE" | "DIFF" | "BROWSER" | "WORKFLOW" | "IDE" | "GRAPH";
+
+  // Mirror the module-level constant from ArtifactsPanel
+  const PRIORITY_TABS: ArtifactType[] = ["IDE"];
+
+  /**
+   * Simulates the priority-tab useEffect + hasUserSelectedTabRef logic.
+   */
+  function usePriorityTabLogic(initialTab: ArtifactType | null = null) {
+    const [activeTab, setActiveTab] = useState<ArtifactType | null>(initialTab);
+    const [availableTabs, setAvailableTabs] = useState<ArtifactType[]>([]);
+    const hasUserSelectedTabRef = useRef(false);
+
+    const handleUserTabSelect = (tab: ArtifactType) => {
+      hasUserSelectedTabRef.current = true;
+      setActiveTab(tab);
+    };
+
+    // Mirror the priority useEffect from ArtifactsPanel
+    useEffect(() => {
+      if (hasUserSelectedTabRef.current) return;
+      const priorityTab = availableTabs.find((t) => PRIORITY_TABS.includes(t));
+      if (priorityTab && activeTab !== priorityTab) {
+        setActiveTab(priorityTab);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableTabs]);
+
+    return {
+      activeTab,
+      availableTabs,
+      hasUserSelectedTabRef,
+      setAvailableTabs,
+      handleUserTabSelect,
+    };
+  }
+
+  test("auto-switches to IDE when IDE artifact first arrives (overrides WORKFLOW)", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("WORKFLOW" as ArtifactType));
+
+    // Start: only WORKFLOW available
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW");
+
+    // IDE artifact arrives
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("IDE");
+  });
+
+  test("does NOT re-switch after user has manually selected a tab", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    // Start with WORKFLOW
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW"] as ArtifactType[]);
+    });
+
+    // IDE arrives → auto-switches
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("IDE");
+
+    // User manually selects WORKFLOW
+    act(() => {
+      result.current.handleUserTabSelect("WORKFLOW" as ArtifactType);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW");
+    expect(result.current.hasUserSelectedTabRef.current).toBe(true);
+
+    // Another artifact update arrives — should NOT override user's choice
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE", "DIFF"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW"); // user's selection preserved
+  });
+
+  test("does not switch if IDE is already the active tab", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("IDE" as ArtifactType));
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE"] as ArtifactType[]);
+    });
+
+    // Still IDE — no unnecessary state churn
+    expect(result.current.activeTab).toBe("IDE");
+  });
+
+  test("does not switch when no priority tab is present in availableTabs", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("WORKFLOW" as ArtifactType));
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "DIFF"] as ArtifactType[]);
+    });
+
+    // No IDE in tabs → stays on WORKFLOW
+    expect(result.current.activeTab).toBe("WORKFLOW");
+  });
+
+  test("PRIORITY_TABS extensibility: BROWSER in PRIORITY_TABS triggers auto-switch too", () => {
+    // Parameterise the constant to prove extensibility without modifying source
+    const EXTENDED_PRIORITY_TABS: ArtifactType[] = ["IDE", "BROWSER"];
+
+    function usePriorityTabLogicExtended(initialTab: ArtifactType | null = null) {
+      const [activeTab, setActiveTab] = useState<ArtifactType | null>(initialTab);
+      const [availableTabs, setAvailableTabs] = useState<ArtifactType[]>([]);
+      const hasUserSelectedTabRef = useRef(false);
+
+      useEffect(() => {
+        if (hasUserSelectedTabRef.current) return;
+        const priorityTab = availableTabs.find((t) => EXTENDED_PRIORITY_TABS.includes(t));
+        if (priorityTab && activeTab !== priorityTab) {
+          setActiveTab(priorityTab);
+        }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [availableTabs]);
+
+      return { activeTab, setAvailableTabs };
+    }
+
+    const { result } = renderHook(() => usePriorityTabLogicExtended("WORKFLOW" as ArtifactType));
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW");
+
+    // BROWSER (a newly-added priority) arrives
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("BROWSER");
+  });
+
+  test("hasUserSelectedTabRef starts false (auto-switch fires on first IDE arrival)", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    expect(result.current.hasUserSelectedTabRef.current).toBe(false);
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE"] as ArtifactType[]);
+    });
+
+    // Should have auto-switched — ref still false (auto-switch, not user)
+    expect(result.current.activeTab).toBe("IDE");
+    expect(result.current.hasUserSelectedTabRef.current).toBe(false);
   });
 });
 
