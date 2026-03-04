@@ -35,6 +35,7 @@ interface ArtifactsPanelProps {
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
+  browserRefreshTrigger?: number;
 }
 
 export function ArtifactsPanel({
@@ -53,6 +54,7 @@ export function ArtifactsPanel({
   controlledTab,
   onControlledTabChange,
   sectionHighlights,
+  browserRefreshTrigger,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -385,6 +387,7 @@ export function ArtifactsPanel({
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
+                browserRefreshTrigger={browserRefreshTrigger}
               />
             </div>
           )}

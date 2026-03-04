@@ -113,6 +113,7 @@ export default function TaskChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [browserRefreshTrigger, setBrowserRefreshTrigger] = useState(0);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
@@ -174,8 +175,11 @@ export default function TaskChatPage() {
     // Hide processing indicator when workflow finishes
     if (update.workflowStatus === WorkflowStatus.COMPLETED) {
       setIsChainVisible(false);
+      if (taskMode !== "agent") {
+        setBrowserRefreshTrigger(prev => prev + 1);
+      }
     }
-  }, []);
+  }, [taskMode]);
 
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -1881,6 +1885,7 @@ export default function TaskChatPage() {
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    browserRefreshTrigger={browserRefreshTrigger}
                   />
                 ) : (
                   <ChatArea
@@ -1972,6 +1977,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      browserRefreshTrigger={browserRefreshTrigger}
                     />
                   </div>
                 </ResizablePanel>
