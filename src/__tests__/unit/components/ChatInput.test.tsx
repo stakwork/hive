@@ -492,7 +492,7 @@ describe("ChatInput - Task Mode", () => {
       const buttons = screen.getAllByRole("button");
       const imageButton = buttons.find(btn => 
         btn.className.includes("rounded-full") && 
-        btn.type === "button"
+        (btn as HTMLButtonElement).type === "button"
       );
       
       expect(imageButton).toBeTruthy();
@@ -693,6 +693,66 @@ describe("ChatInput - Task Mode", () => {
     });
   });
 
+  describe("Retry button", () => {
+    test("renders Retry button when isTerminalState and onRetry is provided (HALTED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (FAILED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (ERROR)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("does not render Retry button when onRetry is not provided", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("does not render Retry button when workflow is IN_PROGRESS even if onRetry provided", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} onRetry={onRetry} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("Retry button is disabled and shows spinner when isRetrying is true", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={true} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).toBeDisabled();
+    });
+
+    test("Retry button is enabled when isRetrying is false", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={false} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).not.toBeDisabled();
+    });
+
+    test("clicking Retry button calls onRetry", async () => {
+      const user = userEvent.setup();
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      await user.click(screen.getByText("Retry"));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    test("WorkflowStatusBadge is still rendered alongside Retry button", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+  });
+
   describe("Textarea typing while blocking send", () => {
     beforeEach(() => {
       // Reset speech recognition state between tests
@@ -857,7 +917,7 @@ describe("ChatInput - Task Mode", () => {
     });
 
     test("image upload button remains disabled when disabled=true", () => {
-      render(<ChatInput {...defaultProps} disabled={true} isImageUploadEnabled={true} />);
+      render(<ChatInput {...defaultProps} disabled={true} taskMode="task" />);
       
       // Image button is wrapped in Tooltip - find by its icon content
       const buttons = screen.getAllByRole("button");
