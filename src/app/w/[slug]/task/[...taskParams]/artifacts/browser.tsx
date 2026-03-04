@@ -337,6 +337,7 @@ export function BrowserArtifactPanel({
                               onClick={handleRefresh} 
                               className="h-6 w-6 p-0 absolute right-1 top-1/2 -translate-y-1/2"
                               type="button"
+                              aria-label="Refresh"
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
@@ -500,7 +501,7 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={isUrlReady ? content.url : "about:blank"}
+                  src={isUrlReady ? (isActive ? (displayUrl || content.url) : content.url) : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                   allow="camera *; microphone *; clipboard-read *; clipboard-write *"
