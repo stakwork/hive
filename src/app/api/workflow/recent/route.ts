@@ -84,7 +84,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: { workflows: result.data.workflows },
+      data: { workflows: result.data.results?.map(({ id, name }: { id: number; name: string }) => ({ id, name })) ?? [] },
     });
   } catch (error) {
     console.error("Error fetching recent workflows:", error);
