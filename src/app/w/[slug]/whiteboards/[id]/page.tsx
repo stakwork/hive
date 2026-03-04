@@ -23,6 +23,16 @@ const Excalidraw = dynamic(
   { ssr: false }
 );
 
+function computeSnapshot(elements: readonly unknown[], files: Record<string, unknown>): string {
+  // Lightweight fingerprint: element count + IDs + versions + file IDs
+  const elPart = elements.map((el) => {
+    const e = el as { id?: string; version?: number; isDeleted?: boolean };
+    return `${e.id}:${e.version}:${e.isDeleted}`;
+  }).join(",");
+  const filePart = Object.keys(files).sort().join(",");
+  return `${elPart}|${filePart}`;
+}
+
 interface WhiteboardData {
   id: string;
   name: string;
@@ -53,6 +63,7 @@ export default function WhiteboardDetailPage() {
   const programmaticUpdateCountRef = useRef(1); // 1 for initial load
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
+  const lastSavedSnapshotRef = useRef<string>("");
 
   // Collaboration hook
   const {
@@ -75,6 +86,10 @@ export default function WhiteboardDetailPage() {
         setWhiteboard(data.data);
         setEditName(data.data.name);
         versionRef.current = data.data.version || 0;
+        lastSavedSnapshotRef.current = computeSnapshot(
+          data.data.elements || [],
+          data.data.files || {}
+        );
       } else {
         router.push(`/w/${slug}/whiteboards`);
       }
@@ -98,6 +113,10 @@ export default function WhiteboardDetailPage() {
       files: BinaryFiles
     ) => {
       if (!whiteboard) return;
+
+      // Skip save if nothing actually changed
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) return;
 
       // Clear any pending onChange save — a save is already in flight
       if (onChangeSaveTimeoutRef.current) {
@@ -172,6 +191,7 @@ export default function WhiteboardDetailPage() {
         if (result.data?.version) {
           versionRef.current = result.data.version;
         }
+        lastSavedSnapshotRef.current = snapshot;
 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
