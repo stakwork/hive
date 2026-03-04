@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 
+
 const testSuite = process.env.TEST_SUITE;
 
 export default defineConfig({
@@ -32,6 +33,11 @@ export default defineConfig({
         : testSuite === "api"
         ? ['dotenv/config', "./src/__tests__/setup/unit.ts"]
         : ['dotenv/config', "./src/__tests__/setup/unit.ts"],
+  },
+  esbuild: {
+    // Use the automatic JSX runtime so components that omit `import React`
+    // (Next.js / React 17+ new-transform style) work correctly in Vitest.
+    jsx: "automatic",
   },
   resolve: {
     alias: {

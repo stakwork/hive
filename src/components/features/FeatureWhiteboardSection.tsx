@@ -77,6 +77,10 @@ export function FeatureWhiteboardSection({
   const versionRef = useRef<number>(0);
   const parsedDiagramRef = useRef<ParsedDiagram | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  // Holds the latest unsaved elements so we can flush them on unmount
+  const pendingElementsRef = useRef<{ elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles } | null>(null);
+  // Holds elements that should be retried after diagram generation completes
+  const pendingSaveAfterGenerationRef = useRef<{ elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles } | null>(null);
 
   // Collaboration hook
   const {
@@ -218,7 +222,7 @@ export function FeatureWhiteboardSection({
     }
   };
 
-  // Save to database (debounced)
+  // Save to database
   const saveToDatabase = useCallback(
     async (
       elements: readonly ExcalidrawElement[],
@@ -237,6 +241,7 @@ export function FeatureWhiteboardSection({
             gridSize: appState.gridSize,
           },
           files,
+          expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
         };
@@ -248,9 +253,17 @@ export function FeatureWhiteboardSection({
         });
 
         if (res.status === 409) {
-          // Generation in progress — skip silently
+          const body = await res.json().catch(() => ({}));
+          if (body.generating) {
+            // Diagram generation in progress — queue for retry after generation completes
+            pendingSaveAfterGenerationRef.current = { elements, appState, files };
+          } else {
+            // Stale version conflict — reload to pick up latest data
+            await loadWhiteboard();
+          }
           return;
         }
+
         if (!res.ok) {
           throw new Error("Failed to save");
         }
@@ -268,12 +281,15 @@ export function FeatureWhiteboardSection({
         setSaving(false);
       }
     },
-    [whiteboard, senderId]
+    [whiteboard, senderId, loadWhiteboard]
   );
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // Skip on initial load
+      // Always track latest elements for unmount flush (before early-return)
+      pendingElementsRef.current = { elements, appState, files };
+
+      // Skip broadcasting on initial load
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
         return;
@@ -281,19 +297,40 @@ export function FeatureWhiteboardSection({
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
-
-      // Clear existing save timeout
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      // Debounce database save by 2 seconds
-      saveTimeoutRef.current = setTimeout(() => {
-        saveToDatabase(elements, appState, files);
-      }, 2000);
     },
-    [broadcastElements, saveToDatabase]
+    [broadcastElements]
   );
+
+  // Save on user interaction (pointerup) — never fires from programmatic updateScene
+  const handlePointerUp = useCallback(() => {
+    if (!excalidrawAPIRef.current) return;
+
+    // Clear any previously scheduled save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Short debounce to batch rapid interactions
+    saveTimeoutRef.current = setTimeout(() => {
+      const api = excalidrawAPIRef.current;
+      if (!api) return;
+      const elements = api.getSceneElements();
+      const appState = api.getAppState();
+      const files = api.getFiles();
+      saveToDatabase(elements, appState, files);
+    }, 500);
+  }, [saveToDatabase]);
+
+  // Attach pointerup listener to the canvas container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      container.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [handlePointerUp]);
 
   // Handle pointer/cursor updates for collaboration
   const handlePointerUpdate = useCallback(
@@ -321,14 +358,50 @@ export function FeatureWhiteboardSection({
     }
   }, [diagramRun?.status]);
 
-  // Cleanup timeout on unmount
+  // Cleanup: cancel pending timeout and flush any unsaved elements on unmount
+  // We capture refs directly (not whiteboard/versionRef from closure) so this
+  // effect only needs to run once and still sees the latest values via refs.
+  const whiteboardIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    whiteboardIdRef.current = whiteboard?.id ?? null;
+  }, [whiteboard?.id]);
+
+  const senderIdRef = useRef<string>(senderId);
+  useEffect(() => {
+    senderIdRef.current = senderId;
+  }, [senderId]);
+
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
+
+      const pending = pendingElementsRef.current;
+      const wbId = whiteboardIdRef.current;
+      if (pending && wbId) {
+        // Fire-and-forget with keepalive so the request survives navigation
+        fetch(`/api/whiteboards/${wbId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            elements: pending.elements,
+            appState: {
+              viewBackgroundColor: pending.appState.viewBackgroundColor,
+              gridSize: pending.appState.gridSize,
+            },
+            files: pending.files,
+            expectedVersion: versionRef.current,
+            broadcast: false,
+            senderId: senderIdRef.current,
+          }),
+        }).catch(() => {
+          // Best-effort — ignore errors on unmount
+        });
+      }
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => !prev);
@@ -405,13 +478,22 @@ export function FeatureWhiteboardSection({
 
   // Reload whiteboard when async diagram generation completes
   useEffect(() => {
-    if (diagramRun?.status === "COMPLETED") {
-      // Cancel any pending debounced save so it doesn't overwrite the new diagram
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
+    const status = diagramRun?.status;
+    const isGenerationDone =
+      status === "COMPLETED" ||
+      status === "FAILED" ||
+      status === "ERROR" ||
+      status === "HALTED";
 
+    if (!isGenerationDone) return;
+
+    // Cancel any pending debounced save so it doesn't race with the reload
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    if (status === "COMPLETED") {
       // Fetch fresh whiteboard data and push it into Excalidraw
       (async () => {
         try {
@@ -431,10 +513,24 @@ export function FeatureWhiteboardSection({
           }
         } catch (error) {
           console.error("Error reloading whiteboard after generation:", error);
+        } finally {
+          // Retry any user edits that were queued while generation was in progress
+          const pendingSave = pendingSaveAfterGenerationRef.current;
+          if (pendingSave) {
+            pendingSaveAfterGenerationRef.current = null;
+            saveToDatabase(pendingSave.elements, pendingSave.appState, pendingSave.files);
+          }
         }
       })();
+    } else {
+      // Generation failed/errored/halted — generation is no longer blocking, retry queued edits
+      const pendingSave = pendingSaveAfterGenerationRef.current;
+      if (pendingSave) {
+        pendingSaveAfterGenerationRef.current = null;
+        saveToDatabase(pendingSave.elements, pendingSave.appState, pendingSave.files);
+      }
     }
-  }, [diagramRun?.status, diagramRun?.id, featureId, updateScene]);
+  }, [diagramRun?.status, diagramRun?.id, featureId, updateScene, saveToDatabase]);
 
   // Client-side re-layout (instant via ELK in browser, falls back to API if no parsed diagram)
   const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
