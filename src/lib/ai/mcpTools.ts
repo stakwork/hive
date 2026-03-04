@@ -289,7 +289,9 @@ export async function mcpReadFeature(
 }
 
 /**
- * Create a new feature with a brief and optional requirements.
+ * Create a new feature with a brief and optional requirements,
+ * then send the brief as the first chat message to kick off the
+ * AI planning workflow (same as the UI flow).
  */
 export async function mcpCreateFeature(
   auth: WorkspaceAuth,
@@ -305,12 +307,28 @@ export async function mcpCreateFeature(
       requirements: requirements || undefined,
     });
 
+    // Send the brief as the first chat message to trigger the planning workflow
+    const initialMessage = requirements
+      ? `${brief}\n\nPreliminary Requirements:\n${requirements}`
+      : brief;
+
+    await sendFeatureChatMessage({
+      featureId: feature.id,
+      userId: auth.userId,
+      message: initialMessage,
+    });
+
     return {
       content: [
         {
           type: "text",
           text: JSON.stringify(
-            { id: feature.id, title: feature.title, status: feature.status },
+            {
+              id: feature.id,
+              title: feature.title,
+              status: feature.status,
+              workflowStarted: true,
+            },
             null,
             2,
           ),
