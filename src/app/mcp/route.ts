@@ -1,1 +1,5 @@
-export { authHandler as GET, authHandler as POST } from "@/lib/mcp/handler";
+import { handleMcpRequest } from "@/lib/mcp/handler";
+
+export const GET = handleMcpRequest;
+export const POST = handleMcpRequest;
+export const DELETE = handleMcpRequest;
