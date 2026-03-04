@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
@@ -16,10 +16,19 @@ import {
   CheckCircle,
   Loader2,
   AlertCircle,
-  XCircle
+  XCircle,
+  Map,
+  CheckSquare,
+  PenLine,
 } from "lucide-react";
 import type { SearchResponse, SearchResult } from "@/types/search";
 import type { TaskStatus, FeatureStatus, PhaseStatus } from "@prisma/client";
+
+const QUICK_CREATE_ACTIONS = [
+  { label: "New Feature", icon: Map, path: "/plan/new" },
+  { label: "New Task", icon: CheckSquare, path: "/task/new" },
+  { label: "New Whiteboard", icon: PenLine, path: "/whiteboards" },
+];
 
 const ENTITY_CONFIG = {
   task: {
@@ -176,6 +185,20 @@ export function GlobalSearch() {
         onValueChange={setQuery}
       />
       <CommandList>
+        <CommandGroup heading="Quick Create">
+          {QUICK_CREATE_ACTIONS.map((action) => (
+            <CommandItem
+              key={action.label}
+              value={action.label}
+              onSelect={() => handleSelect(`/w/${workspace.slug}${action.path}`)}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <action.icon className="h-4 w-4 text-muted-foreground" />
+              {action.label}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+
         {loading && (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -183,7 +206,7 @@ export function GlobalSearch() {
         )}
 
         {showEmpty && (
-          <CommandEmpty>No results found for "{query}"</CommandEmpty>
+          <CommandEmpty>No results found for &quot;{query}&quot;</CommandEmpty>
         )}
 
         {!loading && hasResults && (

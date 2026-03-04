@@ -68,8 +68,6 @@ model User {
   githubAuth               GitHubAuth?
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
   dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
-  originatedNotifications  NotificationTrigger[]   @relation("NotificationOrigin")
-  receivedNotifications    NotificationTrigger[]   @relation("NotificationTarget")
   sessions                 Session[]
   sharedConversations      SharedConversation[]
   sourceControlTokens      SourceControlToken[]
@@ -361,66 +359,65 @@ model Repository {
 }
 
 model Task {
-  id                     String                @id @default(cuid())
+  id                     String              @id @default(cuid())
   title                  String
   description            String?
-  workspaceId            String                @map("workspace_id")
-  assigneeId             String?               @map("assignee_id")
-  repositoryId           String?               @map("repository_id")
-  status                 TaskStatus            @default(TODO)
-  priority               Priority              @default(MEDIUM)
-  estimatedHours         Int?                  @map("estimated_hours")
-  actualHours            Int?                  @map("actual_hours")
-  createdById            String                @map("created_by_id")
-  updatedById            String                @map("updated_by_id")
-  deleted                Boolean               @default(false)
-  deletedAt              DateTime?             @map("deleted_at")
-  createdAt              DateTime              @default(now()) @map("created_at")
-  updatedAt              DateTime              @updatedAt @map("updated_at")
-  workflowCompletedAt    DateTime?             @map("workflow_completed_at")
-  workflowStartedAt      DateTime?             @map("workflow_started_at")
-  workflowStatus         WorkflowStatus?       @default(PENDING) @map("workflow_status")
-  stakworkProjectId      Int?                  @map("stakwork_project_id")
-  sourceType             TaskSourceType        @default(USER) @map("source_type")
-  mode                   String                @default("live")
-  dependsOnTaskIds       String[]              @default([]) @map("depends_on_task_ids")
-  featureId              String?               @map("feature_id")
-  order                  Int                   @default(0)
-  phaseId                String?               @map("phase_id")
-  systemAssigneeType     SystemAssigneeType?   @map("system_assignee_type")
-  bountyCode             String?               @unique @map("bounty_code")
-  testFilePath           String?               @map("test_file_path")
-  testFileUrl            String?               @map("test_file_url")
-  agentPassword          String?               @map("agent_password")
-  agentUrl               String?               @map("agent_url")
-  archived               Boolean               @default(false)
-  archivedAt             DateTime?             @map("archived_at")
-  runBuild               Boolean               @default(true) @map("run_build")
-  runTestSuite           Boolean               @default(true) @map("run_test_suite")
-  janitorType            JanitorType?          @map("janitor_type")
-  podId                  String?               @map("pod_id")
-  agentWebhookSecret     String?               @map("agent_webhook_secret")
+  workspaceId            String              @map("workspace_id")
+  assigneeId             String?             @map("assignee_id")
+  repositoryId           String?             @map("repository_id")
+  status                 TaskStatus          @default(TODO)
+  priority               Priority            @default(MEDIUM)
+  estimatedHours         Int?                @map("estimated_hours")
+  actualHours            Int?                @map("actual_hours")
+  createdById            String              @map("created_by_id")
+  updatedById            String              @map("updated_by_id")
+  deleted                Boolean             @default(false)
+  deletedAt              DateTime?           @map("deleted_at")
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
+  workflowCompletedAt    DateTime?           @map("workflow_completed_at")
+  workflowStartedAt      DateTime?           @map("workflow_started_at")
+  workflowStatus         WorkflowStatus?     @default(PENDING) @map("workflow_status")
+  stakworkProjectId      Int?                @map("stakwork_project_id")
+  sourceType             TaskSourceType      @default(USER) @map("source_type")
+  mode                   String              @default("live")
+  dependsOnTaskIds       String[]            @default([]) @map("depends_on_task_ids")
+  featureId              String?             @map("feature_id")
+  order                  Int                 @default(0)
+  phaseId                String?             @map("phase_id")
+  systemAssigneeType     SystemAssigneeType? @map("system_assignee_type")
+  bountyCode             String?             @unique @map("bounty_code")
+  testFilePath           String?             @map("test_file_path")
+  testFileUrl            String?             @map("test_file_url")
+  agentPassword          String?             @map("agent_password")
+  agentUrl               String?             @map("agent_url")
+  archived               Boolean             @default(false)
+  archivedAt             DateTime?           @map("archived_at")
+  runBuild               Boolean             @default(true) @map("run_build")
+  runTestSuite           Boolean             @default(true) @map("run_test_suite")
+  janitorType            JanitorType?        @map("janitor_type")
+  podId                  String?             @map("pod_id")
+  agentWebhookSecret     String?             @map("agent_webhook_secret")
   branch                 String?
-  summary                String?               @map("summary")
-  layerType              TaskLayerType?        @map("layer_type")
-  manualLayerOverride    Boolean?              @map("manual_layer_override")
+  summary                String?             @map("summary")
+  layerType              TaskLayerType?      @map("layer_type")
+  manualLayerOverride    Boolean?            @map("manual_layer_override")
   model                  String?
-  autoMerge              Boolean               @default(false) @map("auto_merge")
-  deployedToProductionAt DateTime?             @map("deployed_to_production_at")
-  deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
-  deploymentStatus       String?               @map("deployment_status")
+  autoMerge              Boolean             @default(false) @map("auto_merge")
+  deployedToProductionAt DateTime?           @map("deployed_to_production_at")
+  deployedToStagingAt    DateTime?           @map("deployed_to_staging_at")
+  deploymentStatus       String?             @map("deployment_status")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]
-  notifications          NotificationTrigger[]
   screenshots            Screenshot[]
-  assignee               User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  createdBy              User                  @relation("TaskCreator", fields: [createdById], references: [id])
-  feature                Feature?              @relation(fields: [featureId], references: [id])
-  phase                  Phase?                @relation(fields: [phaseId], references: [id])
-  repository             Repository?           @relation(fields: [repositoryId], references: [id])
-  updatedBy              User                  @relation("TaskUpdater", fields: [updatedById], references: [id])
-  workspace              Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignee               User?               @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy              User                @relation("TaskCreator", fields: [createdById], references: [id])
+  feature                Feature?            @relation(fields: [featureId], references: [id])
+  phase                  Phase?              @relation(fields: [phaseId], references: [id])
+  repository             Repository?         @relation(fields: [repositoryId], references: [id])
+  updatedBy              User                @relation("TaskUpdater", fields: [updatedById], references: [id])
+  workspace              Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([janitorType])
@@ -628,37 +625,36 @@ model Deployment {
 }
 
 model Feature {
-  id                  String                @id @default(cuid())
+  id                  String          @id @default(cuid())
   title               String
-  workspaceId         String                @map("workspace_id")
-  assigneeId          String?               @map("assignee_id")
-  status              FeatureStatus         @default(BACKLOG)
-  createdById         String                @map("created_by_id")
-  updatedById         String                @map("updated_by_id")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
+  workspaceId         String          @map("workspace_id")
+  assigneeId          String?         @map("assignee_id")
+  status              FeatureStatus   @default(BACKLOG)
+  createdById         String          @map("created_by_id")
+  updatedById         String          @map("updated_by_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
   architecture        String?
   brief               String?
   requirements        String?
-  deleted             Boolean               @default(false)
-  deletedAt           DateTime?             @map("deleted_at")
-  personas            String[]              @default([])
-  priority            FeaturePriority       @default(LOW)
-  diagramS3Key        String?               @map("diagram_s3_key")
-  diagramUrl          String?               @map("diagram_url")
-  stakworkProjectId   Int?                  @map("stakwork_project_id")
-  workflowCompletedAt DateTime?             @map("workflow_completed_at")
-  workflowStartedAt   DateTime?             @map("workflow_started_at")
-  workflowStatus      WorkflowStatus?       @default(PENDING) @map("workflow_status")
-  isFastTrack         Boolean               @default(false) @map("is_fast_track")
-  planUpdatedAt       DateTime?             @map("plan_updated_at")
+  deleted             Boolean         @default(false)
+  deletedAt           DateTime?       @map("deleted_at")
+  personas            String[]        @default([])
+  priority            FeaturePriority @default(LOW)
+  diagramS3Key        String?         @map("diagram_s3_key")
+  diagramUrl          String?         @map("diagram_url")
+  stakworkProjectId   Int?            @map("stakwork_project_id")
+  workflowCompletedAt DateTime?       @map("workflow_completed_at")
+  workflowStartedAt   DateTime?       @map("workflow_started_at")
+  workflowStatus      WorkflowStatus? @default(PENDING) @map("workflow_status")
+  isFastTrack         Boolean         @default(false) @map("is_fast_track")
+  planUpdatedAt       DateTime?       @map("plan_updated_at")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
-  assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
-  createdBy           User                  @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedBy           User                  @relation("FeatureUpdater", fields: [updatedById], references: [id])
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  notifications       NotificationTrigger[]
+  assignee            User?           @relation("FeatureAssignee", fields: [assigneeId], references: [id])
+  createdBy           User            @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedBy           User            @relation("FeatureUpdater", fields: [updatedById], references: [id])
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   phases              Phase[]
   screenshots         Screenshot[]
   stakworkRuns        StakworkRun[]
@@ -858,30 +854,6 @@ model AgentLog {
   @@map("agent_logs")
 }
 
-model NotificationTrigger {
-  id                     String                    @id @default(cuid())
-  targetUserId           String                    @map("target_user_id")
-  originatingUserId      String?                   @map("originating_user_id")
-  taskId                 String?                   @map("task_id")
-  featureId              String?                   @map("feature_id")
-  notificationType       NotificationTriggerType   @map("notification_type")
-  status                 NotificationTriggerStatus @default(PENDING) @map("status")
-  notificationMethod     NotificationMethod        @map("notification_method")
-  notificationTimestamps DateTime[]                @default([]) @map("notification_timestamps")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  feature                Feature?                  @relation(fields: [featureId], references: [id])
-  originatingUser        User?                     @relation("NotificationOrigin", fields: [originatingUserId], references: [id])
-  targetUser             User                      @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
-  task                   Task?                     @relation(fields: [taskId], references: [id])
-
-  @@index([targetUserId])
-  @@index([status])
-  @@index([notificationType])
-  @@index([targetUserId, notificationType, status])
-  @@map("notification_triggers")
-}
-
 enum ChatRole {
   USER
   ASSISTANT
@@ -1076,7 +1048,6 @@ enum TaskSourceType {
   SYSTEM
   TASK_COORDINATOR
   USER_JOURNEY
-  PROTOTYPE
 }
 
 enum SourceControlOrgType {
@@ -1143,27 +1114,4 @@ enum StakworkRunDecision {
   ACCEPTED
   REJECTED
   FEEDBACK
-}
-
-enum NotificationTriggerType {
-  PLAN_AWAITING_CLARIFICATION
-  PLAN_AWAITING_APPROVAL
-  PLAN_TASKS_GENERATED
-  GRAPH_CHAT_RESPONSE
-  TASK_PR_MERGED
-  FEATURE_ASSIGNED
-  TASK_ASSIGNED
-  FEATURE_COMPLETED
-  FEATURE_DEPLOYED_PRODUCTION
-  WORKFLOW_HALTED
-}
-
-enum NotificationTriggerStatus {
-  PENDING
-  SENT
-  FAILED
-}
-
-enum NotificationMethod {
-  SPHINX
 }
