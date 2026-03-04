@@ -327,7 +327,7 @@ export function ApiKeysSettings() {
                         {
                           mcpServers: {
                             hive: {
-                              url: `${typeof window !== "undefined" ? window.location.origin : ""}/api/mcp/mcp?apiKey=${newlyCreatedKey.key}`,
+                              url: `${typeof window !== "undefined" ? window.location.origin : ""}/mcp?apiKey=${newlyCreatedKey.key}`,
                             },
                           },
                         },
