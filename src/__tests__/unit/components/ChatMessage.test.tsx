@@ -8,6 +8,7 @@ import { WorkflowUrlLink } from '@/app/w/[slug]/task/[...taskParams]/components/
 import { FormArtifact } from '@/app/w/[slug]/task/[...taskParams]/artifacts/form';
 import { LongformArtifactPanel } from '@/app/w/[slug]/task/[...taskParams]/artifacts/longform';
 import { ChatMessage as ChatMessageType, ChatRole, Option, Artifact, ArtifactType, FormContent, LongformContent } from '@/lib/chat';
+import type { ClarifyingQuestionsResponse } from '@/types/stakwork';
 
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
@@ -81,6 +82,17 @@ vi.mock('@/app/w/[slug]/task/[...taskParams]/artifacts/longform', () => ({
           )}
           <p>{(artifact.content as LongformContent)?.text}</p>
         </div>
+      ))}
+    </div>
+  ),
+}));
+
+// Mock ClarifyingQuestionsPreview
+vi.mock('@/components/features/ClarifyingQuestionsPreview', () => ({
+  ClarifyingQuestionsPreview: ({ questions }: { questions: any[]; onSubmit: (s: string) => void }) => (
+    <div data-testid="clarifying-questions-preview">
+      {questions.map((q: any, i: number) => (
+        <div key={i}>{q.question}</div>
       ))}
     </div>
   ),
@@ -1300,6 +1312,144 @@ describe('ChatMessage', () => {
 
       // Verify LONGFORM panel is rendered
       expect(screen.getByTestId('longform-artifact-panel')).toBeInTheDocument();
+    });
+  });
+
+  describe('Clarifying Questions (PLAN artifact)', () => {
+    const clarifyingContent: ClarifyingQuestionsResponse = {
+      tool_use: 'ask_clarifying_questions',
+      content: [
+        { question: 'What is X?', type: 'text' },
+        { question: 'How?', type: 'text' },
+      ],
+    };
+
+    it('renders collapsed summary with question count when replyMessage is present', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('2 questions answered')).toBeInTheDocument();
+      expect(screen.queryByTestId('clarifying-questions-preview')).not.toBeInTheDocument();
+    });
+
+    it('hides Q&A content before expanding', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByText('What is X?')).not.toBeInTheDocument();
+      expect(screen.queryByText('It is Y')).not.toBeInTheDocument();
+      expect(screen.queryByText('How?')).not.toBeInTheDocument();
+      expect(screen.queryByText('Like this')).not.toBeInTheDocument();
+    });
+
+    it('shows Q&A pairs after clicking the toggle', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      fireEvent.click(screen.getByText('2 questions answered'));
+
+      expect(screen.getByText('What is X?')).toBeInTheDocument();
+      expect(screen.getByText('It is Y')).toBeInTheDocument();
+      expect(screen.getByText('How?')).toBeInTheDocument();
+      expect(screen.getByText('Like this')).toBeInTheDocument();
+    });
+
+    it('collapses again when toggle is clicked a second time', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const toggle = screen.getByText('2 questions answered');
+      fireEvent.click(toggle);
+      expect(screen.getByText('What is X?')).toBeInTheDocument();
+
+      fireEvent.click(toggle);
+      expect(screen.queryByText('What is X?')).not.toBeInTheDocument();
+    });
+
+    it('uses singular "question" when count is 1', () => {
+      const singleContent: ClarifyingQuestionsResponse = {
+        tool_use: 'ask_clarifying_questions',
+        content: [{ question: 'Only one?', type: 'text' }],
+      };
+      const artifact = createTestArtifact(ArtifactType.PLAN, singleContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: Only one?\nA: Yes',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('1 question answered')).toBeInTheDocument();
+    });
+
+    it('renders interactive ClarifyingQuestionsPreview when no replyMessage', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('clarifying-questions-preview')).toBeInTheDocument();
+      expect(screen.queryByText(/questions answered/)).not.toBeInTheDocument();
     });
   });
 });
