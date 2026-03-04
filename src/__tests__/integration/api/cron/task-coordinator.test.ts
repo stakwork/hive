@@ -26,6 +26,7 @@ vi.mock("@/services/pool-manager", () => ({
         usedVms: 2,
         unusedVms: 3, // 3 available pods
         lastCheck: new Date().toISOString(),
+        queuedCount: 0,
       },
     }),
   })),
