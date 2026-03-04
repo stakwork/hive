@@ -20,13 +20,31 @@ export async function getBasicVMDataFromPods(
       status: true,
       usageStatus: true,
       usageStatusMarkedBy: true,
+      usageStatusMarkedAt: true,
       password: true,
       createdAt: true,
+      flaggedForRecreation: true,
+      flaggedReason: true,
     },
     orderBy: {
       createdAt: "desc",
     },
   });
+
+  // Batch-fetch tasks linked to these pods
+  const podIds = pods.map((p) => p.podId);
+  const tasks = await db.task.findMany({
+    where: { podId: { in: podIds } },
+    select: {
+      id: true,
+      title: true,
+      podId: true,
+      assignee: { select: { id: true, name: true } },
+    },
+  });
+  const taskByPodId = Object.fromEntries(
+    tasks.map((t) => [t.podId, t])
+  );
 
   return pods.map((pod) => {
     const url = buildPodUrl(pod.podId, POD_PORTS.CONTROL);
@@ -55,6 +73,8 @@ export async function getBasicVMDataFromPods(
     const user_info =
       usage_status === "used" ? pod.usageStatusMarkedBy ?? undefined : undefined;
 
+    const task = taskByPodId[pod.podId];
+
     return {
       id: pod.podId,
       subdomain,
@@ -62,10 +82,10 @@ export async function getBasicVMDataFromPods(
       internal_state: state, // Use same value as state for basic query
       usage_status,
       user_info: user_info ?? null,
-      marked_at: pod.usageStatusMarkedBy ? pod.createdAt.toISOString() : null,
+      // Fix: use usageStatusMarkedAt (not createdAt) for accurate elapsed time
+      marked_at: pod.usageStatusMarkedAt?.toISOString() ?? null,
       password: pod.password || undefined,
       url,
-      repository: undefined, // Not available in basic query
       resource_usage: {
         available: false, // Mark as unavailable - will be fetched from pool-manager
         requests: {
@@ -77,6 +97,13 @@ export async function getBasicVMDataFromPods(
           memory: "0",
         },
       },
+      // Flagging fields
+      flaggedForRecreation: pod.flaggedForRecreation,
+      flaggedReason: pod.flaggedReason ?? null,
+      // Task context
+      taskId: task?.id ?? null,
+      taskTitle: task?.title ?? null,
+      assigneeName: task?.assignee?.name ?? null,
     };
   });
 }

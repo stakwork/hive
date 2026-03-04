@@ -186,6 +186,13 @@ export interface VMData {
   repositories?: string[];
   branches?: string[];
   password?: string;
+  // Pod flagging fields
+  flaggedForRecreation?: boolean;
+  flaggedReason?: string | null;
+  // Task context (from Task JOIN in capacity-queries)
+  taskId?: string | null;
+  taskTitle?: string | null;
+  assigneeName?: string | null;
 }
 
 export interface PoolWorkspacesResponse {

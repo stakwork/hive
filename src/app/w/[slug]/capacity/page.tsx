@@ -6,12 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { AlertCircle, Server, RefreshCw } from "lucide-react";
+import { AlertCircle, Server } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
 
-import { CapacityControls } from "@/components/capacity/CapacityControls";
-import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
-import { VMGrid } from "@/components/capacity/VMGrid";
+import { SignalGrid } from "@/components/capacity/SignalGrid";
 import { VMCardSkeleton } from "@/components/capacity/VMCardSkeleton";
 import { VMData } from "@/types/pool-manager";
 
@@ -25,18 +23,9 @@ export default function CapacityPage() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>(() => {
-    const saved = localStorage.getItem("capacity-view-preference");
-    return saved === "3d" ? "3d" : "2d";
-  });
 
   // Track if metrics have been fetched to prevent infinite loop
   const metricsFetched = useRef(false);
-
-  const handleViewChange = (mode: '2d' | '3d') => {
-    setViewMode(mode);
-    localStorage.setItem("capacity-view-preference", mode);
-  };
 
   // Progressive loading: Step 1 - Fetch basic VM data from database
   useEffect(() => {
@@ -128,7 +117,7 @@ export default function CapacityPage() {
     metricsFetched.current = false;
     setMetricsError(false);
     setMetricsLoading(true);
-    
+
     try {
       const response = await fetch(`/api/w/${slug}/pool/workspaces`);
 
@@ -208,45 +197,12 @@ export default function CapacityPage() {
 
       {/* Show VM data once basic data is loaded */}
       {!basicDataLoading && vmData.length > 0 && (
-        <>
-          {/* Controls */}
-          <CapacityControls
-            viewMode={viewMode}
-            onViewModeChange={handleViewChange}
-          />
-
-          {/* Metrics Error Banner with Retry Button */}
-          {metricsError && (
-            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>Metrics unavailable</span>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={handleRefreshMetrics}
-                disabled={metricsLoading}
-                className="ml-auto"
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${metricsLoading ? 'animate-spin' : ''}`} /> 
-                {metricsLoading ? 'Retrying...' : 'Retry'}
-              </Button>
-            </div>
-          )}
-
-          {/* 3D View */}
-          {viewMode === '3d' && (
-            <CapacityVisualization3D vmData={vmData} />
-          )}
-
-          {/* 2D View */}
-          {viewMode === '2d' && (
-            <VMGrid 
-              vms={vmData} 
-              metricsLoading={metricsLoading}
-              metricsError={metricsError}
-            />
-          )}
-        </>
+        <SignalGrid
+          vms={vmData}
+          metricsLoading={metricsLoading}
+          metricsError={metricsError}
+          onRefresh={handleRefreshMetrics}
+        />
       )}
 
       {/* Empty State */}
