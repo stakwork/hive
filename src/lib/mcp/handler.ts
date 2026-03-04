@@ -1,9 +1,6 @@
-import {
-  createMcpHandler,
-  experimental_withMcpAuth as withMcpAuth,
-} from "mcp-handler";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import { validateApiKey } from "@/lib/api-keys";
@@ -12,11 +9,25 @@ import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import {
   mcpListConcepts,
   mcpLearnConcept,
+  mcpListFeatures,
+  mcpReadFeature,
+  mcpCreateFeature,
+  mcpSendMessage,
+  resolveWorkspaceUser,
   type SwarmCredentials,
+  type WorkspaceAuth,
+  type McpToolResult,
 } from "@/lib/ai/mcpTools";
 
 // Available tools registry
-const AVAILABLE_TOOLS = ["list_concepts", "learn_concept"] as const;
+const AVAILABLE_TOOLS = [
+  "list_concepts",
+  "learn_concept",
+  "list_features",
+  "read_feature",
+  "create_feature",
+  "send_message",
+] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
 
 interface McpAuthExtra {
@@ -26,7 +37,7 @@ interface McpAuthExtra {
   apiKeyId: string;
   swarmUrl?: string;
   swarmApiKey?: string;
-  toolsFilter?: string[]; // Serialized as array for authInfo
+  toolsFilter?: string[];
 }
 
 // Parse tools filter from URL
@@ -85,63 +96,192 @@ function getCredentialsFromAuth(
   };
 }
 
-const handler = createMcpHandler(
-  (server: McpServer) => {
-    // Register list_concepts tool
-    server.registerTool(
-      "list_concepts",
-      {
-        title: "List Concepts",
-        description:
-          "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
-        inputSchema: {},
+/**
+ * Extract workspace auth for DB-direct tools (no swarm required).
+ * Resolves the acting user via fuzzy name match, falling back to workspace owner.
+ */
+async function getWorkspaceAuth(
+  extra: McpAuthExtra | undefined,
+  toolName: ToolName,
+  userHint?: string,
+): Promise<{ error?: McpToolResult; auth?: WorkspaceAuth }> {
+  if (!extra) {
+    return {
+      error: {
+        content: [{ type: "text" as const, text: "Error: Not authenticated" }],
+        isError: true,
       },
-      async (_args, extra) => {
-        const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-        const result = getCredentialsFromAuth(authExtra, "list_concepts");
-        if (result.error) return result.error;
-        return mcpListConcepts(result.credentials);
-      },
-    );
+    };
+  }
 
-    // Register learn_concept tool
-    server.registerTool(
-      "learn_concept",
+  if (extra.toolsFilter && !extra.toolsFilter.includes(toolName)) {
+    return {
+      error: {
+        content: [{ type: "text" as const, text: "Error: Tool not available" }],
+        isError: true,
+      },
+    };
+  }
+
+  const userId = await resolveWorkspaceUser(extra.workspaceId, userHint);
+
+  return {
+    auth: {
+      workspaceId: extra.workspaceId,
+      userId,
+    },
+  };
+}
+
+// Create a fresh McpServer with tools registered
+function createServer(): McpServer {
+  const server = new McpServer(
+    { name: "hive", version: "1.0.0" },
+    { capabilities: { tools: {} } },
+  );
+
+  server.registerTool(
+    "list_concepts",
+    {
+      title: "List Concepts",
+      description:
+        "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "list_concepts");
+      if (result.error) return result.error;
+      return mcpListConcepts(result.credentials);
+    },
+  );
+
+  server.registerTool(
+    "learn_concept",
+    {
+      title: "Learn Concept",
+      description:
+        "Fetch documentation for a specific concept by ID. Returns the documentation content for the concept.",
+      inputSchema: {
+        conceptId: z
+          .string()
+          .describe("The ID of the concept to retrieve documentation for"),
+      },
+    },
+    async ({ conceptId }: { conceptId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "learn_concept");
+      if (result.error) return result.error;
+      return mcpLearnConcept(result.credentials, conceptId);
+    },
+  );
+
+  // ----- Feature tools (DB-direct) -----
+
+  server.registerTool(
+    "list_features",
+    {
+      title: "List Features",
+      description:
+        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, and last-updated timestamps. Maximum 40 results.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "list_features");
+      if (result.error) return result.error;
+      return mcpListFeatures(result.auth!);
+    },
+  );
+
+  server.registerTool(
+    "read_feature",
+    {
+      title: "Read Feature",
+      description:
+        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe("The ID of the feature to read"),
+      },
+    },
+    async ({ featureId }: { featureId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "read_feature");
+      if (result.error) return result.error;
+      return mcpReadFeature(result.auth!, featureId);
+    },
+  );
+
+  server.registerTool(
+    "create_feature",
+    {
+      title: "Create Feature",
+      description:
+        "Create a new feature in the workspace with a brief description and optional requirements.",
+      inputSchema: {
+        title: z.string().describe("The title of the feature"),
+        brief: z.string().describe("A brief description of the feature"),
+        requirements: z
+          .string()
+          .optional()
+          .describe("Optional detailed requirements for the feature"),
+        user: z
+          .string()
+          .optional()
+          .describe(
+            "Username of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
       {
-        title: "Learn Concept",
-        description:
-          "Fetch documentation for a specific concept by ID. Returns the documentation content for the concept.",
-        inputSchema: {
-          conceptId: z
-            .string()
-            .describe("The ID of the concept to retrieve documentation for"),
-        },
-      },
-      async ({ conceptId }: { conceptId: string }, extra) => {
-        const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-        const result = getCredentialsFromAuth(authExtra, "learn_concept");
-        if (result.error) return result.error;
-        return mcpLearnConcept(result.credentials, conceptId);
-      },
-    );
-  },
-  {
-    capabilities: {
-      tools: {},
+        title,
+        brief,
+        requirements,
+        user,
+      }: { title: string; brief: string; requirements?: string; user?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "create_feature", user);
+      if (result.error) return result.error;
+      return mcpCreateFeature(result.auth!, title, brief, requirements);
     },
-    serverInfo: {
-      name: "hive",
-      version: "1.0.0",
+  );
+
+  server.registerTool(
+    "send_message",
+    {
+      title: "Send Message",
+      description:
+        "Send a message in a feature's planning chat. This triggers the AI planning workflow, which will update the feature's plan asynchronously.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe("The ID of the feature to send a message to"),
+        message: z
+          .string()
+          .describe("The message text to send"),
+        user: z
+          .string()
+          .optional()
+          .describe(
+            "Username of the sender (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
     },
-  },
-  {
-    streamableHttpEndpoint: "/mcp",
-    sseEndpoint: "/mcp/sse",
-    sseMessageEndpoint: "/mcp/message",
-    maxDuration: 60,
-    verboseLogs: process.env.NODE_ENV === "development",
-  },
-);
+    async ({ featureId, message, user }: { featureId: string; message: string; user?: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "send_message", user);
+      if (result.error) return result.error;
+      return mcpSendMessage(result.auth!, featureId, message);
+    },
+  );
+
+  return server;
+}
 
 // Verify a short-lived JWT (signed by generate-link) and resolve workspace
 async function verifyJwt(
@@ -185,7 +325,7 @@ async function verifyJwt(
       extra: {
         workspaceId: workspace.id,
         workspaceSlug: workspace.slug,
-        apiKeyId: "jwt", // no persistent key record for JWTs
+        apiKeyId: "jwt",
         swarmUrl: swarmAccess.success ? swarmAccess.data.swarmUrl : undefined,
         swarmApiKey: swarmAccess.success
           ? swarmAccess.data.swarmApiKey
@@ -194,21 +334,18 @@ async function verifyJwt(
       } as McpAuthExtra,
     };
   } catch {
-    // expired / invalid signature / malformed
     return undefined;
   }
 }
 
-const verifyToken = async (
-  req: Request,
-  bearerToken?: string,
-): Promise<AuthInfo | undefined> => {
+async function verifyToken(req: Request): Promise<AuthInfo | undefined> {
   const url = new URL(req.url);
 
-  console.log("[MCP] verifyToken called", {
-    url: req.url,
-    bearerToken: !!bearerToken,
-  });
+  // Extract bearer token from Authorization header
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : undefined;
 
   const token =
     url.searchParams.get("apiKey") ||
@@ -261,8 +398,39 @@ const verifyToken = async (
 
   // Fall back to short-lived JWT
   return verifyJwt(token, url);
-};
+}
 
-export const authHandler = withMcpAuth(handler, verifyToken, {
-  required: true,
-});
+const UNAUTHORIZED = () =>
+  new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+
+/**
+ * Handle an MCP request using the SDK's web-standard transport directly.
+ * Each invocation gets a fresh stateless transport — no leaked state, no
+ * monkey-patched globals, no fake Node.js HTTP objects.
+ */
+export async function handleMcpRequest(req: Request): Promise<Response> {
+  // Authenticate
+  const authInfo = await verifyToken(req);
+  if (!authInfo) return UNAUTHORIZED();
+
+  // Fresh server + stateless transport per request
+  const server = createServer();
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless
+  });
+
+  await server.connect(transport);
+
+  try {
+    return await transport.handleRequest(req, { authInfo });
+  } catch (error) {
+    console.error("[MCP] Transport error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}

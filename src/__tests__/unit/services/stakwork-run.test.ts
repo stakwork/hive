@@ -3399,4 +3399,104 @@ describe("Stakwork Run Service", () => {
       });
     });
   });
+
+  describe("TASK_GENERATION branch", () => {
+    const baseRun = {
+      id: "run-1",
+      projectId: "project-1",
+      type: StakworkRunType.TASK_GENERATION,
+      workspaceId: "ws-1",
+      featureId: "feature-1",
+      autoAccept: true,
+      feature: {
+        createdById: "user-1",
+        isFastTrack: false,
+        title: "Branch Test Feature",
+      },
+      workspace: {
+        slug: "test-workspace",
+        ownerId: "user-1",
+        sphinxEnabled: false,
+        sphinxChatPubkey: null,
+        sphinxBotId: null,
+        sphinxBotSecret: null,
+      },
+    };
+
+    const baseFeature = {
+      id: "feature-1",
+      isFastTrack: false,
+      phases: [{ id: "phase-1", order: 1 }],
+      workspace: { id: "ws-1" },
+    };
+
+    test("should store branch on task when branch is provided in payload", async () => {
+      const mockRun = {
+        ...baseRun,
+        result: JSON.stringify({
+          phases: [{
+            tasks: [{
+              tempId: "temp-1",
+              title: "Branched task",
+              description: "Task with branch",
+              priority: "MEDIUM",
+              dependsOn: [],
+              branch: "feature/my-branch",
+            }]
+          }]
+        }),
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.feature.update = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        { project_id: "project-1", project_status: "completed", result: mockRun.result },
+        { workspace_id: "ws-1", feature_id: "feature-1", type: "REQUIREMENTS" }
+      );
+
+      expect(db.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ branch: "feature/my-branch" }),
+      });
+    });
+
+    test("should store branch as null when branch is omitted from payload", async () => {
+      const mockRun = {
+        ...baseRun,
+        result: JSON.stringify({
+          phases: [{
+            tasks: [{
+              tempId: "temp-1",
+              title: "Branchless task",
+              description: "Task without branch",
+              priority: "MEDIUM",
+              dependsOn: [],
+            }]
+          }]
+        }),
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.feature.update = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await processStakworkRunWebhook(
+        { project_id: "project-1", project_status: "completed", result: mockRun.result },
+        { workspace_id: "ws-1", feature_id: "feature-1", type: "REQUIREMENTS" }
+      );
+
+      expect(db.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ branch: null }),
+      });
+    });
+  });
 });

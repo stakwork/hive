@@ -199,6 +199,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
       prevFeatureRef.current = next;
       setFeature(next);
+      if (next.stakworkProjectId) {
+        setProjectId(next.stakworkProjectId.toString());
+      }
     } catch (err) {
       console.error("Error fetching feature:", err);
     }
@@ -209,7 +212,18 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     if (feature?.workflowStatus) {
       setWorkflowStatus(feature.workflowStatus);
     }
-  }, [feature?.workflowStatus]);
+    if (feature?.stakworkProjectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  }, [feature?.workflowStatus, feature?.stakworkProjectId]);
+
+  // Hydrate projectId on initial load (via useDetailResource) so WebSocket can re-subscribe after refresh
+  useEffect(() => {
+    if (feature?.stakworkProjectId && !projectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature?.stakworkProjectId]);
 
   // Load existing messages - promoted to useCallback for visibility refetch
   const loadMessages = useCallback(async () => {

@@ -56,7 +56,7 @@ export async function getPoolStatusFromPods(
     }
 
     // Count by usage status (only RUNNING pods are truly available)
-    if (pod.usageStatus === PodUsageStatus.USED) {
+    if (pod.usageStatus === PodUsageStatus.USED && pod.status === PodStatus.RUNNING) {
       usedVms++;
     } else if (
       pod.usageStatus === PodUsageStatus.UNUSED &&

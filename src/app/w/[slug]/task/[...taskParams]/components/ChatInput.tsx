@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
@@ -48,6 +48,7 @@ interface ChatInputProps {
   stakworkProjectId?: string | null;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
+  isPlanChat?: boolean;
 }
 
 export function ChatInput({
@@ -66,6 +67,7 @@ export function ChatInput({
   stakworkProjectId,
   onRetry,
   isRetrying = false,
+  isPlanChat = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -418,7 +420,20 @@ export function ChatInput({
                   </Button>
                 </div>
               ) : (
-                <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                <div className="flex items-center gap-2">
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  {isPlanChat && stakworkProjectId && workflowStatus === WorkflowStatus.IN_PROGRESS && (
+                    <a
+                      href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View on Stakwork
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>
