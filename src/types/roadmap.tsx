@@ -171,6 +171,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     status: true;
     priority: true;
     workflowStatus: true;
+    stakworkProjectId: true;
     createdAt: true;
     updatedAt: true;
     assignee: {

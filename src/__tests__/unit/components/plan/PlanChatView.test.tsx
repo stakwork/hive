@@ -867,6 +867,117 @@ describe("PlanChatView", () => {
     });
   });
 
+  describe("stakworkProjectId hydration", () => {
+    it("should call useProjectLogWebSocket with the feature stakworkProjectId on initial load", async () => {
+      const { useProjectLogWebSocket } = await import("@/hooks/useProjectLogWebSocket");
+      const mockWebSocket = vi.mocked(useProjectLogWebSocket);
+
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Test Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "IN_PROGRESS",
+          priority: "MEDIUM",
+          workflowStatus: "IN_PROGRESS",
+          stakworkProjectId: 42,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: false,
+        error: null,
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        const calls = mockWebSocket.mock.calls;
+        expect(calls.some(([id]) => id === "42")).toBe(true);
+      });
+    });
+
+    it("should call useProjectLogWebSocket with stakworkProjectId after visibility-change refetch", async () => {
+      const { useProjectLogWebSocket } = await import("@/hooks/useProjectLogWebSocket");
+      const mockWebSocket = vi.mocked(useProjectLogWebSocket);
+
+      // Initial load: no stakworkProjectId
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      mockFetch.mockClear();
+
+      // On visibility change, refetchFeature returns a feature with stakworkProjectId: 99
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/features/feature-123") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                id: "feature-123",
+                title: "Test Feature",
+                brief: null,
+                requirements: null,
+                architecture: null,
+                userStories: [],
+                phases: [],
+                assignee: null,
+                personas: [],
+                diagramUrl: null,
+                diagramS3Key: null,
+                status: "IN_PROGRESS",
+                priority: "MEDIUM",
+                workflowStatus: "IN_PROGRESS",
+                stakworkProjectId: 99,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+      });
+
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123");
+      });
+
+      await waitFor(() => {
+        const calls = mockWebSocket.mock.calls;
+        expect(calls.some(([id]) => id === "99")).toBe(true);
+      });
+    });
+  });
+
   // Section Highlights feature is comprehensively tested in sectionHighlights.test.ts
   // The integration is smoke-tested by ensuring PlanChatView renders without errors
 
