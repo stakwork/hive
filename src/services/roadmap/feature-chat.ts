@@ -128,11 +128,22 @@ export async function sendFeatureChatMessage({
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
-    select: FEATURE_SELECT_FOR_CHAT,
+    select: {
+      ...FEATURE_SELECT_FOR_CHAT,
+      workflowStatus: true,
+    },
   });
 
   if (!feature) {
     throw new Error("Feature not found");
+  }
+
+  // Prevent sending while the planning workflow is already running
+  if (
+    feature.workflowStatus === "IN_PROGRESS" ||
+    feature.workflowStatus === "PENDING"
+  ) {
+    throw new Error("A planning workflow is already running for this feature");
   }
 
   // Create the chat message linked to feature (no task)

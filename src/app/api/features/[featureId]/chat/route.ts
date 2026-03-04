@@ -126,6 +126,8 @@ export async function POST(
     );
   } catch (error) {
     console.error("Error creating feature chat message:", error);
-    return NextResponse.json({ error: "Failed to create message" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "Failed to create message";
+    const status = msg.includes("already running") ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
