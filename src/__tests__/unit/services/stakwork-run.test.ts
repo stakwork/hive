@@ -6,6 +6,7 @@ import {
   updateStakworkRunDecision,
   stopStakworkRun,
 } from "@/services/stakwork-run";
+import { relayoutDiagram, sanitiseDiagram } from "@/services/excalidraw-layout";
 import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
 import { pusherServer } from "@/lib/pusher";
@@ -32,6 +33,7 @@ vi.mock("@/services/excalidraw-layout", () => ({
     elements: [],
     appState: { viewBackgroundColor: "#ffffff", gridSize: null },
   }),
+  sanitiseDiagram: vi.fn((diagram: unknown) => diagram),
 }));
 vi.mock("@/lib/ai/utils", () => ({
   buildFeatureContext: vi.fn((feature: any) => {
@@ -1335,15 +1337,11 @@ describe("Stakwork Run Service", () => {
       mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-1", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      // Mock the dynamic import of excalidraw-layout
-      vi.resetModules();
-      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
-        elements: [{ id: "el-1", type: "rectangle" }],
+      const mockedRelayoutDiagram = vi.mocked(relayoutDiagram);
+      mockedRelayoutDiagram.mockResolvedValueOnce({
+        elements: [{ id: "el-1", type: "rectangle" } as any],
         appState: { viewBackgroundColor: "#ffffff", gridSize: null },
       });
-      vi.doMock("@/services/excalidraw-layout", () => ({
-        relayoutDiagram: mockRelayoutDiagram,
-      }));
 
       // Nested Stakwork format: request_params.result wraps the actual data
       const nestedResult = {
@@ -1372,7 +1370,7 @@ describe("Stakwork Run Service", () => {
       expect(result.status).toBe(WorkflowStatus.COMPLETED);
 
       // Verify relayoutDiagram was called with the extracted flat diagram data
-      expect(mockRelayoutDiagram).toHaveBeenCalledWith(
+      expect(mockedRelayoutDiagram).toHaveBeenCalledWith(
         { components: diagramComponents, connections: diagramConnections },
         "layered"
       );
@@ -1416,14 +1414,11 @@ describe("Stakwork Run Service", () => {
       mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-2", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      vi.resetModules();
-      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
-        elements: [{ id: "el-1", type: "rectangle" }],
+      const mockedRelayoutDiagram = vi.mocked(relayoutDiagram);
+      mockedRelayoutDiagram.mockResolvedValueOnce({
+        elements: [{ id: "el-1", type: "rectangle" } as any],
         appState: { viewBackgroundColor: "#ffffff", gridSize: null },
       });
-      vi.doMock("@/services/excalidraw-layout", () => ({
-        relayoutDiagram: mockRelayoutDiagram,
-      }));
 
       // Top-level format (backward compat)
       const flatResult = {
@@ -1444,7 +1439,7 @@ describe("Stakwork Run Service", () => {
         }
       );
 
-      expect(mockRelayoutDiagram).toHaveBeenCalledWith(
+      expect(mockedRelayoutDiagram).toHaveBeenCalledWith(
         { components: diagramComponents, connections: diagramConnections },
         "layered"
       );
@@ -1697,15 +1692,10 @@ describe("Stakwork Run Service", () => {
       mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      // Mock the dynamic import of excalidraw-layout
-      vi.resetModules();
-      const mockRelayoutDiagram = vi.fn().mockResolvedValue({
-        elements: [{ id: "el-1", type: "rectangle" }],
+      vi.mocked(relayoutDiagram).mockResolvedValueOnce({
+        elements: [{ id: "el-1", type: "rectangle" } as any],
         appState: { viewBackgroundColor: "#ffffff", gridSize: null },
       });
-      vi.doMock("@/services/excalidraw-layout", () => ({
-        relayoutDiagram: mockRelayoutDiagram,
-      }));
 
       const result = await processStakworkRunWebhook(
         {
@@ -1769,6 +1759,77 @@ describe("Stakwork Run Service", () => {
           message: mockAssistantMessage,
           timestamp: expect.any(Date),
         }
+      );
+    });
+
+    test("should strip dangling connections before calling relayoutDiagram", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "API Gateway", type: "gateway" },
+      ];
+      const diagramConnections = [
+        { from: "c1", to: "DOES_NOT_EXIST", label: "broken" },
+        { from: "c1", to: "c1", label: "self" },
+      ];
+
+      const mockRun = {
+        id: "run-dangling",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-dangling",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Dangling Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-dangling" });
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-d", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Use real sanitiseDiagram logic so dangling connections are actually filtered
+      vi.mocked(sanitiseDiagram).mockImplementationOnce((diagram) => {
+        const validIds = new Set(diagram.components.map((c) => c.id));
+        return {
+          components: diagram.components,
+          connections: diagram.connections.filter(
+            (conn) => validIds.has(conn.from) && validIds.has(conn.to)
+          ),
+        };
+      });
+      vi.mocked(relayoutDiagram).mockResolvedValueOnce({
+        elements: [{ id: "el-1", type: "rectangle" } as any],
+        appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+      });
+
+      await processStakworkRunWebhook(
+        {
+          result: {
+            request_params: {
+              result: {
+                components: diagramComponents,
+                connections: diagramConnections,
+              },
+            },
+          },
+          project_status: "completed",
+          project_id: 99999,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-dangling",
+        }
+      );
+
+      // relayoutDiagram should have been called with only the valid self-loop connection,
+      // not the broken connection referencing DOES_NOT_EXIST
+      expect(vi.mocked(relayoutDiagram)).toHaveBeenCalledWith(
+        {
+          components: diagramComponents,
+          connections: [{ from: "c1", to: "c1", label: "self" }],
+        },
+        "layered"
       );
     });
 
