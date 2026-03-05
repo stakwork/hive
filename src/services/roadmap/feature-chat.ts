@@ -110,12 +110,12 @@ const FEATURE_SELECT_FOR_CHAT = {
 export async function resolveExtraSwarms(
   message: string,
   userId: string,
-): Promise<{ url: string; apiKey: string; repoUrls: string }[]> {
+): Promise<{ name: string, url: string; apiKey: string; repoUrls: string }[]> {
   const slugMatches = [...message.matchAll(/\B@([\w-]+)/g)];
   const uniqueSlugs = [...new Set(slugMatches.map((m) => m[1]))];
 
   const encryptionService = EncryptionService.getInstance();
-  const results: { url: string; apiKey: string; repoUrls: string }[] = [];
+  const results: { name: string, url: string; apiKey: string; repoUrls: string }[] = [];
 
   for (const slug of uniqueSlugs) {
     try {
@@ -145,7 +145,7 @@ export async function resolveExtraSwarms(
         .map((r) => r.repositoryUrl)
         .join(",");
 
-      results.push({ url, apiKey, repoUrls });
+      results.push({ name: slug, url, apiKey, repoUrls });
     } catch {
       // Silently skip any workspace that fails to resolve
     }
@@ -318,7 +318,7 @@ export async function sendFeatureChatMessage({
       featureContext,
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
-      extraSwarms,
+      subAgents: extraSwarms,
     });
 
     // Set workflow status to IN_PROGRESS as soon as Stakwork is called
