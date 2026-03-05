@@ -231,6 +231,46 @@ function getValidLayerConstraints(diagram: ParsedDiagram): Map<string, string> {
   return result;
 }
 
+// --- Diagram sanitisation ---
+
+const VALID_COMPONENT_TYPES: Set<ParsedComponent["type"]> = new Set([
+  "client", "gateway", "service", "worker", "queue", "cache", "database", "external",
+]);
+
+/**
+ * Validate and normalise a ParsedDiagram before it reaches ELK.
+ * - Removes components missing a required `id` or `name` field
+ * - Coerces unrecognised `type` values to `"service"`
+ * - Removes connections whose `from` or `to` does not reference a valid component ID
+ */
+export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
+  const cleanedComponents = diagram.components.filter((c) => {
+    if (!c.id || !c.name) {
+      console.warn("[sanitiseDiagram] Discarding component missing id or name:", c);
+      return false;
+    }
+    return true;
+  }).map((c) => {
+    if (!VALID_COMPONENT_TYPES.has(c.type)) {
+      console.warn(`[sanitiseDiagram] Coercing unknown component type "${c.type}" to "service" for component "${c.id}"`);
+      return { ...c, type: "service" as const };
+    }
+    return c;
+  });
+
+  const validIds = new Set(cleanedComponents.map((c) => c.id));
+
+  const cleanedConnections = diagram.connections.filter((conn) => {
+    if (!validIds.has(conn.from) || !validIds.has(conn.to)) {
+      console.warn(`[sanitiseDiagram] Discarding connection with dangling IDs: from="${conn.from}" to="${conn.to}"`);
+      return false;
+    }
+    return true;
+  });
+
+  return { components: cleanedComponents, connections: cleanedConnections };
+}
+
 // --- ELK layout ---
 
 function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
@@ -290,6 +330,9 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
 }
 
 async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = "layered"): Promise<LayoutedDiagram> {
+  // Last-resort safety net: sanitise diagram for any caller that bypasses extractDiagramData
+  diagram = sanitiseDiagram(diagram);
+
   const componentSizes = new Map<string, { width: number; height: number }>();
   for (const c of diagram.components) {
     componentSizes.set(c.id, computeComponentSize(c.name));
