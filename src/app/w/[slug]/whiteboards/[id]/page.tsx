@@ -8,6 +8,7 @@ import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -63,6 +64,7 @@ export default function WhiteboardDetailPage() {
   const programmaticUpdateCountRef = useRef(1); // 1 for initial load
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
+  const resolvedFilesRef = useRef<BinaryFiles>({});
   const lastSavedSnapshotRef = useRef<string>("");
 
   // Collaboration hook
@@ -86,6 +88,13 @@ export default function WhiteboardDetailPage() {
         setWhiteboard(data.data);
         setEditName(data.data.name);
         versionRef.current = data.data.version || 0;
+
+        // Resolve stored S3 image references to presigned URLs
+        const files = (data.data.files as Record<string, unknown>) || {};
+        if (Object.keys(files).length > 0) {
+          const resolved = await resolveFilesForDisplay(whiteboardId, files);
+          resolvedFilesRef.current = resolved;
+        }
         lastSavedSnapshotRef.current = computeSnapshot(
           data.data.elements || [],
           data.data.files || {}
@@ -127,13 +136,16 @@ export default function WhiteboardDetailPage() {
       setSaving(true);
       setSaved(false);
       try {
+        // Upload any new images to S3 before saving; store only s3Key refs in DB
+        const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files,
+          files: cleanedFiles,
           expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
@@ -155,7 +167,7 @@ export default function WhiteboardDetailPage() {
           }
 
           if (body.stale && body.currentVersion != null) {
-            // Version conflict — update version and retry once
+            // Version conflict — update version and retry once (files already uploaded)
             versionRef.current = body.currentVersion;
             const retryData = { ...data, expectedVersion: body.currentVersion };
             const retryRes = await fetch(`/api/whiteboards/${whiteboard.id}`, {
@@ -316,6 +328,16 @@ export default function WhiteboardDetailPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI, whiteboardId, senderId]);
+
+  // Inject resolved S3 image files into Excalidraw once the API is ready
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const resolved = resolvedFilesRef.current;
+    if (Object.keys(resolved).length > 0) {
+      excalidrawAPI.addFiles(Object.values(resolved));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
 
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
@@ -527,6 +549,7 @@ export default function WhiteboardDetailPage() {
             initialData={{
               elements: whiteboard.elements as readonly ExcalidrawElement[],
               appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
+              files: resolvedFilesRef.current,
             }}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
