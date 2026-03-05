@@ -87,18 +87,46 @@ describe("sanitiseDiagram", () => {
     expect(result.connections[0].label).toBe("valid");
   });
 
-  test("unknown component type is coerced to service", () => {
-    const diagram = {
+  test("unknown component type is kept as-is", () => {
+    const diagram: ParsedDiagram = {
       components: [
         { id: "c1", name: "Weird Component", type: "blockchain" },
       ],
       connections: [],
-    } as unknown as ParsedDiagram;
+    };
 
     const result = sanitiseDiagram(diagram);
 
     expect(result.components).toHaveLength(1);
-    expect(result.components[0].type).toBe("service");
+    expect(result.components[0].type).toBe("blockchain");
+  });
+
+  test("component without type is accepted", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Typeless Node" },
+      ],
+      connections: [],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0].type).toBeUndefined();
+  });
+
+  test("unknown shape is coerced to undefined", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Hexagon Node", shape: "hexagon" as never },
+      ],
+      connections: [],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0].shape).toBeUndefined();
   });
 
   test("connections referencing removed components are also stripped", () => {
