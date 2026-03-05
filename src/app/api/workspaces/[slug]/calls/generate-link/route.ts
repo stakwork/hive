@@ -13,11 +13,25 @@ export async function POST(
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const { slug } = await params;
+    const { slug: rawSlug } = await params;
+    const swarmName = request.nextUrl.searchParams.get("swarmName");
+
+    // Resolve workspace slug: use URL slug if real, otherwise look up by swarmName
+    let slug = rawSlug && rawSlug !== "_" ? rawSlug : null;
+
+    if (!slug && swarmName) {
+      const swarm = await db.swarm.findUnique({
+        where: { name: swarmName },
+        select: { workspace: { select: { slug: true, deleted: true } } },
+      });
+      if (swarm?.workspace && !swarm.workspace.deleted) {
+        slug = swarm.workspace.slug;
+      }
+    }
 
     if (!slug) {
       return NextResponse.json(
-        { error: "Workspace slug is required" },
+        { error: "Workspace slug or swarmName query parameter is required" },
         { status: 400 },
       );
     }
