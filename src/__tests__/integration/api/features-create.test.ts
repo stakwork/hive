@@ -1,6 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { db } from "@/lib/db";
-import { StakworkRunType } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -18,28 +16,21 @@ vi.mock("@/lib/ai/extract-feature", () => ({
   extractFeatureFromTranscript: vi.fn(),
 }));
 
-// Mock Stakwork service for deep research integration
-vi.mock("@/services/stakwork-run", () => ({
-  createStakworkRun: vi.fn(),
-}));
-
 // Import after mocks are set up
 import { POST } from "@/app/api/features/create-feature/route";
 import { extractFeatureFromTranscript } from "@/lib/ai/extract-feature";
-import { createStakworkRun } from "@/services/stakwork-run";
 
 const mockExtractFeatureFromTranscript = vi.mocked(extractFeatureFromTranscript);
-const mockCreateStakworkRun = vi.mocked(createStakworkRun);
 
-describe("POST /api/features/create-feature - Voice Transcript Feature Creation", () => {
+describe("POST /api/features/create-feature - Feature Extraction Endpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Default mock implementation for AI extraction
+
+    // Default mock: returns extracted title + brief
     mockExtractFeatureFromTranscript.mockResolvedValue({
       title: "Extracted Feature Title",
       brief: "This is the extracted brief from the transcript",
-      requirements: "These are the extracted requirements from the conversation",
+      requirements: "These are the extracted requirements",
     });
   });
 
@@ -47,9 +38,9 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
     test("returns 401 when user is not authenticated", async () => {
       const request = createPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        { 
+        {
           transcript: "User wants to build a new feature",
-          workspaceSlug: "test-workspace" 
+          workspaceSlug: "test-workspace",
         }
       );
 
@@ -135,9 +126,9 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
     test("returns 404 when workspace does not exist", async () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        { 
+        {
           transcript: "Create a new feature",
-          workspaceSlug: "nonexistent-workspace" 
+          workspaceSlug: "nonexistent-workspace",
         },
         user
       );
@@ -148,7 +139,7 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
     });
   });
 
-  describe("Transcript Processing - String Input", () => {
+  describe("Extraction — String Input", () => {
     let user: any;
     let workspace: any;
 
@@ -161,8 +152,35 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
       });
     });
 
-    test("processes string transcript and creates feature", async () => {
-      const transcript = "I want to build a user authentication system with OAuth support";
+    test("returns { title, seedMessage } from a valid string transcript", async () => {
+      mockExtractFeatureFromTranscript.mockResolvedValueOnce({
+        title: "Auth System",
+        brief: "OAuth-based login with social providers",
+        requirements: "- Google OAuth\n- GitHub OAuth",
+      });
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features/create-feature",
+        {
+          transcript: "I want to build a user authentication system with OAuth support",
+          workspaceSlug: workspace.slug,
+        },
+        user
+      );
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 200);
+      expect(data).toMatchObject({
+        title: "Auth System",
+        seedMessage: "OAuth-based login with social providers",
+      });
+      expect(data).not.toHaveProperty("featureId");
+      expect(data).not.toHaveProperty("run");
+    });
+
+    test("calls extractFeatureFromTranscript with transcript and workspaceSlug", async () => {
+      const transcript = "Build a reporting dashboard";
 
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
@@ -170,53 +188,16 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
         user
       );
 
-      const response = await POST(request);
+      await POST(request);
 
-      const data = await expectSuccess(response, 201);
       expect(mockExtractFeatureFromTranscript).toHaveBeenCalledWith(
         transcript,
         workspace.slug
       );
-      expect(data.title).toBe("Extracted Feature Title");
-      expect(data.featureId).toBeDefined();
-    });
-
-    test("uses AI extracted data for feature creation", async () => {
-      mockExtractFeatureFromTranscript.mockResolvedValueOnce({
-        title: "Custom Auth System",
-        brief: "OAuth-based authentication with social providers",
-        requirements: "- Support Google OAuth\\n- Support GitHub OAuth\\n- Session management",
-      });
-
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Build OAuth authentication",
-          workspaceSlug: workspace.slug 
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      await expectSuccess(response, 201);
-
-      // Verify the feature was created with AI-extracted data
-      const feature = await db.feature.findFirst({
-        where: { workspaceId: workspace.id },
-        orderBy: { createdAt: "desc" },
-      });
-
-      expect(feature).toMatchObject({
-        title: "Custom Auth System",
-        brief: "OAuth-based authentication with social providers",
-        requirements: "- Support Google OAuth\\n- Support GitHub OAuth\\n- Session management",
-        status: "PLANNED",
-      });
     });
   });
 
-  describe("Transcript Processing - Message Array Input", () => {
+  describe("Extraction — ModelMessage Array Input", () => {
     let user: any;
     let workspace: any;
 
@@ -229,7 +210,13 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
       });
     });
 
-    test("processes ModelMessage array transcript", async () => {
+    test("returns { title, seedMessage } from a valid message array transcript", async () => {
+      mockExtractFeatureFromTranscript.mockResolvedValueOnce({
+        title: "Dashboard Feature",
+        brief: "Show sales data and user activity metrics",
+        requirements: "- Sales chart\n- User activity heatmap",
+      });
+
       const messages = [
         { role: "user", content: "I need a dashboard feature" },
         { role: "assistant", content: "What metrics should it show?" },
@@ -244,19 +231,22 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
 
       const response = await POST(request);
 
-      const data = await expectSuccess(response, 201);
+      const data = await expectSuccess(response, 200);
+      expect(data).toMatchObject({
+        title: "Dashboard Feature",
+        seedMessage: "Show sales data and user activity metrics",
+      });
       expect(mockExtractFeatureFromTranscript).toHaveBeenCalledWith(
         messages,
         workspace.slug
       );
-      expect(data.success).toBe(true);
     });
 
     test("accepts multi-content message format", async () => {
       const messages = [
-        { 
+        {
           role: "user",
-          content: [{ type: "text", text: "Build a reporting system" }]
+          content: [{ type: "text", text: "Build a reporting system" }],
         },
       ];
 
@@ -268,156 +258,8 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
 
       const response = await POST(request);
 
-      await expectSuccess(response, 201);
+      await expectSuccess(response, 200);
       expect(mockExtractFeatureFromTranscript).toHaveBeenCalled();
-    });
-  });
-
-  describe("Feature Status - PLANNED Default", () => {
-    let user: any;
-    let workspace: any;
-
-    beforeEach(async () => {
-      user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
-        name: "Test Workspace",
-        slug: "test-workspace",
-      });
-    });
-
-    test("sets feature status to PLANNED for voice-created features", async () => {
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Create a feature",
-          workspaceSlug: workspace.slug 
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      await expectSuccess(response, 201);
-
-      const feature = await db.feature.findFirst({
-        where: { workspaceId: workspace.id },
-      });
-
-      expect(feature?.status).toBe("PLANNED");
-    });
-  });
-
-  describe("Deep Research Integration", () => {
-    let user: any;
-    let workspace: any;
-
-    beforeEach(async () => {
-      user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
-        name: "Test Workspace",
-        slug: "test-workspace",
-      });
-    });
-
-    test("does not trigger deep research when flag is false", async () => {
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        {
-          transcript: "Build a feature",
-          workspaceSlug: workspace.slug,
-          deepResearch: false,
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      await expectSuccess(response, 201);
-      expect(mockCreateStakworkRun).not.toHaveBeenCalled();
-    });
-
-    test("does not trigger deep research when flag is omitted", async () => {
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Build a feature",
-          workspaceSlug: workspace.slug 
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      await expectSuccess(response, 201);
-      expect(mockCreateStakworkRun).not.toHaveBeenCalled();
-    });
-
-    test("triggers deep research when flag is true", async () => {
-      mockCreateStakworkRun.mockResolvedValueOnce({
-        id: "run-123",
-        type: StakworkRunType.ARCHITECTURE,
-        status: "PENDING",
-        projectId: "proj-456",
-      });
-
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        {
-          transcript: "Build a complex feature",
-          workspaceSlug: workspace.slug,
-          deepResearch: true,
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      const data = await expectSuccess(response, 201);
-      
-      expect(mockCreateStakworkRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: StakworkRunType.ARCHITECTURE,
-          featureId: data.featureId,
-        }),
-        user.id
-      );
-
-      expect(data.run).toMatchObject({
-        id: "run-123",
-        type: StakworkRunType.ARCHITECTURE,
-        status: "PENDING",
-      });
-    });
-
-    test("creates feature even if deep research fails", async () => {
-      mockCreateStakworkRun.mockRejectedValueOnce(
-        new Error("Stakwork service unavailable")
-      );
-
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        {
-          transcript: "Build a feature",
-          workspaceSlug: workspace.slug,
-          deepResearch: true,
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      // Feature creation should succeed
-      const data = await expectSuccess(response, 201);
-      expect(data.featureId).toBeDefined();
-      expect(data.run).toBeUndefined(); // No run data if it failed
-
-      // Verify feature exists in database
-      const feature = await db.feature.findUnique({
-        where: { id: data.featureId },
-      });
-      expect(feature).toBeDefined();
     });
   });
 
@@ -434,69 +276,48 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
       });
     });
 
-    test("returns feature ID, workspace ID, and title", async () => {
+    test("returns exactly { title, seedMessage } — no extra fields", async () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Create feature",
-          workspaceSlug: workspace.slug 
-        },
+        { transcript: "Create feature", workspaceSlug: workspace.slug },
         user
       );
 
       const response = await POST(request);
 
-      const data = await expectSuccess(response, 201);
-      expect(data).toMatchObject({
-        success: true,
-        featureId: expect.any(String),
-        workspaceId: workspace.id,
-        title: "Extracted Feature Title",
-      });
+      const data = await expectSuccess(response, 200);
+      expect(Object.keys(data).sort()).toEqual(["seedMessage", "title"]);
     });
 
-    test("includes run data when deep research is triggered", async () => {
-      mockCreateStakworkRun.mockResolvedValueOnce({
-        id: "run-789",
-        type: StakworkRunType.ARCHITECTURE,
-        status: "PENDING",
-        projectId: "proj-123",
-      });
-
+    test("returns 200 status code on success", async () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        {
-          transcript: "Build feature",
-          workspaceSlug: workspace.slug,
-          deepResearch: true,
-        },
+        { transcript: "Feature", workspaceSlug: workspace.slug },
         user
       );
 
       const response = await POST(request);
 
-      const data = await expectSuccess(response, 201);
-      expect(data.run).toMatchObject({
-        id: "run-789",
-        type: StakworkRunType.ARCHITECTURE,
-        status: "PENDING",
-        projectId: "proj-123",
-      });
+      expect(response.status).toBe(200);
     });
 
-    test("returns 201 status code on success", async () => {
+    test("seedMessage maps to extractedFeature.brief", async () => {
+      mockExtractFeatureFromTranscript.mockResolvedValueOnce({
+        title: "Some Title",
+        brief: "The seed message comes from brief",
+        requirements: "Some requirements",
+      });
+
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Feature",
-          workspaceSlug: workspace.slug 
-        },
+        { transcript: "Build it", workspaceSlug: workspace.slug },
         user
       );
 
       const response = await POST(request);
+      const data = await expectSuccess(response, 200);
 
-      expect(response.status).toBe(201);
+      expect(data.seedMessage).toBe("The seed message comes from brief");
     });
   });
 
@@ -513,27 +334,20 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
       });
     });
 
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
-    test("handles AI extraction failure", async () => {
+    test("returns 500 when AI extraction throws", async () => {
       mockExtractFeatureFromTranscript.mockRejectedValueOnce(
-        new Error("Failed to extract feature from transcript")
+        new Error("AI service unavailable")
       );
 
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Create feature",
-          workspaceSlug: workspace.slug 
-        },
+        { transcript: "Build a feature", workspaceSlug: workspace.slug },
         user
       );
 
       const response = await POST(request);
 
-      await expectError(response, "Failed to extract feature from transcript", 500);
+      expect(response.status).toBe(500);
     });
 
     test("handles malformed JSON in request body", async () => {
@@ -552,85 +366,6 @@ describe("POST /api/features/create-feature - Voice Transcript Feature Creation"
       const response = await POST(request);
 
       expect(response.status).toBeGreaterThanOrEqual(400);
-    });
-  });
-
-  describe("Database Persistence", () => {
-    let user: any;
-    let workspace: any;
-
-    beforeEach(async () => {
-      user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
-        name: "Test Workspace",
-        slug: "test-workspace",
-      });
-    });
-
-    test("persists feature to database with AI-extracted data", async () => {
-      mockExtractFeatureFromTranscript.mockResolvedValueOnce({
-        title: "Persisted Feature Title",
-        brief: "Persisted brief",
-        requirements: "Persisted requirements",
-      });
-
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Build feature",
-          workspaceSlug: workspace.slug 
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      const data = await expectSuccess(response, 201);
-
-      const dbFeature = await db.feature.findUnique({
-        where: { id: data.featureId },
-      });
-
-      expect(dbFeature).toMatchObject({
-        title: "Persisted Feature Title",
-        brief: "Persisted brief",
-        requirements: "Persisted requirements",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
-        status: "PLANNED",
-        deleted: false,
-      });
-    });
-
-    test("sets timestamps correctly", async () => {
-      const beforeCreation = new Date();
-
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/features/create-feature",
-        { 
-          transcript: "Feature",
-          workspaceSlug: workspace.slug 
-        },
-        user
-      );
-
-      const response = await POST(request);
-
-      const data = await expectSuccess(response, 201);
-      const afterCreation = new Date();
-
-      const dbFeature = await db.feature.findUnique({
-        where: { id: data.featureId },
-      });
-
-      expect(dbFeature?.createdAt.getTime()).toBeGreaterThanOrEqual(
-        beforeCreation.getTime()
-      );
-      expect(dbFeature?.createdAt.getTime()).toBeLessThanOrEqual(
-        afterCreation.getTime()
-      );
     });
   });
 });
