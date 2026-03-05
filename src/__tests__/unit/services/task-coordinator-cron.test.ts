@@ -18,12 +18,8 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/config/services", () => ({
-  getServiceConfig: vi.fn(),
-}));
-
-vi.mock("@/services/pool-manager", () => ({
-  PoolManagerService: vi.fn(),
+vi.mock("@/lib/pods/status-queries", () => ({
+  getPoolStatusFromPods: vi.fn(),
 }));
 
 vi.mock("@/services/janitor", () => ({
@@ -44,8 +40,7 @@ vi.mock("@/lib/helpers/workflow-status", () => ({
 
 // Import mocked modules
 const { db: mockDb } = await import("@/lib/db");
-const { getServiceConfig: mockGetServiceConfig } = await import("@/config/services");
-const { PoolManagerService: MockPoolManagerService } = await import("@/services/pool-manager");
+const { getPoolStatusFromPods: mockGetPoolStatusFromPods } = await import("@/lib/pods/status-queries");
 const { acceptJanitorRecommendation: mockAcceptJanitorRecommendation } = await import("@/services/janitor");
 const { startTaskWorkflow: mockStartTaskWorkflow } = await import("@/services/task-workflow");
 
@@ -59,15 +54,15 @@ const TestHelpers = {
   },
 
   setupPoolManagerResponse: (unusedVms: number) => {
-    const mockPoolManager = {
-      getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(unusedVms)),
-    };
-    vi.mocked(MockPoolManagerService).mockImplementation(() => mockPoolManager as any);
-    vi.mocked(mockGetServiceConfig).mockReturnValue({
-      baseURL: "https://pool-manager.com",
-      apiKey: "test-api-key",
-    } as any);
-    return mockPoolManager;
+    vi.mocked(mockGetPoolStatusFromPods).mockResolvedValue({
+      unusedVms,
+      runningVms: unusedVms,
+      pendingVms: 0,
+      failedVms: 0,
+      usedVms: 0,
+      lastCheck: new Date().toISOString(),
+      queuedCount: 0,
+    });
   },
 
   setupRecommendations: (recommendations: any[] = []) => {
@@ -108,9 +103,8 @@ const TestHelpers = {
     });
   },
 
-  expectPoolStatusCalled: (swarmId: string, poolApiKey: string) => {
-    const mockPoolManagerInstance = vi.mocked(MockPoolManagerService).mock.results[0]?.value;
-    expect(mockPoolManagerInstance.getPoolStatus).toHaveBeenCalledWith(swarmId, poolApiKey);
+  expectPoolStatusCalled: (swarmId: string, workspaceId: string) => {
+    expect(mockGetPoolStatusFromPods).toHaveBeenCalledWith(swarmId, workspaceId);
   },
 
   expectRecommendationsQueryCalled: (workspaceId: string) => {
@@ -308,9 +302,11 @@ describe("executeTaskCoordinatorRuns", () => {
       expect(mockAcceptJanitorRecommendation).not.toHaveBeenCalled();
     });
 
-    test("should skip workspace without pool API key", async () => {
+    test("should process workspace that has swarm but no poolApiKey (poolApiKey no longer required)", async () => {
       const workspace = JanitorTestDataFactory.createWorkspaceWithoutPoolApiKey();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(0); // No pods available → no tasks created
+      TestHelpers.setupRecommendations([]);
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -340,7 +336,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      TestHelpers.expectPoolStatusCalled(workspace.swarm!.id, workspace.swarm!.poolApiKey!);
+      TestHelpers.expectPoolStatusCalled(workspace.swarm!.id, workspace.id);
     });
 
     test("should process workspace when 2+ pods available", async () => {
@@ -391,16 +387,15 @@ describe("executeTaskCoordinatorRuns", () => {
       consoleLogSpy.mockRestore();
     });
 
-    test("should create PoolManagerService with correct configuration", async () => {
-      MockSetup.setupSuccessfulExecution();
+    test("should call getPoolStatusFromPods with swarmId and workspaceId", async () => {
+      const { workspace } = MockSetup.setupSuccessfulExecution();
 
       await executeTaskCoordinatorRuns();
 
-      expect(mockGetServiceConfig).toHaveBeenCalledWith("poolManager");
-      expect(MockPoolManagerService).toHaveBeenCalledWith({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      });
+      expect(mockGetPoolStatusFromPods).toHaveBeenCalledWith(
+        workspace.swarm!.id,
+        workspace.id
+      );
     });
   });
 
@@ -633,21 +628,17 @@ describe("executeTaskCoordinatorRuns", () => {
       TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
 
       // First workspace pool check fails, second succeeds
-      const mockPoolManager1 = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Pool API error")),
-      };
-      const mockPoolManager2 = {
-        getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(3)),
-      };
-
-      vi.mocked(MockPoolManagerService)
-        .mockImplementationOnce(() => mockPoolManager1 as any)
-        .mockImplementationOnce(() => mockPoolManager2 as any);
-
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods)
+        .mockRejectedValueOnce(new Error("Pool API error"))
+        .mockResolvedValueOnce({
+          unusedVms: 3,
+          runningVms: 3,
+          pendingVms: 0,
+          failedVms: 0,
+          usedVms: 0,
+          lastCheck: new Date().toISOString(),
+          queuedCount: 0,
+        });
 
       TestHelpers.setupRecommendations([]);
 
@@ -666,14 +657,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const consoleErrorSpy = vi.spyOn(console, "error");
       const workspace = JanitorTestDataFactory.createValidWorkspace();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
-      const mockPoolManager = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Pool connection timeout")),
-      };
-      vi.mocked(MockPoolManagerService).mockImplementation(() => mockPoolManager as any);
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods).mockRejectedValue(new Error("Pool connection timeout"));
 
       await executeTaskCoordinatorRuns();
 
@@ -688,14 +672,7 @@ describe("executeTaskCoordinatorRuns", () => {
     test("should include workspace slug in error object", async () => {
       const workspace = JanitorTestDataFactory.createValidWorkspace();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
-      const mockPoolManager = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Test error")),
-      };
-      vi.mocked(MockPoolManagerService).mockImplementation(() => mockPoolManager as any);
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods).mockRejectedValue(new Error("Test error"));
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -825,14 +802,7 @@ describe("executeTaskCoordinatorRuns", () => {
     test("should return success: false when errors occur", async () => {
       const workspace = JanitorTestDataFactory.createValidWorkspace();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
-      const mockPoolManager = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Pool error")),
-      };
-      vi.mocked(MockPoolManagerService).mockImplementation(() => mockPoolManager as any);
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods).mockRejectedValue(new Error("Pool error"));
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -867,21 +837,9 @@ describe("executeTaskCoordinatorRuns", () => {
       const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "workspace-2" });
       TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
 
-      const mockPoolManager1 = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Error 1")),
-      };
-      const mockPoolManager2 = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Error 2")),
-      };
-
-      vi.mocked(MockPoolManagerService)
-        .mockImplementationOnce(() => mockPoolManager1 as any)
-        .mockImplementationOnce(() => mockPoolManager2 as any);
-
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods)
+        .mockRejectedValueOnce(new Error("Error 1"))
+        .mockRejectedValueOnce(new Error("Error 2"));
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -891,14 +849,7 @@ describe("executeTaskCoordinatorRuns", () => {
     test("should include errors array with error details", async () => {
       const workspace = JanitorTestDataFactory.createValidWorkspace();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
-      const mockPoolManager = {
-        getPoolStatus: vi.fn().mockRejectedValue(new Error("Test error message")),
-      };
-      vi.mocked(MockPoolManagerService).mockImplementation(() => mockPoolManager as any);
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods).mockRejectedValue(new Error("Test error message"));
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -1245,21 +1196,15 @@ describe("executeTaskCoordinatorRuns", () => {
       const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "workspace-2" });
       TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
 
-      const mockPoolManager1 = {
-        getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(3)),
-      };
-      const mockPoolManager2 = {
-        getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(3)),
-      };
-
-      vi.mocked(MockPoolManagerService)
-        .mockImplementationOnce(() => mockPoolManager1 as any)
-        .mockImplementationOnce(() => mockPoolManager2 as any);
-
-      vi.mocked(mockGetServiceConfig).mockReturnValue({
-        baseURL: "https://pool-manager.com",
-        apiKey: "test-api-key",
-      } as any);
+      vi.mocked(mockGetPoolStatusFromPods).mockResolvedValue({
+        unusedVms: 3,
+        runningVms: 3,
+        pendingVms: 0,
+        failedVms: 0,
+        usedVms: 0,
+        lastCheck: new Date().toISOString(),
+        queuedCount: 0,
+      });
 
       const rec1 = JanitorTestDataFactory.createPendingRecommendation("HIGH");
       const rec2 = JanitorTestDataFactory.createPendingRecommendation("MEDIUM");
