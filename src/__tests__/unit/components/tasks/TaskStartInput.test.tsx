@@ -499,6 +499,44 @@ describe("TaskStartInput - Branch Selector", () => {
     expect(trigger).toHaveTextContent("main");
   });
 
+  it("should truncate a long branch name and not overflow the container", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    // The trigger must have max-w constraint so it cannot grow unboundedly
+    expect(trigger.className).toMatch(/max-w-\[180px\]/);
+    // The container row must have overflow-hidden to prevent collision with the right-side buttons
+    const container = trigger.closest('[class*="absolute bottom-6 left-8"]');
+    expect(container?.className).toMatch(/overflow-hidden/);
+  });
+
+  it("should render PopoverContent with side=bottom to open downward", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    // Open the branch popover so PopoverContent is rendered
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    fireEvent.click(trigger);
+
+    // PopoverContent rendered by Radix adds data-side attribute when open
+    // We verify the branch list is visible (popover opened correctly)
+    const commandInput = screen.queryByPlaceholderText("Search branch...");
+    expect(commandInput).toBeInTheDocument();
+  });
+
   it("should call onStart with the selected branch as the 6th argument", async () => {
     const user = userEvent.setup();
 

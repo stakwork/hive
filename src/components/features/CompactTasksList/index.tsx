@@ -461,9 +461,9 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                       disabled={task.status !== "TODO"}
                     >
                       <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[120px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 overflow-hidden min-w-0">
                           <FolderOpen className="h-3 w-3 shrink-0" />
-                          <SelectValue />
+                          <span className="truncate min-w-0 block"><SelectValue /></span>
                         </div>
                       </SelectTrigger>
                       <SelectContent>
