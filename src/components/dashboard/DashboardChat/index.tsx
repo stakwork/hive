@@ -38,7 +38,7 @@ export function DashboardChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
-  const [extractedData, setExtractedData] = useState<{ title: string; seedMessage: string } | null>(null);
+  const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
@@ -462,7 +462,7 @@ export function DashboardChat() {
       }
 
       const data = await response.json();
-      setExtractedData({ title: data.title, seedMessage: data.seedMessage });
+      setExtractedData({ title: data.title, description: data.description });
     } catch (error) {
       setExtractError(error instanceof Error ? error.message : "Extraction failed");
     } finally {
@@ -471,6 +471,8 @@ export function DashboardChat() {
   };
 
   const handleOpenFeatureModal = () => {
+    setExtractedData(null);
+    setExtractError(null);
     setShowFeatureModal(true);
     runExtraction();
   };
@@ -479,7 +481,7 @@ export function DashboardChat() {
     runExtraction();
   };
 
-  const handleLaunchPlan = async (title: string, seedMessage: string) => {
+  const handleLaunchPlan = async (title: string, description: string) => {
     if (!slug || !workspace) return;
     setIsLaunching(true);
     try {
@@ -495,12 +497,16 @@ export function DashboardChat() {
       }
       const feature = await featureRes.json();
 
-      // 2. Send seed message as first Plan Mode chat message (no history)
-      await fetch(`/api/features/${feature.id}/chat`, {
+      // 2. Send description as first Plan Mode chat message
+      const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: seedMessage }),
+        body: JSON.stringify({ message: description }),
       });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
 
       // 3. Navigate into Plan Mode
       setShowFeatureModal(false);
@@ -514,7 +520,7 @@ export function DashboardChat() {
     }
   };
 
-  const handleLaunchTask = async (title: string, seedMessage: string) => {
+  const handleLaunchTask = async (title: string, description: string) => {
     if (!slug) return;
     setIsLaunching(true);
     try {
@@ -525,7 +531,7 @@ export function DashboardChat() {
         body: JSON.stringify({
           title,
           workspaceSlug: slug,
-          description: seedMessage,
+          description,
           mode: "live",
         }),
       });
@@ -535,12 +541,16 @@ export function DashboardChat() {
       }
       const task = await taskRes.json();
 
-      // 2. Send seed message as first chat message
-      await fetch("/api/chat/message", {
+      // 2. Send description as first chat message
+      const chatRes = await fetch("/api/chat/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, message: seedMessage, mode: "live" }),
+        body: JSON.stringify({ taskId: task.id, message: description, mode: "live" }),
       });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
 
       // 3. Navigate into Task
       setShowFeatureModal(false);

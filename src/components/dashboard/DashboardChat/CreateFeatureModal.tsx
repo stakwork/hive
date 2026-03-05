@@ -25,10 +25,10 @@ import { Textarea } from "@/components/ui/textarea";
 interface CreateFeatureModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLaunchPlan: (title: string, seedMessage: string) => Promise<void>;
-  onLaunchTask: (title: string, seedMessage: string) => Promise<void>;
+  onLaunchPlan: (title: string, description: string) => Promise<void>;
+  onLaunchTask: (title: string, description: string) => Promise<void>;
   isLaunching: boolean;
-  extractedData: { title: string; seedMessage: string } | null;
+  extractedData: { title: string; description: string } | null;
   isExtracting: boolean;
   extractError: string | null;
   onRetryExtract: () => void;
@@ -46,13 +46,13 @@ export function CreateFeatureModal({
   onRetryExtract,
 }: CreateFeatureModalProps) {
   const [title, setTitle] = useState("");
-  const [seedMessage, setSeedMessage] = useState("");
+  const [description, setDescription] = useState("");
 
   // Populate editable fields when extraction completes
   useEffect(() => {
     if (extractedData) {
       setTitle(extractedData.title);
-      setSeedMessage(extractedData.seedMessage);
+      setDescription(extractedData.description);
     }
   }, [extractedData]);
 
@@ -60,7 +60,7 @@ export function CreateFeatureModal({
   useEffect(() => {
     if (!open) {
       setTitle("");
-      setSeedMessage("");
+      setDescription("");
     }
   }, [open]);
 
@@ -82,7 +82,7 @@ export function CreateFeatureModal({
               ? "Extracting feature details from your conversation…"
               : extractError
               ? "There was a problem extracting the feature. You can retry or close."
-              : "Review and edit the extracted title and seed message, then choose how to launch."}
+              : "Review and edit the extracted title and description, then choose how to launch."}
           </DialogDescription>
         </DialogHeader>
 
@@ -103,18 +103,18 @@ export function CreateFeatureModal({
             )}
           </div>
 
-          {/* Seed message field */}
+          {/* Description field */}
           <div className="grid gap-2">
-            <Label htmlFor="seed-message">Seed Message</Label>
+            <Label htmlFor="feature-description">Description</Label>
             {isExtracting ? (
               <Skeleton className="h-24 w-full" />
             ) : (
               <Textarea
-                id="seed-message"
-                value={seedMessage}
-                onChange={(e) => setSeedMessage(e.target.value)}
+                id="feature-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 disabled={isLaunching || !!extractError}
-                placeholder="Brief description / seed message for the AI planner"
+                placeholder="Brief description for the feature"
                 rows={4}
                 className="resize-none"
               />
@@ -155,7 +155,7 @@ export function CreateFeatureModal({
               type="button"
               disabled={!canLaunch || isLaunching}
               className="rounded-r-none"
-              onClick={() => onLaunchPlan(title.trim(), seedMessage.trim())}
+              onClick={() => onLaunchPlan(title.trim(), description.trim())}
             >
               {isLaunching ? (
                 <>
@@ -179,7 +179,7 @@ export function CreateFeatureModal({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  onClick={() => onLaunchTask(title.trim(), seedMessage.trim())}
+                  onClick={() => onLaunchTask(title.trim(), description.trim())}
                 >
                   Launch as Task
                 </DropdownMenuItem>

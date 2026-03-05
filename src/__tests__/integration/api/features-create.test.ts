@@ -152,7 +152,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       });
     });
 
-    test("returns { title, seedMessage } from a valid string transcript", async () => {
+    test("returns { title, description } from a valid string transcript", async () => {
       mockExtractFeatureFromTranscript.mockResolvedValueOnce({
         title: "Auth System",
         brief: "OAuth-based login with social providers",
@@ -173,7 +173,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       const data = await expectSuccess(response, 200);
       expect(data).toMatchObject({
         title: "Auth System",
-        seedMessage: "OAuth-based login with social providers",
+        description: "OAuth-based login with social providers",
       });
       expect(data).not.toHaveProperty("featureId");
       expect(data).not.toHaveProperty("run");
@@ -210,7 +210,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       });
     });
 
-    test("returns { title, seedMessage } from a valid message array transcript", async () => {
+    test("returns { title, description } from a valid message array transcript", async () => {
       mockExtractFeatureFromTranscript.mockResolvedValueOnce({
         title: "Dashboard Feature",
         brief: "Show sales data and user activity metrics",
@@ -234,7 +234,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       const data = await expectSuccess(response, 200);
       expect(data).toMatchObject({
         title: "Dashboard Feature",
-        seedMessage: "Show sales data and user activity metrics",
+        description: "Show sales data and user activity metrics",
       });
       expect(mockExtractFeatureFromTranscript).toHaveBeenCalledWith(
         messages,
@@ -276,7 +276,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       });
     });
 
-    test("returns exactly { title, seedMessage } — no extra fields", async () => {
+    test("returns exactly { title, description } — no extra fields", async () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/create-feature",
         { transcript: "Create feature", workspaceSlug: workspace.slug },
@@ -286,7 +286,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       const response = await POST(request);
 
       const data = await expectSuccess(response, 200);
-      expect(Object.keys(data).sort()).toEqual(["seedMessage", "title"]);
+      expect(Object.keys(data).sort()).toEqual(["description", "title"]);
     });
 
     test("returns 200 status code on success", async () => {
@@ -301,7 +301,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       expect(response.status).toBe(200);
     });
 
-    test("seedMessage maps to extractedFeature.brief", async () => {
+    test("description maps to extractedFeature.brief", async () => {
       mockExtractFeatureFromTranscript.mockResolvedValueOnce({
         title: "Some Title",
         brief: "The seed message comes from brief",
@@ -317,7 +317,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
 
-      expect(data.seedMessage).toBe("The seed message comes from brief");
+      expect(data.description).toBe("The seed message comes from brief");
     });
   });
 

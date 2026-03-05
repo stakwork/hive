@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         title: extractedFeature.title,
-        seedMessage: extractedFeature.brief,
+        description: extractedFeature.brief,
       },
       { status: 200 }
     );
