@@ -63,6 +63,7 @@ describe("resolveExtraSwarms", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
+      name: "my-workspace",
       url: "https://swarm.example.com:3355",
       apiKey: "decrypted:encrypted-key",
       repoUrls: "https://github.com/org/repo1,https://github.com/org/repo2",
