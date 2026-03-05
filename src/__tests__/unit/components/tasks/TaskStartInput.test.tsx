@@ -82,6 +82,7 @@ vi.mock("@/hooks/useRepoBranches", () => ({
     ],
     isLoading: false,
     error: null,
+    fetchBranches: vi.fn(),
   }),
 }));
 
