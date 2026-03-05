@@ -1374,6 +1374,23 @@ describe("processTicketSweep", () => {
     expect(mockStartTaskWorkflow).not.toHaveBeenCalled();
   });
 
+  test("workflow error on one task does not abort sweep — already dispatched count is preserved", async () => {
+    const candidates = Array.from({ length: 3 }, () => createCandidateTask());
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+
+    // Second task throws, first and third succeed
+    vi.mocked(mockStartTaskWorkflow)
+      .mockResolvedValueOnce(undefined as any)
+      .mockRejectedValueOnce(new Error("Stakwork API timeout"))
+      .mockResolvedValueOnce(undefined as any);
+
+    const result = await processTicketSweep("ws-1", "workspace-1", 5);
+
+    // 2 succeeded despite 1 failure — sweep did not abort
+    expect(result).toBe(2);
+    expect(mockStartTaskWorkflow).toHaveBeenCalledTimes(3);
+  });
+
   test("uses Math.max(slotsAvailable * 3, 20) as take for candidate query", async () => {
     vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
 

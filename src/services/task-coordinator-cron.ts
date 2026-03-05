@@ -191,8 +191,8 @@ export async function processTicketSweep(
       dispatched++;
       console.log(`[TaskCoordinator] Successfully processed ticket ${candidateTask.id} (${dispatched}/${slotsAvailable})`);
     } catch (error) {
+      // Log and skip this task — don't abort the sweep; already-dispatched tasks stay counted
       console.error(`[TaskCoordinator] Error processing ticket ${candidateTask.id}:`, error);
-      throw error;
     }
   }
 
