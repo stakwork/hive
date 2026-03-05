@@ -12,7 +12,7 @@ import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
-import { X } from "lucide-react";
+import { Sparkles, BookOpen, Share2, X } from "lucide-react";
 
 interface ToolCall {
   id: string;
@@ -623,16 +623,6 @@ export function DashboardChat() {
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="flex flex-col min-h-0">
-          {/* Clear all button - above scrollable area */}
-          <div className="flex justify-end px-2 pb-0.5">
-            <button
-              onClick={handleClearAll}
-              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-70 hover:opacity-100 transition-opacity"
-              aria-label="Clear all messages"
-            >
-              <X className="w-5 h-5" strokeWidth={2.5} />
-            </button>
-          </div>
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
             <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
@@ -678,22 +668,60 @@ export function DashboardChat() {
         </div>
       )}
 
+      {/* Action pill row — only when messages exist */}
+      {hasMessages && (
+        <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1">
+          <button
+            type="button"
+            onClick={handleOpenFeatureModal}
+            disabled={isExtracting || isLaunching || isLoading}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate Plan
+          </button>
+          {hasProvenanceFiles && (
+            <button
+              type="button"
+              onClick={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
+              className={`pointer-events-auto rounded-full border px-3 py-1.5 text-xs transition-all flex items-center gap-1.5 ${
+                isProvenanceSidebarOpen
+                  ? "border-primary/60 bg-primary/10 text-primary hover:bg-primary/20"
+                  : "border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              Sources
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={isLoading}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Input field */}
       <div className="pointer-events-auto shrink-0">
         <ChatInput
           onSend={handleSend}
           disabled={isLoading}
-          showCreateFeature={hasMessages}
-          onCreateFeature={handleOpenFeatureModal}
-          isCreatingFeature={isExtracting || isLaunching}
           imageData={currentImageData}
           onImageUpload={handleImageUpload}
           onImageRemove={handleImageRemove}
-          showProvenanceToggle={hasProvenanceFiles}
-          isProvenanceSidebarOpen={isProvenanceSidebarOpen}
-          onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
-          showShareButton={messages.length > 0}
-          onShare={handleShare}
           extraWorkspaceSlugs={extraWorkspaceSlugs}
           onAddWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => [...prev, ws])}
           onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}
