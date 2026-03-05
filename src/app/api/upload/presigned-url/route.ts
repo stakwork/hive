@@ -9,7 +9,10 @@ const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
   contentType: z.string().min(1, 'Content type is required'),
   size: z.number().min(1, 'File size must be greater than 0'),
-  taskId: z.string().min(1, 'Task ID is required'),
+  taskId: z.string().optional(),
+  featureId: z.string().optional(),
+}).refine(data => data.taskId || data.featureId, {
+  message: 'Either taskId or featureId is required',
 })
 
 export async function GET(request: NextRequest) {
@@ -65,38 +68,63 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const validatedData = uploadRequestSchema.parse(body)
-    const { filename, contentType, size, taskId } = validatedData
-    
-    // Get task with workspace and swarm information
-    const task = await db.task.findFirst({
-      where: {
-        id: taskId,
-        deleted: false,
-      },
-      select: {
-        workspaceId: true,
-        workspace: {
-          select: {
-            id: true,
-            swarm: {
-              select: {
-                id: true,
+    const { filename, contentType, size, taskId, featureId } = validatedData
+
+    let workspaceId: string
+    let swarmId: string
+    let entityId: string
+
+    if (featureId) {
+      // Feature path
+      const feature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: {
+          workspaceId: true,
+          workspace: {
+            select: {
+              swarm: {
+                select: { id: true },
               },
             },
           },
         },
-      },
-    })
-    
-    if (!task) {
-      return NextResponse.json(
-        { error: 'Task not found' },
-        { status: 404 }
-      )
+      })
+
+      if (!feature) {
+        return NextResponse.json({ error: 'Feature not found' }, { status: 404 })
+      }
+
+      workspaceId = feature.workspaceId
+      swarmId = feature.workspace.swarm?.id || 'default'
+      entityId = featureId
+    } else {
+      // Task path
+      const task = await db.task.findFirst({
+        where: {
+          id: taskId!,
+          deleted: false,
+        },
+        select: {
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              swarm: {
+                select: { id: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (!task) {
+        return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+      }
+
+      workspaceId = task.workspace.id
+      swarmId = task.workspace.swarm?.id || 'default'
+      entityId = taskId!
     }
-    
-    const workspaceId = task.workspace.id
-    const swarmId = task.workspace.swarm?.id || 'default'
 
     // Validate file type
     if (!getS3Service().validateFileType(contentType)) {
@@ -115,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate S3 path
-    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId, filename)
+    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, entityId, filename)
 
     // Generate presigned upload URL
     const presignedUrl = await getS3Service().generatePresignedUploadUrl(

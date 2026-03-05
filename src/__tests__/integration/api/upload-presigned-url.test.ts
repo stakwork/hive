@@ -188,12 +188,12 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       expect(data.details).toBeDefined();
     });
 
-    test("should return 400 for missing taskId", async () => {
+    test("should return 400 when neither taskId nor featureId is provided", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
-        // taskId missing
+        // neither taskId nor featureId
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -314,6 +314,166 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       expect(data.filename).toBe("test.jpg");
       expect(data.contentType).toBe("image/jpeg");
       expect(data.size).toBe(1024000);
+    });
+  });
+
+  describe("Feature ID Tests", () => {
+    async function createTestUserWithWorkspaceAndFeature() {
+      return await db.$transaction(async (tx) => {
+        const testUser = await tx.user.create({
+          data: {
+            id: generateUniqueId("test-user"),
+            email: `test-${generateUniqueId()}@example.com`,
+            name: "Test User",
+          },
+        });
+
+        const testWorkspace = await tx.workspace.create({
+          data: {
+            id: generateUniqueId("workspace"),
+            name: "Test Workspace",
+            slug: generateUniqueId("test-workspace"),
+            description: "Test workspace description",
+            ownerId: testUser.id,
+          },
+        });
+
+        const testSwarm = await tx.swarm.create({
+          data: {
+            swarmId: `swarm-${Date.now()}`,
+            name: `test-swarm-${Date.now()}`,
+            status: "ACTIVE",
+            instanceType: "XL",
+            swarmApiKey: "test-api-key",
+            swarmUrl: "https://test-swarm.com/api",
+            swarmSecretAlias: "test-secret",
+            poolName: "test-pool",
+            environmentVariables: [],
+            services: [],
+            workspaceId: testWorkspace.id,
+            agentRequestId: null,
+            agentStatus: null,
+          },
+        });
+
+        const testFeature = await tx.feature.create({
+          data: {
+            id: generateUniqueId("feature"),
+            title: "Test Feature",
+            workspaceId: testWorkspace.id,
+            createdById: testUser.id,
+            updatedById: testUser.id,
+          },
+        });
+
+        return { testUser, testWorkspace, testSwarm, testFeature };
+      });
+    }
+
+    test("should return presignedUrl and s3Path when featureId is provided", async () => {
+      const { testUser, testFeature, testWorkspace } =
+        await createTestUserWithWorkspaceAndFeature();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
+      vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
+      vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
+        `uploads/${testWorkspace.id}/swarm123/${testFeature.id}/test.jpg`,
+      );
+      vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
+      );
+
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        featureId: testFeature.id,
+        filename: "test.jpg",
+        contentType: "image/jpeg",
+        size: 1024000,
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.presignedUrl).toBeDefined();
+      expect(data.s3Path).toBeDefined();
+      expect(mockS3Service.generateS3Path).toHaveBeenCalledWith(
+        testWorkspace.id,
+        expect.any(String),
+        testFeature.id,
+        "test.jpg",
+      );
+    });
+
+    test("should return 404 for non-existent featureId", async () => {
+      const { testUser } = await createTestUserWithWorkspaceAndFeature();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        featureId: "non-existent-feature-id",
+        filename: "test.jpg",
+        contentType: "image/jpeg",
+        size: 1024000,
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Feature not found" });
+    });
+
+    test("should use default swarmId when feature workspace has no swarm", async () => {
+      const testUser = await db.user.create({
+        data: {
+          id: generateUniqueId("test-user"),
+          email: `test-${generateUniqueId()}@example.com`,
+          name: "Test User",
+        },
+      });
+      const testWorkspace = await db.workspace.create({
+        data: {
+          id: generateUniqueId("workspace"),
+          name: "No Swarm Workspace",
+          slug: generateUniqueId("no-swarm-workspace"),
+          description: "Workspace without swarm",
+          ownerId: testUser.id,
+        },
+      });
+      const testFeature = await db.feature.create({
+        data: {
+          id: generateUniqueId("feature"),
+          title: "Test Feature",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
+      vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
+      vi.mocked(mockS3Service.generateS3Path).mockReturnValue("some/path");
+      vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
+        "https://test-bucket.s3.amazonaws.com/presigned-url",
+      );
+
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        featureId: testFeature.id,
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 512000,
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockS3Service.generateS3Path).toHaveBeenCalledWith(
+        testWorkspace.id,
+        "default",
+        testFeature.id,
+        "photo.png",
+      );
     });
   });
 
