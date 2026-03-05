@@ -784,7 +784,7 @@ export function TaskStartInput({
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="absolute bottom-6 left-8 z-10 flex gap-2">
+            <div className="absolute bottom-6 left-8 z-10 flex gap-2 max-w-[calc(100%-8rem)] overflow-hidden flex-nowrap">
               <Select value={taskMode} onValueChange={onModeChange}>
                 <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
                   <div className="flex items-center gap-2">
@@ -869,7 +869,7 @@ export function TaskStartInput({
                       variant="outline"
                       role="combobox"
                       aria-expanded={branchPopoverOpen}
-                      className="h-8 text-xs rounded-lg shadow-sm px-3 gap-2 max-w-[180px]"
+                      className="h-8 text-xs rounded-lg shadow-sm px-3 gap-2 max-w-[180px] min-w-0"
                       data-testid="branch-selector-trigger"
                     >
                       {isLoadingBranches ? (
@@ -877,11 +877,11 @@ export function TaskStartInput({
                       ) : (
                         <GitBranch className="h-3.5 w-3.5 shrink-0" />
                       )}
-                      <span className="truncate">{selectedBranch || "Select branch"}</span>
+                      <span className="truncate min-w-0">{selectedBranch || "Select branch"}</span>
                       <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50 ml-auto" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[220px] p-0" align="start">
+                  <PopoverContent className="w-[220px] p-0" align="start" side="bottom" sideOffset={8}>
                     <Command>
                       <CommandInput placeholder="Search branch..." />
                       <CommandList>
