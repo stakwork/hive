@@ -334,6 +334,7 @@ export async function startTaskWorkflow(params: {
     featureContext,
     autoMergePr: task.autoMerge,
     history,
+    featureId: task.featureId,
   });
 }
 
@@ -353,8 +354,9 @@ export async function createChatMessageAndTriggerStakwork(params: {
   featureContext?: object;
   autoMergePr?: boolean;
   history?: Record<string, unknown>[];
+  featureId?: string | null;
 }) {
-  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr, history = [] } = params;
+  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr, history = [], featureId = null } = params;
 
   // Fetch task if not provided
   let task = providedTask;
@@ -468,6 +470,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         podPassword,
         autoMergePr,
         history,
+        featureId,
       });
 
       if (stakworkData.success) {
