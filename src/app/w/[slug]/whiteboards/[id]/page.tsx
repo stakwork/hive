@@ -9,12 +9,12 @@ import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
+import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
-import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -151,13 +151,34 @@ export default function WhiteboardDetailPage() {
         // Upload any new images to S3 before saving; store only s3Key refs in DB
         const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
 
+        // Merge newly-uploaded entries with previously-persisted DB entries so no
+        // prior image is silently dropped when cleanedFiles only contains this
+        // save's uploads.
+        const existingFiles = (whiteboard.files as Record<string, StoredFileEntry>) ?? {};
+        const mergedFiles = { ...existingFiles, ...cleanedFiles };
+
+        // Write s3Key back into Excalidraw's in-memory registry for any files
+        // that were just uploaded. This ensures the next save sees s3Key on those
+        // entries and short-circuits the upload (no re-upload, no omission).
+        if (excalidrawAPI) {
+          const enriched = Object.entries(cleanedFiles)
+            .filter(([id]) => !(files[id] as BinaryFileData & { s3Key?: string })?.s3Key)
+            .map(([id, entry]) => ({
+              ...entry,
+              id: entry.id as FileId,
+              dataURL: ((files[id] as BinaryFileData)?.dataURL ?? "") as BinaryFileData["dataURL"],
+              mimeType: entry.mimeType as BinaryFileData["mimeType"],
+            }));
+          if (enriched.length > 0) excalidrawAPI.addFiles(enriched as BinaryFileData[]);
+        }
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files: cleanedFiles,
+          files: mergedFiles,
           expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
