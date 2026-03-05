@@ -16,6 +16,7 @@ import {
   FileText,
   Map,
   Menu,
+  Mic,
   PenLine,
   Phone,
   Server,
@@ -28,6 +29,7 @@ import { PiGraphFill } from "react-icons/pi";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useMemo } from "react";
+import { useVoiceStore } from "@/stores/useVoiceStore";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -132,6 +134,28 @@ const baseNavigationItems: NavigationItem[] = [
     ],
   },
 ];
+
+function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate: () => void }) {
+  const isConnected = useVoiceStore((s) => s.isConnected);
+  if (!isConnected || !slug) return null;
+  return (
+    <div className="px-4 pb-2">
+      <Button
+        asChild
+        variant="ghost"
+        className="w-full justify-start text-green-600 dark:text-green-400"
+      >
+        <Link href={`/w/${slug}/calls`} onClick={onNavigate}>
+          <div className="relative mr-2">
+            <Mic className="w-4 h-4" />
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          </div>
+          Voice Active
+        </Link>
+      </Button>
+    </div>
+  );
+}
 
 function SidebarContent({
   navigationItems,
@@ -309,6 +333,8 @@ function SidebarContent({
           Report Bug
         </Button>
       </div>
+      {/* Voice Agent Indicator */}
+      <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
       {/* Settings */}
       <div className="px-4 pb-2">
         <Button
