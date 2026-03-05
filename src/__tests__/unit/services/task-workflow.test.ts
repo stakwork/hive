@@ -4669,3 +4669,79 @@ describe("startTaskWorkflow with includeHistory", () => {
     });
   });
 });
+
+// ============================================================================
+// startTaskWorkflow - featureId forwarding Tests
+// ============================================================================
+
+describe("startTaskWorkflow - featureId forwarding", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should include featureId in Stakwork payload when task has a featureId", async () => {
+    const taskWithFeature = TestDataFactory.createValidTask({
+      featureId: "feature-123",
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithFeature as any);
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    expect(vars.featureId).toBe("feature-123");
+  });
+
+  test("should not include featureId in Stakwork payload when task has no featureId", async () => {
+    const taskWithoutFeature = TestDataFactory.createValidTask({
+      featureId: null,
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithoutFeature as any);
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    expect(vars).not.toHaveProperty("featureId");
+  });
+});
