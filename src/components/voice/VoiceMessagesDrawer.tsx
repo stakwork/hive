@@ -50,7 +50,7 @@ export function VoiceMessagesDrawer({ open, onOpenChange }: VoiceMessagesDrawerP
       <SheetContent side="right" className="w-full sm:max-w-sm flex flex-col">
         <SheetHeader>
           <SheetTitle>Voice Agent</SheetTitle>
-          <SheetDescription>Messages from the voice agent</SheetDescription>
+          <SheetDescription>Messages from Jamie</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
@@ -64,10 +64,16 @@ export function VoiceMessagesDrawer({ open, onOpenChange }: VoiceMessagesDrawerP
             <MessageBubble key={msg.id} msg={msg} />
           ))}
 
-          {transcription && !transcription.isFinal && (
+          {transcription && transcription.text && (
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Live</span>
-              <div className="rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2 text-sm text-muted-foreground italic">
+              {/* <span className="text-xs text-muted-foreground">
+                {transcription.isFinal ? "Transcribed" : "Live"}
+              </span> */}
+              <div className={`rounded-lg px-3 py-2 text-sm ${
+                transcription.isFinal
+                  ? "bg-muted/50 text-foreground"
+                  : "border border-dashed border-muted-foreground/30 text-muted-foreground italic"
+              }`}>
                 {transcription.text}
               </div>
             </div>

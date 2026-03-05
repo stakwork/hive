@@ -78,11 +78,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       });
 
       // Live transcriptions from the agent
+      let finalTimer: ReturnType<typeof setTimeout> | undefined;
       room.on(
         RoomEvent.TranscriptionReceived,
         (segments: TranscriptionSegment[], participant?: Participant) => {
           const seg = segments[0];
           if (!seg) return;
+          if (finalTimer) clearTimeout(finalTimer);
           set({
             transcription: {
               participantIdentity: participant?.identity ?? "",
@@ -90,6 +92,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
               isFinal: seg.final,
             },
           });
+          if (seg.final) {
+            finalTimer = setTimeout(() => set({ transcription: null }), 3000);
+          }
         },
       );
 
