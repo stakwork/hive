@@ -27,6 +27,7 @@ import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
+import { sanitiseDiagram } from "@/services/excalidraw-layout";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
@@ -491,7 +492,8 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
     const tryExtract = (source: Record<string, unknown>, label: string): ParsedDiagram | null => {
       if (Array.isArray(source.components) && source.components.length > 0) {
         logger.info(`[diagram] Found components at ${label}`, "stakwork-run", { count: source.components.length });
-        return { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
+        const raw: ParsedDiagram = { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
+        return sanitiseDiagram(raw);
       }
       if (Array.isArray(source.components)) {
         logger.info(`[diagram] Found empty components at ${label}, searching deeper`, "stakwork-run");
