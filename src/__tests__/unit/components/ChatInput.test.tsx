@@ -693,6 +693,41 @@ describe("ChatInput - Task Mode", () => {
     });
   });
 
+  describe("IN_PROGRESS workflow status", () => {
+    test("does NOT render standalone 'View on Stakwork' link when IN_PROGRESS with stakworkProjectId", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
+    });
+
+    test("renders WorkflowStatusBadge with stakworkProjectId when IN_PROGRESS", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("does NOT render standalone 'View on Stakwork' link when IN_PROGRESS without stakworkProjectId", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId={null}
+        />
+      );
+      expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Retry button", () => {
     test("renders Retry button when isTerminalState and onRetry is provided (HALTED)", () => {
       const onRetry = vi.fn().mockResolvedValue(undefined);

@@ -1,3 +1,4 @@
+import React from "react";
 import { WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AlertCircle, ExternalLink, Pause, XCircle } from "lucide-react";
@@ -63,7 +64,7 @@ export function WorkflowStatusBadge({
     ? `https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`
     : null;
 
-  const isClickable = isTerminal && stakworkUrl;
+  const isClickable = (isTerminal || effectiveStatus === WorkflowStatus.IN_PROGRESS) && !!stakworkUrl;
   const Icon = config.icon;
 
   const content = (
@@ -98,7 +99,6 @@ export function WorkflowStatusBadge({
         target="_blank"
         rel="noopener noreferrer"
         className={cn("group flex items-center gap-1.5 cursor-pointer", className)}
-        role="status"
         aria-label={`${config.label} — view on Stakwork`}
       >
         {content}
