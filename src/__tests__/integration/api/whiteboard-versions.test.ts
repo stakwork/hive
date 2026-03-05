@@ -97,9 +97,13 @@ describe("GET /api/whiteboards/[whiteboardId]/versions", () => {
   });
 
   it("returns versions ordered newest first", async () => {
+    // Small delays ensure distinct createdAt timestamps for deterministic ordering
     await createTestVersion(testWhiteboard.id, "Version 1");
+    await new Promise((r) => setTimeout(r, 10));
     await createTestVersion(testWhiteboard.id, "Version 2");
+    await new Promise((r) => setTimeout(r, 10));
     await createTestVersion(testWhiteboard.id, "Version 3");
+    await new Promise((r) => setTimeout(r, 10));
 
     const req = createAuthenticatedGetRequest(
       `http://localhost/api/whiteboards/${testWhiteboard.id}/versions`,
@@ -148,10 +152,13 @@ describe("POST /api/whiteboards/[whiteboardId]/versions", () => {
   });
 
   it("prunes to at most 3 versions when a 4th is created", async () => {
-    // Seed 3 versions
+    // Seed 3 versions with distinct timestamps
     const v1 = await createTestVersion(testWhiteboard.id, "Oldest");
+    await new Promise((r) => setTimeout(r, 10));
     await createTestVersion(testWhiteboard.id, "Middle");
+    await new Promise((r) => setTimeout(r, 10));
     await createTestVersion(testWhiteboard.id, "Recent");
+    await new Promise((r) => setTimeout(r, 10));
 
     // Create a 4th via the API
     const req = createAuthenticatedPostRequest(
