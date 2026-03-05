@@ -2,6 +2,7 @@ import { listConcepts } from "@/lib/ai/askTools";
 import { db } from "@/lib/db";
 import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { ArtifactType } from "@prisma/client";
 
 export interface SwarmCredentials {
   swarmUrl: string;
@@ -243,7 +244,13 @@ export async function mcpReadFeature(
       where: { featureId },
       include: {
         artifacts: {
-          select: { type: true, content: true },
+          where: {
+            type: { in: [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN] },
+          },
+          select: {
+            type: true,
+            content: true,
+          },
         },
         createdBy: {
           select: { name: true },
@@ -252,20 +259,32 @@ export async function mcpReadFeature(
       orderBy: { createdAt: "asc" },
     });
 
-    const chatHistory = messages.map((msg) => ({
+    // Artifact types where only the last occurrence should be sent
+    const lastOnlyTypes: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
+
+    // Find the last message index containing each last-only artifact type
+    const lastIndexOf: Partial<Record<ArtifactType, number>> = {};
+    for (let i = messages.length - 1; i >= 0; i--) {
+      for (const a of messages[i].artifacts) {
+        if (lastOnlyTypes.includes(a.type) && !(a.type in lastIndexOf)) {
+          lastIndexOf[a.type] = i;
+        }
+      }
+      if (lastOnlyTypes.every((t) => t in lastIndexOf)) break;
+    }
+
+    const chatHistory = messages.map((msg, idx) => ({
       role: msg.role,
       message: msg.message,
       createdBy: msg.createdBy?.name || null,
       createdAt: msg.createdAt.toISOString(),
-      artifacts: msg.artifacts.map((a) => ({
-        type: a.type,
-        content: a.content,
-      })),
+      // Keep all artifacts except last-only types, which only appear on their last occurrence
+      artifacts: msg.artifacts
+        .filter((a) => !lastOnlyTypes.includes(a.type) || lastIndexOf[a.type] === idx)
+        .map((a) => ({ type: a.type, content: a.content })),
     }));
 
-    const isWorkflowRunning =
-      feature.workflowStatus === "IN_PROGRESS" ||
-      feature.workflowStatus === "PENDING";
+    const isWorkflowRunning = feature.workflowStatus === "IN_PROGRESS";
 
     const result = {
       id: feature.id,
