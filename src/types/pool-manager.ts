@@ -152,6 +152,7 @@ export interface PoolStatus {
   usedVms: number;
   unusedVms: number;
   lastCheck: string;
+  queuedCount: number;
 }
 
 export interface PoolStatusResponse {

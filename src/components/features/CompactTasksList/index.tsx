@@ -81,6 +81,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { updateTicket } = useRoadmapTaskMutations();
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [queueStats, setQueueStats] = useState<{ queuedCount: number; unusedVms: number } | null>(null);
 
   const defaultPhase = feature.phases?.[0];
 
@@ -258,6 +259,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const handleBulkAssignTasks = async () => {
     if (assigningTasks) return;
     setAssigningTasks(true);
+    setQueueStats(null);
     try {
       const response = await fetch(`/api/features/${featureId}/tasks/assign-all`, {
         method: "POST",
@@ -269,8 +271,18 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         toast.info("All tasks already assigned");
       } else {
         toast.info("Tasks queued for coordinator", {
-          description: "Processing begins when a machine is available",
+          description: "Processing begins when a pod is available",
         });
+        if (workspaceSlug) {
+          const statusResponse = await fetch(`/api/w/${workspaceSlug}/pool/status`);
+          if (statusResponse.ok) {
+            const statusResult = await statusResponse.json();
+            if (statusResult.success && statusResult.data?.status) {
+              const { queuedCount, unusedVms } = statusResult.data.status;
+              setQueueStats({ queuedCount, unusedVms });
+            }
+          }
+        }
       }
       const featureResponse = await fetch(`/api/features/${featureId}`);
       const featureResult = await featureResponse.json();
@@ -341,6 +353,12 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             </>
           )}
         </Button>
+      )}
+
+      {queueStats !== null && queueStats.queuedCount > 0 && (
+        <p className="text-xs text-muted-foreground text-center">
+          {queueStats.queuedCount} {queueStats.queuedCount === 1 ? "task" : "tasks"} in workspace queue · {queueStats.unusedVms} pod{queueStats.unusedVms !== 1 ? "s" : ""} available
+        </p>
       )}
 
       <div className="space-y-1.5">

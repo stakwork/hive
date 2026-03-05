@@ -223,6 +223,7 @@ describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component ren
       pendingVms: 1,
       failedVms: 1,
       lastCheck: new Date().toISOString(),
+      queuedCount: 0,
     };
 
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
@@ -263,6 +264,7 @@ describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component ren
       pendingVms: 0,
       failedVms: 0,
       lastCheck: new Date().toISOString(),
+      queuedCount: 0,
     };
 
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
@@ -332,6 +334,7 @@ describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component ren
       pendingVms: 2,
       failedVms: 1,
       lastCheck: new Date().toISOString(),
+      queuedCount: 0,
     };
 
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
