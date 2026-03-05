@@ -4,9 +4,11 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
@@ -48,6 +50,8 @@ interface ChatInputProps {
   stakworkProjectId?: string | null;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
+  isPlanChat?: boolean;
+  currentWorkspaceSlug?: string;
 }
 
 export function ChatInput({
@@ -66,15 +70,28 @@ export function ChatInput({
   stakworkProjectId,
   onRetry,
   isRetrying = false,
+  isPlanChat = false,
+  currentWorkspaceSlug,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const preVoiceInputRef = useRef("");
   const isMobile = useIsMobile();
+  const { workspaces } = useWorkspace();
+
+  const filteredWorkspaces = isPlanChat && mentionQuery !== null
+    ? workspaces.filter(
+        (ws) =>
+          ws.slug !== currentWorkspaceSlug &&
+          ws.slug.toLowerCase().includes(mentionQuery.toLowerCase())
+      )
+    : [];
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -376,7 +393,53 @@ export function ChatInput({
     await onSend(message, attachments.length > 0 ? attachments : undefined);
   };
 
+  const insertMention = useCallback(
+    (slug: string) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const cursor = textarea.selectionStart ?? input.length;
+      const before = input.slice(0, cursor);
+      const after = input.slice(cursor);
+      const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
+      const newValue = replaced + after;
+      setInput(newValue);
+      setMentionQuery(null);
+      setMentionIndex(0);
+      // Restore focus and position cursor after the inserted slug
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const pos = replaced.length;
+        textarea.setSelectionRange(pos, pos);
+      });
+    },
+    [input]
+  );
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Intercept keys when mention popup is open
+    if (isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % filteredWorkspaces.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + filteredWorkspaces.length) % filteredWorkspaces.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+
     // On mobile, return key adds line breaks (user taps send button to submit)
     // On desktop, Enter submits, Shift+Enter for new lines
     if (e.key === "Enter" && !e.shiftKey && !isMobile) {
@@ -540,11 +603,51 @@ export function ChatInput({
           </div>
         )}
 
+        {/* @mention workspace popup */}
+        {isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0 && (
+          <div className="absolute bottom-full left-4 right-4 mb-1 z-20 md:left-6 md:right-6">
+            <Command className="rounded-lg border shadow-md bg-popover">
+              <CommandList>
+                {filteredWorkspaces.map((ws, idx) => (
+                  <CommandItem
+                    key={ws.slug}
+                    value={ws.slug}
+                    onSelect={() => insertMention(ws.slug)}
+                    className={cn(
+                      "cursor-pointer px-3 py-2 text-sm",
+                      idx === mentionIndex && "bg-accent text-accent-foreground"
+                    )}
+                    data-testid={`mention-item-${ws.slug}`}
+                  >
+                    <span className="font-medium">@{ws.slug}</span>
+                    {ws.name && ws.name !== ws.slug && (
+                      <span className="ml-2 text-muted-foreground">{ws.name}</span>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandList>
+            </Command>
+          </div>
+        )}
+
         <Textarea
           ref={textareaRef}
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            if (isPlanChat) {
+              const cursor = e.target.selectionStart ?? e.target.value.length;
+              const before = e.target.value.slice(0, cursor);
+              const match = before.match(/\B@([\w-]*)$/);
+              if (match) {
+                setMentionQuery(match[1]);
+                setMentionIndex(0);
+              } else {
+                setMentionQuery(null);
+              }
+            }
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           className="flex-1 resize-none min-h-[36px]"
