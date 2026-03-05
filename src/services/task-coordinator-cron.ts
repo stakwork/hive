@@ -1,10 +1,9 @@
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { releaseTaskPod } from "@/lib/pods";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
+import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -121,13 +120,12 @@ export async function processTicketSweep(
   // Fetch enough candidates to survive dependency filtering
   const candidateTasks = await db.task.findMany({
     where: {
-      workspaceId,
-      status: "TODO",
-      systemAssigneeType: "TASK_COORDINATOR",
-      deleted: false,
-      OR: [
-        { featureId: null },
-        { feature: { status: { not: "CANCELLED" } } },
+      AND: [
+        { workspaceId },
+        { status: "TODO" },
+        { systemAssigneeType: "TASK_COORDINATOR" },
+        { deleted: false },
+        { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],
     },
     select: {
@@ -459,22 +457,15 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         workspacesProcessed++;
         console.log(`[TaskCoordinator] Processing workspace: ${workspace.slug}`);
 
-        // Skip if no swarm or pool API key
-        if (!workspace.swarm?.id || !workspace.swarm?.poolApiKey) {
+        // Skip if no swarm configured
+        if (!workspace.swarm?.id) {
           console.log(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
           continue;
         }
 
-        // Check available pods
-        const config = getServiceConfig("poolManager");
-        const poolManagerService = new PoolManagerService(config);
-
-        const poolStatusResponse = await poolManagerService.getPoolStatus(
-          workspace.swarm.id,
-          workspace.swarm.poolApiKey
-        );
-
-        const availablePods = poolStatusResponse.status.unusedVms;
+        // Check available pods using local DB (same source of truth as UI)
+        const poolStatus = await getPoolStatusFromPods(workspace.swarm.id, workspace.id);
+        const availablePods = poolStatus.unusedVms;
         console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
         if (availablePods <= 1) {

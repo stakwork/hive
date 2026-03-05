@@ -4,8 +4,7 @@ import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
-import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager";
+import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 import { processTicketSweep } from "@/services/task-coordinator-cron";
 
 interface AssignAllResponse {
@@ -39,7 +38,7 @@ export async function POST(
             id: true,
             slug: true,
             swarm: {
-              select: { id: true, poolApiKey: true },
+              select: { id: true },
             },
           },
         },
@@ -118,20 +117,15 @@ export async function POST(
     // Step 8: Eagerly start the highest-priority eligible task if a machine is available
     const ws = feature.workspace;
     const swarm = ws?.swarm;
-    if (ws && swarm?.id && swarm?.poolApiKey) {
+    if (ws && swarm?.id) {
       try {
-        const config = getServiceConfig("poolManager");
-        const poolManagerService = new PoolManagerService(config);
-        const poolStatus = await poolManagerService.getPoolStatus(
-          swarm.id,
-          swarm.poolApiKey
-        );
+        const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
 
-        if (poolStatus.status.unusedVms > 1) {
-          processTicketSweep(ws.id, ws.slug, poolStatus.status.unusedVms - 1).catch(() => {});
+        if (poolStatus.unusedVms > 1) {
+          processTicketSweep(ws.id, ws.slug, poolStatus.unusedVms - 1).catch(() => {});
         }
       } catch {
-        // Pool service unreachable — skip eager start
+        // Pool query failed — skip eager start
       }
     }
 
