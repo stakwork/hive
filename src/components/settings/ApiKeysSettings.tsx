@@ -203,7 +203,6 @@ export function ApiKeysSettings() {
 
   // Filter out revoked keys for display (or show them differently)
   const activeKeys = apiKeys.filter((key) => !key.isRevoked);
-  const revokedKeys = apiKeys.filter((key) => key.isRevoked);
 
   return (
     <Card>
@@ -350,7 +349,7 @@ export function ApiKeysSettings() {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : activeKeys.length === 0 && revokedKeys.length === 0 ? (
+        ) : activeKeys.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Key className="h-10 w-10 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
@@ -443,47 +442,7 @@ export function ApiKeysSettings() {
               </Table>
             )}
 
-            {revokedKeys.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                  Revoked Keys
-                </h4>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Key</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Revoked</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {revokedKeys.map((key) => (
-                      <TableRow key={key.id} className="opacity-60">
-                        <TableCell className="font-medium">{key.name}</TableCell>
-                        <TableCell>
-                          <code className="text-sm bg-muted px-2 py-1 rounded">
-                            {key.keyPrefix}...
-                          </code>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDistanceToNow(new Date(key.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {key.revokedAt
-                            ? formatDistanceToNow(new Date(key.revokedAt), {
-                                addSuffix: true,
-                              })
-                            : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+
           </div>
         )}
       </CardContent>
