@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useRepoBranches } from "@/hooks/useRepoBranches";
 
 const REPO_URL = "https://github.com/test/repo";
@@ -19,7 +19,13 @@ describe("useRepoBranches", () => {
     vi.restoreAllMocks();
   });
 
-  it("fetches branches and returns them on success", async () => {
+  it("does not fetch on mount — requires explicit fetchBranches call", () => {
+    renderHook(() => useRepoBranches(REPO_URL, WORKSPACE_SLUG));
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fetches branches and returns them when fetchBranches is called", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ branches: MOCK_BRANCHES, total_count: 2 }),
@@ -28,6 +34,8 @@ describe("useRepoBranches", () => {
     const { result } = renderHook(() =>
       useRepoBranches(REPO_URL, WORKSPACE_SLUG),
     );
+
+    act(() => { result.current.fetchBranches(); });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -47,10 +55,10 @@ describe("useRepoBranches", () => {
       useRepoBranches(REPO_URL, WORKSPACE_SLUG),
     );
 
-    // Should be loading immediately
+    act(() => { result.current.fetchBranches(); });
+
     expect(result.current.isLoading).toBe(true);
 
-    // Resolve fetch
     resolveFetch({
       ok: true,
       json: async () => ({ branches: MOCK_BRANCHES }),
@@ -70,6 +78,8 @@ describe("useRepoBranches", () => {
       useRepoBranches(REPO_URL, WORKSPACE_SLUG),
     );
 
+    act(() => { result.current.fetchBranches(); });
+
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.branches).toEqual([]);
@@ -83,16 +93,20 @@ describe("useRepoBranches", () => {
       useRepoBranches(REPO_URL, WORKSPACE_SLUG),
     );
 
+    act(() => { result.current.fetchBranches(); });
+
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.branches).toEqual([]);
     expect(result.current.error).toBe("Network error");
   });
 
-  it("does not fetch and returns empty branches when repoUrl is null", () => {
+  it("does not fetch when repoUrl is null", () => {
     const { result } = renderHook(() =>
       useRepoBranches(null, WORKSPACE_SLUG),
     );
+
+    act(() => { result.current.fetchBranches(); });
 
     expect(fetch).not.toHaveBeenCalled();
     expect(result.current.branches).toEqual([]);
@@ -105,33 +119,14 @@ describe("useRepoBranches", () => {
       useRepoBranches(REPO_URL, null),
     );
 
+    act(() => { result.current.fetchBranches(); });
+
     expect(fetch).not.toHaveBeenCalled();
     expect(result.current.branches).toEqual([]);
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("resets branches to [] when repoUrl changes to null", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ branches: MOCK_BRANCHES }),
-    } as Response);
-
-    const { result, rerender } = renderHook(
-      ({ repoUrl }: { repoUrl: string | null }) =>
-        useRepoBranches(repoUrl, WORKSPACE_SLUG),
-      { initialProps: { repoUrl: REPO_URL as string | null } },
-    );
-
-    await waitFor(() => expect(result.current.branches).toHaveLength(2));
-
-    // Change repoUrl to null
-    rerender({ repoUrl: null });
-
-    expect(result.current.branches).toEqual([]);
-    expect(result.current.error).toBeNull();
-  });
-
-  it("re-fetches when repoUrl changes", async () => {
+  it("re-fetches when repoUrl changes and fetchBranches is called again", async () => {
     const branches1 = [{ name: "main", sha: "aaa" }];
     const branches2 = [{ name: "feature", sha: "bbb" }];
 
@@ -151,10 +146,12 @@ describe("useRepoBranches", () => {
       { initialProps: { repoUrl: REPO_URL } },
     );
 
+    act(() => { result.current.fetchBranches(); });
     await waitFor(() => expect(result.current.branches).toEqual(branches1));
 
     rerender({ repoUrl: "https://github.com/test/other-repo" });
 
+    act(() => { result.current.fetchBranches(); });
     await waitFor(() => expect(result.current.branches).toEqual(branches2));
     expect(fetch).toHaveBeenCalledTimes(2);
   });

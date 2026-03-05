@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 
 export interface RepoBranch {
   name: string;
@@ -11,10 +11,12 @@ interface UseRepoBranchesResult {
   branches: RepoBranch[];
   isLoading: boolean;
   error: string | null;
+  fetchBranches: () => void;
 }
 
 /**
  * Hook to fetch branches for a repository from GitHub.
+ * Fetches lazily — call `fetchBranches()` to trigger (e.g. on dropdown open).
  * @param repoUrl - The repository URL to fetch branches for
  * @param workspaceSlug - The workspace slug
  */
@@ -25,12 +27,16 @@ export function useRepoBranches(
   const [branches, setBranches] = useState<RepoBranch[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFetchedRef = useRef<string | null>(null);
 
   const fetchBranches = useCallback(async () => {
     if (!repoUrl || !workspaceSlug) {
       setBranches([]);
       return;
     }
+
+    const cacheKey = `${repoUrl}:${workspaceSlug}`;
+    if (lastFetchedRef.current === cacheKey && branches.length > 0) return;
 
     setIsLoading(true);
     setError(null);
@@ -46,6 +52,7 @@ export function useRepoBranches(
       const result = await response.json();
       const fetchedBranches = (result.branches || result.data || result || []) as RepoBranch[];
       setBranches(Array.isArray(fetchedBranches) ? fetchedBranches : []);
+      lastFetchedRef.current = cacheKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
@@ -53,16 +60,7 @@ export function useRepoBranches(
     } finally {
       setIsLoading(false);
     }
-  }, [repoUrl, workspaceSlug]);
+  }, [repoUrl, workspaceSlug, branches.length]);
 
-  useEffect(() => {
-    if (repoUrl && workspaceSlug) {
-      fetchBranches();
-    } else {
-      setBranches([]);
-      setError(null);
-    }
-  }, [repoUrl, workspaceSlug, fetchBranches]);
-
-  return { branches, isLoading, error };
+  return { branches, isLoading, error, fetchBranches };
 }

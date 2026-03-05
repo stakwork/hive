@@ -36,6 +36,7 @@ import {
   X,
   Sparkles,
   GitBranch,
+  FolderOpen,
   Check,
   ChevronsUpDown,
 } from "lucide-react";
@@ -128,8 +129,8 @@ export function TaskStartInput({
   const [selectedBranch, setSelectedBranch] = useState<string>(selectedRepo?.branch ?? "");
   const [branchPopoverOpen, setBranchPopoverOpen] = useState(false);
 
-  // Fetch live branches for the selected repo
-  const { branches, isLoading: isLoadingBranches } = useRepoBranches(
+  // Fetch live branches for the selected repo (lazily on dropdown open)
+  const { branches, isLoading: isLoadingBranches, fetchBranches } = useRepoBranches(
     selectedRepo?.repositoryUrl ?? null,
     workspaceSlug ?? null,
   );
@@ -840,7 +841,7 @@ export function TaskStartInput({
                 >
                   <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4" />
+                      <FolderOpen className="h-4 w-4" />
                       <span className="truncate">
                         {selectedRepo?.name || "Select repository"}
                       </span>
@@ -850,7 +851,7 @@ export function TaskStartInput({
                     {repositories.map((repo) => (
                       <SelectItem key={repo.id} value={repo.id}>
                         <div className="flex items-center gap-2">
-                          <GitBranch className="h-3.5 w-3.5" />
+                          <FolderOpen className="h-3.5 w-3.5" />
                           <span>{repo.name}</span>
                         </div>
                       </SelectItem>
@@ -859,7 +860,10 @@ export function TaskStartInput({
                 </Select>
               )}
               {showRepositorySelectors && (
-                <Popover open={branchPopoverOpen} onOpenChange={setBranchPopoverOpen}>
+                <Popover open={branchPopoverOpen} onOpenChange={(open) => {
+                  setBranchPopoverOpen(open);
+                  if (open) fetchBranches();
+                }}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
