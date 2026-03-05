@@ -3,6 +3,7 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
 import { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
@@ -32,11 +33,15 @@ interface Message {
 }
 
 export function DashboardChat() {
-  const { slug } = useWorkspace();
+  const { slug, workspace } = useWorkspace();
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isCreatingFeature, setIsCreatingFeature] = useState(false);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
+  const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
   const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
@@ -373,133 +378,189 @@ export function DashboardChat() {
     handleSend(question, noop);
   };
 
-  const handleOpenFeatureModal = () => {
-    setShowFeatureModal(true);
-  };
+  /** Formats the current messages array into ModelMessage[] for the extraction API */
+  const formatMessagesForExtraction = (): ModelMessage[] =>
+    messages
+      .filter((m) => m.content.trim() || m.toolCalls)
+      .flatMap((m): ModelMessage[] => {
+        if (m.imageData) {
+          return [
+            {
+              role: "user" as const,
+              content: [
+                { type: "image" as const, image: m.imageData },
+                { type: "text" as const, text: m.content },
+              ],
+            },
+          ];
+        }
 
-  const handleCreateFeature = async (objective: string) => {
-    if (!slug || messages.length === 0) return;
+        if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+          const msgs: ModelMessage[] = [];
 
-    setIsCreatingFeature(true);
+          msgs.push({
+            role: m.role,
+            content: m.toolCalls.map((tc) => ({
+              type: "tool-call" as const,
+              toolCallId: tc.id,
+              toolName: tc.toolName,
+              input: tc.input || {},
+            })),
+          });
 
-    try {
-      // Filter out empty messages and add objective as a user message
-      const messagesWithObjective: ModelMessage[] = [
-        ...messages
-          .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
-          .flatMap((m): ModelMessage[] => {
-            // Handle content with images (always from user in this context)
-            if (m.imageData) {
-              return [
-                {
-                  role: "user" as const,
-                  content: [
-                    { type: "image" as const, image: m.imageData },
-                    { type: "text" as const, text: m.content },
-                  ],
-                },
-              ];
-            }
-
-            // Build separate messages for tool calls, results, and text (AI SDK format)
-            if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-              const messages: ModelMessage[] = [];
-
-              // First message: tool calls only
-              const toolCallMessage: ModelMessage = {
-                role: m.role,
-                content: m.toolCalls.map((tc) => ({
-                  type: "tool-call" as const,
+          const toolResults = m.toolCalls.filter(
+            (tc) => tc.output !== undefined || tc.errorText !== undefined
+          );
+          if (toolResults.length > 0) {
+            msgs.push({
+              role: "tool" as const,
+              content: toolResults.map((tc) => {
+                let wrappedOutput = tc.output;
+                if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                  wrappedOutput = { type: "json", value: tc.output };
+                }
+                return {
+                  type: "tool-result" as const,
                   toolCallId: tc.id,
                   toolName: tc.toolName,
-                  input: tc.input || {},
-                })),
-              };
-              messages.push(toolCallMessage);
-
-              // Second message: tool results (if any tool has output)
-              const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
-              if (toolResults.length > 0) {
-                const toolResultMessage = {
-                  role: "tool" as const,
-                  content: toolResults.map((tc) => {
-                    // Ensure output is wrapped in AI SDK format
-                    let wrappedOutput = tc.output;
-                    if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
-                      wrappedOutput = { type: "json", value: tc.output };
-                    }
-
-                    return {
-                      type: "tool-result" as const,
-                      toolCallId: tc.id,
-                      toolName: tc.toolName,
-
-                      output: wrappedOutput as any,
-                    };
-                  }),
-                } satisfies ModelMessage;
-                messages.push(toolResultMessage);
-              }
-
-              // Third message: text content (if any)
-              if (m.content) {
-                const textMessage: ModelMessage = {
-                  role: m.role,
-                  content: m.content,
+                  output: wrappedOutput as any,
                 };
-                messages.push(textMessage);
-              }
+              }),
+            } satisfies ModelMessage);
+          }
 
-              return messages;
-            }
+          if (m.content) {
+            msgs.push({ role: m.role, content: m.content });
+          }
 
-            // Simple text message
-            return [
-              {
-                role: m.role as "user" | "assistant",
-                content: m.content,
-              },
-            ];
-          }),
-        {
-          role: "user" as const,
-          content: `Feature objective: ${objective}`,
-        },
-      ];
+          return msgs;
+        }
 
+        return [{ role: m.role as "user" | "assistant", content: m.content }];
+      });
+
+  const runExtraction = async () => {
+    if (!slug || messages.length === 0) return;
+
+    setIsExtracting(true);
+    setExtractError(null);
+    setExtractedData(null);
+
+    try {
       const response = await fetch("/api/features/create-feature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceSlug: slug,
-          transcript: messagesWithObjective,
-          deepResearch: true,
+          transcript: formatMessagesForExtraction(),
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to create feature");
+        throw new Error(errorData.error || "Failed to extract feature");
       }
 
       const data = await response.json();
-
-      // Close modal on success
-      setShowFeatureModal(false);
-
-      // Show appropriate toast based on whether deep research was started
-      toast.success("Feature created!", {
-        description: data.run
-          ? `"${data.title}" has been added. Starting deep research...`
-          : `"${data.title}" has been added to your workspace.`,
-      });
+      setExtractedData({ title: data.title, description: data.description });
     } catch (error) {
-      console.error("❌ Error creating feature from chat:", error);
-      toast.error("Failed to create feature", {
+      setExtractError(error instanceof Error ? error.message : "Extraction failed");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleOpenFeatureModal = () => {
+    setExtractedData(null);
+    setExtractError(null);
+    setShowFeatureModal(true);
+    runExtraction();
+  };
+
+  const handleRetryExtract = () => {
+    runExtraction();
+  };
+
+  const handleLaunchPlan = async (title: string, description: string) => {
+    if (!slug || !workspace) return;
+    setIsLaunching(true);
+    try {
+      // 1. Create the Feature record
+      const featureRes = await fetch("/api/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, workspaceId: workspace.id }),
+      });
+      if (!featureRes.ok) {
+        const err = await featureRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create feature");
+      }
+      const feature = await featureRes.json();
+
+      // 2. Send description as first Plan Mode chat message
+      const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: description }),
+      });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
+
+      // 3. Navigate into Plan Mode
+      setShowFeatureModal(false);
+      router.push(`/w/${slug}/plan/${feature.id}`);
+    } catch (error) {
+      toast.error("Failed to launch Plan Mode", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     } finally {
-      setIsCreatingFeature(false);
+      setIsLaunching(false);
+    }
+  };
+
+  const handleLaunchTask = async (title: string, description: string) => {
+    if (!slug) return;
+    setIsLaunching(true);
+    try {
+      // 1. Create the Task record
+      const taskRes = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          workspaceSlug: slug,
+          description,
+          mode: "live",
+        }),
+      });
+      if (!taskRes.ok) {
+        const err = await taskRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create task");
+      }
+      const task = await taskRes.json();
+
+      // 2. Send description as first chat message
+      const chatRes = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, message: description, mode: "live" }),
+      });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
+
+      // 3. Navigate into Task
+      setShowFeatureModal(false);
+      router.push(`/w/${slug}/task/${task.id}`);
+    } catch (error) {
+      toast.error("Failed to launch task", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsLaunching(false);
     }
   };
 
@@ -624,7 +685,7 @@ export function DashboardChat() {
           disabled={isLoading}
           showCreateFeature={hasMessages}
           onCreateFeature={handleOpenFeatureModal}
-          isCreatingFeature={isCreatingFeature}
+          isCreatingFeature={isExtracting || isLaunching}
           imageData={currentImageData}
           onImageUpload={handleImageUpload}
           onImageRemove={handleImageRemove}
@@ -644,8 +705,13 @@ export function DashboardChat() {
       <CreateFeatureModal
         open={showFeatureModal}
         onOpenChange={setShowFeatureModal}
-        onSubmit={handleCreateFeature}
-        isCreating={isCreatingFeature}
+        onLaunchPlan={handleLaunchPlan}
+        onLaunchTask={handleLaunchTask}
+        isLaunching={isLaunching}
+        extractedData={extractedData}
+        isExtracting={isExtracting}
+        extractError={extractError}
+        onRetryExtract={handleRetryExtract}
       />
     </div>
   );
