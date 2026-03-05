@@ -145,19 +145,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     }
   }, [workflowJson]);
 
-  // Extract child workflows from loop-type steps in parsed transitions
-  // Handle skill as either a plain string ("loop") or an object ({ type: "loop" })
+  // Steps with both attributes.workflow_id and attributes.workflow_name are child workflows
   const childWorkflows = useMemo(() => {
     if (!parsedWorkflowData?.transitions) return [];
     const transitions = Object.values(parsedWorkflowData.transitions) as WorkflowTransition[];
     return transitions
-      .filter((t) => {
-        const skillType = typeof t.skill === "string" ? t.skill : t.skill?.type;
-        return skillType === "loop" && t.step?.attributes?.workflow_id;
-      })
+      .filter((t) => t.attributes?.workflow_id && t.attributes?.workflow_name)
       .map((t) => ({
-        id: String(t.step.attributes.workflow_id),
-        name: (t.step.attributes.workflow_name as string) || `Workflow ${t.step.attributes.workflow_id}`,
+        id: String(t.attributes.workflow_id),
+        name: t.attributes.workflow_name as string,
       }));
   }, [parsedWorkflowData]);
 

@@ -381,7 +381,9 @@ class NodeArray {
         const step = transitions[stepId];
 
         let type = "automated";
-        if (step.skill?.type) {
+        if (step.attributes?.workflow_id && step.attributes?.workflow_name) {
+          type = "loop";
+        } else if (step.skill?.type) {
           type = step.skill.type;
         }
 
@@ -679,8 +681,10 @@ class NodeArray {
 
     const status = this.getStatus(step);
     const jobDetails = this.getJobDetails(step);
-    const childProjectId = step.step?.attributes?.workflow_id;
-    const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + "...";
+    const childProjectId = step.attributes?.workflow_id;
+    const childProjectName = childProjectId
+      ? (step.attributes?.workflow_name as string | undefined)?.substring(0, 20) + "..."
+      : undefined;
     // Rails admin links removed - display workflow name without clickable link
     const workflowDisplay = `<span class="workflow-number">${childProjectName}</span>`;
 

@@ -97,20 +97,17 @@ const loopTransition = {
   skill: { type: "loop" },
   position: { x: 0, y: 0 },
   connections: {},
-  step: {
-    attributes: { workflow_id: 42, workflow_name: "Child Workflow Alpha" },
-    params: {},
-  },
+  attributes: { workflow_id: 42, workflow_name: "Child Workflow Alpha" },
 };
 
-const loopTransitionNoName = {
-  ...loopTransition,
-  id: "step-loop-noname",
-  unique_id: "step-loop-noname",
-  step: {
-    attributes: { workflow_id: 99 },
-    params: {},
-  },
+// Real API format: WorkflowRunner step with top-level attributes, no skill field
+const loopTransitionRealApi = {
+  id: "run_evaluate_operation",
+  unique_id: "c9d8e7f6-a5b4-3c2d-1e0f-fedcba987654",
+  name: "WorkflowRunner",
+  skill_icon: "loop.svg",
+  position: { x: 1519, y: 180 },
+  attributes: { workflow_id: 55279, workflow_name: "evaluate_operation_child" },
 };
 
 const nonLoopTransition = {
@@ -149,13 +146,33 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
     it("does NOT show Child Workflows tab when loop step has no workflow_id", () => {
       const loopNoId = {
         ...loopTransition,
-        step: { attributes: {}, params: {} },
+        attributes: { workflow_name: "Child Workflow Alpha" },
       };
       const artifact = makeArtifact({
         workflowJson: makeWorkflowJson({ stepLoop: loopNoId }),
       });
       render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
       expect(screen.queryByRole("tab", { name: /child workflows/i })).toBeNull();
+    });
+
+    it("does NOT show Child Workflows tab when loop step has no workflow_name", () => {
+      const loopNoName = {
+        ...loopTransition,
+        attributes: { workflow_id: 42 },
+      };
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopNoName }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+      expect(screen.queryByRole("tab", { name: /child workflows/i })).toBeNull();
+    });
+
+    it("shows Child Workflows tab for real API format (WorkflowRunner, no skill field)", () => {
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransitionRealApi }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+      expect(screen.getByRole("tab", { name: /child workflows/i })).toBeInTheDocument();
     });
 
     it("shows Child Workflows tab when a loop step has workflow_id", () => {
@@ -184,10 +201,10 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
       expect(childPanel?.textContent).toContain("42");
     });
 
-    it("falls back to 'Workflow {id}' when workflow_name is absent", async () => {
+    it("renders workflow name and ID for real API format (WorkflowRunner)", async () => {
       const user = userEvent.setup();
       const artifact = makeArtifact({
-        workflowJson: makeWorkflowJson({ stepLoop: loopTransitionNoName }),
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransitionRealApi }),
       });
       const { container } = render(
         <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
@@ -196,8 +213,8 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
       await user.click(screen.getByRole("tab", { name: /child workflows/i }));
 
       const childPanel = container.querySelector('[data-slot="tabs-content"][id*="children"]');
-      expect(childPanel?.textContent).toContain("Workflow 99");
-      expect(childPanel?.textContent).toContain("99");
+      expect(childPanel?.textContent).toContain("evaluate_operation_child");
+      expect(childPanel?.textContent).toContain("55279");
     });
 
     it("renders multiple child workflow rows", async () => {
@@ -206,7 +223,7 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
         ...loopTransition,
         id: "step-loop-2",
         unique_id: "step-loop-2",
-        step: { attributes: { workflow_id: 77, workflow_name: "Child Beta" }, params: {} },
+        attributes: { workflow_id: 77, workflow_name: "Child Beta" },
       };
       const artifact = makeArtifact({
         workflowJson: makeWorkflowJson({
@@ -242,6 +259,24 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
 
       expect(window.open).toHaveBeenCalledWith(
         "https://hive.sphinx.chat/w/stakwork/workflows?id=42",
+        "_blank",
+      );
+    });
+
+    it("calls window.open with correct URL for real API format (WorkflowRunner)", async () => {
+      const user = userEvent.setup();
+      const artifact = makeArtifact({
+        workflowJson: makeWorkflowJson({ stepLoop: loopTransitionRealApi }),
+      });
+      render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+
+      await user.click(screen.getByRole("tab", { name: /child workflows/i }));
+
+      const openBtn = screen.getByRole("button", { name: /open/i });
+      await user.click(openBtn);
+
+      expect(window.open).toHaveBeenCalledWith(
+        "https://hive.sphinx.chat/w/stakwork/workflows?id=55279",
         "_blank",
       );
     });
