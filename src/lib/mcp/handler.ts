@@ -227,11 +227,11 @@ function createServer(): McpServer {
           .string()
           .optional()
           .describe("Optional detailed requirements for the feature"),
-        user: z
+        creator: z
           .string()
           .optional()
           .describe(
-            "Username of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
           ),
       },
     },
@@ -240,12 +240,12 @@ function createServer(): McpServer {
         title,
         brief,
         requirements,
-        user,
-      }: { title: string; brief: string; requirements?: string; user?: string },
+        creator,
+      }: { title: string; brief: string; requirements?: string; creator?: string },
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-      const result = await getWorkspaceAuth(authExtra, "create_feature", user);
+      const result = await getWorkspaceAuth(authExtra, "create_feature", creator);
       if (result.error) return result.error;
       return mcpCreateFeature(result.auth!, title, brief, requirements);
     },
@@ -264,17 +264,17 @@ function createServer(): McpServer {
         message: z
           .string()
           .describe("The message text to send"),
-        user: z
+        creator: z
           .string()
           .optional()
           .describe(
-            "Username of the sender (matched against name or alias). Falls back to workspace owner if not found.",
+            "Name of the sender (matched against name or alias). Falls back to workspace owner if not found.",
           ),
       },
     },
-    async ({ featureId, message, user }: { featureId: string; message: string; user?: string }, extra) => {
+    async ({ featureId, message, creator }: { featureId: string; message: string; creator?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-      const result = await getWorkspaceAuth(authExtra, "send_message", user);
+      const result = await getWorkspaceAuth(authExtra, "send_message", creator);
       if (result.error) return result.error;
       return mcpSendMessage(result.auth!, featureId, message);
     },
