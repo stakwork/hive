@@ -3,10 +3,10 @@
 export interface WorkflowTransition {
   id: string;
   unique_id: string;
-  display_id: string;
-  display_name: string;
+  display_id?: string;
+  display_name?: string;
   name: string;
-  title: string;
+  title?: string;
   skill?: {
     type: 'human' | 'automated' | 'api' | 'loop';
     icon?: any;
@@ -14,8 +14,9 @@ export interface WorkflowTransition {
   skill_icon?: any;
   custom_icon?: string;
   position: { x: number; y: number };
-  connections: Record<string, string>;
-  step: {
+  connections?: Record<string, string>;
+  attributes?: any;
+  step?: {
     attributes: any;
     params: any;
   };
@@ -88,6 +89,10 @@ export type StepType = "automated" | "human" | "api" | "loop" | "condition";
 export function getStepType(step: WorkflowTransition): StepType {
   if (step.name === "IfCondition" || step.name === "IfElseCondition") {
     return "condition";
+  }
+
+  if (step.attributes?.workflow_id && step.attributes?.workflow_name) {
+    return "loop";
   }
 
   const skillType = step.skill?.type;
