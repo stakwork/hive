@@ -107,16 +107,18 @@ export async function areDependenciesSatisfied(
 }
 
 /**
- * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
+ * Process ticket sweep - find and dispatch eligible tasks assigned to TASK_COORDINATOR.
+ * Dispatches up to `slotsAvailable` tasks in a single run, skipping tasks with unmet deps.
+ * Returns the number of tasks actually dispatched.
  */
 export async function processTicketSweep(
   workspaceId: string,
-  workspaceSlug: string
-): Promise<boolean> {
-  console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
+  workspaceSlug: string,
+  slotsAvailable: number
+): Promise<number> {
+  console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug} (slots: ${slotsAvailable})`);
 
-  // Query for candidate tickets: TODO status, TASK_COORDINATOR assignee
-  // We fetch more tasks to filter by dependency satisfaction
+  // Fetch enough candidates to survive dependency filtering
   const candidateTasks = await db.task.findMany({
     where: {
       workspaceId,
@@ -152,68 +154,53 @@ export async function processTicketSweep(
       },
     },
     orderBy: [
-      {
-        priority: "desc", // CRITICAL first, then HIGH, MEDIUM, LOW
-      },
-      {
-        createdAt: "asc", // Oldest first for same priority
-      },
+      { priority: "desc" }, // CRITICAL first, then HIGH, MEDIUM, LOW
+      { createdAt: "asc" },  // Oldest first for same priority
     ],
-    take: 20, // Fetch more candidates to filter through
+    take: Math.max(slotsAvailable * 3, 20), // Generous buffer for dependency skips
   });
 
   if (candidateTasks.length === 0) {
     console.log(`[TaskCoordinator] No candidate tickets found for workspace ${workspaceSlug}`);
-    return false;
+    return 0;
   }
 
   console.log(`[TaskCoordinator] Found ${candidateTasks.length} candidate tickets, checking dependencies...`);
 
-  // Filter tasks by dependency satisfaction
-  let task = null;
-  for (const candidateTask of candidateTasks) {
-    const dependenciesSatisfied = await areDependenciesSatisfied(
-      candidateTask.dependsOnTaskIds
-    );
+  let dispatched = 0;
 
-    if (dependenciesSatisfied) {
-      task = candidateTask;
-      console.log(
-        `[TaskCoordinator] Found eligible task ${task.id} with ${task.dependsOnTaskIds.length} satisfied dependencies`
-      );
-      break;
-    } else {
-      console.log(
-        `[TaskCoordinator] Skipping task ${candidateTask.id} - dependencies not satisfied`
-      );
+  for (const candidateTask of candidateTasks) {
+    if (dispatched === slotsAvailable) break;
+
+    const dependenciesSatisfied = await areDependenciesSatisfied(candidateTask.dependsOnTaskIds);
+
+    if (!dependenciesSatisfied) {
+      console.log(`[TaskCoordinator] Skipping task ${candidateTask.id} - dependencies not satisfied`);
+      continue;
+    }
+
+    console.log(`[TaskCoordinator] Processing ticket ${candidateTask.id} (${candidateTask.priority}) for workspace ${workspaceSlug}`);
+
+    try {
+      const userId = candidateTask.createdById ?? candidateTask.feature?.createdById;
+      await startTaskWorkflow({
+        taskId: candidateTask.id,
+        userId,
+        mode: "live",
+      });
+      dispatched++;
+      console.log(`[TaskCoordinator] Successfully processed ticket ${candidateTask.id} (${dispatched}/${slotsAvailable})`);
+    } catch (error) {
+      console.error(`[TaskCoordinator] Error processing ticket ${candidateTask.id}:`, error);
+      throw error;
     }
   }
 
-  if (!task) {
-    console.log(
-      `[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`
-    );
-    return false;
+  if (dispatched === 0) {
+    console.log(`[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`);
   }
-  console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
-  try {
-    // Assign to task creator, fall back to feature creator if needed
-    const userId = task.createdById ?? task.feature?.createdById;
-
-    // Start workflow for this task (automatically builds message and feature context)
-    await startTaskWorkflow({
-      taskId: task.id,
-      userId,
-      mode: "live", // Use production workflow for automated task coordinator
-    });
-
-    console.log(`[TaskCoordinator] Successfully processed ticket ${task.id}`);
-    return true;
-  } catch (error) {
-    console.error(`[TaskCoordinator] Error processing ticket ${task.id}:`, error);
-    throw error;
-  }
+  return dispatched;
 }
 
 /**
@@ -495,19 +482,19 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           continue;
         }
 
-        let itemProcessed = false;
+        const slotsAvailable = availablePods - 1;
+        let ticketsDispatched = 0;
 
         // Priority 1: Ticket Sweep (if enabled)
         if (workspace.janitorConfig?.ticketSweepEnabled) {
           try {
-            itemProcessed = await processTicketSweep(
+            ticketsDispatched = await processTicketSweep(
               workspace.id,
-              workspace.slug
+              workspace.slug,
+              slotsAvailable
             );
-            if (itemProcessed) {
-              tasksCreated++;
-              console.log(`[TaskCoordinator] Processed ticket sweep for workspace ${workspace.slug}`);
-            }
+            tasksCreated += ticketsDispatched;
+            console.log(`[TaskCoordinator] Dispatched ${ticketsDispatched}/${slotsAvailable} tasks for workspace ${workspace.slug}`);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error(`[TaskCoordinator] Ticket sweep failed for workspace ${workspace.slug}:`, errorMessage);
@@ -518,8 +505,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           }
         }
 
-        // Priority 2: Recommendation Sweep (if enabled and no ticket was processed)
-        if (!itemProcessed && workspace.janitorConfig?.recommendationSweepEnabled) {
+        // Priority 2: Recommendation Sweep (if enabled and no tickets were dispatched)
+        if (ticketsDispatched === 0 && workspace.janitorConfig?.recommendationSweepEnabled) {
           try {
             // Get pending recommendations ordered by priority (CRITICAL > HIGH > MEDIUM > LOW)
             const pendingRecommendations = await db.janitorRecommendation.findMany({
@@ -572,7 +559,6 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
                 );
 
                 tasksCreated++;
-                itemProcessed = true;
                 console.log(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
 
               } catch (error) {
