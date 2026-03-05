@@ -11,6 +11,7 @@ import { releaseTaskPod } from "@/lib/pods/utils";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
+import { triggerLearningRun } from "@/services/learning-run";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -607,6 +608,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               // Continue processing - don't fail webhook on feature sync error
             }
           }
+
+          // Trigger learning analysis (fire-and-forget)
+          void (async () => {
+            try {
+              const taskIds = tasks.map((t) => t.task_id);
+              const featureId = featureIds.size === 1 ? [...featureIds][0] : null;
+              await triggerLearningRun({
+                workspaceId: repository.workspaceId,
+                taskIds,
+                featureId,
+                prUrl,
+              });
+            } catch (err) {
+              console.error("[GithubWebhook] Learning trigger failed (non-blocking)", { prUrl, error: err });
+            }
+          })();
 
           // Log summary
           console.log("[GithubWebhook] PR merged - all tasks processed", {
