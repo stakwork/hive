@@ -21,7 +21,7 @@ export async function createAndSendNotification(input: {
     const taskId = input.taskId ?? null;
     const featureId = input.featureId ?? null;
 
-    // 1. Sphinx eligibility check — fetch workspace and user in parallel before creating any record
+    // 1. Fetch workspace and user in parallel
     const [workspace, targetUser] = await Promise.all([
       db.workspace.findUnique({
         where: { id: input.workspaceId },
@@ -38,16 +38,6 @@ export async function createAndSendNotification(input: {
       }),
     ]);
 
-    if (
-      !workspace?.sphinxEnabled ||
-      !workspace.sphinxBotId ||
-      !workspace.sphinxBotSecret ||
-      !workspace.sphinxChatPubkey ||
-      !targetUser?.sphinxAlias
-    ) {
-      return;
-    }
-
     // 2. Idempotency check — skip if PENDING record already exists
     const existing = await db.notificationTrigger.findFirst({
       where: {
@@ -63,7 +53,15 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 3. Insert new record
+    // 3. Determine Sphinx eligibility
+    const sphinxReady =
+      !!workspace?.sphinxEnabled &&
+      !!workspace.sphinxBotId &&
+      !!workspace.sphinxBotSecret &&
+      !!workspace.sphinxChatPubkey &&
+      !!targetUser?.sphinxAlias;
+
+    // 4. Always insert a row — use SKIPPED when Sphinx is not ready
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -71,29 +69,36 @@ export async function createAndSendNotification(input: {
         taskId,
         featureId,
         notificationType: input.notificationType,
-        status: NotificationTriggerStatus.PENDING,
+        status: sphinxReady
+          ? NotificationTriggerStatus.PENDING
+          : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
         notificationTimestamps: [],
       },
     });
 
-    // 4. Decrypt bot secret
+    // 5. Stop here if Sphinx is not configured — no send attempted
+    if (!sphinxReady) {
+      return;
+    }
+
+    // 6. Decrypt bot secret
     const decryptedSecret = EncryptionService.getInstance().decryptField(
       "sphinxBotSecret",
-      workspace.sphinxBotSecret
+      workspace!.sphinxBotSecret!
     );
 
-    // 5. Send via Sphinx
+    // 7. Send via Sphinx
     const result = await sendToSphinx(
       {
-        chatPubkey: workspace.sphinxChatPubkey,
-        botId: workspace.sphinxBotId,
+        chatPubkey: workspace!.sphinxChatPubkey!,
+        botId: workspace!.sphinxBotId!,
         botSecret: decryptedSecret,
       },
       input.message
     );
 
-    // 6. Update record with outcome
+    // 8. Update record with outcome
     await db.notificationTrigger.update({
       where: { id: record.id },
       data: {
