@@ -6,10 +6,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
+import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
+import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -33,6 +35,8 @@ function computeSnapshot(elements: readonly unknown[], files: Record<string, unk
   const filePart = Object.keys(files).sort().join(",");
   return `${elPart}|${filePart}`;
 }
+
+
 
 interface WhiteboardData {
   id: string;
@@ -66,6 +70,8 @@ export default function WhiteboardDetailPage() {
   const versionRef = useRef<number>(0);
   const resolvedFilesRef = useRef<BinaryFiles>({});
   const lastSavedSnapshotRef = useRef<string>("");
+  const savePausedRef = useRef(false);
+  const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
   // Collaboration hook
   const {
@@ -98,6 +104,12 @@ export default function WhiteboardDetailPage() {
         lastSavedSnapshotRef.current = computeSnapshot(
           data.data.elements || [],
           data.data.files || {}
+        );
+
+        // Initialise the version-snapshot baseline from the loaded elements
+        const loadedElements = (data.data.elements || []) as Array<{ id?: string }>;
+        lastVersionSnapshotRef.current = new Set(
+          loadedElements.map((el) => el.id).filter(Boolean) as string[]
         );
       } else {
         router.push(`/w/${slug}/whiteboards`);
@@ -270,6 +282,55 @@ export default function WhiteboardDetailPage() {
       container.removeEventListener("pointerup", handlePointerUp);
     };
   }, [handlePointerUp]);
+
+  // Auto-snapshot: every 20s check if ≥3 elements have changed since last snapshot
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      if (!whiteboard || !excalidrawAPI || savePausedRef.current) return;
+
+      const currentElements = excalidrawAPI
+        .getSceneElements()
+        .filter((el) => !el.isDeleted);
+      const currentIds = new Set(currentElements.map((el) => el.id));
+
+      const changeCount = computeVersionChanges(currentIds, lastVersionSnapshotRef.current);
+      if (changeCount < 3) return;
+
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+      const label = new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      try {
+        const res = await fetch(`/api/whiteboards/${whiteboard.id}/versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            elements: currentElements,
+            appState: {
+              viewBackgroundColor: appState.viewBackgroundColor,
+              gridSize: appState.gridSize,
+            },
+            files,
+            label,
+          }),
+        });
+
+        if (res.ok) {
+          lastVersionSnapshotRef.current = currentIds;
+        }
+      } catch {
+        // Silently ignore — versioning is best-effort
+      }
+    }, 20_000);
+
+    return () => clearInterval(intervalId);
+  }, [whiteboard, excalidrawAPI]);
 
   // Handle pointer/cursor updates for collaboration
   const handlePointerUpdate = useCallback(
@@ -490,6 +551,10 @@ export default function WhiteboardDetailPage() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <WhiteboardVersionPanel
+              whiteboardId={whiteboardId}
+              onReloadWhiteboard={loadWhiteboard}
+            />
             <Button
               variant="outline"
               size="icon"
