@@ -824,7 +824,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string) => {
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -850,6 +850,7 @@ export default function TaskChatPage() {
             model: model || selectedModel, // Save selected AI model
             autoMerge: autoMerge || false, // Save auto-merge preference
             repositoryId: repositoryId, // Pass repository ID for multi-repo workspaces
+            branch: branch || null, // Pass selected branch
           }),
         });
 
