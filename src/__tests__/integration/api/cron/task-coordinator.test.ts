@@ -315,6 +315,56 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
     });
 
+    test("should dispatch 2 tasks when unusedVms=3 (slotsAvailable=2) and 2 eligible TODO tasks exist", async () => {
+      // Create 2 eligible tickets (no dependencies)
+      const ticket1 = await db.task.create({
+        data: {
+          title: "Ticket 1",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "agent",
+          sourceType: "TASK_COORDINATOR",
+          systemAssigneeType: "TASK_COORDINATOR",
+          priority: "HIGH",
+          dependsOnTaskIds: [],
+        },
+      });
+
+      const ticket2 = await db.task.create({
+        data: {
+          title: "Ticket 2",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "agent",
+          sourceType: "TASK_COORDINATOR",
+          systemAssigneeType: "TASK_COORDINATOR",
+          priority: "MEDIUM",
+          dependsOnTaskIds: [],
+        },
+      });
+
+      // Pool mock already configured with unusedVms: 3 → slotsAvailable = 2
+      const mockRequest = createAuthenticatedRequest();
+      process.env.TASK_COORDINATOR_ENABLED = "true";
+
+      const response = await GET(mockRequest);
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(result.success).toBe(true);
+      // With unusedVms=3, slotsAvailable=2 → both tasks dispatched
+      expect(result.tasksCreated).toBe(2);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      expect(startTaskWorkflow).toHaveBeenCalledTimes(2);
+      expect(startTaskWorkflow).toHaveBeenCalledWith({ taskId: ticket1.id, userId: testUser.id, mode: "live" });
+      expect(startTaskWorkflow).toHaveBeenCalledWith({ taskId: ticket2.id, userId: testUser.id, mode: "live" });
+    });
+
     test("should respect priority ordering (CRITICAL → HIGH → MEDIUM → LOW)", async () => {
       // Create tickets with different priorities
       const lowTask = await db.task.create({
