@@ -1481,7 +1481,19 @@ export default function TaskChatPage() {
         .map((m) => ({ role: m.role.toLowerCase() as "user" | "assistant", content: m.message }));
 
       // 4. Seed Plan Mode with prototype history and branch reference
-      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`;
+      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`.
+This branch must be used as the base branch for all UI implementation work.
+
+When defining requirements, architecture, and the implementation plan, ensure that all UI-related tasks explicitly reference this branch as their base branch.
+
+Architecture requirements:
+
+Convert the prototype into a production-ready feature implemented on this branch.
+
+Delete the temporary prototype/test page as part of the implementation (this is required, not optional cleanup).
+
+The prototype should be treated as a visual and interaction reference only.
+Plan and implement the real feature from this branch.`;
       await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

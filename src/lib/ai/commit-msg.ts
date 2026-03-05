@@ -81,7 +81,9 @@ export async function generateCommitMessage(
 
 ${conversationPrompt}
 
-Generate a commit message that describes the changes made and a branch name that follows the format: category/brief-description (e.g., feat/add-commit-button, fix/auth-bug, refactor/improve-performance)${branchPrefixInstruction}`;
+Generate a commit message that describes the changes made and a branch name that follows the format: category/brief-description (e.g., feat/add-commit-button, fix/auth-bug, refactor/improve-performance)${branchPrefixInstruction}
+
+Never use 'prototype' or 'wip' as a branch prefix.`;
 
   const provider: Provider = "anthropic";
   const apiKey = getApiKeyForProvider(provider);
