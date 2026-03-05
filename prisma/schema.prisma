@@ -771,23 +771,38 @@ model Screenshot {
 }
 
 model Whiteboard {
-  id          String              @id @default(cuid())
+  id          String               @id @default(cuid())
   name        String
-  workspaceId String              @map("workspace_id")
-  elements    Json                @default("[]")
-  appState    Json                @default("{}") @map("app_state")
-  files       Json                @default("{}")
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  featureId   String?             @unique @map("feature_id")
-  version     Int                 @default(0)
+  workspaceId String               @map("workspace_id")
+  elements    Json                 @default("[]")
+  appState    Json                 @default("{}") @map("app_state")
+  files       Json                 @default("{}")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  featureId   String?              @unique @map("feature_id")
+  version     Int                  @default(0)
   messages    WhiteboardMessage[]
-  feature     Feature?            @relation(fields: [featureId], references: [id])
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions    WhiteboardVersion[]
+  feature     Feature?             @relation(fields: [featureId], references: [id])
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([createdAt])
   @@map("whiteboards")
+}
+
+model WhiteboardVersion {
+  id           String     @id @default(cuid())
+  whiteboardId String     @map("whiteboard_id")
+  elements     Json       @default("[]")
+  appState     Json       @default("{}") @map("app_state")
+  files        Json       @default("{}")
+  label        String
+  createdAt    DateTime   @default(now()) @map("created_at")
+  whiteboard   Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+
+  @@index([whiteboardId, createdAt])
+  @@map("whiteboard_versions")
 }
 
 model WhiteboardMessage {
