@@ -115,7 +115,7 @@ describe("createAndSendNotification", () => {
   });
 
   describe("Sphinx not configured — workspace", () => {
-    it("returns early without creating a record when Sphinx is disabled", async () => {
+    it("inserts a SKIPPED row when Sphinx is disabled, does not send", async () => {
       workspaceFindUnique.mockResolvedValue({
         sphinxEnabled: false,
         sphinxBotId: null,
@@ -123,15 +123,21 @@ describe("createAndSendNotification", () => {
         sphinxChatPubkey: null,
       });
       userFindUnique.mockResolvedValue(userWithAlias);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
 
       await createAndSendNotification(baseInput);
 
-      expect(create).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
+        })
+      );
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
 
-    it("returns early without creating a record when Sphinx credentials are missing", async () => {
+    it("inserts a SKIPPED row when Sphinx credentials are missing, does not send", async () => {
       workspaceFindUnique.mockResolvedValue({
         sphinxEnabled: true,
         sphinxBotId: null,
@@ -139,23 +145,35 @@ describe("createAndSendNotification", () => {
         sphinxChatPubkey: null,
       });
       userFindUnique.mockResolvedValue(userWithAlias);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
 
       await createAndSendNotification(baseInput);
 
-      expect(create).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
+        })
+      );
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
   });
 
   describe("Sphinx not configured — user has no sphinxAlias", () => {
-    it("returns early without creating a record when user has no sphinxAlias", async () => {
+    it("inserts a SKIPPED row when user has no sphinxAlias, does not send", async () => {
       workspaceFindUnique.mockResolvedValue(configuredWorkspace);
       userFindUnique.mockResolvedValue(userWithoutAlias);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
 
       await createAndSendNotification(baseInput);
 
-      expect(create).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
+        })
+      );
       expect(mockedSendToSphinx).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
@@ -176,6 +194,11 @@ describe("createAndSendNotification", () => {
       await createAndSendNotification(baseInput);
 
       expect(create).toHaveBeenCalledOnce();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.PENDING }),
+        })
+      );
       expect(mockedSendToSphinx).toHaveBeenCalledOnce();
       expect(mockedSendToSphinx).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -240,6 +263,8 @@ describe("createAndSendNotification", () => {
 
   describe("never throws", () => {
     it("resolves without throwing even when db.notificationTrigger.findFirst throws", async () => {
+      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
+      userFindUnique.mockResolvedValue(userWithAlias);
       findFirst.mockRejectedValue(new Error("DB connection failed"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
