@@ -553,6 +553,7 @@ export async function callStakworkAPI(params: {
   featureId?: string | null;
   planEdited?: boolean;
   isPrototype?: boolean;
+  extraSwarms?: { url: string; apiKey: string; repoUrls: string }[];
 }) {
   const {
     taskId,
@@ -584,6 +585,7 @@ export async function callStakworkAPI(params: {
     featureId = null,
     planEdited,
     isPrototype,
+    extraSwarms,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -652,6 +654,9 @@ export async function callStakworkAPI(params: {
   }
   if (isPrototype) {
     vars.isPrototype = true;
+  }
+  if (extraSwarms?.length) {
+    vars.extraSwarms = extraSwarms;
   }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;

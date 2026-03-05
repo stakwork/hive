@@ -420,6 +420,8 @@ export function ChatArea({
         stakworkProjectId={stakworkProjectId}
         onRetry={onRetry}
         isRetrying={isRetrying}
+        isPlanChat={isPlanChat}
+        currentWorkspaceSlug={workspaceSlug}
       />
 
       {onReleasePod && (

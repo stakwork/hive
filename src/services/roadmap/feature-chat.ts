@@ -7,6 +7,7 @@ import {
   WorkflowStatus,
 } from "@/lib/chat";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { EncryptionService } from "@/lib/encryption";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import {
@@ -100,6 +101,58 @@ const FEATURE_SELECT_FOR_CHAT = {
     },
   },
 } as const;
+
+/**
+ * Parse @workspace-slug mentions from a message, resolve each to swarm
+ * credentials, and return them as extraSwarms for the Stakwork workflow.
+ * Silently skips slugs that are not accessible, have no swarm, or have no repos.
+ */
+export async function resolveExtraSwarms(
+  message: string,
+  userId: string,
+): Promise<{ url: string; apiKey: string; repoUrls: string }[]> {
+  const slugMatches = [...message.matchAll(/\B@([\w-]+)/g)];
+  const uniqueSlugs = [...new Set(slugMatches.map((m) => m[1]))];
+
+  const encryptionService = EncryptionService.getInstance();
+  const results: { url: string; apiKey: string; repoUrls: string }[] = [];
+
+  for (const slug of uniqueSlugs) {
+    try {
+      const workspace = await db.workspace.findFirst({
+        where: {
+          slug,
+          deleted: false,
+          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+        },
+        include: {
+          swarm: true,
+          repositories: { orderBy: { createdAt: "asc" } },
+        },
+      });
+
+      if (!workspace?.swarm?.swarmUrl || !workspace.repositories.length) {
+        continue;
+      }
+
+      const { swarm, repositories } = workspace;
+      const url = transformSwarmUrlToRepo2Graph(swarm.swarmUrl);
+      const apiKey = encryptionService.decryptField(
+        "swarmApiKey",
+        swarm.swarmApiKey ?? "",
+      );
+      const repoUrls = repositories
+        .map((r) => r.repositoryUrl)
+        .join(",");
+
+      results.push({ url, apiKey, repoUrls });
+    } catch {
+      // Silently skip any workspace that fails to resolve
+    }
+  }
+
+  return results;
+}
 
 /**
  * Send a message in a feature-level conversation and trigger the Stakwork
@@ -242,6 +295,8 @@ export async function sendFeatureChatMessage({
         ? feature.planUpdatedAt > lastPlanArtifact.createdAt
         : false;
 
+    const extraSwarms = await resolveExtraSwarms(message, userId);
+
     stakworkData = await callStakworkAPI({
       taskId: featureId,
       message,
@@ -263,6 +318,7 @@ export async function sendFeatureChatMessage({
       featureContext,
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
+      extraSwarms,
     });
 
     // Set workflow status to IN_PROGRESS as soon as Stakwork is called

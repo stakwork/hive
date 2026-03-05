@@ -92,6 +92,32 @@ vi.mock("@/lib/utils/detect-code-paste", () => ({
   detectAndWrapCode: vi.fn((text: string) => text),
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: vi.fn(() => ({
+    workspaces: [
+      { slug: "alpha-ws", name: "Alpha Workspace" },
+      { slug: "beta-ws", name: "Beta Workspace" },
+      { slug: "current-ws", name: "Current Workspace" },
+    ],
+  })),
+}));
+
+vi.mock("@/components/ui/command", () => ({
+  Command: ({ children }: any) => <div data-testid="mention-popup">{children}</div>,
+  CommandList: ({ children }: any) => <div>{children}</div>,
+  CommandItem: ({ children, onSelect, "data-testid": testId, className }: any) => (
+    <div
+      data-testid={testId}
+      className={className}
+      role="option"
+      aria-selected={false}
+      onClick={onSelect}
+    >
+      {children}
+    </div>
+  ),
+}));
+
 describe("ChatInput - Task Mode", () => {
   const defaultProps = {
     onSend: vi.fn().mockResolvedValue(undefined),
@@ -960,5 +986,133 @@ describe("ChatInput - Task Mode", () => {
       
       expect(imageButton).toBeDisabled();
     });
+  });
+});
+
+// ── @mention autocomplete tests ────────────────────────────────────────────────
+
+describe("ChatInput - @mention autocomplete (plan chat)", () => {
+  const planProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+    isPlanChat: true,
+    currentWorkspaceSlug: "current-ws",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("popup appears when '@' is typed in plan chat", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    // All workspaces (excluding current-ws) should appear
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-beta-ws")).toBeInTheDocument();
+    expect(screen.queryByTestId("mention-item-current-ws")).not.toBeInTheDocument();
+  });
+
+  test("popup filters by partial slug after '@'", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@alp");
+
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.queryByTestId("mention-item-beta-ws")).not.toBeInTheDocument();
+  });
+
+  test("popup does NOT appear in non-plan (task) chat", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} isPlanChat={false} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("popup does NOT appear when '@' yields no matching workspaces", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@zzz-no-match");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("clicking a mention item inserts the full slug and closes popup", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "hello @alp");
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("mention-item-alpha-ws"));
+
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("Escape closes the popup without inserting text", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+    // Original partial text still in the input
+    expect(textarea.value).toContain("@alp");
+  });
+
+  test("Enter selects the highlighted item when popup is open (does NOT submit)", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} onSend={onSend} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    // Should insert, not submit
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("ArrowDown cycles highlight index", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    // Type '@' to show all workspaces (alpha-ws at index 0, beta-ws at index 1)
+    await user.type(textarea, "@");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    // Press ArrowDown once — should not crash and popup stays open
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    // Enter should now select beta-ws (index 1)
+    await user.keyboard("{Enter}");
+    const textarea2 = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+    expect(textarea2.value).toContain("@beta-ws");
   });
 });
