@@ -617,7 +617,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   return [shapeElement, text];
 }
 
-function createConnectionElement(connection: LayoutedConnection): ExcalidrawElement[] {
+function createConnectionElement(connection: LayoutedConnection, sharp = false): ExcalidrawElement[] {
   if (connection.routePoints.length < 2) {
     return [];
   }
@@ -652,7 +652,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
     opacity: 100,
     groupIds: [],
     frameId: null,
-    roundness: { type: 2 },
+    roundness: sharp ? null : { type: 2 },
     seed: generateSeed(),
     version: 1,
     versionNonce: generateSeed(),
@@ -756,7 +756,7 @@ function fixLabelCollisions(diagram: LayoutedDiagram): void {
 
 // --- Main conversion ---
 
-function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElement[] {
+function convertToExcalidrawElements(diagram: LayoutedDiagram, sharp = false): ExcalidrawElement[] {
   const elements: ExcalidrawElement[] = [];
 
   for (const component of diagram.components) {
@@ -764,7 +764,7 @@ function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElemen
   }
 
   for (const connection of diagram.connections) {
-    elements.push(...createConnectionElement(connection));
+    elements.push(...createConnectionElement(connection, sharp));
   }
 
   return elements;
@@ -928,7 +928,8 @@ export async function relayoutDiagram(
 ): Promise<ExcalidrawData> {
   const layouted = await applyLayout(parsed, algorithm);
   fixLabelCollisions(layouted);
-  const elements = convertToExcalidrawElements(layouted);
+  const sharp = algorithm === "layered" || algorithm === "mrtree";
+  const elements = convertToExcalidrawElements(layouted, sharp);
 
   return {
     elements,
