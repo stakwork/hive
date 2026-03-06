@@ -15,27 +15,16 @@ import { NextRequest } from "next/server";
  * Note: Mocks only external APIs (Stakwork, Pool Manager), uses real database
  */
 
-// Mock external service calls only
-vi.mock("@/services/pool-manager", () => ({
-  PoolManagerService: vi.fn().mockImplementation(() => ({
-    getPoolStatus: vi.fn().mockResolvedValue({
-      status: {
-        runningVms: 5,
-        pendingVms: 0,
-        failedVms: 0,
-        usedVms: 2,
-        unusedVms: 3, // 3 available pods
-        lastCheck: new Date().toISOString(),
-        queuedCount: 0,
-      },
-    }),
-  })),
-}));
-
-vi.mock("@/config/services", () => ({
-  getServiceConfig: vi.fn().mockReturnValue({
-    baseURL: "https://test-pool-manager.com",
-    apiKey: "test-api-key",
+// Mock pod status queries (replaces old pool manager mock)
+vi.mock("@/lib/pods/status-queries", () => ({
+  getPoolStatusFromPods: vi.fn().mockResolvedValue({
+    runningVms: 5,
+    pendingVms: 0,
+    failedVms: 0,
+    usedVms: 2,
+    unusedVms: 3, // 3 available pods
+    lastCheck: new Date().toISOString(),
+    queuedCount: 0,
   }),
 }));
 
