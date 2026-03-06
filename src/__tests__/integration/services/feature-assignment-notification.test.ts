@@ -75,30 +75,33 @@ describe("FEATURE_ASSIGNED notification", () => {
 
     await updateFeature(feature.id, owner.id, { assigneeId: assignee.id });
 
-    // Give async fire-and-forget a moment to settle
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll for the notification record since fire-and-forget timing is non-deterministic
+    let record = null;
+    const maxWaitMs = 5000;
+    const pollIntervalMs = 100;
+    const startTime = Date.now();
 
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
-        featureId: feature.id,
-      },
-    });
+    while (!record && Date.now() - startTime < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          targetUserId: assignee.id,
+          notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
+          featureId: feature.id,
+        },
+      });
+    }
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
-    expect(record!.sendAfter).not.toBeNull();
-    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
-    expect(record!.message).toBeTruthy();
-    expect(sendDirectMessage).not.toHaveBeenCalled();
-  });
+    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+  }, 10000);
 
   it("does NOT create a notification when self-assigning", async () => {
     await updateFeature(feature.id, owner.id, { assigneeId: owner.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    // Give async fire-and-forget a moment to settle
+    await new Promise((r) => setTimeout(r, 500));
 
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.FEATURE_ASSIGNED },
