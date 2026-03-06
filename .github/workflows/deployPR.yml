@@ -134,7 +134,7 @@ jobs:
           fi
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
-          for i in {1..30}; do
+          for i in {1..60}; do
             STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
               "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
@@ -143,7 +143,7 @@ jobs:
               break
             fi
             echo "Waiting for endpoint... ($i)"
-            sleep 3
+            sleep 5
           done
 
           if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
