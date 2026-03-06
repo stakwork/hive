@@ -120,6 +120,7 @@ export default function TaskChatPage() {
     workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
+    workflowVersionId?: string;
   } | null>(null);
   const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
   const [currentProjectContext, setCurrentProjectContext] = useState<{
@@ -362,7 +363,7 @@ export default function TaskChatPage() {
             const workflowArtifact = msg.artifacts?.find(
               (a: {
                 type: string;
-                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
+                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string; workflowVersionId?: string };
               }) => a.type === "WORKFLOW" && a.content?.workflowId,
             );
             if (workflowArtifact?.content?.workflowId) {
@@ -371,6 +372,7 @@ export default function TaskChatPage() {
                 workflowName:
                   workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
                 workflowRefId: workflowArtifact.content.workflowRefId || "",
+                workflowVersionId: workflowArtifact.content.workflowVersionId,
               });
               break;
             }
@@ -989,6 +991,8 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            // Include latest workflow version ID if tracked
+            ...(currentWorkflowContext.workflowVersionId && { workflowVersionId: currentWorkflowContext.workflowVersionId }),
             // Include webhook if available for continuing existing workflow
             ...(webhookToUse && { webhook: webhookToUse }),
             // Only include step data if a step is selected
@@ -1418,6 +1422,10 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
+  const handleVersionChange = useCallback((versionId: string) => {
+    setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
+  }, []);
+
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
 
@@ -1733,6 +1741,7 @@ Plan and implement the real feature from this branch.`;
   const inputDisabled =
     isLoading ||
     !isConnected ||
+    (taskMode === "workflow_editor" && workflowStatus === WorkflowStatus.IN_PROGRESS) ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1909,6 +1918,7 @@ Plan and implement the real feature from this branch.`;
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                     browserRefreshTrigger={browserRefreshTrigger}
                   />
                 ) : (
@@ -2001,6 +2011,7 @@ Plan and implement the real feature from this branch.`;
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                       browserRefreshTrigger={browserRefreshTrigger}
                     />
                   </div>
