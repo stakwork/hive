@@ -76,12 +76,12 @@ export function CreateFeatureModal({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[525px] z-100">
         <DialogHeader>
-          <DialogTitle>Create Feature</DialogTitle>
+          <DialogTitle>Generate Plan</DialogTitle>
           <DialogDescription>
             {isExtracting
-              ? "Extracting feature details from your conversation…"
+              ? "Extracting details from your conversation…"
               : extractError
-              ? "There was a problem extracting the feature. You can retry or close."
+              ? "There was a problem extracting the details. You can retry or close."
               : "Review and edit the extracted title and description, then choose how to launch."}
           </DialogDescription>
         </DialogHeader>
@@ -98,7 +98,7 @@ export function CreateFeatureModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={isLaunching || !!extractError}
-                placeholder="Feature title"
+                placeholder="Plan title"
               />
             )}
           </div>
@@ -177,7 +177,7 @@ export function CreateFeatureModal({
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="z-[200]">
                 <DropdownMenuItem
                   onClick={() => onLaunchTask(title.trim(), description.trim())}
                 >

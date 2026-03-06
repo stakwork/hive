@@ -2771,7 +2771,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       });
     });
 
-    test("should set payload name to 'hive_autogen'", async () => {
+    test("should set payload name to 'hive-task-<taskId>'", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
@@ -2784,7 +2784,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
 
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.name).toBe("hive_autogen");
+      expect(payload.name).toBe("hive-task-test-task-id");
     });
 
     test("should normalize taskSource to lowercase", async () => {

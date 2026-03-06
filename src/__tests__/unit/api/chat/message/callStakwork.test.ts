@@ -111,7 +111,7 @@ async function callStakwork(
       workflowId = stakworkWorkflowIds[1]; // default to test mode
     }
     const stakworkPayload = {
-      name: "hive_autogen",
+      name: `hive-task-${taskId}`,
       workflow_id: parseInt(workflowId),
       webhook_url: workflowWebhookUrl,
       workflow_params: {
@@ -793,7 +793,7 @@ describe("callStakwork", () => {
       const payload = JSON.parse(fetchCall[1]?.body as string);
 
       expect(payload).toMatchObject({
-        name: "hive_autogen",
+        name: "hive-task-test-task",
         workflow_id: expect.any(Number),
         webhook_url: expect.stringContaining("/api/stakwork/webhook?task_id=test-task"),
         workflow_params: {

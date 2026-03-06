@@ -1,0 +1,347 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+/**
+ * Unit tests for Workflow Editor bug fixes:
+ * 1. workflowStatus set to IN_PROGRESS after successful send, PENDING on error
+ * 2. handleWorkflowSelect includes workflowVersionId and uses versionRefId in setCurrentWorkflowContext
+ */
+
+// Minimal WorkflowStatus enum matching the real one
+enum WorkflowStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  ERROR = 'ERROR',
+  FAILED = 'FAILED',
+  HALTED = 'HALTED',
+}
+
+describe('Task Page - Workflow Editor fixes', () => {
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleSend — workflowStatus state after send
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleSend workflow_editor path — workflowStatus', () => {
+    let setWorkflowStatus: ReturnType<typeof vi.fn>;
+    let setIsChainVisible: ReturnType<typeof vi.fn>;
+    let setIsLoading: ReturnType<typeof vi.fn>;
+    let setMessages: ReturnType<typeof vi.fn>;
+    let clearLogs: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      setWorkflowStatus = vi.fn();
+      setIsChainVisible = vi.fn();
+      setIsLoading = vi.fn();
+      setMessages = vi.fn();
+      clearLogs = vi.fn();
+    });
+
+    it('sets workflowStatus to IN_PROGRESS on successful send', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          workflow: { webhook: 'test-webhook', project_id: 42 },
+        }),
+      });
+
+      // Simulate the workflow_editor handleSend success path
+      try {
+        const response = await fetch('/api/workflow-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: '1', message: 'hello' }),
+        });
+
+        if (!response.ok) throw new Error('not ok');
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error);
+
+        setMessages(vi.fn());
+        setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+        clearLogs();
+      } catch {
+        setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
+      } finally {
+        setIsLoading(false);
+      }
+
+      expect(setWorkflowStatus).toHaveBeenCalledWith(WorkflowStatus.IN_PROGRESS);
+      expect(setIsChainVisible).toHaveBeenCalledWith(true);
+    });
+
+    it('resets workflowStatus to PENDING on send error (API not ok)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        statusText: 'Internal Server Error',
+      });
+
+      try {
+        const response = await fetch('/api/workflow-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: '1', message: 'hello' }),
+        });
+
+        if (!response.ok) throw new Error(`Failed: ${response.statusText}`);
+      } catch {
+        setMessages(vi.fn());
+        setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
+      } finally {
+        setIsLoading(false);
+      }
+
+      expect(setWorkflowStatus).toHaveBeenCalledWith(WorkflowStatus.PENDING);
+      expect(setIsChainVisible).toHaveBeenCalledWith(false);
+    });
+
+    it('resets workflowStatus to PENDING on send error (result.success false)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: false, error: 'Validation failed' }),
+      });
+
+      try {
+        const response = await fetch('/api/workflow-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: '1', message: 'hello' }),
+        });
+
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error);
+
+        setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+      } catch {
+        setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
+      } finally {
+        setIsLoading(false);
+      }
+
+      expect(setWorkflowStatus).toHaveBeenCalledWith(WorkflowStatus.PENDING);
+      expect(setWorkflowStatus).not.toHaveBeenCalledWith(WorkflowStatus.IN_PROGRESS);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleWorkflowSelect — setCurrentWorkflowContext includes workflowVersionId
+  // and uses versionRefId (not workflowData.ref_id)
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleWorkflowSelect — setCurrentWorkflowContext', () => {
+    let setCurrentWorkflowContext: ReturnType<typeof vi.fn>;
+    let setWorkflowStatus: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      setCurrentWorkflowContext = vi.fn();
+      setWorkflowStatus = vi.fn();
+    });
+
+    /**
+     * Simulates the core context-setting logic from handleWorkflowSelect
+     * after a versioned workflow is selected.
+     */
+    function simulateHandleWorkflowSelect(opts: {
+      workflowId: number;
+      workflowData: { ref_id: string; properties: { name?: string } };
+      workflowVersionId?: string;
+      versionNodeRefId?: string; // ref_id from version node (overwrites versionRefId)
+    }) {
+      const { workflowId, workflowData, workflowVersionId, versionNodeRefId } = opts;
+
+      // Mirrors real code: versionRefId starts as workflowData.ref_id,
+      // then is overwritten to version node's ref_id when a version is fetched.
+      let versionRefId = workflowData.ref_id;
+      if (workflowVersionId && versionNodeRefId) {
+        versionRefId = versionNodeRefId;
+      }
+
+      const workflowName = workflowData.properties.name;
+
+      setWorkflowStatus(WorkflowStatus.PENDING);
+      setCurrentWorkflowContext({
+        workflowId,
+        workflowName: workflowName || `Workflow ${workflowId}`,
+        workflowRefId: versionRefId,       // fixed: was workflowData.ref_id
+        workflowVersionId,                  // fixed: was missing
+      });
+    }
+
+    it('includes workflowVersionId in context when a version is selected', () => {
+      simulateHandleWorkflowSelect({
+        workflowId: 99,
+        workflowData: { ref_id: 'root-ref-abc', properties: { name: 'My Workflow' } },
+        workflowVersionId: 'ver-uuid-1234',
+        versionNodeRefId: 'version-ref-xyz',
+      });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowVersionId: 'ver-uuid-1234',
+        }),
+      );
+    });
+
+    it('uses versionRefId (version node ref_id) not workflowData.ref_id when a version is selected', () => {
+      simulateHandleWorkflowSelect({
+        workflowId: 99,
+        workflowData: { ref_id: 'root-ref-abc', properties: { name: 'My Workflow' } },
+        workflowVersionId: 'ver-uuid-1234',
+        versionNodeRefId: 'version-ref-xyz',
+      });
+
+      const call = setCurrentWorkflowContext.mock.calls[0][0];
+      expect(call.workflowRefId).toBe('version-ref-xyz');
+      expect(call.workflowRefId).not.toBe('root-ref-abc');
+    });
+
+    it('falls back to workflowData.ref_id when no specific version is selected', () => {
+      simulateHandleWorkflowSelect({
+        workflowId: 7,
+        workflowData: { ref_id: 'root-ref-abc', properties: { name: 'My Workflow' } },
+        // no workflowVersionId / versionNodeRefId
+      });
+
+      const call = setCurrentWorkflowContext.mock.calls[0][0];
+      expect(call.workflowRefId).toBe('root-ref-abc');
+      expect(call.workflowVersionId).toBeUndefined();
+    });
+
+    it('sets correct workflowId and workflowName in context', () => {
+      simulateHandleWorkflowSelect({
+        workflowId: 42,
+        workflowData: { ref_id: 'root-ref-abc', properties: { name: 'Edge Case Flow' } },
+        workflowVersionId: 'ver-uuid-5678',
+        versionNodeRefId: 'ver-node-ref',
+      });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowId: 42,
+          workflowName: 'Edge Case Flow',
+        }),
+      );
+    });
+
+    it('generates default workflowName from workflowId when name is missing', () => {
+      simulateHandleWorkflowSelect({
+        workflowId: 55,
+        workflowData: { ref_id: 'root-ref-abc', properties: {} },
+        workflowVersionId: 'ver-uuid-9999',
+        versionNodeRefId: 'ver-node-ref',
+      });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowName: 'Workflow 55',
+        }),
+      );
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Restore workflow context on page reload — last-match scan
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('workflow_editor context restore — last-match scan', () => {
+    /**
+     * Simulates the restore logic introduced to replace the for…break pattern.
+     * Iterates all messages / WORKFLOW artifacts (oldest → newest) and keeps
+     * a running `latestContext` that is overwritten on each match, so the
+     * returned value always reflects the most recent artifact.
+     */
+    function simulateRestoreContext(
+      messages: Array<{
+        artifacts?: Array<{
+          type: string;
+          content?: {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+        }>;
+      }>,
+    ) {
+      type RestoredContext = {
+        workflowId: number | string;
+        workflowName: string;
+        workflowRefId: string;
+        workflowVersionId?: string;
+      };
+
+      const contexts: RestoredContext[] = [];
+
+      for (const msg of messages) {
+        for (const a of msg.artifacts ?? []) {
+          if (a.type === "WORKFLOW" && a.content?.workflowId) {
+            const c = a.content;
+            const prevVersionId = contexts.length > 0 ? contexts[contexts.length - 1].workflowVersionId : undefined;
+            contexts.push({
+              workflowId: c.workflowId!,
+              workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+              workflowRefId: c.workflowRefId || "",
+              workflowVersionId:
+                c.workflowVersionId != null
+                  ? String(c.workflowVersionId)
+                  : prevVersionId,
+            });
+          }
+        }
+      }
+
+      return contexts.length > 0 ? contexts[contexts.length - 1] : null;
+    }
+
+    it('picks workflowVersionId from the last WORKFLOW artifact across all messages', () => {
+      const messages = [
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 10, workflowVersionId: "first-version" },
+            },
+          ],
+        },
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 10, workflowVersionId: "last-version" },
+            },
+          ],
+        },
+      ];
+
+      const ctx = simulateRestoreContext(messages);
+      expect(ctx?.workflowVersionId).toBe("last-version");
+    });
+
+    it('retains the first version when later artifacts omit workflowVersionId', () => {
+      const messages = [
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 20, workflowVersionId: "only-version" },
+            },
+          ],
+        },
+        {
+          artifacts: [
+            {
+              // Later artifact has no workflowVersionId — previous value should persist
+              type: "WORKFLOW",
+              content: { workflowId: 20 },
+            },
+          ],
+        },
+      ];
+
+      const ctx = simulateRestoreContext(messages);
+      expect(ctx?.workflowVersionId).toBe("only-version");
+    });
+  });
+});

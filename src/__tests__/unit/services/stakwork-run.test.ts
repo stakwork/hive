@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import {
   createStakworkRun,
+  createDiagramStakworkRun,
   processStakworkRunWebhook,
   getStakworkRuns,
   updateStakworkRunDecision,
@@ -77,6 +78,7 @@ vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
 vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
+    STAKWORK_DIAGRAM_WORKFLOW_ID: "777",
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     POOL_MANAGER_API_KEY: "test-pool-key",
@@ -3558,6 +3560,275 @@ describe("Stakwork Run Service", () => {
       expect(db.task.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ branch: null }),
       });
+    });
+  });
+
+  describe("createDiagramStakworkRun", () => {
+    const baseWorkspace = {
+      id: "ws-1",
+      ownerId: "user-1",
+      deleted: false,
+      members: [{ role: "DEVELOPER" }],
+      swarm: {
+        swarmUrl: "https://swarm.example.com",
+        swarmApiKey: "encrypted-swarm-key",
+        swarmSecretAlias: "my-secret-alias",
+        poolName: "my-pool",
+        id: "swarm-1",
+      },
+      sourceControlOrg: {
+        tokens: [{ token: "encrypted-pat" }],
+      },
+      repositories: [
+        { repositoryUrl: "https://github.com/org/repo-a", branch: "main" },
+        { repositoryUrl: "https://github.com/org/repo-b", branch: "develop" },
+      ],
+    };
+
+    const baseUser = {
+      id: "user-1",
+      githubAuth: { githubUsername: "octocat" },
+    };
+
+    const baseRun = {
+      id: "diagram-run-1",
+      type: StakworkRunType.DIAGRAM_GENERATION,
+      workspaceId: "ws-1",
+      featureId: null,
+      status: WorkflowStatus.PENDING,
+      webhookUrl: "",
+      dataType: "string",
+    };
+
+    const baseRunUpdated = {
+      ...baseRun,
+      projectId: 99999,
+      status: WorkflowStatus.IN_PROGRESS,
+    };
+
+    test("should include swarm, GitHub, repo, and history vars in Stakwork payload (fully configured)", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw an auth flow",
+        layout: "layered",
+        userId: "user-1",
+        currentMessageId: "msg-new",
+      });
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_id: 777,
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  swarmUrl: "https://swarm.example.com",
+                  swarmSecretAlias: "my-secret-alias",
+                  poolName: "my-pool",
+                  username: "octocat",
+                  pat: "decrypted-access_token",
+                  repo_url: "https://github.com/org/repo-a,https://github.com/org/repo-b",
+                  base_branch: "main",
+                  history: [],
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should pass history: [] when no prior whiteboard messages exist (first message)", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "First diagram request",
+        layout: "layered",
+        userId: "user-1",
+        currentMessageId: "msg-first",
+      });
+
+      expect(mockedDb.whiteboardMessage.findMany).toHaveBeenCalledWith({
+        where: { whiteboardId: "wb-1", id: { not: "msg-first" } },
+        orderBy: { createdAt: "asc" },
+        select: { role: true, content: true },
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([]);
+    });
+
+    test("should include ordered prior messages in history, excluding currentMessageId", async () => {
+      const priorMessages = [
+        { role: "USER", content: "First question" },
+        { role: "ASSISTANT", content: "First answer" },
+        { role: "USER", content: "Follow-up question" },
+      ];
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue(priorMessages);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Latest request",
+        layout: "layered",
+        userId: "user-1",
+        currentMessageId: "msg-current",
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([
+        { role: "user", content: "First question" },
+        { role: "assistant", content: "First answer" },
+        { role: "user", content: "Follow-up question" },
+      ]);
+    });
+
+    test("should use graceful null values when workspace has no swarm or GitHub org", async () => {
+      const minimalWorkspace = {
+        ...baseWorkspace,
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(minimalWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+        id: "user-1",
+        githubAuth: null,
+      });
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await expect(
+        createDiagramStakworkRun({
+          workspaceId: "ws-1",
+          whiteboardId: "wb-1",
+          architectureText: "Draw a diagram",
+          layout: "layered",
+          userId: "user-1",
+          currentMessageId: "msg-x",
+        })
+      ).resolves.toBeDefined();
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      const vars = callArgs.workflow_params.set_var.attributes.vars;
+      expect(vars.swarmUrl).toBeNull();
+      expect(vars.swarmSecretAlias).toBeNull();
+      expect(vars.poolName).toBeNull();
+      expect(vars.username).toBeNull();
+      expect(vars.pat).toBeNull();
+      expect(vars.repo_url).toBeNull();
+      expect(vars.base_branch).toBeNull();
+      expect(vars.history).toEqual([]);
+    });
+
+    test("should use swarm.id as poolName fallback when poolName is null", async () => {
+      const workspaceNoPoolName = {
+        ...baseWorkspace,
+        swarm: { ...baseWorkspace.swarm, poolName: null, id: "swarm-fallback-id" },
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(workspaceNoPoolName);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw something",
+        layout: "layered",
+        userId: "user-1",
+        currentMessageId: "msg-y",
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.poolName).toBe("swarm-fallback-id");
+    });
+
+    test("should pass history: [] and skip whiteboardMessage query when currentMessageId is omitted", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Generate from feature",
+        layout: "layered",
+        userId: "user-1",
+        // no currentMessageId (called from feature generate route)
+      });
+
+      expect(mockedDb.whiteboardMessage.findMany).not.toHaveBeenCalled();
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([]);
     });
   });
 });

@@ -21,9 +21,10 @@ interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,6 +69,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     let workflowRefId: string | undefined;
     let projectInfo: any = undefined;
     let debuggerProjectId: string | undefined;
+    let workflowVersionId: string | number | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
     for (const artifact of artifacts) {
@@ -80,6 +82,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       if (content?.workflowRefId) workflowRefId = content.workflowRefId;
       if (content?.projectInfo) projectInfo = content.projectInfo;
       if (content?.debuggerProjectId) debuggerProjectId = content.debuggerProjectId;
+      if (content?.workflowVersionId) workflowVersionId = content.workflowVersionId;
     }
 
     return {
@@ -91,10 +94,11 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       workflowRefId,
       projectInfo,
       debuggerProjectId,
+      workflowVersionId,
     };
   }, [artifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId } = mergedContent;
+  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -229,11 +233,12 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 projectId: "",
                 isAdmin: false,
                 workflowId: workflowId?.toString() || "",
-                workflowVersion: "",
+                workflowVersion: workflowVersionId ? String(workflowVersionId) : "",
                 defaultZoomLevel: 0.65,
                 useAssistantDimensions: false,
                 rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                 onStepClick: onStepSelect ? handleStepClick : undefined,
+                onVersionChange,
                 changedStepIds,
                 changedConnectionIds,
               }}

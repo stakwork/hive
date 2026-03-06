@@ -64,7 +64,7 @@ async function callStakwork(
     }
 
     const stakworkPayload: any = {
-      name: "hive_autogen",
+      name: `hive-task-${taskId}`,
       workflow_id: parseInt(workflowId),
       workflow_params: {
         set_var: {
@@ -233,7 +233,7 @@ describe("callStakwork - Unit Tests", () => {
 
       const payload = JSON.parse(options.body);
       expect(payload).toMatchObject({
-        name: "hive_autogen",
+        name: "hive-task-undefined",
         workflow_id: 999,
         workflow_params: {
           set_var: {
@@ -315,7 +315,7 @@ describe("callStakwork - Unit Tests", () => {
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(payload.name).toBe("hive_autogen");
+      expect(payload.name).toBe("hive-task-undefined");
     });
   });
 

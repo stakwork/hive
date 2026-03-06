@@ -144,17 +144,17 @@ export async function createStakworkRun(
   const decryptedPAT =
     workspace.sourceControlOrg?.tokens[0]?.token
       ? encryptionService.decryptField(
-          "access_token",
-          workspace.sourceControlOrg.tokens[0].token
-        )
+        "access_token",
+        workspace.sourceControlOrg.tokens[0].token
+      )
       : null;
 
   const decryptedSwarmApiKey =
     workspace.swarm?.swarmApiKey
       ? encryptionService.decryptField(
-          "swarmApiKey",
-          workspace.swarm.swarmApiKey
-        )
+        "swarmApiKey",
+        workspace.swarm.swarmApiKey
+      )
       : null;
 
   // Get user info for username
@@ -360,8 +360,8 @@ export async function createStakworkRun(
 }
 
 /**
- * Create a lightweight Stakwork run for diagram generation.
- * Unlike createStakworkRun, this doesn't fetch repos, PATs, or swarm credentials.
+ * Create a Stakwork run for diagram generation, including swarm credentials,
+ * GitHub PAT, repo URLs, and whiteboard message history in the payload.
  */
 export async function createDiagramStakworkRun(input: {
   workspaceId: string;
@@ -371,8 +371,9 @@ export async function createDiagramStakworkRun(input: {
   layout: string;
   userId: string;
   diagramContext?: string | null;
+  currentMessageId?: string;
 }) {
-  // Validate workspace access
+  // Validate workspace access and fetch related credentials
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
     select: {
@@ -382,6 +383,27 @@ export async function createDiagramStakworkRun(input: {
       members: {
         where: { userId: input.userId },
         select: { role: true },
+      },
+      swarm: {
+        select: {
+          swarmUrl: true,
+          swarmApiKey: true,
+          swarmSecretAlias: true,
+          poolName: true,
+          id: true,
+        },
+      },
+      sourceControlOrg: {
+        include: {
+          tokens: {
+            where: { userId: input.userId },
+            take: 1,
+          },
+        },
+      },
+      repositories: {
+        orderBy: { createdAt: "asc" },
+        select: { repositoryUrl: true, branch: true },
       },
     },
   });
@@ -396,6 +418,40 @@ export async function createDiagramStakworkRun(input: {
   if (!isOwner && !isMember) {
     throw new Error("Access denied");
   }
+
+  // Decrypt sensitive credentials
+  const decryptedPAT = workspace.sourceControlOrg?.tokens[0]?.token
+    ? encryptionService.decryptField(
+      "access_token",
+      workspace.sourceControlOrg.tokens[0].token
+    )
+    : null;
+
+  const user = await db.user.findUnique({
+    where: { id: input.userId },
+    include: {
+      githubAuth: {
+        select: { githubUsername: true },
+      },
+    },
+  });
+  const githubUsername = user?.githubAuth?.githubUsername || null;
+
+  // Fetch whiteboard message history excluding the just-created message
+  const whiteboardHistory = input.currentMessageId
+    ? await db.whiteboardMessage.findMany({
+      where: {
+        whiteboardId: input.whiteboardId,
+        id: { not: input.currentMessageId },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { role: true, content: true },
+    })
+    : [];
+  const history = whiteboardHistory.map((m) => ({
+    role: m.role.toLowerCase() as "user" | "assistant",
+    content: m.content,
+  }));
 
   const baseUrl = getBaseUrl();
 
@@ -428,10 +484,20 @@ export async function createDiagramStakworkRun(input: {
 
     const vars: Record<string, unknown> = {
       runId: run.id,
+      workspaceId: input.workspaceId,
+      featureId: input.featureId ?? null,
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
       tokenReference: getStakworkTokenReference(),
+      swarmUrl: workspace.swarm?.swarmUrl || null,
+      swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
+      poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
+      username: githubUsername,
+      pat: decryptedPAT,
+      repo_url: workspace.repositories.map((r) => r.repositoryUrl).join(",") || null,
+      base_branch: workspace.repositories[0]?.branch || null,
+      history,
     };
     if (input.diagramContext) {
       vars.diagramContext = input.diagramContext;
@@ -672,7 +738,7 @@ export async function processStakworkRunWebhook(
     feature_id,
     whiteboard_id,
   });
-  
+
   if (
     type === "DIAGRAM_GENERATION" &&
     status === WorkflowStatus.COMPLETED &&
@@ -945,7 +1011,7 @@ async function notifyFastTrackFailureViaSphinx(
 ): Promise<void> {
   try {
     const { workspace, feature } = run;
-    
+
     // Early returns if Sphinx not configured
     if (!workspace.sphinxEnabled || !workspace.sphinxBotSecret || !workspace.sphinxChatPubkey || !workspace.sphinxBotId) {
       return;
@@ -955,7 +1021,7 @@ async function notifyFastTrackFailureViaSphinx(
     const creator = feature?.createdById
       ? await db.user.findUnique({ where: { id: feature.createdById }, select: { sphinxAlias: true } })
       : null;
-    
+
     if (!creator?.sphinxAlias) {
       return;
     }
@@ -971,10 +1037,10 @@ async function notifyFastTrackFailureViaSphinx(
 
     // Send notification
     await sendToSphinx(
-      { 
-        chatPubkey: workspace.sphinxChatPubkey, 
-        botId: workspace.sphinxBotId, 
-        botSecret: decryptedSecret 
+      {
+        chatPubkey: workspace.sphinxChatPubkey,
+        botId: workspace.sphinxBotId,
+        botSecret: decryptedSecret
       },
       message
     );

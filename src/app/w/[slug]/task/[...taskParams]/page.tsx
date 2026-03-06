@@ -120,6 +120,7 @@ export default function TaskChatPage() {
     workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
+    workflowVersionId?: string;
   } | null>(null);
   const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
   const [currentProjectContext, setCurrentProjectContext] = useState<{
@@ -357,23 +358,43 @@ export default function TaskChatPage() {
 
         // Restore workflow context for workflow_editor mode
         if (result.data.task?.mode === "workflow_editor" && result.data.messages) {
-          // Find the WORKFLOW artifact with workflowId and workflowName
+          // Scan ALL messages/artifacts (oldest → newest) so the last match wins,
+          // ensuring we restore the most recent workflowVersionId rather than the
+          // initial "Loaded" artifact's version.
+          type WorkflowArtifactContent = {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+          type RestoredWorkflowContext = {
+            workflowId: number | string;
+            workflowName: string;
+            workflowRefId: string;
+            workflowVersionId?: string;
+          };
+          const matchedContexts: RestoredWorkflowContext[] = [];
+
           for (const msg of result.data.messages) {
-            const workflowArtifact = msg.artifacts?.find(
-              (a: {
-                type: string;
-                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
-              }) => a.type === "WORKFLOW" && a.content?.workflowId,
-            );
-            if (workflowArtifact?.content?.workflowId) {
-              setCurrentWorkflowContext({
-                workflowId: workflowArtifact.content.workflowId,
-                workflowName:
-                  workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
-                workflowRefId: workflowArtifact.content.workflowRefId || "",
-              });
-              break;
+            for (const a of msg.artifacts ?? []) {
+              const artifact = a as { type: string; content?: WorkflowArtifactContent };
+              if (artifact.type === "WORKFLOW" && artifact.content?.workflowId) {
+                const c = artifact.content;
+                const prevVersionId = matchedContexts.length > 0
+                  ? matchedContexts[matchedContexts.length - 1].workflowVersionId
+                  : undefined;
+                matchedContexts.push({
+                  workflowId: c.workflowId!,
+                  workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+                  workflowRefId: c.workflowRefId || "",
+                  workflowVersionId: c.workflowVersionId != null ? String(c.workflowVersionId) : prevVersionId,
+                });
+              }
             }
+          }
+
+          if (matchedContexts.length > 0) {
+            setCurrentWorkflowContext(matchedContexts[matchedContexts.length - 1]);
           }
         }
 
@@ -702,9 +723,10 @@ export default function TaskChatPage() {
 
       // Store workflow context for later use in step editing
       setCurrentWorkflowContext({
-        workflowId: workflowId,
+        workflowId,
         workflowName: workflowName || `Workflow ${workflowId}`,
-        workflowRefId: workflowData.ref_id,
+        workflowRefId: versionRefId,
+        workflowVersionId,
       });
       // Clear webhook for fresh workflow conversation
       setWorkflowEditorWebhook(null);
@@ -989,6 +1011,8 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            // Include latest workflow version ID if tracked
+            ...(currentWorkflowContext.workflowVersionId && { workflowVersionId: currentWorkflowContext.workflowVersionId }),
             // Include webhook if available for continuing existing workflow
             ...(webhookToUse && { webhook: webhookToUse }),
             // Only include step data if a step is selected
@@ -1028,6 +1052,7 @@ export default function TaskChatPage() {
 
         setSelectedStep(null); // Clear step after sending
         setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
         clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
@@ -1036,6 +1061,7 @@ export default function TaskChatPage() {
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
         setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
       } finally {
         setIsLoading(false);
       }
@@ -1418,6 +1444,10 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
+  const handleVersionChange = useCallback((versionId: string) => {
+    setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
+  }, []);
+
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
 
@@ -1733,6 +1763,7 @@ Plan and implement the real feature from this branch.`;
   const inputDisabled =
     isLoading ||
     !isConnected ||
+    (taskMode === "workflow_editor" && workflowStatus === WorkflowStatus.IN_PROGRESS) ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1909,6 +1940,7 @@ Plan and implement the real feature from this branch.`;
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                     browserRefreshTrigger={browserRefreshTrigger}
                   />
                 ) : (
@@ -2001,6 +2033,7 @@ Plan and implement the real feature from this branch.`;
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                       browserRefreshTrigger={browserRefreshTrigger}
                     />
                   </div>

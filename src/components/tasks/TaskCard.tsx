@@ -113,9 +113,9 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
       </div>
 
-      {/* Archive button - absolute positioned top-right (hidden for TODO tasks) */}
+      {/* Archive button - absolute positioned top-right */}
       <AnimatePresence>
-        {isHovered && task.status !== "TODO" && (
+        {isHovered && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -131,6 +131,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                     size="sm"
                     onClick={handleArchiveToggle}
                     disabled={isUpdating}
+                    aria-label={isArchived ? "Unarchive" : "Archive"}
                     className="h-8 w-8 p-0 hover:bg-background/80"
                   >
                     {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}

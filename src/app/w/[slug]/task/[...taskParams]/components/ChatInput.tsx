@@ -632,6 +632,7 @@ export function ChatInput({
 
         <Textarea
           ref={textareaRef}
+          disabled={disabled || isLoading}
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
           onChange={(e) => {
