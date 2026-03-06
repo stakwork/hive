@@ -314,6 +314,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         layout: "layered",
         userId: testUser.id,
         diagramContext: null,
+        currentMessageId: result.data.message.id,
       });
     });
 
@@ -350,6 +351,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       
       // Verify the service was called with message content as architectureText
       // (empty architecture falls through to standalone path, but featureId is still passed)
+      const noArchResult = await response.json();
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         featureId: featureNoArchitecture.id,
@@ -358,6 +360,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         layout: "layered",
         userId: testUser.id,
         diagramContext: null,
+        currentMessageId: noArchResult.data.message.id,
       });
     });
 
@@ -505,6 +508,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         layout: "layered",
         userId: testUser.id,
         diagramContext: null,
+        currentMessageId: result.data.message.id,
       });
     });
 
@@ -521,6 +525,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
 
       expect(response.status).toBe(202);
 
+      const forceResult = await response.json();
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
         workspaceId: testWorkspace.id,
         featureId: testFeature.id,
@@ -529,6 +534,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         layout: "force",
         userId: testUser.id,
         diagramContext: null,
+        currentMessageId: forceResult.data.message.id,
       });
     });
 
@@ -590,6 +596,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
         layout: "layered",
         userId: testUser.id,
         diagramContext: null,
+        currentMessageId: result.data.message.id,
       });
 
       // Verify message was persisted
