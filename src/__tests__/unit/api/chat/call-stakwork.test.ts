@@ -714,7 +714,7 @@ describe("callStakwork Function Unit Tests", () => {
       const payload = JSON.parse(fetchCall[1]?.body as string);
 
       expect(payload).toMatchObject({
-        name: "hive_autogen",
+        name: expect.stringMatching(/^hive-task-/),
         workflow_id: expect.any(Number),
         webhook_url: expect.stringContaining("api/stakwork/webhook"),
         workflow_params: {
@@ -730,7 +730,7 @@ describe("callStakwork Function Unit Tests", () => {
       });
     });
 
-    test("should set name to 'hive_autogen'", async () => {
+    test("should set name to 'hive-task-<taskId>'", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
@@ -739,7 +739,7 @@ describe("callStakwork Function Unit Tests", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(payload.name).toBe("hive_autogen");
+      expect(payload.name).toBe("hive-task-test-task-id");
     });
 
     test("should include workflow_params with nested set_var structure", async () => {

@@ -408,7 +408,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
 
       const payload = JSON.parse(options.body);
       expect(payload).toMatchObject({
-        name: "hive_autogen",
+        name: `hive-task-${mockTaskId}`,
         workflow_id: 999,
         workflow_params: {
           set_var: {
@@ -2085,7 +2085,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       await expectSuccess(response, 201);
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(payload.name).toBe("hive_autogen");
+      expect(payload.name).toBe(`hive-task-${mockTaskId}`);
     });
 
     test("should handle projectId returned as string instead of number", async () => {
