@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority, NotificationTriggerType } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, NotificationTriggerType, Prisma } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
@@ -86,27 +86,35 @@ export async function listFeatures({
     };
   }
 
-  // Handle needsAttention filter - features with pending StakworkRuns awaiting user decision
-  // Exclude features that are already COMPLETED
+  // Handle needsAttention filter - features where last chat message is ASSISTANT and no tasks exist
   if (needsAttention) {
-    whereClause.stakworkRuns = {
-      some: {
-        status: "COMPLETED",
-        decision: null,
-        type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-      },
-    };
-    // If status filter is already set, merge with COMPLETED exclusion
-    // Otherwise, just exclude COMPLETED status
-    if (whereClause.status && whereClause.status.in) {
-      // Filter out COMPLETED from the status list if present
-      const filteredStatuses = whereClause.status.in.filter((s: string) => s !== "COMPLETED");
-      whereClause.status = { in: filteredStatuses };
-    } else {
-      whereClause.status = {
-        not: "COMPLETED",
+    const rows = await db.$queryRaw<{ id: string }[]>(
+      Prisma.sql`
+        SELECT f.id
+        FROM features f
+        WHERE f.workspace_id = ${workspaceId}
+          AND f.deleted = false
+          AND NOT EXISTS (
+            SELECT 1 FROM tasks t
+            WHERE t.feature_id = f.id
+              AND t.deleted = false
+              AND t.archived = false
+          )
+          AND (
+            SELECT role FROM chat_messages cm
+            WHERE cm.feature_id = f.id
+            ORDER BY cm.created_at DESC LIMIT 1
+          ) = 'ASSISTANT'::"ChatRole"
+      `
+    );
+    const ids = rows.map(r => r.id);
+    if (ids.length === 0) {
+      return {
+        features: [],
+        pagination: { page, limit, totalCount: 0, totalPages: 0, hasMore: false, totalCountWithoutFilters: 0 },
       };
     }
+    whereClause.id = { in: ids };
   }
 
   // Build orderBy clause
@@ -133,22 +141,13 @@ export async function listFeatures({
         _count: {
           select: {
             userStories: true,
+            tasks: { where: { deleted: false, archived: false } },
           },
         },
-        // Fetch actual stakwork runs to compute count client-side
-        stakworkRuns: {
-          where: {
-            status: "COMPLETED",
-            decision: null,
-            type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-          },
+        chatMessages: {
           orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            type: true,
-            decision: true,
-            createdAt: true,
-          },
+          take: 1,
+          select: { role: true },
         },
         // Fetch tasks for deployment status calculation (excluding archived/deleted)
         phases: {
@@ -183,21 +182,13 @@ export async function listFeatures({
     }),
   ]);
 
-  // Compute correct pending count per feature (only latest run per type)
-  // and calculate deployment status
+  // Compute awaitingFeedback and deployment status per feature
   const features = rawFeatures.map(feature => {
-    const latestPerType = new Map();
-    // Handle case where stakworkRuns might be undefined
-    if (feature.stakworkRuns) {
-      feature.stakworkRuns.forEach(run => {
-        if (!latestPerType.has(run.type)) {
-          latestPerType.set(run.type, run);
-        }
-      });
-    }
-    const pendingCount = Array.from(latestPerType.values())
-      .filter(run => run.decision === null).length;
-    
+    // Compute awaitingFeedback: last chat message is ASSISTANT and no tasks exist
+    const lastMsgRole = feature.chatMessages[0]?.role ?? null;
+    const hasTasks = feature._count.tasks > 0;
+    const awaitingFeedback = lastMsgRole === "ASSISTANT" && !hasTasks;
+
     // Calculate deployment status by aggregating all tasks across phases
     const allTasks = feature.phases?.flatMap(phase => phase.tasks) || [];
     let deploymentStatus: "staging" | "production" | null = null;
@@ -213,13 +204,12 @@ export async function listFeatures({
 
       if (allProduction) {
         deploymentStatus = "production";
-        // Find first production deployment URL (would need to query separately if needed)
         deploymentUrl = null; // Can be enhanced later to fetch actual URL
       } else if (allStagingOrProduction) {
         deploymentStatus = "staging";
       }
     }
-    
+
     return {
       id: feature.id,
       title: feature.title,
@@ -231,8 +221,8 @@ export async function listFeatures({
       createdBy: feature.createdBy,
       _count: {
         userStories: feature._count.userStories,
-        stakworkRuns: pendingCount,
       },
+      awaitingFeedback,
       deploymentStatus,
       deploymentUrl,
     };
