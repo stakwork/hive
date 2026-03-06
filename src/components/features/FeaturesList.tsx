@@ -70,7 +70,7 @@ function FeatureRow({
   onRenameStart: () => void;
   onRenameSave: (featureId: string, newTitle: string) => Promise<void>;
 }) {
-  const needsReview = feature._count.stakworkRuns > 0 && feature.status !== "COMPLETED";
+  const needsReview = feature.awaitingFeedback;
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(feature.title);
 

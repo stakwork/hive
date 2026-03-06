@@ -18,7 +18,7 @@ interface FeatureCardProps {
 }
 
 export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
-  const needsReview = feature._count.stakworkRuns > 0 && feature.status !== "COMPLETED";
+  const needsReview = feature.awaitingFeedback;
 
   return (
     <Link href={`/w/${workspaceSlug}/plan/${feature.id}`} className="block">

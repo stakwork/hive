@@ -4,8 +4,6 @@ import {
   WorkflowStatus,
   Priority,
   ArtifactType,
-  StakworkRunType,
-  StakworkRunDecision,
   FeatureStatus,
   FeaturePriority,
   ChatRole,
@@ -30,11 +28,8 @@ interface SeedSummary {
   };
   features: {
     total: number;
-    requirements: number;
-    architecture: number;
-    requirementsWithQuestions: number;
-    taskGeneration: number;
-    withDecisions: number;
+    awaitingFeedback: number;
+    notAwaitingFeedback: number;
   };
 }
 
@@ -78,11 +73,8 @@ async function main() {
     },
     features: {
       total: 0,
-      requirements: 0,
-      architecture: 0,
-      requirementsWithQuestions: 0,
-      taskGeneration: 0,
-      withDecisions: 0,
+      awaitingFeedback: 0,
+      notAwaitingFeedback: 0,
     },
   };
 
