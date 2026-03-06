@@ -174,6 +174,27 @@ export function BrowserArtifactPanel({
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [ideAuthUrl, setIdeAuthUrl] = useState<string | null>(null);
+
+  // Fetch HMAC token and set IDE auth URL for auto-login when IDE mode is active
+  useEffect(() => {
+    if (!ide || !isUrlReady || !taskId || ideAuthUrl !== null) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/ide-token`, { method: "POST" });
+        if (!res.ok) throw new Error("ide-token fetch failed");
+        const { token, expires, ideUrl } = await res.json();
+        if (token) {
+          setIdeAuthUrl(`${ideUrl}/ide-auth?token=${token}&expires=${expires}`);
+        } else {
+          setIdeAuthUrl(activeContent?.url ?? null); // fallback: no agentPassword
+        }
+      } catch {
+        setIdeAuthUrl(activeContent?.url ?? null); // fallback on error
+      }
+    })();
+  }, [ide, isUrlReady, taskId, ideAuthUrl]);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
@@ -501,7 +522,15 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={isUrlReady ? (isActive ? (displayUrl || content.url) : content.url) : "about:blank"}
+                  src={
+                    ide
+                      ? ideAuthUrl ?? "about:blank"
+                      : isUrlReady
+                        ? isActive
+                          ? displayUrl || content.url
+                          : content.url
+                        : "about:blank"
+                  }
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                   allow="camera *; microphone *; clipboard-read *; clipboard-write *"
