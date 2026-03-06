@@ -358,24 +358,43 @@ export default function TaskChatPage() {
 
         // Restore workflow context for workflow_editor mode
         if (result.data.task?.mode === "workflow_editor" && result.data.messages) {
-          // Find the WORKFLOW artifact with workflowId and workflowName
+          // Scan ALL messages/artifacts (oldest → newest) so the last match wins,
+          // ensuring we restore the most recent workflowVersionId rather than the
+          // initial "Loaded" artifact's version.
+          type WorkflowArtifactContent = {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+          type RestoredWorkflowContext = {
+            workflowId: number | string;
+            workflowName: string;
+            workflowRefId: string;
+            workflowVersionId?: string;
+          };
+          const matchedContexts: RestoredWorkflowContext[] = [];
+
           for (const msg of result.data.messages) {
-            const workflowArtifact = msg.artifacts?.find(
-              (a: {
-                type: string;
-                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string; workflowVersionId?: string };
-              }) => a.type === "WORKFLOW" && a.content?.workflowId,
-            );
-            if (workflowArtifact?.content?.workflowId) {
-              setCurrentWorkflowContext({
-                workflowId: workflowArtifact.content.workflowId,
-                workflowName:
-                  workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
-                workflowRefId: workflowArtifact.content.workflowRefId || "",
-                workflowVersionId: workflowArtifact.content.workflowVersionId,
-              });
-              break;
+            for (const a of msg.artifacts ?? []) {
+              const artifact = a as { type: string; content?: WorkflowArtifactContent };
+              if (artifact.type === "WORKFLOW" && artifact.content?.workflowId) {
+                const c = artifact.content;
+                const prevVersionId = matchedContexts.length > 0
+                  ? matchedContexts[matchedContexts.length - 1].workflowVersionId
+                  : undefined;
+                matchedContexts.push({
+                  workflowId: c.workflowId!,
+                  workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+                  workflowRefId: c.workflowRefId || "",
+                  workflowVersionId: c.workflowVersionId != null ? String(c.workflowVersionId) : prevVersionId,
+                });
+              }
             }
+          }
+
+          if (matchedContexts.length > 0) {
+            setCurrentWorkflowContext(matchedContexts[matchedContexts.length - 1]);
           }
         }
 
