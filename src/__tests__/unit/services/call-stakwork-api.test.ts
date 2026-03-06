@@ -289,7 +289,7 @@ describe("callStakworkAPI", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(body).toHaveProperty("name", "hive_autogen");
+      expect(body).toHaveProperty("name", "hive-task-test-task-123");
       expect(body).toHaveProperty("workflow_id");
       expect(body).toHaveProperty("webhook_url");
       expect(body).toHaveProperty("workflow_params.set_var.attributes.vars");

@@ -689,7 +689,7 @@ export async function callStakworkAPI(params: {
 
   // Build Stakwork payload (replicating StakworkWorkflowPayload structure)
   const stakworkPayload = {
-    name: "hive_autogen",
+    name: `hive-task-${taskId}`,
     workflow_id: parseInt(workflowId),
     webhook_url: workflowWebhookUrl,
     workflow_params: {

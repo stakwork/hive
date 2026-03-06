@@ -360,8 +360,8 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       // Verify payload structure
       const payload = JSON.parse(options.body);
+      expect(payload.name).toMatch(/^hive-task-/);
       expect(payload).toMatchObject({
-        name: "hive_autogen",
         workflow_id: 999,
         workflow_params: {
           set_var: {
