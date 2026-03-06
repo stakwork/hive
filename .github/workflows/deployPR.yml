@@ -80,20 +80,27 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "5 hours")
 
-          # Get preview-base branch ID
-          PARENT_BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r '.branches[] | select(.name=="preview-base") | .id')
+          # Get preview-base branch ID (retry to handle transient API errors)
+          for i in {1..5}; do
+            BRANCHES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+            PARENT_BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r '.branches[]? | select(.name=="preview-base") | .id')
+            if [ -n "$PARENT_BRANCH_ID" ] && [ "$PARENT_BRANCH_ID" != "null" ]; then
+              break
+            fi
+            echo "Retrying branch list fetch... ($i) response: $(echo "$BRANCHES_JSON" | head -c 200)"
+            sleep 5
+          done
 
           if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
             echo "❌ Could not find preview-base branch"
             exit 1
           fi
 
-          # Create or reuse PR branch
-          BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+          # Create or reuse PR branch (re-fetch branch list to find existing pr branch)
+          BRANCHES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+          BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r ".branches[]? | select(.name==\"$BRANCH_NAME\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
             RESPONSE=$(curl -s -X POST \
@@ -101,7 +108,7 @@ jobs:
               -H "Authorization: Bearer $NEON_API_KEY" \
               -H "Content-Type: application/json" \
               -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
-            BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+            BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id // empty')
           fi
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
@@ -111,18 +118,18 @@ jobs:
 
           # Wait until branch is ready
           for i in {1..20}; do
-            STATE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" \
-              | jq -r '.branch.current_state')
+            BRANCH_STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID")
+            STATE=$(echo "$BRANCH_STATUS" | jq -r '.branch.current_state // empty')
             if [ "$STATE" = "ready" ]; then break; fi
             echo "Waiting for branch... ($i)"
             sleep 3
           done
 
           # Create or reuse endpoint
-          ENDPOINT_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
-            | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+          ENDPOINTS_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+          ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[]? | select(.branch_id==\"$BRANCH_ID\") | .id")
 
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
             RESPONSE=$(curl -s -X POST \
@@ -130,15 +137,21 @@ jobs:
               -H "Authorization: Bearer $NEON_API_KEY" \
               -H "Content-Type: application/json" \
               -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
-            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id // empty')
           fi
 
-          # Wait until endpoint is ready (GET endpoint does not return credentials)
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            echo "❌ Failed to obtain endpoint ID"
+            exit 1
+          fi
+
+          # Wait until endpoint is ready
+          DB_HOST=""
           for i in {1..60}; do
             STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
               "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
-            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
-            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state // empty')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host // empty')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
               break
             fi
@@ -151,7 +164,7 @@ jobs:
             exit 1
           fi
 
-          # Get a role name for this branch (Neon GET endpoint does not return credentials)
+          # Get a role name for this branch
           ROLES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles")
           ROLE_NAME=$(echo "$ROLES_JSON" | jq -r '.roles[0].name // empty')
