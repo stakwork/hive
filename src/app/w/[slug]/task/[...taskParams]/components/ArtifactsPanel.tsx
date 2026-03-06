@@ -32,6 +32,7 @@ interface ArtifactsPanelProps {
   isMobile?: boolean;
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
   planData?: PlanData;
   feature?: FeatureDetail | null;
   featureId?: string;
@@ -51,6 +52,7 @@ export function ArtifactsPanel({
   isMobile = false,
   onTogglePreview,
   onStepSelect,
+  onVersionChange,
   planData,
   feature,
   featureId,
@@ -440,6 +442,7 @@ export function ArtifactsPanel({
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
                 onStepSelect={onStepSelect}
+                onVersionChange={onVersionChange}
               />
             </div>
           )}

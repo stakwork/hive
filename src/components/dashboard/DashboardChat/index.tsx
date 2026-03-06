@@ -2,7 +2,7 @@
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
@@ -495,7 +495,7 @@ export function DashboardChat() {
         const err = await featureRes.json().catch(() => ({}));
         throw new Error(err.error || "Failed to create feature");
       }
-      const feature = await featureRes.json();
+      const { data: feature } = await featureRes.json();
 
       // 2. Send description as first Plan Mode chat message
       const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
@@ -539,7 +539,7 @@ export function DashboardChat() {
         const err = await taskRes.json().catch(() => ({}));
         throw new Error(err.error || "Failed to create task");
       }
-      const task = await taskRes.json();
+      const { data: task } = await taskRes.json();
 
       // 2. Send description as first chat message
       const chatRes = await fetch("/api/chat/message", {

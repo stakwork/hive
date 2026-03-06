@@ -66,6 +66,7 @@ interface WorkflowAppProps {
     projectProgress?: string;
     rails_env: string;
     onStepClick?: (step: WorkflowTransitionType) => void;
+    onVersionChange?: (versionId: string) => void;
     changedStepIds?: Set<string>;
     changedConnectionIds?: Set<string>;
   };
@@ -147,6 +148,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     projectProgress,
     rails_env,
     onStepClick,
+    onVersionChange,
     changedStepIds,
     changedConnectionIds,
   } = workflowApp.props;
@@ -821,6 +823,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     const eventDetail = { workflow_version_id: data.workflow_version_id };
 
     setWorkflowVersionId(data.workflow_version_id);
+    onVersionChange?.(data.workflow_version_id);
 
     // NOTE: Turbo Stream functionality commented out during Next.js migration
     // This was used to update the workflow versions dropdown via Rails Turbo Streams
@@ -1215,6 +1218,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {
         setWorkflowVersionId(newVersionId);
+        onVersionChange?.(newVersionId);
         requestQueue.current.latestVersion = newVersionId;
       }
 

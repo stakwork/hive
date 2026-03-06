@@ -10,6 +10,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,7 @@ interface WorkflowEditorRequest {
   stepData: Record<string, unknown>;
   webhook?: string;
   workflowJson?: string; // Current workflow JSON to store as original for diff comparison
+  workflowVersionId?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
       stepData,
       webhook,
       workflowJson,
+      workflowVersionId,
     } = body;
 
     // Validate required fields
@@ -136,6 +139,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Fetch chat history (excluding the message just created)
+    const history = await fetchChatHistory(taskId, chatMessage.id);
+
     // Get GitHub credentials
     const githubProfile = await getGithubUsernameAndPAT(userId, task.workspace.slug);
     const userName = githubProfile?.username || null;
@@ -170,6 +176,12 @@ export async function POST(request: NextRequest) {
       step_type: stepType,
       step_data: stepData,
 
+      // Workflow version (if tracked from a publish event)
+      ...(workflowVersionId && { workflow_version_id: workflowVersionId }),
+
+      // Chat history (excluding the current user message)
+      history,
+
       // Standard swarm vars
       alias: userName,
       username: userName,
@@ -179,7 +191,7 @@ export async function POST(request: NextRequest) {
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId: task.workspaceId,
-      
+
       // Token reference
       tokenReference: getStakworkTokenReference(),
     };

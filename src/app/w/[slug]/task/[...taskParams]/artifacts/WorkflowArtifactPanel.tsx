@@ -21,9 +21,10 @@ interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -234,6 +235,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 useAssistantDimensions: false,
                 rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                 onStepClick: onStepSelect ? handleStepClick : undefined,
+                onVersionChange,
                 changedStepIds,
                 changedConnectionIds,
               }}
