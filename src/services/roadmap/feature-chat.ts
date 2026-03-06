@@ -107,15 +107,23 @@ const FEATURE_SELECT_FOR_CHAT = {
  * credentials, and return them as extraSwarms for the Stakwork workflow.
  * Silently skips slugs that are not accessible, have no swarm, or have no repos.
  */
+interface SubAgent {
+  name: string,
+  url: string;
+  apiKey: string;
+  repoUrls: string;
+  toolsConfig?: Record<string, string | boolean>;
+}
+
 export async function resolveExtraSwarms(
   message: string,
   userId: string,
-): Promise<{ name: string, url: string; apiKey: string; repoUrls: string }[]> {
+): Promise<SubAgent[]> {
   const slugMatches = [...message.matchAll(/\B@([\w-]+)/g)];
   const uniqueSlugs = [...new Set(slugMatches.map((m) => m[1]))];
 
   const encryptionService = EncryptionService.getInstance();
-  const results: { name: string, url: string; apiKey: string; repoUrls: string }[] = [];
+  const results: SubAgent[] = [];
 
   for (const slug of uniqueSlugs) {
     try {
@@ -145,7 +153,7 @@ export async function resolveExtraSwarms(
         .map((r) => r.repositoryUrl)
         .join(",");
 
-      results.push({ name: slug, url, apiKey, repoUrls });
+      results.push({ name: slug, url, apiKey, repoUrls, toolsConfig: { learn_concepts: true } });
     } catch {
       // Silently skip any workspace that fails to resolve
     }

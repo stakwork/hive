@@ -67,6 +67,9 @@ describe("resolveExtraSwarms", () => {
       url: "https://swarm.example.com:3355",
       apiKey: "decrypted:encrypted-key",
       repoUrls: "https://github.com/org/repo1,https://github.com/org/repo2",
+      toolsConfig: {
+        learn_concepts: true,
+      },
     });
   });
 
