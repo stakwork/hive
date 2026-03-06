@@ -146,7 +146,6 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
     _count: {
       select: {
         userStories: true;
-        tasks: true;
       };
     };
   };

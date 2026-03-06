@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/features/route";
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, ChatRole, ChatStatus } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -936,6 +936,136 @@ describe("Features API - Integration Tests", () => {
         select: { isFastTrack: true },
       });
       expect(feature?.isFastTrack).toBe(false);
+    });
+  });
+
+  describe("GET /api/features - needsAttention filter", () => {
+    test("returns feature with ASSISTANT last message and no tasks when needsAttention=true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      // Feature that SHOULD appear: last message = ASSISTANT, no tasks
+      const awaitingFeature = await db.feature.create({
+        data: {
+          title: "Awaiting Feedback Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+      await db.chatMessage.create({
+        data: {
+          featureId: awaitingFeature.id,
+          role: ChatRole.ASSISTANT,
+          message: "I've analyzed the requirements. Could you clarify your goals?",
+          status: ChatStatus.SENT,
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}&needsAttention=true`,
+        user
+      );
+      const response = await GET(request);
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].id).toBe(awaitingFeature.id);
+      expect(data.data[0].awaitingFeedback).toBe(true);
+    });
+
+    test("excludes feature where last message is USER when needsAttention=true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      // Feature that should NOT appear: last message is USER
+      const repliedFeature = await db.feature.create({
+        data: {
+          title: "User Replied Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+      await db.chatMessage.create({
+        data: {
+          featureId: repliedFeature.id,
+          role: ChatRole.ASSISTANT,
+          message: "What are your requirements?",
+          status: ChatStatus.SENT,
+        },
+      });
+      await db.chatMessage.create({
+        data: {
+          featureId: repliedFeature.id,
+          role: ChatRole.USER,
+          message: "Here they are...",
+          status: ChatStatus.SENT,
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}&needsAttention=true`,
+        user
+      );
+      const response = await GET(request);
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data).toHaveLength(0);
+    });
+
+    test("excludes feature with ASSISTANT last message but with tasks when needsAttention=true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      // Feature that should NOT appear: has tasks
+      const featureWithTasks = await db.feature.create({
+        data: {
+          title: "Feature With Tasks",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+      await db.chatMessage.create({
+        data: {
+          featureId: featureWithTasks.id,
+          role: ChatRole.ASSISTANT,
+          message: "Tasks have been generated!",
+          status: ChatStatus.SENT,
+        },
+      });
+      // Create a task for the feature directly (no phase)
+      await db.task.create({
+        data: {
+          title: "Some Task",
+          workspaceId: workspace.id,
+          featureId: featureWithTasks.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}&needsAttention=true`,
+        user
+      );
+      const response = await GET(request);
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data).toHaveLength(0);
     });
   });
 });
