@@ -551,13 +551,6 @@ const PRIORITY_LOOKBACK_DAYS: Record<string, number> = {
   LOW: 1,
 };
 
-const PRIORITY_RANK: Record<string, number> = {
-  CRITICAL: 0,
-  HIGH: 1,
-  MEDIUM: 2,
-  LOW: 3,
-};
-
 const TARGET_COUNT = 12;
 
 /** Terminal statuses we exclude — these don't need attention. */
@@ -572,8 +565,9 @@ function daysAgo(n: number): Date {
 
 /**
  * Unified status check: returns up to ~12 items (features + tasks) ordered by
- * priority tier then recency. Higher-priority items can reach further back in
- * time; lower-priority items only appear if very recent.
+ * needsAttention items (workflowStatus === COMPLETED) first, then most-recent-first.
+ * Higher-priority items can reach further back in time; lower-priority items
+ * only appear if very recent.
  *
  * If the initial pass yields fewer than TARGET_COUNT results, a second pass
  * doubles the lookback windows to try to fill the list.
@@ -610,15 +604,16 @@ interface StatusItem {
   status: string;
   priority: string;
   workflowStatus: string | null;
+  needsAttention: boolean;
   updatedAt: string;
   brief?: string | null;
   branch?: string | null;
 }
 
 function statusItemComparator(a: StatusItem, b: StatusItem): number {
-  const pa = PRIORITY_RANK[a.priority] ?? 4;
-  const pb = PRIORITY_RANK[b.priority] ?? 4;
-  if (pa !== pb) return pa - pb;
+  if (a.needsAttention !== b.needsAttention) {
+    return a.needsAttention ? -1 : 1;
+  }
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
@@ -695,6 +690,7 @@ async function fetchStatusItems(
       status: t.status,
       priority: t.priority,
       workflowStatus: t.workflowStatus,
+      needsAttention: t.workflowStatus === "COMPLETED",
       updatedAt: t.updatedAt.toISOString(),
       branch: t.branch,
     })),
@@ -705,6 +701,7 @@ async function fetchStatusItems(
       status: f.status,
       priority: f.priority,
       workflowStatus: f.workflowStatus,
+      needsAttention: f.workflowStatus === "COMPLETED",
       updatedAt: f.updatedAt.toISOString(),
       brief: f.brief,
     })),
