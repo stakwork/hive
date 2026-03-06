@@ -1020,12 +1020,13 @@ describe("executeTaskCoordinatorRuns", () => {
       const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "ws-2" });
       TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
 
-      const mockPool1 = { getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(4)) };
-      const mockPool2 = { getPoolStatus: vi.fn().mockResolvedValue(JanitorTestDataFactory.createPoolStatusResponse(3)) };
-      vi.mocked(MockPoolManagerService)
-        .mockImplementationOnce(() => mockPool1 as any)
-        .mockImplementationOnce(() => mockPool2 as any);
-      vi.mocked(mockGetServiceConfig).mockReturnValue({ baseURL: "https://pool-manager.com", apiKey: "test" } as any);
+      vi.mocked(mockGetPoolStatusFromPods)
+        .mockResolvedValueOnce({
+          unusedVms: 4, runningVms: 4, pendingVms: 0, failedVms: 0, usedVms: 0, lastCheck: new Date().toISOString(), queuedCount: 0,
+        })
+        .mockResolvedValueOnce({
+          unusedVms: 3, runningVms: 3, pendingVms: 0, failedVms: 0, usedVms: 0, lastCheck: new Date().toISOString(), queuedCount: 0,
+        });
 
       // ws-1 → 3 candidates (slotsAvailable=3), ws-2 → 2 candidates (slotsAvailable=2)
       const ws1Candidates = Array.from({ length: 3 }, () => createCandidateTask());
