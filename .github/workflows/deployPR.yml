@@ -81,19 +81,22 @@ jobs:
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "5 hours")
 
           # Get preview-base branch ID
-          PARENT_BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r '.branches[] | select(.name=="preview-base") | .id')
+          BRANCHES_RESPONSE=$(curl -sf -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+          if [ -z "$BRANCHES_RESPONSE" ]; then
+            echo "❌ Empty response from Neon branches API (check NEON_API_KEY and NEON_PROJECT_ID)"
+            exit 1
+          fi
+          PARENT_BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r '.branches[] | select(.name=="preview-base") | .id')
 
           if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
             echo "❌ Could not find preview-base branch"
+            echo "Available branches: $(echo "$BRANCHES_RESPONSE" | jq -r '.branches[].name' 2>/dev/null || echo 'could not parse')"
             exit 1
           fi
 
           # Create or reuse PR branch
-          BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+          BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
             RESPONSE=$(curl -s -X POST \
@@ -120,9 +123,9 @@ jobs:
           done
 
           # Create or reuse endpoint
-          ENDPOINT_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
-            | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+          ENDPOINTS_RESPONSE=$(curl -sf -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+          ENDPOINT_ID=$(echo "$ENDPOINTS_RESPONSE" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id" 2>/dev/null || echo "")
 
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
             RESPONSE=$(curl -s -X POST \
