@@ -12,12 +12,16 @@ import {
   mcpListFeatures,
   mcpReadFeature,
   mcpCreateFeature,
+  mcpListTasks,
+  mcpReadTask,
+  mcpCreateTask,
   mcpSendMessage,
+  mcpCheckStatus,
   resolveWorkspaceUser,
   type SwarmCredentials,
   type WorkspaceAuth,
   type McpToolResult,
-} from "@/lib/ai/mcpTools";
+} from "@/lib/mcp/mcpTools";
 
 // Available tools registry
 const AVAILABLE_TOOLS = [
@@ -26,6 +30,10 @@ const AVAILABLE_TOOLS = [
   "list_features",
   "read_feature",
   "create_feature",
+  "list_tasks",
+  "read_task",
+  "create_task",
+  "check_status",
   "send_message",
 ] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
@@ -251,16 +259,119 @@ function createServer(): McpServer {
     },
   );
 
+  // ----- Task tools (DB-direct) -----
+
+  server.registerTool(
+    "list_tasks",
+    {
+      title: "List Tasks",
+      description:
+        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, and last-updated timestamps. Maximum 40 results.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "list_tasks");
+      if (result.error) return result.error;
+      return mcpListTasks(result.auth!);
+    },
+  );
+
+  server.registerTool(
+    "read_task",
+    {
+      title: "Read Task",
+      description:
+        "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running.",
+      inputSchema: {
+        taskId: z
+          .string()
+          .describe("The ID of the task to read"),
+      },
+    },
+    async ({ taskId }: { taskId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "read_task");
+      if (result.error) return result.error;
+      return mcpReadTask(result.auth!, taskId);
+    },
+  );
+
+  server.registerTool(
+    "create_task",
+    {
+      title: "Create Task",
+      description:
+        "Create a new task in the workspace with a title and optional description and priority.",
+      inputSchema: {
+        title: z.string().describe("The title of the task"),
+        description: z
+          .string()
+          .optional()
+          .describe("A description of the task"),
+        priority: z
+          .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+          .optional()
+          .describe("Priority level (LOW, MEDIUM, HIGH, CRITICAL). Defaults to MEDIUM."),
+        creator: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        title,
+        description,
+        priority,
+        creator,
+      }: { title: string; description?: string; priority?: string; creator?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "create_task", creator);
+      if (result.error) return result.error;
+      return mcpCreateTask(result.auth!, title, description, priority);
+    },
+  );
+
+  // ----- Cross-cutting tools -----
+
+  server.registerTool(
+    "check_status",
+    {
+      title: "Check Status",
+      description:
+        "Get a unified status overview of the workspace. Returns up to 12 active features and tasks, prioritized by urgency (CRITICAL items can reach 30 days back, LOW items only 1 day). Excludes completed and cancelled items.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "check_status");
+      if (result.error) return result.error;
+      return mcpCheckStatus(result.auth!);
+    },
+  );
+
+  // ----- Shared tools -----
+
   server.registerTool(
     "send_message",
     {
       title: "Send Message",
       description:
-        "Send a message in a feature's planning chat. This triggers the AI planning workflow, which will update the feature's plan asynchronously.",
+        "Send a message to a feature's planning chat or a task's agent chat. Provide exactly one of featureId or taskId. For features this triggers the AI planning workflow; for tasks it triggers the agent workflow.",
       inputSchema: {
         featureId: z
           .string()
+          .optional()
           .describe("The ID of the feature to send a message to"),
+        taskId: z
+          .string()
+          .optional()
+          .describe("The ID of the task to send a message to"),
         message: z
           .string()
           .describe("The message text to send"),
@@ -272,11 +383,11 @@ function createServer(): McpServer {
           ),
       },
     },
-    async ({ featureId, message, creator }: { featureId: string; message: string; creator?: string }, extra) => {
+    async ({ featureId, taskId, message, creator }: { featureId?: string; taskId?: string; message: string; creator?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "send_message", creator);
       if (result.error) return result.error;
-      return mcpSendMessage(result.auth!, featureId, message);
+      return mcpSendMessage(result.auth!, message, featureId, taskId);
     },
   );
 
