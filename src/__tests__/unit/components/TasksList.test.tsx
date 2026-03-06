@@ -16,13 +16,17 @@ vi.mock("@/hooks/useDebounce", () => ({
 }));
 
 // Mock Next.js router
+const mockReplace = vi.fn();
+const mockSearchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
-    replace: vi.fn(),
+    replace: mockReplace,
     prefetch: vi.fn(),
   }),
   usePathname: () => "/w/test-workspace/tasks",
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock TaskCard component
@@ -405,6 +409,120 @@ describe("TasksList - Sorting Functionality", () => {
       // task-1 (Jan 1) should come before task-3 (Jan 10)
       expect(taskCards[0]).toHaveTextContent("First Task");
       expect(taskCards[1]).toHaveTextContent("Third Task");
+    });
+  });
+
+  describe("URL Pagination", () => {
+    beforeEach(() => {
+      mockReplace.mockClear();
+      mockSearchParams.delete('page');
+    });
+
+    it("should read initial page from URL query param", async () => {
+      mockSearchParams.set('page', '2');
+      
+      const mockUseWorkspaceTasks = vi.fn().mockReturnValue({
+        tasks: mockTasks,
+        loading: false,
+        error: null,
+        pagination: { hasMore: false },
+        loadMore: mockLoadMore,
+        refetch: mockRefetch,
+      });
+
+      vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(mockUseWorkspaceTasks);
+
+      render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+      });
+
+      // Verify initialPage=2 was passed to the hook
+      expect(mockUseWorkspaceTasks).toHaveBeenCalledWith(
+        "workspace-1",
+        "test-workspace",
+        true,
+        expect.any(Number),
+        false,
+        "",
+        expect.any(Object),
+        false,
+        expect.any(String),
+        expect.any(String),
+        2, // initialPage
+        expect.any(Function) // handlePageChange
+      );
+    });
+
+    it("should call router.replace with ?page=2 when loadMore triggers page change", async () => {
+      let capturedOnPageChange: ((page: number) => void) | undefined;
+
+      vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+        (...args: any[]) => {
+          capturedOnPageChange = args[11]; // onPageChange callback
+          return {
+            tasks: mockTasks,
+            loading: false,
+            error: null,
+            pagination: { hasMore: true },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+      );
+
+      render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+      });
+
+      // Simulate page change callback
+      expect(capturedOnPageChange).toBeDefined();
+      capturedOnPageChange!(2);
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledWith(
+          "/w/test-workspace/tasks?page=2",
+          { scroll: false }
+        );
+      });
+    });
+
+    it("should remove ?page param when page is 1", async () => {
+      mockSearchParams.set('page', '2');
+      let capturedOnPageChange: ((page: number) => void) | undefined;
+
+      vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+        (...args: any[]) => {
+          capturedOnPageChange = args[11];
+          return {
+            tasks: mockTasks,
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+      );
+
+      render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+      });
+
+      // Reset to page 1
+      capturedOnPageChange!(1);
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledWith(
+          "/w/test-workspace/tasks",
+          { scroll: false }
+        );
+      });
     });
   });
 });

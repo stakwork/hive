@@ -3,40 +3,14 @@
 import {
   TaskTitleUpdateEvent,
   PRStatusChangeEvent,
+  DeploymentStatusChangeEvent,
   usePusherConnection,
 } from "@/hooks/usePusherConnection";
+
+export type { DeploymentStatusChangeEvent };
 import { WorkflowStatus } from "@/lib/chat";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
-
-// SessionStorage key for persisting current page across navigation
-export const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-
-// Helper functions for sessionStorage operations
-export const saveCurrentPage = (workspaceId: string, page: number) => {
-  if (typeof window !== "undefined") {
-    window.sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-  }
-};
-
-export const getStoredPage = (workspaceId: string): number => {
-  if (typeof window !== "undefined") {
-    const stored = window.sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-    if (stored) {
-      const parsed = parseInt(stored, 10);
-      // Return default if parsing resulted in NaN (corrupted data)
-      return isNaN(parsed) ? 1 : parsed;
-    }
-    return 1;
-  }
-  return 1;
-};
-
-export const clearStoredPage = (workspaceId: string) => {
-  if (typeof window !== "undefined") {
-    window.sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-  }
-};
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface TaskData {
   id: string;
@@ -123,15 +97,18 @@ export function useWorkspaceTasks(
   },
   showAllStatuses: boolean = false,
   sortBy?: string,
-  sortOrder?: string
+  sortOrder?: string,
+  initialPage: number = 1,
+  onPageChange?: (page: number) => void
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationData | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
+  const [currentPage, setCurrentPage] = useState(initialPage > 0 ? initialPage : 1);
+  const [isReplayingPages, setIsReplayingPages] = useState(false);
+  const isMountedRef = useRef(false);
 
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications, limit: number = pageLimit) => {
     if (!workspaceId || !session?.user) {
@@ -183,27 +160,23 @@ export function useWorkspaceTasks(
     }
   }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses, sortBy, sortOrder]);
 
-  // Function to restore state from sessionStorage by fetching all pages up to stored page
-  const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
-    if (!workspaceId || !session?.user) return;
-
-    const storedPage = getStoredPage(workspaceId);
-    if (storedPage <= 1) {
-      // No stored state or already at initial state, proceed with normal fetch
+  // Function to replay pages 1..N when initialPage > 1 (on mount from URL param)
+  const replayPages = useCallback(async (targetPage: number, includeLatestMessage: boolean = includeNotifications) => {
+    if (!workspaceId || !session?.user || targetPage <= 1) {
       await fetchTasks(1, true, includeLatestMessage);
       return;
     }
 
-    setIsRestoringFromStorage(true);
+    setIsReplayingPages(true);
     setLoading(true);
     setError(null);
 
     try {
-      // Fetch all pages from 1 to storedPage to rebuild the complete tasks array
+      // Fetch all pages from 1 to targetPage to rebuild the complete tasks array
       const allTasks: TaskData[] = [];
       let finalPagination: PaginationData | null = null;
 
-      for (let page = 1; page <= storedPage; page++) {
+      for (let page = 1; page <= targetPage; page++) {
         const archivedParam = showArchived ? '&includeArchived=true' : '';
         const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
         const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
@@ -237,19 +210,18 @@ export function useWorkspaceTasks(
 
       setTasks(allTasks);
       setPagination(finalPagination);
-      setCurrentPage(storedPage);
+      setCurrentPage(targetPage);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to restore tasks from storage";
+      const errorMessage = err instanceof Error ? err.message : "Failed to replay pages";
       setError(errorMessage);
-      console.error("Error restoring workspace tasks from storage:", err);
-      // Clear invalid stored state and fallback to normal fetch
-      clearStoredPage(workspaceId);
+      console.error("Error replaying pages:", err);
+      // Fallback to normal fetch on error
       await fetchTasks(1, true, includeLatestMessage);
     } finally {
       setLoading(false);
-      setIsRestoringFromStorage(false);
+      setIsReplayingPages(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived, showAllStatuses]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters, showAllStatuses, sortBy, sortOrder, fetchTasks]);
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(
@@ -333,31 +305,53 @@ export function useWorkspaceTasks(
     if (pagination?.hasMore && workspaceId) {
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
-      // Save the new page to sessionStorage for persistence
-      saveCurrentPage(workspaceId, nextPage);
+      onPageChange?.(nextPage);
       await fetchTasks(nextPage, false);
     }
-  }, [fetchTasks, pagination?.hasMore, currentPage, workspaceId]);
+  }, [fetchTasks, pagination?.hasMore, currentPage, workspaceId, onPageChange]);
 
   const refetch = useCallback(async (includeLatestMessage?: boolean) => {
-    if (workspaceId) {
-      // Clear stored state when explicitly refetching (e.g., on refresh)
-      clearStoredPage(workspaceId);
-    }
     setCurrentPage(1);
+    onPageChange?.(1);
     await fetchTasks(1, true, includeLatestMessage);
-  }, [fetchTasks, workspaceId]);
+  }, [fetchTasks, onPageChange]);
 
+  // On mount: replay pages if initialPage > 1
+  // On filter/sort/search/tab change after mount: reset to page 1
   useEffect(() => {
-    // Use restoreFromStorage instead of refetch to maintain state across navigation
-    restoreFromStorage();
-  }, [restoreFromStorage]);
+    if (!isMountedRef.current) {
+      // Initial mount - replay pages if initialPage > 1
+      isMountedRef.current = true;
+      if (initialPage > 1) {
+        replayPages(initialPage);
+      } else {
+        fetchTasks(1, true);
+      }
+    } else {
+      // Filter/sort/search/tab change after mount - reset to page 1
+      setCurrentPage(1);
+      onPageChange?.(1);
+      fetchTasks(1, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    // Only react to filter/sort/search changes, not page changes
+    showArchived,
+    search,
+    filters?.sourceType,
+    filters?.status,
+    filters?.priority,
+    filters?.hasPod,
+    showAllStatuses,
+    sortBy,
+    sortOrder,
+  ]);
 
   // Note: Global notification count is now handled by WorkspaceProvider
 
   return {
     tasks,
-    loading: loading || isRestoringFromStorage,
+    loading: loading || isReplayingPages,
     error,
     pagination,
     loadMore,

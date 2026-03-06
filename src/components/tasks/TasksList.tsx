@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -38,6 +39,12 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { waitingForInputCount } = useWorkspace();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Read initial page from URL
+  const initialPage = parseInt(searchParams.get('page') ?? '1', 10) || 1;
 
   // Archive tab state with localStorage persistence
   const [activeTab, setActiveTab] = useState<"active" | "archived">(() => {
@@ -94,6 +101,18 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const { sortBy: apiSortBy, sortOrder: apiSortOrder } = getSortParams(sortBy);
 
+  // Handle page changes in URL
+  const handlePageChange = useCallback((page: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (page <= 1) {
+      params.delete('page');
+    } else {
+      params.set('page', page.toString());
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   // showArchived is true when activeTab is "archived"
   // showAllStatuses is true when in Kanban view (to show TODO tasks)
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
@@ -106,7 +125,9 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     filters,
     viewType === "kanban",
     apiSortBy,
-    apiSortOrder
+    apiSortOrder,
+    initialPage,
+    handlePageChange
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -115,6 +136,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     if (value === "active" || value === "archived") {
       setActiveTab(value);
       localStorage.setItem("tasks-tab-preference", value);
+      handlePageChange(1); // Reset to page 1 on tab change
     }
   };
 
@@ -128,22 +150,26 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const handleFiltersChange = (newFilters: TaskFiltersType) => {
     setFilters(newFilters);
+    handlePageChange(1); // Reset to page 1 on filter change
   };
 
   const handleClearFilters = () => {
     setFilters({});
+    handlePageChange(1); // Reset to page 1 when clearing filters
   };
 
   const handleViewChange = (value: string) => {
     if (value === "list" || value === "kanban") {
       setViewType(value);
       localStorage.setItem("tasks-view-preference", value);
+      handlePageChange(1); // Reset to page 1 on view change
     }
   };
 
   const handleSortChange = (value: SortOption) => {
     setSortBy(value);
     localStorage.setItem("tasks-sort-preference", value);
+    handlePageChange(1); // Reset to page 1 on sort change
   };
 
   // Tasks are now sorted by the backend API, no need for client-side sorting
