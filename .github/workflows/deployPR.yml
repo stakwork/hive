@@ -80,28 +80,32 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "5 hours")
 
-          # Helper: curl with retry (up to 5 attempts, 5 s backoff) so transient
-          # empty responses don't kill the pipeline before jq even runs.
+          # Helper: curl with retry (up to 5 attempts, 10 s backoff).
+          # Retries on empty body OR on non-JSON / error responses that don't
+          # contain the expected top-level key (passed as $2).
+          # Usage: neon_curl <url> <expected_key> [extra curl args...]
           neon_curl() {
             local url="$1"
-            shift
+            local expected_key="$2"
+            shift 2
             local response
             for attempt in 1 2 3 4 5; do
-              response=$(curl -s --retry 3 --retry-delay 5 --retry-connrefused \
+              response=$(curl -s --retry 2 --retry-delay 5 --retry-connrefused \
                 -H "Authorization: Bearer $NEON_API_KEY" "$@" "$url")
-              if [ -n "$response" ]; then
+              if [ -n "$response" ] && echo "$response" | jq -e ".$expected_key" > /dev/null 2>&1; then
                 echo "$response"
                 return 0
               fi
-              echo "⚠️  Empty response from Neon API (attempt $attempt/5), retrying in 5s..." >&2
-              sleep 5
+              echo "⚠️  Neon API bad/empty response (attempt $attempt/5) for $url — got: ${response:0:120}" >&2
+              sleep 10
             done
-            echo "❌ Neon API returned empty response after 5 attempts for: $url" >&2
+            echo "❌ Neon API failed after 5 attempts for: $url" >&2
+            echo "$response"   # emit last response so caller can print it
             return 1
           }
 
-          # Get preview-base branch ID
-          BRANCHES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+          # Get preview-base branch ID (expected key: "branches")
+          BRANCHES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branches")
           PARENT_BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r '.branches[] | select(.name=="preview-base") | .id')
 
           if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
@@ -113,7 +117,7 @@ jobs:
           BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
-            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branch" \
               -X POST \
               -H "Content-Type: application/json" \
               -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
@@ -127,7 +131,7 @@ jobs:
 
           # Wait until branch is ready
           for i in {1..20}; do
-            BRANCH_STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID")
+            BRANCH_STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" "branch")
             STATE=$(echo "$BRANCH_STATUS" | jq -r '.branch.current_state')
             if [ "$STATE" = "ready" ]; then break; fi
             echo "Waiting for branch... ($i)"
@@ -135,11 +139,11 @@ jobs:
           done
 
           # Create or reuse endpoint
-          ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+          ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
           ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
-            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
+            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoint" \
               -X POST \
               -H "Content-Type: application/json" \
               -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
@@ -148,7 +152,7 @@ jobs:
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
             DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
@@ -164,7 +168,7 @@ jobs:
           fi
 
           # Get a role name for this branch (Neon GET endpoint does not return credentials)
-          ROLES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles")
+          ROLES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles" "roles")
           ROLE_NAME=$(echo "$ROLES_JSON" | jq -r '.roles[0].name // empty')
           if [ -z "$ROLE_NAME" ]; then
             echo "❌ No roles found for branch $BRANCH_ID"
@@ -172,7 +176,7 @@ jobs:
           fi
 
           # Retrieve full connection URI (includes encoded credentials)
-          URI_RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME")
+          URI_RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME" "uri")
           CONNECTION_URI=$(echo "$URI_RESPONSE" | jq -r '.uri // empty')
           if [ -z "$CONNECTION_URI" ]; then
             echo "❌ Failed to get connection URI: $URI_RESPONSE"
