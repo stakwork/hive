@@ -236,7 +236,7 @@ describe("Generate Call Link API - Integration Tests", () => {
           params: Promise.resolve({ slug: "" }),
         });
 
-        await expectError(response, "Workspace slug is required", 400);
+        await expectError(response, "Workspace slug or swarmName query parameter is required", 400);
       });
 
       test("returns error when workspace not found", async () => {

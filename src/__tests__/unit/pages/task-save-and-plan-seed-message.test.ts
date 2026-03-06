@@ -6,7 +6,19 @@ import { describe, it, expect } from "vitest";
  */
 
 function buildSeedMessage(branchName: string): string {
-  return `A UI prototype has been built on branch \`${branchName}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`;
+  return `A UI prototype has been built on branch \`${branchName}\`.
+This branch must be used as the base branch for all UI implementation work.
+
+When defining requirements, architecture, and the implementation plan, ensure that all UI-related tasks explicitly reference this branch as their base branch.
+
+Architecture requirements:
+
+Convert the prototype into a production-ready feature implemented on this branch.
+
+Delete the temporary prototype/test page as part of the implementation (this is required, not optional cleanup).
+
+The prototype should be treated as a visual and interaction reference only.
+Plan and implement the real feature from this branch.`;
 }
 
 function buildFeatureChatPostBody(
@@ -17,50 +29,54 @@ function buildFeatureChatPostBody(
 }
 
 describe("handleSaveAndPlan — seed message", () => {
-  it("instructs the AI to check out the branch first", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
-    expect(msg).toContain("Start by checking out the branch.");
+  it("names the branch as the base branch for all UI implementation work", () => {
+    const msg = buildSeedMessage("feat/dashboard-ui");
+    expect(msg).toContain("This branch must be used as the base branch for all UI implementation work.");
   });
 
-  it("frames test page deletion as an implementation step, not a planning directive", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
-    expect(msg).toContain("this should be deleted during implementation");
-    expect(msg).not.toContain("delete it entirely");
+  it("instructs all UI-related tasks to explicitly reference this branch", () => {
+    const msg = buildSeedMessage("feat/dashboard-ui");
+    expect(msg).toContain("all UI-related tasks explicitly reference this branch as their base branch");
   });
 
-  it("does not tell the AI to build from scratch", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
-    expect(msg).not.toContain("build the real production component from scratch");
+  it("instructs converting the prototype into a production-ready feature on this branch", () => {
+    const msg = buildSeedMessage("feat/dashboard-ui");
+    expect(msg).toContain("Convert the prototype into a production-ready feature implemented on this branch.");
   });
 
-  it("tells the AI to plan the real feature", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
-    expect(msg).toContain("plan the real feature");
+  it("makes test page deletion a required implementation task, not optional cleanup", () => {
+    const msg = buildSeedMessage("feat/dashboard-ui");
+    expect(msg).toContain("this is required, not optional cleanup");
+  });
+
+  it("frames prototype as visual and interaction reference only", () => {
+    const msg = buildSeedMessage("feat/dashboard-ui");
+    expect(msg).toContain("The prototype should be treated as a visual and interaction reference only.");
   });
 
   it("includes the branch name in backticks", () => {
-    const branch = "prototype/some-branch";
+    const branch = "feat/some-branch";
     const msg = buildSeedMessage(branch);
     expect(msg).toContain(`\`${branch}\``);
   });
 
   it("matches the exact expected seed message string", () => {
-    const branch = "prototype/my-feature";
+    const branch = "feat/my-feature";
     expect(buildSeedMessage(branch)).toBe(
-      `A UI prototype has been built on branch \`${branch}\`. Start by checking out the branch. The prototype contains a throwaway test page — this should be deleted during implementation. Use the prototype only as a visual design reference and plan the real feature.`
+      `A UI prototype has been built on branch \`${branch}\`.\nThis branch must be used as the base branch for all UI implementation work.\n\nWhen defining requirements, architecture, and the implementation plan, ensure that all UI-related tasks explicitly reference this branch as their base branch.\n\nArchitecture requirements:\n\nConvert the prototype into a production-ready feature implemented on this branch.\n\nDelete the temporary prototype/test page as part of the implementation (this is required, not optional cleanup).\n\nThe prototype should be treated as a visual and interaction reference only.\nPlan and implement the real feature from this branch.`
     );
   });
 });
 
 describe("handleSaveAndPlan — POST body to feature chat API", () => {
   it("includes isPrototype: true in the POST body sent to the feature chat API", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
+    const msg = buildSeedMessage("feat/my-feature");
     const body = buildFeatureChatPostBody(msg, []);
     expect(body.isPrototype).toBe(true);
   });
 
   it("includes the seed message and history alongside isPrototype", () => {
-    const msg = buildSeedMessage("prototype/my-feature");
+    const msg = buildSeedMessage("feat/my-feature");
     const history = [{ role: "user", content: "hello" }];
     const body = buildFeatureChatPostBody(msg, history);
     expect(body.message).toBe(msg);

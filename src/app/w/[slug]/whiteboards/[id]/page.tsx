@@ -6,12 +6,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
+import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
+import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
-import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -32,6 +35,8 @@ function computeSnapshot(elements: readonly unknown[], files: Record<string, unk
   const filePart = Object.keys(files).sort().join(",");
   return `${elPart}|${filePart}`;
 }
+
+
 
 interface WhiteboardData {
   id: string;
@@ -63,7 +68,10 @@ export default function WhiteboardDetailPage() {
   const programmaticUpdateCountRef = useRef(1); // 1 for initial load
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
+  const resolvedFilesRef = useRef<BinaryFiles>({});
   const lastSavedSnapshotRef = useRef<string>("");
+  const savePausedRef = useRef(false);
+  const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
   // Collaboration hook
   const {
@@ -86,9 +94,22 @@ export default function WhiteboardDetailPage() {
         setWhiteboard(data.data);
         setEditName(data.data.name);
         versionRef.current = data.data.version || 0;
+
+        // Resolve stored S3 image references to presigned URLs
+        const files = (data.data.files as Record<string, unknown>) || {};
+        if (Object.keys(files).length > 0) {
+          const resolved = await resolveFilesForDisplay(whiteboardId, files);
+          resolvedFilesRef.current = resolved;
+        }
         lastSavedSnapshotRef.current = computeSnapshot(
           data.data.elements || [],
           data.data.files || {}
+        );
+
+        // Initialise the version-snapshot baseline from the loaded elements
+        const loadedElements = (data.data.elements || []) as Array<{ id?: string }>;
+        lastVersionSnapshotRef.current = new Set(
+          loadedElements.map((el) => el.id).filter(Boolean) as string[]
         );
       } else {
         router.push(`/w/${slug}/whiteboards`);
@@ -127,13 +148,37 @@ export default function WhiteboardDetailPage() {
       setSaving(true);
       setSaved(false);
       try {
+        // Upload any new images to S3 before saving; store only s3Key refs in DB
+        const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
+
+        // Merge newly-uploaded entries with previously-persisted DB entries so no
+        // prior image is silently dropped when cleanedFiles only contains this
+        // save's uploads.
+        const existingFiles = (whiteboard.files as Record<string, StoredFileEntry>) ?? {};
+        const mergedFiles = { ...existingFiles, ...cleanedFiles };
+
+        // Write s3Key back into Excalidraw's in-memory registry for any files
+        // that were just uploaded. This ensures the next save sees s3Key on those
+        // entries and short-circuits the upload (no re-upload, no omission).
+        if (excalidrawAPI) {
+          const enriched = Object.entries(cleanedFiles)
+            .filter(([id]) => !(files[id] as BinaryFileData & { s3Key?: string })?.s3Key)
+            .map(([id, entry]) => ({
+              ...entry,
+              id: entry.id as FileId,
+              dataURL: ((files[id] as BinaryFileData)?.dataURL ?? "") as BinaryFileData["dataURL"],
+              mimeType: entry.mimeType as BinaryFileData["mimeType"],
+            }));
+          if (enriched.length > 0) excalidrawAPI.addFiles(enriched as BinaryFileData[]);
+        }
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files,
+          files: mergedFiles,
           expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
@@ -155,7 +200,7 @@ export default function WhiteboardDetailPage() {
           }
 
           if (body.stale && body.currentVersion != null) {
-            // Version conflict — update version and retry once
+            // Version conflict — update version and retry once (files already uploaded)
             versionRef.current = body.currentVersion;
             const retryData = { ...data, expectedVersion: body.currentVersion };
             const retryRes = await fetch(`/api/whiteboards/${whiteboard.id}`, {
@@ -259,6 +304,55 @@ export default function WhiteboardDetailPage() {
     };
   }, [handlePointerUp]);
 
+  // Auto-snapshot: every 20s check if ≥3 elements have changed since last snapshot
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      if (!whiteboard || !excalidrawAPI || savePausedRef.current) return;
+
+      const currentElements = excalidrawAPI
+        .getSceneElements()
+        .filter((el) => !el.isDeleted);
+      const currentIds = new Set(currentElements.map((el) => el.id));
+
+      const changeCount = computeVersionChanges(currentIds, lastVersionSnapshotRef.current);
+      if (changeCount < 3) return;
+
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+      const label = new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      try {
+        const res = await fetch(`/api/whiteboards/${whiteboard.id}/versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            elements: currentElements,
+            appState: {
+              viewBackgroundColor: appState.viewBackgroundColor,
+              gridSize: appState.gridSize,
+            },
+            files,
+            label,
+          }),
+        });
+
+        if (res.ok) {
+          lastVersionSnapshotRef.current = currentIds;
+        }
+      } catch {
+        // Silently ignore — versioning is best-effort
+      }
+    }, 20_000);
+
+    return () => clearInterval(intervalId);
+  }, [whiteboard, excalidrawAPI]);
+
   // Handle pointer/cursor updates for collaboration
   const handlePointerUpdate = useCallback(
     (payload: { pointer: { x: number; y: number }; button: string }) => {
@@ -316,6 +410,16 @@ export default function WhiteboardDetailPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI, whiteboardId, senderId]);
+
+  // Inject resolved S3 image files into Excalidraw once the API is ready
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const resolved = resolvedFilesRef.current;
+    if (Object.keys(resolved).length > 0) {
+      excalidrawAPI.addFiles(Object.values(resolved));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
 
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
@@ -468,6 +572,10 @@ export default function WhiteboardDetailPage() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <WhiteboardVersionPanel
+              whiteboardId={whiteboardId}
+              onReloadWhiteboard={loadWhiteboard}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -527,6 +635,7 @@ export default function WhiteboardDetailPage() {
             initialData={{
               elements: whiteboard.elements as readonly ExcalidrawElement[],
               appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
+              files: resolvedFilesRef.current,
             }}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}

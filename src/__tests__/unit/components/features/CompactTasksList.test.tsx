@@ -54,7 +54,11 @@ vi.mock("@/components/ui/select", () => ({
       {children}
     </div>
   ),
-  SelectTrigger: ({ children }: any) => <div>{children}</div>,
+  SelectTrigger: ({ children, className }: any) => (
+    <div data-testid="select-trigger" className={className}>
+      {children}
+    </div>
+  ),
   SelectValue: () => <span>Select</span>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children, value }: any) => (
@@ -672,6 +676,62 @@ describe("CompactTasksList", () => {
       const taskCard = screen.getByText("In Progress Task").closest("div[class*='cursor-pointer']");
       const dot = taskCard?.querySelector(".bg-amber-500");
       expect(dot).toBeInTheDocument();
+    });
+  });
+
+  describe("Repo SelectTrigger truncation", () => {
+    test("SelectTrigger inner div has overflow-hidden to prevent long repo names wrapping", () => {
+      const task = createMockTask({
+        id: "task-repo",
+        title: "Repo Task",
+        status: "TODO",
+        repositoryId: "repo-1",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // The SelectTrigger should have max-w-[120px] to constrain width
+      const trigger = screen.getByTestId("select-trigger");
+      expect(trigger.className).toMatch(/max-w-\[120px\]/);
+
+      // The inner flex container must have overflow-hidden so long names like
+      // "sphinx-nav-fiber" don't wrap to a second line
+      const innerDiv = trigger.querySelector("div");
+      expect(innerDiv?.className).toMatch(/overflow-hidden/);
+    });
+
+    test("SelectValue is wrapped in a truncate span to clip long repo names", () => {
+      const task = createMockTask({
+        id: "task-repo2",
+        title: "Repo Task 2",
+        status: "TODO",
+        repositoryId: "repo-1",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const trigger = screen.getByTestId("select-trigger");
+      // The truncate wrapper span must exist inside the trigger
+      const truncateSpan = trigger.querySelector("span.truncate");
+      expect(truncateSpan).toBeInTheDocument();
     });
   });
 });

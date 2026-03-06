@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUp, Mic, MicOff, Loader2, GitBranch, Image as ImageIcon, X } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, FolderOpen, GitBranch, Image as ImageIcon, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -332,7 +332,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               >
                 <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
                   <div className="flex items-center gap-2">
-                    <GitBranch className="h-4 w-4" />
+                    <FolderOpen className="h-4 w-4" />
                     <span className="truncate">
                       {repositories.find((r) => r.id === selectedRepositoryId)?.name ||
                         "Select repository"}
@@ -343,7 +343,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                   {repositories.map((repo) => (
                     <SelectItem key={repo.id} value={repo.id}>
                       <div className="flex items-center gap-2">
-                        <GitBranch className="h-3.5 w-3.5" />
+                        <FolderOpen className="h-3.5 w-3.5" />
                         <span>{repo.name}</span>
                       </div>
                     </SelectItem>

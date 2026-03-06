@@ -50,7 +50,7 @@ export async function GET(
     }
 
     try {
-      const poolStatus = await getPoolStatusFromPods(swarm.id);
+      const poolStatus = await getPoolStatusFromPods(swarm.id, workspace.id);
 
       return NextResponse.json({
         success: true,

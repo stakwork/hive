@@ -421,6 +421,7 @@ export function ChatArea({
         onRetry={onRetry}
         isRetrying={isRetrying}
         isPlanChat={isPlanChat}
+        currentWorkspaceSlug={workspaceSlug}
       />
 
       {onReleasePod && (

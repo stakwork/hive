@@ -782,12 +782,27 @@ model Whiteboard {
   featureId   String?             @unique @map("feature_id")
   version     Int                 @default(0)
   messages    WhiteboardMessage[]
+  versions    WhiteboardVersion[]
   feature     Feature?            @relation(fields: [featureId], references: [id])
   workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([createdAt])
   @@map("whiteboards")
+}
+
+model WhiteboardVersion {
+  id           String     @id @default(cuid())
+  whiteboardId String     @map("whiteboard_id")
+  elements     Json       @default("[]")
+  appState     Json       @default("{}") @map("app_state")
+  files        Json       @default("{}")
+  label        String
+  createdAt    DateTime   @default(now()) @map("created_at")
+  whiteboard   Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+
+  @@index([whiteboardId, createdAt])
+  @@map("whiteboard_versions")
 }
 
 model WhiteboardMessage {
@@ -1137,6 +1152,7 @@ enum StakworkRunType {
   POD_REPAIR
   POD_LAUNCH_FAILURE
   DIAGRAM_GENERATION
+  LEARNING
 }
 
 enum StakworkRunDecision {
@@ -1162,6 +1178,7 @@ enum NotificationTriggerStatus {
   PENDING
   SENT
   FAILED
+  SKIPPED
 }
 
 enum NotificationMethod {

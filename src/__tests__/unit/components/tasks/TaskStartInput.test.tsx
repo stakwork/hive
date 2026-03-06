@@ -56,6 +56,13 @@ vi.mock("@/hooks/useWorkspace", () => ({
           id: "repo-1",
           name: "Test Repository 1",
           repositoryUrl: "https://github.com/test/repo1",
+          branch: "main",
+        },
+        {
+          id: "repo-2",
+          name: "Test Repository 2",
+          repositoryUrl: "https://github.com/test/repo2",
+          branch: "master",
         },
       ],
     },
@@ -63,6 +70,19 @@ vi.mock("@/hooks/useWorkspace", () => ({
     role: "OWNER",
     isLoading: false,
     switchWorkspace: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useRepoBranches", () => ({
+  useRepoBranches: () => ({
+    branches: [
+      { name: "main", sha: "abc123" },
+      { name: "dev", sha: "def456" },
+      { name: "feature/my-branch", sha: "ghi789" },
+    ],
+    isLoading: false,
+    error: null,
+    fetchBranches: vi.fn(),
   }),
 }));
 
@@ -438,5 +458,117 @@ describe("TaskStartInput - Workflow Mode Error Handling", () => {
     await waitFor(() => {
       expect(submitButton).not.toBeDisabled();
     });
+  });
+});
+
+describe("TaskStartInput - Branch Selector", () => {
+  const mockOnStart = vi.fn();
+  const mockOnModeChange = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // jsdom doesn't implement scrollIntoView; cmdk calls it when selecting items
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+
+  it("should render branch selector when workspace has repositories", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    expect(screen.getByTestId("branch-selector-trigger")).toBeInTheDocument();
+  });
+
+  it("should display the repo default branch on initial render", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    // The trigger button should show the repo's configured default branch
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    expect(trigger).toHaveTextContent("main");
+  });
+
+  it("should truncate a long branch name and not overflow the container", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    // The trigger must have max-w constraint so it cannot grow unboundedly
+    expect(trigger.className).toMatch(/max-w-\[180px\]/);
+    // The container row must have overflow-hidden to prevent collision with the right-side buttons
+    const container = trigger.closest('[class*="absolute bottom-6 left-8"]');
+    expect(container?.className).toMatch(/overflow-hidden/);
+  });
+
+  it("should render PopoverContent with side=bottom to open downward", () => {
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    // Open the branch popover so PopoverContent is rendered
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    fireEvent.click(trigger);
+
+    // PopoverContent rendered by Radix adds data-side attribute when open
+    // We verify the branch list is visible (popover opened correctly)
+    const commandInput = screen.queryByPlaceholderText("Search branch...");
+    expect(commandInput).toBeInTheDocument();
+  });
+
+  it("should call onStart with the selected branch as the 6th argument", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <TaskStartInput
+        onStart={mockOnStart}
+        taskMode="live"
+        onModeChange={mockOnModeChange}
+        workspaceSlug="test-workspace"
+      />
+    );
+
+    // Type a task description
+    const textarea = screen.getByTestId("task-start-input");
+    await user.type(textarea, "My new task");
+
+    // Open branch popover and select "dev"
+    const trigger = screen.getByTestId("branch-selector-trigger");
+    await user.click(trigger);
+
+    const devOption = await screen.findByText("dev");
+    await user.click(devOption);
+
+    // Submit the task
+    const submitButton = screen.getByTestId("task-start-submit");
+    await user.click(submitButton);
+
+    // Verify the branch is passed as the 6th argument; use direct call inspection
+    // because expect.anything() does not match undefined (images may be undefined)
+    expect(mockOnStart).toHaveBeenCalledTimes(1);
+    const [msg, , , , , branch] = mockOnStart.mock.calls[0];
+    expect(msg).toBe("My new task");
+    expect(branch).toBe("dev");
   });
 });

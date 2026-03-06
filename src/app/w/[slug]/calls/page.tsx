@@ -148,50 +148,46 @@ export default function CallsPage() {
         actions={
           workspace?.poolState === "COMPLETE" ? (
             <div className="flex gap-2">
-              {slug === "hive" && (
+              <Button
+                onClick={handleConnectVoice}
+                disabled={isConnecting}
+                variant={isConnected ? "destructive" : "default"}
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : isConnected ? (
+                  <>
+                    <Unplug className="h-4 w-4 mr-2" />
+                    Disconnect
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-4 w-4 mr-2" />
+                    Connect Voice
+                  </>
+                )}
+              </Button>
+              {isConnected && (
                 <>
+                  <Button onClick={() => toggleMic()} variant="outline" size="icon">
+                    {isMicEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  </Button>
                   <Button
-                    onClick={handleConnectVoice}
-                    disabled={isConnecting}
-                    variant={isConnected ? "destructive" : "default"}
+                    onClick={() => setDrawerOpen(true)}
+                    variant="outline"
+                    size="icon"
+                    className="relative"
                   >
-                    {isConnecting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : isConnected ? (
-                      <>
-                        <Unplug className="h-4 w-4 mr-2" />
-                        Disconnect
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-4 w-4 mr-2" />
-                        Connect Voice
-                      </>
+                    <MessageSquare className="h-4 w-4" />
+                    {messages.length > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                        {messages.length}
+                      </span>
                     )}
                   </Button>
-                  {isConnected && (
-                    <>
-                      <Button onClick={() => toggleMic()} variant="outline" size="icon">
-                        {isMicEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        onClick={() => setDrawerOpen(true)}
-                        variant="outline"
-                        size="icon"
-                        className="relative"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        {messages.length > 0 && (
-                          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
-                            {messages.length}
-                          </span>
-                        )}
-                      </Button>
-                    </>
-                  )}
                 </>
               )}
               <Button onClick={handleStartCall} disabled={generatingLink} data-testid="start-call-button">

@@ -54,6 +54,7 @@ describe.skip('PoolStatusWidget - Pod Status Counter (DISABLED - complex async r
         pendingVms: 1,
         failedVms: 1,
         lastCheck: new Date().toISOString(),
+        queuedCount: 0,
       },
     };
 
@@ -107,6 +108,7 @@ describe.skip('PoolStatusWidget - Pod Status Counter (DISABLED - complex async r
         pendingVms: 3,
         failedVms: 2,
         lastCheck: new Date().toISOString(),
+        queuedCount: 0,
       },
     };
 
@@ -148,6 +150,7 @@ describe.skip('PoolStatusWidget - Pod Status Counter (DISABLED - complex async r
         pendingVms: 5,
         failedVms: 2,
         lastCheck: new Date().toISOString(),
+        queuedCount: 0,
       },
     };
 
@@ -190,6 +193,7 @@ describe.skip('PoolStatusWidget - Pod Status Counter (DISABLED - complex async r
         pendingVms: 5, // These should NOT be included in total
         failedVms: 3, // These should NOT be included in total
         lastCheck: new Date().toISOString(),
+        queuedCount: 0,
       },
     };
 

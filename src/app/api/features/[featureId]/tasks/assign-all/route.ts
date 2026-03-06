@@ -128,7 +128,7 @@ export async function POST(
         );
 
         if (poolStatus.status.unusedVms > 1) {
-          processTicketSweep(ws.id, ws.slug).catch(() => {});
+          processTicketSweep(ws.id, ws.slug, poolStatus.status.unusedVms - 1).catch(() => {});
         }
       } catch {
         // Pool service unreachable — skip eager start

@@ -214,7 +214,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype UI",
-        branch_name: "prototype/dashboard-ui",
+        branch_name: "feat/dashboard-ui",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -244,7 +244,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype dashboard filter UI",
-        branch_name: "prototype/dashboard-filter-ui",
+        branch_name: "feat/dashboard-filter-ui",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -262,7 +262,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          branches: { "test-repo": "prototype/dashboard-filter-ui" },
+          branches: { "test-repo": "feat/dashboard-filter-ui" },
         }),
       } as Response);
 
@@ -271,7 +271,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.branchName).toBe("prototype/dashboard-filter-ui");
+      expect(data.branchName).toBe("feat/dashboard-filter-ui");
       expect(data.commitMessage).toBe("feat: prototype dashboard filter UI");
 
       // Assert push URL uses ?commit=true&pr=false
@@ -290,7 +290,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype",
-        branch_name: "prototype/my-feature",
+        branch_name: "feat/dashboard-ui",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -308,7 +308,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          branches: { "test-repo": "prototype/my-feature" },
+          branches: { "test-repo": "feat/dashboard-ui" },
         }),
       } as Response);
 
@@ -321,7 +321,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       expect(body.repos).toHaveLength(1);
       expect(body.repos[0]).toMatchObject({
         url: "https://github.com/test-org/test-repo",
-        branch_name: "prototype/my-feature",
+        branch_name: "feat/dashboard-ui",
         commit_name: "feat: prototype",
         base_branch: "main",
       });
@@ -333,7 +333,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       });
     });
 
-    test("generateCommitMessage is called with branchPrefix='prototype'", async () => {
+    test("generateCommitMessage is called without a branchPrefix", async () => {
       const podId = `pod-${generateUniqueId()}`;
       const { user, task } = await createTestData({ podId });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -341,7 +341,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype",
-        branch_name: "prototype/my-feature",
+        branch_name: "feat/dashboard-ui",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -367,7 +367,6 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
         task.id,
         undefined,
         undefined,
-        "prototype",
       );
     });
 
@@ -379,7 +378,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype done",
-        branch_name: "prototype/done-branch",
+        branch_name: "feat/done-branch",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -398,7 +397,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ branches: { "test-repo": "prototype/done-branch" } }),
+        json: async () => ({ branches: { "test-repo": "feat/done-branch" } }),
       } as Response);
 
       const response = await POST(createRequest(task.id), buildParams(task.id));
@@ -428,7 +427,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype error",
-        branch_name: "prototype/error-branch",
+        branch_name: "feat/error-branch",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -449,14 +448,14 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ branches: { "test-repo": "prototype/error-branch" } }),
+        json: async () => ({ branches: { "test-repo": "feat/error-branch" } }),
       } as Response);
 
       const response = await POST(createRequest(task.id), buildParams(task.id));
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.branchName).toBe("prototype/error-branch");
+      expect(data.branchName).toBe("feat/error-branch");
     });
 
     test("falls back to Object.values(branches)[0] when repo name key missing", async () => {
@@ -467,7 +466,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
       vi.mocked(generateCommitMessage).mockResolvedValue({
         commit_message: "feat: prototype",
-        branch_name: "prototype/fallback-branch",
+        branch_name: "feat/fallback-branch",
       });
 
       const { getPodDetails } = await import("@/lib/pods");
@@ -486,14 +485,14 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
         ok: true,
         json: async () => ({
           // key is different from repo.name ("test-repo")
-          branches: { "other-key": "prototype/actual-branch" },
+          branches: { "other-key": "feat/actual-branch" },
         }),
       } as Response);
 
       const response = await POST(createRequest(task.id), buildParams(task.id));
       const data = await response.json();
 
-      expect(data.branchName).toBe("prototype/actual-branch");
+      expect(data.branchName).toBe("feat/actual-branch");
     });
   });
 });

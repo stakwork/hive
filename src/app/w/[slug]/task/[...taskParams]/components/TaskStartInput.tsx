@@ -11,6 +11,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
   ArrowUp,
   Mic,
   MicOff,
@@ -27,6 +36,9 @@ import {
   X,
   Sparkles,
   GitBranch,
+  FolderOpen,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -37,6 +49,9 @@ import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSe
 import { PromptsPanel } from "@/components/prompts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useRepoBranches } from "@/hooks/useRepoBranches";
 
 interface PendingImage {
   id: string;
@@ -47,11 +62,8 @@ interface PendingImage {
   size: number;
 }
 
-import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
-import { useWorkspace } from "@/hooks/useWorkspace";
-
 interface TaskStartInputProps {
-  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string) => void;
+  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -104,12 +116,31 @@ export function TaskStartInput({
   const [matchedProject, setMatchedProject] = useState<any>(null);
   const [isValidatingProject, setIsValidatingProject] = useState(false);
   
-  // Repository state for multi-repo workspaces
+  // Repository state
   const repositories = workspace?.repositories || [];
   const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
     repositories[0]?.id || null
   );
-  
+
+  // Derive the selected repo object
+  const selectedRepo = repositories.find((r) => r.id === selectedRepositoryId) ?? repositories[0] ?? null;
+
+  // Branch state — pre-seeded with repo's configured default branch
+  const [selectedBranch, setSelectedBranch] = useState<string>(selectedRepo?.branch ?? "");
+  const [branchPopoverOpen, setBranchPopoverOpen] = useState(false);
+
+  // Fetch live branches for the selected repo (lazily on dropdown open)
+  const { branches, isLoading: isLoadingBranches, fetchBranches } = useRepoBranches(
+    selectedRepo?.repositoryUrl ?? null,
+    workspaceSlug ?? null,
+  );
+
+  // Reset branch to repo default whenever the repo selection changes
+  useEffect(() => {
+    const repo = repositories.find((r) => r.id === selectedRepositoryId) ?? repositories[0] ?? null;
+    setSelectedBranch(repo?.branch ?? "");
+  }, [selectedRepositoryId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
@@ -126,9 +157,9 @@ export function TaskStartInput({
   
   // Image upload is disabled in agent mode and workflow mode
   const isImageUploadEnabled = taskMode !== "agent" && !isWorkflowMode;
-  
-  // Show repository dropdown when there are multiple repositories
-  const showRepositoryDropdown = repositories.length > 1;
+
+  // Show repository/branch selectors whenever at least one repo exists
+  const showRepositorySelectors = repositories.length > 0;
   
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -362,13 +393,14 @@ export function TaskStartInput({
       // Cleanup preview URLs
       pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
       
-      // Call onStart with all parameters: text, model, autoMerge, images, repositoryId
+      // Call onStart with all parameters: text, model, autoMerge, images, repositoryId, branch
       onStart(
         value.trim(),
         selectedModel,
         autoMerge,
         imageFiles.length > 0 ? imageFiles : undefined,
-        selectedRepositoryId || undefined
+        selectedRepositoryId || undefined,
+        selectedBranch || undefined,
       );
       
       // Clear state
@@ -752,7 +784,7 @@ export function TaskStartInput({
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="absolute bottom-6 left-8 z-10 flex gap-2">
+            <div className="absolute bottom-6 left-8 z-10 flex gap-2 max-w-[calc(100%-8rem)] overflow-hidden flex-nowrap">
               <Select value={taskMode} onValueChange={onModeChange}>
                 <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
                   <div className="flex items-center gap-2">
@@ -802,16 +834,16 @@ export function TaskStartInput({
                   </SelectContent>
                 </Select>
               )}
-              {showRepositoryDropdown && (
-                <Select 
-                  value={selectedRepositoryId || undefined} 
+              {showRepositorySelectors && repositories.length > 1 && (
+                <Select
+                  value={selectedRepositoryId || undefined}
                   onValueChange={(value) => setSelectedRepositoryId(value)}
                 >
                   <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4" />
+                      <FolderOpen className="h-4 w-4" />
                       <span className="truncate">
-                        {repositories.find(r => r.id === selectedRepositoryId)?.name || "Select repository"}
+                        {selectedRepo?.name || "Select repository"}
                       </span>
                     </div>
                   </SelectTrigger>
@@ -819,13 +851,65 @@ export function TaskStartInput({
                     {repositories.map((repo) => (
                       <SelectItem key={repo.id} value={repo.id}>
                         <div className="flex items-center gap-2">
-                          <GitBranch className="h-3.5 w-3.5" />
+                          <FolderOpen className="h-3.5 w-3.5" />
                           <span>{repo.name}</span>
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              )}
+              {showRepositorySelectors && (
+                <Popover open={branchPopoverOpen} onOpenChange={(open) => {
+                  setBranchPopoverOpen(open);
+                  if (open) fetchBranches();
+                }}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={branchPopoverOpen}
+                      className="h-8 text-xs rounded-lg shadow-sm px-3 gap-2 max-w-[180px] min-w-0"
+                      data-testid="branch-selector-trigger"
+                    >
+                      {isLoadingBranches ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                      ) : (
+                        <GitBranch className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span className="truncate min-w-0">{selectedBranch || "Select branch"}</span>
+                      <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50 ml-auto" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[220px] p-0" align="start" side="bottom" sideOffset={8}>
+                    <Command>
+                      <CommandInput placeholder="Search branch..." />
+                      <CommandList>
+                        <CommandEmpty>No branches found.</CommandEmpty>
+                        <CommandGroup>
+                          {branches.map((branch) => (
+                            <CommandItem
+                              key={branch.name}
+                              value={branch.name}
+                              onSelect={() => {
+                                setSelectedBranch(branch.name);
+                                setBranchPopoverOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedBranch === branch.name ? "opacity-100" : "opacity-0",
+                                )}
+                              />
+                              {branch.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
         <div className="absolute bottom-6 right-8 z-10 flex gap-2">

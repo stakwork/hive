@@ -14,10 +14,16 @@ const elk = new ELK();
 
 export type LayoutAlgorithm = "layered" | "force" | "stress" | "mrtree";
 
+export type ComponentShape = "rounded-rect" | "rect" | "diamond";
+
+export type ComponentType = "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
+
 export interface ParsedComponent {
   id: string;
   name: string;
-  type: "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
+  type?: ComponentType | string | null;
+  shape?: ComponentShape | null;
+  layer?: number | null;
   color?: string | null;
   backgroundColor?: string | null;
 }
@@ -138,14 +144,19 @@ function measureTextWidth(text: string, fontSize: number): number {
   return width * (fontSize / 16);
 }
 
-function computeComponentSize(name: string): { width: number; height: number } {
+function computeComponentSize(name: string, shape?: ComponentShape | null): { width: number; height: number } {
   const textW = measureTextWidth(name, 16);
   const paddingH = 48;
   const paddingV = 40;
-  return {
-    width: Math.max(120, textW + paddingH),
-    height: Math.max(60, 25 + paddingV),
-  };
+  const baseWidth = Math.max(120, textW + paddingH);
+  const baseHeight = Math.max(60, 25 + paddingV);
+
+  // Diamonds display text in the inscribed rectangle, so they need ~1.4× size
+  if (shape === "diamond") {
+    return { width: Math.round(baseWidth * 1.42), height: Math.round(baseHeight * 1.42) };
+  }
+
+  return { width: baseWidth, height: baseHeight };
 }
 
 // --- Layer ordering for ELK constraints ---
@@ -176,59 +187,69 @@ const LAYER_PRIORITY: Record<string, number> = {
 
 /**
  * Validate layer constraints against graph edges to prevent ELK crashes.
- * FIRST is invalid if a node has incoming edges from non-FIRST nodes.
- * LAST is invalid if a node has outgoing edges to non-LAST nodes.
+ * ELK requires FIRST nodes to have NO incoming edges (only FIRST_SEPARATE
+ * sources are allowed, which we don't use). Similarly, LAST nodes must
+ * have NO outgoing edges. Only true source/sink nodes keep their constraint.
  */
 function getValidLayerConstraints(diagram: ParsedDiagram): Map<string, string> {
-  const typeById = new Map<string, string>();
-  for (const c of diagram.components) {
-    typeById.set(c.id, c.type);
-  }
-
-  // Build incoming/outgoing edge maps
-  const incoming = new Map<string, Set<string>>(); // nodeId → set of source nodeIds
-  const outgoing = new Map<string, Set<string>>(); // nodeId → set of target nodeIds
+  const hasIncoming = new Set<string>();
+  const hasOutgoing = new Set<string>();
   for (const conn of diagram.connections) {
-    if (!incoming.has(conn.to)) incoming.set(conn.to, new Set());
-    incoming.get(conn.to)!.add(conn.from);
-    if (!outgoing.has(conn.from)) outgoing.set(conn.from, new Set());
-    outgoing.get(conn.from)!.add(conn.to);
+    hasIncoming.add(conn.to);
+    hasOutgoing.add(conn.from);
   }
 
   const result = new Map<string, string>();
   for (const c of diagram.components) {
-    const constraint = LAYER_ORDER[c.type] || "";
-    if (constraint === "FIRST") {
-      // Invalid if any incoming edge comes from a non-FIRST node
-      const sources = incoming.get(c.id);
-      if (sources) {
-        for (const srcId of sources) {
-          const srcType = typeById.get(srcId);
-          if (!srcType || LAYER_ORDER[srcType] !== "FIRST") {
-            result.set(c.id, "");
-            break;
-          }
-        }
-      }
-    } else if (constraint === "LAST") {
-      // Invalid if any outgoing edge goes to a non-LAST node
-      const targets = outgoing.get(c.id);
-      if (targets) {
-        for (const tgtId of targets) {
-          const tgtType = typeById.get(tgtId);
-          if (!tgtType || LAYER_ORDER[tgtType] !== "LAST") {
-            result.set(c.id, "");
-            break;
-          }
-        }
-      }
-    }
-    if (!result.has(c.id)) {
+    const constraint = (c.type && LAYER_ORDER[c.type]) || "";
+    if (constraint === "FIRST" && hasIncoming.has(c.id)) {
+      result.set(c.id, "");
+    } else if (constraint === "LAST" && hasOutgoing.has(c.id)) {
+      result.set(c.id, "");
+    } else {
       result.set(c.id, constraint);
     }
   }
 
   return result;
+}
+
+// --- Diagram sanitisation ---
+
+const VALID_SHAPES: Set<ComponentShape> = new Set(["rounded-rect", "rect", "diamond"]);
+
+/**
+ * Validate and normalise a ParsedDiagram before it reaches ELK.
+ * - Removes components missing a required `id` or `name` field
+ * - Coerces unrecognised `shape` values to `undefined` (defaults to rounded-rect)
+ * - Removes connections whose `from` or `to` does not reference a valid component ID
+ */
+export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
+  const cleanedComponents = diagram.components.filter((c) => {
+    if (!c.id || !c.name) {
+      console.warn("[sanitiseDiagram] Discarding component missing id or name:", c);
+      return false;
+    }
+    return true;
+  }).map((c) => {
+    if (c.shape && !VALID_SHAPES.has(c.shape)) {
+      console.warn(`[sanitiseDiagram] Coercing unknown shape "${c.shape}" to undefined for component "${c.id}"`);
+      return { ...c, shape: undefined };
+    }
+    return c;
+  });
+
+  const validIds = new Set(cleanedComponents.map((c) => c.id));
+
+  const cleanedConnections = diagram.connections.filter((conn) => {
+    if (!validIds.has(conn.from) || !validIds.has(conn.to)) {
+      console.warn(`[sanitiseDiagram] Discarding connection with dangling IDs: from="${conn.from}" to="${conn.to}"`);
+      return false;
+    }
+    return true;
+  });
+
+  return { components: cleanedComponents, connections: cleanedConnections };
 }
 
 // --- ELK layout ---
@@ -290,9 +311,12 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
 }
 
 async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = "layered"): Promise<LayoutedDiagram> {
+  // Last-resort safety net: sanitise diagram for any caller that bypasses extractDiagramData
+  diagram = sanitiseDiagram(diagram);
+
   const componentSizes = new Map<string, { width: number; height: number }>();
   for (const c of diagram.components) {
-    componentSizes.set(c.id, computeComponentSize(c.name));
+    componentSizes.set(c.id, computeComponentSize(c.name, c.shape));
   }
 
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
@@ -341,7 +365,10 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
       if (useLayerConstraints && validConstraints) {
         const constraint = validConstraints.get(c.id) || "";
-        const priority = LAYER_PRIORITY[c.type] ?? 50;
+        // Use explicit layer (inverted: lower layer number = higher priority) or fall back to type-based priority
+        const priority = c.layer != null
+          ? Math.max(0, 100 - c.layer * 20)
+          : (c.type && LAYER_PRIORITY[c.type]) ?? 50;
         layoutOptions["elk.layered.priority.direction"] = String(priority);
         if (constraint) {
           layoutOptions["elk.layered.layering.layerConstraint"] = constraint;
@@ -511,15 +538,20 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const elementId = generateId();
   const textId = generateId();
   const timestamp = Date.now();
-  const defaults = getComponentColors(component.type);
+  const defaults = getComponentColors(component.type ?? "service");
   const strokeColor = component.color ?? defaults.strokeColor;
   const backgroundColor = component.backgroundColor ?? defaults.backgroundColor;
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, 16);
+  const shape = component.shape ?? "rounded-rect";
 
-  const rectangle: ExcalidrawElement = {
+  // Map shape to Excalidraw element type and roundness
+  const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
+  const roundness = shape === "rounded-rect" ? { type: 3 } : shape === "diamond" ? { type: 2 } : null;
+
+  const shapeElement: ExcalidrawElement = {
     id: elementId,
-    type: "rectangle",
+    type: excalidrawType,
     x: component.x,
     y: component.y,
     width,
@@ -534,7 +566,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     opacity: 100,
     groupIds: [],
     frameId: null,
-    roundness: { type: 3 },
+    roundness,
     seed: generateSeed(),
     version: 1,
     versionNonce: generateSeed(),
@@ -582,7 +614,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     lineHeight: 1.25,
   };
 
-  return [rectangle, text];
+  return [shapeElement, text];
 }
 
 function createConnectionElement(connection: LayoutedConnection): ExcalidrawElement[] {
@@ -740,7 +772,7 @@ function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElemen
 
 // --- Reverse color → type mapping ---
 
-const BG_COLOR_TO_TYPE: Record<string, ParsedComponent["type"]> = {
+const BG_COLOR_TO_TYPE: Record<string, ComponentType> = {
   "#ffec99": "client",
   "#fcc2d7": "gateway",
   "#99e9f2": "worker",
@@ -756,8 +788,11 @@ const BG_COLOR_TO_TYPE: Record<string, ParsedComponent["type"]> = {
  * Allows client-side re-layout without an API call.
  */
 export function extractParsedDiagram(elements: readonly Record<string, unknown>[]): ParsedDiagram | null {
-  const rectangles = elements.filter((e) => e.type === "rectangle" && !e.isDeleted);
-  if (rectangles.length === 0) return null;
+  // Collect rectangles and diamonds as component shapes
+  const shapeElements = elements.filter(
+    (e) => (e.type === "rectangle" || e.type === "diamond") && !e.isDeleted
+  );
+  if (shapeElements.length === 0) return null;
 
   const textById = new Map<string, Record<string, unknown>>();
   for (const el of elements) {
@@ -769,18 +804,29 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
   const components: ParsedComponent[] = [];
   const rectIdMap = new Map<string, string>(); // excalidraw id → component id
 
-  for (const rect of rectangles) {
-    const bound = (rect.boundElements as { id: string; type: string }[] | null) ?? [];
+  for (const el of shapeElements) {
+    const bound = (el.boundElements as { id: string; type: string }[] | null) ?? [];
     const boundText = bound.find((b) => b.type === "text");
     const textEl = boundText ? textById.get(boundText.id) : undefined;
     const name = (textEl?.text as string) ?? "Unknown";
-    const bg = (rect.backgroundColor as string) ?? "";
-    const type = BG_COLOR_TO_TYPE[bg] ?? "service";
-    const compId = (rect.id as string);
+    const bg = (el.backgroundColor as string) ?? "";
+    const type = BG_COLOR_TO_TYPE[bg] ?? undefined;
+    const compId = (el.id as string);
     rectIdMap.set(compId, compId);
-    const strokeColor = (rect.strokeColor as string) || undefined;
-    const bgColor = (rect.backgroundColor as string) || undefined;
-    components.push({ id: compId, name, type, color: strokeColor, backgroundColor: bgColor });
+    const strokeColor = (el.strokeColor as string) || undefined;
+    const bgColor = (el.backgroundColor as string) || undefined;
+
+    // Derive shape from Excalidraw element type + roundness
+    let shape: ComponentShape;
+    if (el.type === "diamond") {
+      shape = "diamond";
+    } else if (el.roundness) {
+      shape = "rounded-rect";
+    } else {
+      shape = "rect";
+    }
+
+    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -802,19 +848,19 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
     let minStartDist = Infinity;
     let minEndDist = Infinity;
 
-    for (const rect of rectangles) {
-      const rx = rect.x as number;
-      const ry = rect.y as number;
-      const rw = rect.width as number;
-      const rh = rect.height as number;
+    for (const el of shapeElements) {
+      const rx = el.x as number;
+      const ry = el.y as number;
+      const rw = el.width as number;
+      const rh = el.height as number;
       const cx = rx + rw / 2;
       const cy = ry + rh / 2;
 
       const dStart = Math.hypot(startX - cx, startY - cy);
       const dEnd = Math.hypot(endX - cx, endY - cy);
 
-      if (dStart < minStartDist) { minStartDist = dStart; fromId = rect.id as string; }
-      if (dEnd < minEndDist) { minEndDist = dEnd; toId = rect.id as string; }
+      if (dStart < minStartDist) { minStartDist = dStart; fromId = el.id as string; }
+      if (dEnd < minEndDist) { minEndDist = dEnd; toId = el.id as string; }
     }
 
     if (!fromId || !toId || fromId === toId) continue;
@@ -847,12 +893,14 @@ export function serializeDiagramContext(
 
   lines.push("Components:");
   for (const c of parsed.components) {
-    const colors = [
+    const extras = [
+      c.shape && c.shape !== "rounded-rect" ? `shape: ${c.shape}` : "",
       c.color ? `color: ${c.color}` : "",
       c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
     ].filter(Boolean).join(", ");
-    const colorInfo = colors ? `, ${colors}` : "";
-    lines.push(`- "${c.name}" (${c.type}${colorInfo})`);
+    const extraInfo = extras ? `, ${extras}` : "";
+    const typeLabel = c.type || "component";
+    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})`);
   }
 
   if (parsed.connections.length > 0) {

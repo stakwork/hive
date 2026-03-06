@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network, Play, GitBranch } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -698,7 +698,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
                 >
                   <SelectTrigger className="w-[200px]">
                     <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4" />
+                      <FolderOpen className="h-4 w-4" />
                       <span className="truncate">
                         {workspace.repositories.find(r => r.id === newTicketRepositoryId)?.name || "Select repository"}
                       </span>
@@ -708,7 +708,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
                     {workspace.repositories.map((repo) => (
                       <SelectItem key={repo.id} value={repo.id}>
                         <div className="flex items-center gap-2">
-                          <GitBranch className="h-3.5 w-3.5" />
+                          <FolderOpen className="h-3.5 w-3.5" />
                           <span>{repo.name}</span>
                         </div>
                       </SelectItem>
