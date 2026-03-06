@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInput } from "@/app/w/[slug]/task/[...taskParams]/components/ChatInput";
 import { WorkflowStatus } from "@/lib/chat";
@@ -821,53 +821,43 @@ describe("ChatInput - Task Mode", () => {
       mockSpeechRecognitionState.isListening = false;
     });
 
-    test("textarea remains enabled when disabled=true", () => {
+    test("textarea is disabled when disabled=true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
-      // Textarea should not have disabled attribute
+      // Textarea should have disabled attribute
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is disabled when isLoading=true", () => {
+      render(<ChatInput {...defaultProps} isLoading={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should have disabled attribute when loading
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is enabled when both disabled=false and isLoading=false", () => {
+      render(<ChatInput {...defaultProps} disabled={false} isLoading={false} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should NOT have disabled attribute
       expect(textarea).not.toBeDisabled();
     });
 
-    test("allows typing in textarea when disabled=true", async () => {
-      const user = userEvent.setup();
-      
-      render(<ChatInput {...defaultProps} disabled={true} />);
-      
-      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
-      // Clear any existing content
-      await user.clear(textarea);
-      
-      // Should be able to type
-      await user.type(textarea, "Queued message");
-      
-      expect(textarea.value).toBe("Queued message");
-    });
-
     test("Enter key does not submit when disabled=true", async () => {
-      const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       
       render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
-      // Clear any existing content
-      await user.clear(textarea);
-      
-      // Type message
-      await user.type(textarea, "Test message");
-      
-      // Press Enter (without Shift)
-      await user.keyboard("{Enter}");
-      
-      // onSend should NOT be called
+      // Textarea is disabled — cannot type into it, onSend must not be called
+      expect(textarea).toBeDisabled();
       expect(onSend).not.toHaveBeenCalled();
-      
-      // Message should still be in textarea
-      expect(textarea.value).toBe("Test message");
     });
 
     test("Enter key submits when disabled=false", async () => {
@@ -892,7 +882,6 @@ describe("ChatInput - Task Mode", () => {
     });
 
     test("handleSubmit early returns when disabled=true", async () => {
-      const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       
       render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
@@ -900,11 +889,8 @@ describe("ChatInput - Task Mode", () => {
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       const sendButton = screen.getByTestId("chat-message-submit");
       
-      // Clear and type message
-      await user.clear(textarea);
-      await user.type(textarea, "Test message");
-      
-      // Try to click send button (it should be disabled, but test the guard)
+      // Both textarea and send button should be disabled
+      expect(textarea).toBeDisabled();
       expect(sendButton).toBeDisabled();
       
       // Verify onSend is not called
@@ -912,57 +898,61 @@ describe("ChatInput - Task Mode", () => {
     });
 
     test("Send button remains disabled when disabled=true", async () => {
-      const user = userEvent.setup();
-      
       render(<ChatInput {...defaultProps} disabled={true} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       const sendButton = screen.getByTestId("chat-message-submit");
       
-      // Clear and type some text
-      await user.clear(textarea);
-      await user.type(textarea, "Test message");
+      // Textarea is disabled — use fireEvent to bypass the disabled guard and set a value
+      fireEvent.change(textarea, { target: { value: "Test message" } });
       
-      // Send button should still be disabled
+      // Send button should still be disabled even with text present
       expect(sendButton).toBeDisabled();
     });
 
     test("typed content is preserved when disabled changes from true to false", async () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
-      
-      const { rerender } = render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
-      
+
+      // Start enabled so we can type into the controlled textarea
+      const { rerender } = render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
-      // Clear and type while disabled
-      await user.clear(textarea);
+
+      // Type content while enabled
       await user.type(textarea, "Queued message");
       expect(textarea.value).toBe("Queued message");
-      
-      // Re-render with disabled=false
-      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
-      
-      // Content should be preserved
+
+      // Now disable — content (React state) should still be there
+      rerender(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      expect(textarea).toBeDisabled();
       expect(textarea.value).toBe("Queued message");
-      
+
+      // Re-enable — content should still be preserved
+      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      expect(textarea).not.toBeDisabled();
+      expect(textarea.value).toBe("Queued message");
+
       // Now should be able to send
       await user.keyboard("{Enter}");
       expect(onSend).toHaveBeenCalledWith("Queued message", undefined);
     });
 
-    test("Shift+Enter adds newline even when disabled=true", async () => {
+    test("Shift+Enter adds newline instead of submitting when enabled", async () => {
       const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
       
-      render(<ChatInput {...defaultProps} disabled={true} />);
+      // Test with disabled=false: Shift+Enter should add a newline, not submit
+      render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
       // Type message and press Shift+Enter
       await user.type(textarea, "Line 1{Shift>}{Enter}{/Shift}Line 2");
       
-      // Should contain newline
+      // Should contain newline and onSend should NOT have been called
       expect(textarea.value).toContain("\n");
+      expect(onSend).not.toHaveBeenCalled();
     });
 
     test("mic button remains disabled when disabled=true", () => {
