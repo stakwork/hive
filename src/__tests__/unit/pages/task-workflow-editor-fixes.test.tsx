@@ -241,4 +241,54 @@ describe('Task Page - Workflow Editor fixes', () => {
       );
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Task title generation — handleWorkflowSelect taskTitle logic
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleWorkflowSelect — taskTitle generation', () => {
+    function buildTaskTitle(opts: {
+      workflowName?: string;
+      workflowId: number;
+      workflowVersionId?: string;
+    }): string {
+      const { workflowName, workflowId, workflowVersionId } = opts;
+      return workflowName
+        ? `${workflowName} (ID: ${workflowId}${workflowVersionId ? ` · V${workflowVersionId.substring(0, 8)}` : ''})`
+        : `Workflow ${workflowId}`;
+    }
+
+    it('includes workflow ID and truncated version when both name and version are present', () => {
+      const title = buildTaskTitle({
+        workflowName: 'My Workflow',
+        workflowId: 1234,
+        workflowVersionId: '3fa8c1d2abcdef99',
+      });
+      expect(title).toBe('My Workflow (ID: 1234 · V3fa8c1d2)');
+    });
+
+    it('includes workflow ID but no version suffix when name is present but version is absent', () => {
+      const title = buildTaskTitle({
+        workflowName: 'My Workflow',
+        workflowId: 1234,
+      });
+      expect(title).toBe('My Workflow (ID: 1234)');
+    });
+
+    it('falls back to "Workflow {id}" when no workflow name is available', () => {
+      const title = buildTaskTitle({
+        workflowId: 1234,
+        workflowVersionId: '3fa8c1d2abcdef99',
+      });
+      expect(title).toBe('Workflow 1234');
+    });
+
+    it('truncates version ID to first 8 characters', () => {
+      const title = buildTaskTitle({
+        workflowName: 'Edge Flow',
+        workflowId: 99,
+        workflowVersionId: 'abcdef1234567890',
+      });
+      expect(title).toBe('Edge Flow (ID: 99 · Vabcdef12)');
+    });
+  });
 });
