@@ -241,4 +241,107 @@ describe('Task Page - Workflow Editor fixes', () => {
       );
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Restore workflow context on page reload — last-match scan
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('workflow_editor context restore — last-match scan', () => {
+    /**
+     * Simulates the restore logic introduced to replace the for…break pattern.
+     * Iterates all messages / WORKFLOW artifacts (oldest → newest) and keeps
+     * a running `latestContext` that is overwritten on each match, so the
+     * returned value always reflects the most recent artifact.
+     */
+    function simulateRestoreContext(
+      messages: Array<{
+        artifacts?: Array<{
+          type: string;
+          content?: {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+        }>;
+      }>,
+    ) {
+      type RestoredContext = {
+        workflowId: number | string;
+        workflowName: string;
+        workflowRefId: string;
+        workflowVersionId?: string;
+      };
+
+      const contexts: RestoredContext[] = [];
+
+      for (const msg of messages) {
+        for (const a of msg.artifacts ?? []) {
+          if (a.type === "WORKFLOW" && a.content?.workflowId) {
+            const c = a.content;
+            const prevVersionId = contexts.length > 0 ? contexts[contexts.length - 1].workflowVersionId : undefined;
+            contexts.push({
+              workflowId: c.workflowId!,
+              workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+              workflowRefId: c.workflowRefId || "",
+              workflowVersionId:
+                c.workflowVersionId != null
+                  ? String(c.workflowVersionId)
+                  : prevVersionId,
+            });
+          }
+        }
+      }
+
+      return contexts.length > 0 ? contexts[contexts.length - 1] : null;
+    }
+
+    it('picks workflowVersionId from the last WORKFLOW artifact across all messages', () => {
+      const messages = [
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 10, workflowVersionId: "first-version" },
+            },
+          ],
+        },
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 10, workflowVersionId: "last-version" },
+            },
+          ],
+        },
+      ];
+
+      const ctx = simulateRestoreContext(messages);
+      expect(ctx?.workflowVersionId).toBe("last-version");
+    });
+
+    it('retains the first version when later artifacts omit workflowVersionId', () => {
+      const messages = [
+        {
+          artifacts: [
+            {
+              type: "WORKFLOW",
+              content: { workflowId: 20, workflowVersionId: "only-version" },
+            },
+          ],
+        },
+        {
+          artifacts: [
+            {
+              // Later artifact has no workflowVersionId — previous value should persist
+              type: "WORKFLOW",
+              content: { workflowId: 20 },
+            },
+          ],
+        },
+      ];
+
+      const ctx = simulateRestoreContext(messages);
+      expect(ctx?.workflowVersionId).toBe("only-version");
+    });
+  });
 });
