@@ -704,9 +704,10 @@ export default function TaskChatPage() {
 
       // Store workflow context for later use in step editing
       setCurrentWorkflowContext({
-        workflowId: workflowId,
+        workflowId,
         workflowName: workflowName || `Workflow ${workflowId}`,
-        workflowRefId: workflowData.ref_id,
+        workflowRefId: versionRefId,
+        workflowVersionId,
       });
       // Clear webhook for fresh workflow conversation
       setWorkflowEditorWebhook(null);
@@ -1032,6 +1033,7 @@ export default function TaskChatPage() {
 
         setSelectedStep(null); // Clear step after sending
         setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
         clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
@@ -1040,6 +1042,7 @@ export default function TaskChatPage() {
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
         setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
       } finally {
         setIsLoading(false);
       }
