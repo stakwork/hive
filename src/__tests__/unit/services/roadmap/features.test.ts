@@ -94,9 +94,9 @@ describe("createFeature", () => {
     vi.clearAllMocks();
 
     // Default successful mocks
-    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess);
-    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser);
-    vi.mocked(db.feature.create).mockResolvedValue(mockCreatedFeature);
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess as any);
+    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
+    vi.mocked(db.feature.create).mockResolvedValue(mockCreatedFeature as any);
   });
 
   afterEach(() => {
@@ -425,7 +425,7 @@ describe("createFeature", () => {
     });
 
     test("accepts valid assignee", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee);
+      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
 
       await createFeature(mockUserId, {
         title: "Test Feature",
@@ -694,7 +694,7 @@ describe("createFeature", () => {
     });
 
     test("creates feature with all fields provided", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee);
+      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
 
       const featureData = {
         title: "Complete Feature",
@@ -730,7 +730,7 @@ describe("createFeature", () => {
       vi.mocked(db.feature.create).mockResolvedValue({
         ...mockCreatedFeature,
         isFastTrack: true,
-      });
+      } as any);
 
       const result = await createFeature(mockUserId, {
         title: "Test Feature",
@@ -834,13 +834,15 @@ describe("listFeatures", () => {
       updatedAt: new Date(),
       assignee: null,
       createdBy: { id: mockCreatorId, name: "Creator", email: "creator@test.com", image: null },
-      _count: { userStories: 0 },
+      _count: { userStories: 0, tasks: 0 },
+      chatMessages: [],
+      phases: [],
     },
   ];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess);
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess as any);
   });
 
   afterEach(() => {
@@ -849,7 +851,7 @@ describe("listFeatures", () => {
 
   describe("createdById filter", () => {
     test("filters features by specific creator ID", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -870,7 +872,7 @@ describe("listFeatures", () => {
     });
 
     test("does not filter by createdById when not provided", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -888,12 +890,12 @@ describe("listFeatures", () => {
       );
 
       // Verify createdById is not in the where clause
-      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0][0];
-      expect(callArgs.where).not.toHaveProperty("createdById");
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      expect(callArgs?.where).not.toHaveProperty("createdById");
     });
 
     test("combines createdById with status filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -916,7 +918,7 @@ describe("listFeatures", () => {
     });
 
     test("combines createdById with priority filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -940,7 +942,7 @@ describe("listFeatures", () => {
 
     test("combines createdById with assigneeId filter", async () => {
       const assigneeId = "assignee-999";
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -963,7 +965,7 @@ describe("listFeatures", () => {
     });
 
     test("combines createdById with UNASSIGNED assigneeId", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -986,7 +988,7 @@ describe("listFeatures", () => {
     });
 
     test("combines createdById with search filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
@@ -1012,7 +1014,7 @@ describe("listFeatures", () => {
     });
 
     test("respects pagination with createdById filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(25);
 
       await listFeatures({
@@ -1058,7 +1060,7 @@ describe("listFeatures", () => {
     });
 
     test("allows listing when user has workspace access", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
