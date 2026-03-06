@@ -53,6 +53,11 @@ vi.mock("framer-motion", () => ({
 
 import { PlanStartInput } from "@/app/w/[slug]/plan/new/components/PlanStartInput";
 
+// Mock sonner toast to avoid errors in tests
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
 describe("PlanStartInput", () => {
   const onSubmit = vi.fn();
 
@@ -96,5 +101,22 @@ describe("PlanStartInput", () => {
 
     const textarea = screen.getByTestId("plan-start-input");
     expect(textarea.className).not.toContain("pb-16");
+  });
+
+  test("image upload button is rendered in the bottom row", () => {
+    render(<PlanStartInput onSubmit={onSubmit} />);
+
+    const imageBtn = screen.getByTestId("image-upload-btn");
+    expect(imageBtn).toBeDefined();
+
+    const bottomRow = screen.getByTestId("bottom-row");
+    expect(bottomRow).toContainElement(imageBtn);
+  });
+
+  test("submit button is disabled when no text and no images", () => {
+    render(<PlanStartInput onSubmit={onSubmit} />);
+
+    const submitBtn = screen.getByTestId("plan-start-submit");
+    expect(submitBtn).toBeDisabled();
   });
 });

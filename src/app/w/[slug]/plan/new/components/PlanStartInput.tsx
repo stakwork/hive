@@ -9,21 +9,44 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUp, Mic, MicOff, Loader2, FolderOpen } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, FolderOpen, GitBranch, Image as ImageIcon, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+interface PendingImage {
+  id: string;
+  file: File;
+  preview: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
 
 interface PlanStartInputProps {
-  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null }) => void;
+  onSubmit: (
+    message: string,
+    options?: { isPrototype: boolean; selectedRepoId: string | null },
+    images?: File[],
+  ) => void;
   isLoading?: boolean;
 }
+
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
+
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -32,6 +55,12 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const showRepositoryDropdown = repositories.length > 1;
   const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
     repositories[0]?.id ?? null,
+  );
+
+  // Cleanup preview URLs on unmount
+  useEffect(
+    () => () => pendingImages.forEach((img) => URL.revokeObjectURL(img.preview)),
+    [pendingImages],
   );
 
   // Keep selectedRepositoryId in sync when repositories load
@@ -74,23 +103,115 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
     enabled: isSupported && !isLoading,
   });
 
+  // Image upload handlers
+  const validateFile = (file: File): string | null => {
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return `Invalid file type: ${file.type}. Only JPEG, PNG, GIF, and WebP images are allowed.`;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return `File size exceeds 10MB limit: ${(file.size / (1024 * 1024)).toFixed(2)}MB`;
+    }
+    return null;
+  };
+
+  const handleFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const newImages: PendingImage[] = [];
+
+    for (const file of fileArray) {
+      const error = validateFile(file);
+      if (error) {
+        toast.error(error);
+        continue;
+      }
+      const id = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const preview = URL.createObjectURL(file);
+      newImages.push({ id, file, preview, filename: file.name, mimeType: file.type, size: file.size });
+    }
+
+    if (newImages.length > 0) {
+      setPendingImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
+  const removeImage = (id: string) => {
+    setPendingImages((prev) => {
+      const image = prev.find((img) => img.id === id);
+      if (image) URL.revokeObjectURL(image.preview);
+      return prev.filter((img) => img.id !== id);
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) handleFiles(files);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
   const hasText = value.trim().length > 0;
+  const canSubmit = hasText || pendingImages.length > 0;
 
   const handleSubmit = () => {
-    if (hasText) {
-      if (isListening) {
-        stopListening();
-      }
+    if (canSubmit) {
+      if (isListening) stopListening();
       resetTranscript();
-      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
+      const imageFiles = pendingImages.map((img) => img.file);
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      onSubmit(
+        value.trim(),
+        { isPrototype, selectedRepoId: selectedRepositoryId },
+        imageFiles.length > 0 ? imageFiles : undefined,
+      );
       setValue("");
+      setPendingImages([]);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      if (canSubmit) handleSubmit();
     }
   };
 
@@ -98,40 +219,99 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
-      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={title}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {title}
-          </motion.span>
-        </AnimatePresence>
-      </h1>
-      <div className="w-full max-w-2xl">
-        <Card className="relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group">
+      <div className="w-full max-w-2xl px-4">
+        <AnimatePresence>
           <motion.div
-            key="plan"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15 }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="mb-6 text-center"
+          >
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_MIME_TYPES.join(",")}
+          multiple
+          onChange={handleFileInputChange}
+          className="hidden"
+        />
+
+        {/* Image thumbnails strip */}
+        {pendingImages.length > 0 && (
+          <div className="mb-3 px-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {pendingImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative rounded-lg border overflow-hidden bg-muted aspect-square"
+                >
+                  <img
+                    src={image.preview}
+                    alt={image.filename}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(image.id)}
+                    className="absolute top-1 right-1 bg-background/80 hover:bg-background rounded-full p-1 transition-colors"
+                    aria-label="Remove image"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                    <p className="text-xs text-white truncate">{image.filename}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Card
+          className={cn(
+            "relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group",
+            isDragging && "ring-2 ring-primary ring-offset-2",
+          )}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {/* Drag and drop overlay */}
+          {isDragging && (
+            <div className="absolute inset-0 bg-primary/10 backdrop-blur-sm rounded-3xl z-20 flex items-center justify-center">
+              <div className="text-center">
+                <ImageIcon className="h-12 w-12 mx-auto mb-2 text-primary" />
+                <p className="text-sm font-medium text-primary">Drop images here</p>
+              </div>
+            </div>
+          )}
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
           >
             <Textarea
               ref={textareaRef}
-              placeholder={isListening ? "Listening..." : "Describe a feature or problem"}
               value={value}
+              placeholder={title}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
               autoFocus
               data-testid="plan-start-input"
             />
           </motion.div>
 
-          {/* Prototype toggle row */}
+          {/* Bottom action row */}
           <div className="px-8 pb-6 flex items-center gap-4 flex-wrap" data-testid="bottom-row">
             <div className="flex items-center gap-2">
               <Switch
@@ -173,6 +353,29 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             )}
 
             <div className="ml-auto flex gap-2">
+              {/* Image upload button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+                      style={{ width: 32, height: 32 }}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading}
+                      data-testid="image-upload-btn"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Add images</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
               {isSupported && (
                 <TooltipProvider>
                   <Tooltip>
@@ -199,13 +402,14 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                   </Tooltip>
                 </TooltipProvider>
               )}
+
               <Button
                 type="button"
                 variant="default"
                 size="icon"
                 className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
                 style={{ width: 32, height: 32 }}
-                disabled={!hasText || isLoading}
+                disabled={!canSubmit || isLoading}
                 onClick={handleSubmit}
                 tabIndex={0}
                 data-testid="plan-start-submit"

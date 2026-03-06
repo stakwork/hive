@@ -88,10 +88,10 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] } = body;
 
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (!message && attachments.length === 0) {
+      return NextResponse.json({ error: "Message or attachment is required" }, { status: 400 });
     }
 
     const { chatMessage, stakworkData } = await sendFeatureChatMessage({
@@ -104,6 +104,7 @@ export async function POST(
       replyId,
       history: bodyHistory,
       isPrototype,
+      attachments,
     });
 
     const clientMessage = {

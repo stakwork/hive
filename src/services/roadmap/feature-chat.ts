@@ -17,6 +17,7 @@ import {
 } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
+import { getS3Service } from "@/services/s3";
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -168,6 +169,7 @@ export async function sendFeatureChatMessage({
   replyId,
   history: bodyHistory,
   isPrototype,
+  attachments = [],
 }: {
   featureId: string;
   userId: string;
@@ -178,6 +180,7 @@ export async function sendFeatureChatMessage({
   replyId?: string;
   history?: Record<string, unknown>[];
   isPrototype?: boolean;
+  attachments?: { path: string; filename: string; mimeType: string; size: number }[];
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -207,6 +210,16 @@ export async function sendFeatureChatMessage({
       status: ChatStatus.SENT,
       sourceWebsocketID,
       replyId,
+      ...(attachments.length > 0 && {
+        attachments: {
+          create: attachments.map((a) => ({
+            path: a.path,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            size: a.size,
+          })),
+        },
+      }),
     },
     include: {
       artifacts: true,
@@ -295,6 +308,11 @@ export async function sendFeatureChatMessage({
         ? feature.planUpdatedAt > lastPlanArtifact.createdAt
         : false;
 
+    // Generate presigned download URLs for any attachments
+    const attachmentPaths = chatMessage.attachments?.map((att) => att.path) ?? [];
+    const attachmentUrls = await Promise.all(
+      attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
+    );
     const extraSwarms = await resolveExtraSwarms(message, userId);
 
     stakworkData = await callStakworkAPI({
@@ -318,6 +336,7 @@ export async function sendFeatureChatMessage({
       featureContext,
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
+      attachments: attachmentUrls,
       subAgents: extraSwarms,
     });
 
