@@ -31,6 +31,85 @@ function mcpError(text: string): McpToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
+function mcpOk(data: unknown): McpToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/** Artifact types we include in chat history responses. */
+const CHAT_ARTIFACT_TYPES = [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN];
+
+/** Artifact types where only the *last* occurrence is kept (to reduce payload). */
+const LAST_ONLY_ARTIFACT_TYPES: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
+
+type RawMessage = {
+  role: string;
+  message: string;
+  createdAt: Date;
+  createdBy: { name: string | null } | null;
+  artifacts: { type: ArtifactType; content: unknown }[];
+};
+
+/**
+ * Fetch chat messages for a feature or task and collapse last-only artifacts.
+ */
+async function fetchChatHistoryForMcp(
+  filter: { featureId: string } | { taskId: string },
+) {
+  const messages: RawMessage[] = await db.chatMessage.findMany({
+    where: filter,
+    include: {
+      artifacts: {
+        where: { type: { in: CHAT_ARTIFACT_TYPES } },
+        select: { type: true, content: true },
+      },
+      createdBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // For last-only types, record which message index holds the final occurrence
+  const lastIndexOf: Partial<Record<ArtifactType, number>> = {};
+  for (let i = messages.length - 1; i >= 0; i--) {
+    for (const a of messages[i].artifacts) {
+      if (LAST_ONLY_ARTIFACT_TYPES.includes(a.type) && !(a.type in lastIndexOf)) {
+        lastIndexOf[a.type] = i;
+      }
+    }
+    if (LAST_ONLY_ARTIFACT_TYPES.every((t) => t in lastIndexOf)) break;
+  }
+
+  return messages.map((msg, idx) => ({
+    role: msg.role,
+    message: msg.message,
+    createdBy: msg.createdBy?.name || null,
+    createdAt: msg.createdAt.toISOString(),
+    artifacts: msg.artifacts
+      .filter((a) => !LAST_ONLY_ARTIFACT_TYPES.includes(a.type) || lastIndexOf[a.type] === idx)
+      .map((a) => ({ type: a.type, content: a.content })),
+  }));
+}
+
+/**
+ * Verify a record belongs to the expected workspace, returning an error if not.
+ */
+function verifyWorkspace(
+  record: { workspaceId: string } | null,
+  auth: WorkspaceAuth,
+  label: string,
+): McpToolResult | null {
+  if (!record) return mcpError(`Error: ${label} not found`);
+  if (record.workspaceId !== auth.workspaceId) {
+    return mcpError(`Error: ${label} does not belong to this workspace`);
+  }
+  return null;
+}
+
 /**
  * Resolve a user within a workspace by fuzzy-matching the `user` string
  * against User.name and User.sphinxAlias (case-insensitive).
@@ -118,15 +197,10 @@ export async function mcpListConcepts(
       credentials.swarmUrl,
       credentials.swarmApiKey,
     );
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    return mcpOk(result);
   } catch (error) {
     console.error("Error listing concepts:", error);
-    return {
-      content: [{ type: "text", text: "Error: Could not retrieve concepts" }],
-      isError: true,
-    };
+    return mcpError("Error: Could not retrieve concepts");
   }
 }
 
@@ -149,31 +223,15 @@ export async function mcpLearnConcept(
       },
     );
 
-    if (!res.ok) {
-      return {
-        content: [{ type: "text", text: "Error: Concept not found" }],
-        isError: true,
-      };
-    }
+    if (!res.ok) return mcpError("Error: Concept not found");
 
     const data = await res.json();
-    // Return just the documentation content for efficient context usage
     const documentation =
       data.feature?.documentation || "No documentation available";
-    return {
-      content: [{ type: "text", text: documentation }],
-    };
+    return { content: [{ type: "text", text: documentation }] };
   } catch (error) {
     console.error("Error fetching concept:", error);
-    return {
-      content: [
-        {
-          type: "text",
-          text: "Error: Could not retrieve concept documentation",
-        },
-      ],
-      isError: true,
-    };
+    return mcpError("Error: Could not retrieve concept documentation");
   }
 }
 
@@ -204,16 +262,14 @@ export async function mcpListFeatures(
       take: 40,
     });
 
-    const result = features.map((f) => ({
-      id: f.id,
-      title: f.title,
-      status: f.status,
-      updatedAt: f.updatedAt.toISOString(),
-    }));
-
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    return mcpOk(
+      features.map((f) => ({
+        id: f.id,
+        title: f.title,
+        status: f.status,
+        updatedAt: f.updatedAt.toISOString(),
+      })),
+    );
   } catch (error) {
     console.error("Error listing features:", error);
     return mcpError("Error: Could not list features");
@@ -242,72 +298,22 @@ export async function mcpReadFeature(
       },
     });
 
-    if (!feature) return mcpError("Error: Feature not found");
-    if (feature.workspaceId !== auth.workspaceId) {
-      return mcpError("Error: Feature does not belong to this workspace");
-    }
+    const err = verifyWorkspace(feature, auth, "Feature");
+    if (err) return err;
 
-    const messages = await db.chatMessage.findMany({
-      where: { featureId },
-      include: {
-        artifacts: {
-          where: {
-            type: { in: [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN] },
-          },
-          select: {
-            type: true,
-            content: true,
-          },
-        },
-        createdBy: {
-          select: { name: true },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
+    const chatHistory = await fetchChatHistoryForMcp({ featureId });
 
-    // Artifact types where only the last occurrence should be sent
-    const lastOnlyTypes: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
-
-    // Find the last message index containing each last-only artifact type
-    const lastIndexOf: Partial<Record<ArtifactType, number>> = {};
-    for (let i = messages.length - 1; i >= 0; i--) {
-      for (const a of messages[i].artifacts) {
-        if (lastOnlyTypes.includes(a.type) && !(a.type in lastIndexOf)) {
-          lastIndexOf[a.type] = i;
-        }
-      }
-      if (lastOnlyTypes.every((t) => t in lastIndexOf)) break;
-    }
-
-    const chatHistory = messages.map((msg, idx) => ({
-      role: msg.role,
-      message: msg.message,
-      createdBy: msg.createdBy?.name || null,
-      createdAt: msg.createdAt.toISOString(),
-      // Keep all artifacts except last-only types, which only appear on their last occurrence
-      artifacts: msg.artifacts
-        .filter((a) => !lastOnlyTypes.includes(a.type) || lastIndexOf[a.type] === idx)
-        .map((a) => ({ type: a.type, content: a.content })),
-    }));
-
-    const isWorkflowRunning = feature.workflowStatus === "IN_PROGRESS";
-
-    const result = {
-      id: feature.id,
-      title: feature.title,
-      status: feature.status,
-      workflowStatus: feature.workflowStatus,
-      isWorkflowRunning,
-      brief: feature.brief,
-      requirements: feature.requirements,
-      architecture: feature.architecture,
+    return mcpOk({
+      id: feature!.id,
+      title: feature!.title,
+      status: feature!.status,
+      workflowStatus: feature!.workflowStatus,
+      isWorkflowRunning: feature!.workflowStatus === "IN_PROGRESS",
+      brief: feature!.brief,
+      requirements: feature!.requirements,
+      architecture: feature!.architecture,
       chatHistory,
-    };
-
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    });
   } catch (error) {
     console.error("Error reading feature:", error);
     return mcpError("Error: Could not read feature");
@@ -344,23 +350,12 @@ export async function mcpCreateFeature(
       message: initialMessage,
     });
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              id: feature.id,
-              title: feature.title,
-              status: feature.status,
-              workflowStarted: true,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+    return mcpOk({
+      id: feature.id,
+      title: feature.title,
+      status: feature.status,
+      workflowStarted: true,
+    });
   } catch (error) {
     console.error("Error creating feature:", error);
     const msg =
@@ -392,45 +387,21 @@ export async function mcpSendMessage(
         where: { id: featureId },
         select: { workspaceId: true },
       });
+      const err = verifyWorkspace(feature, auth, "Feature");
+      if (err) return err;
 
-      if (!feature) return mcpError("Error: Feature not found");
-      if (feature.workspaceId !== auth.workspaceId) {
-        return mcpError("Error: Feature does not belong to this workspace");
-      }
-
-      await sendFeatureChatMessage({
-        featureId,
-        userId: auth.userId,
-        message,
-      });
-
-      return {
-        content: [
-          { type: "text", text: "Message sent. The planning workflow has been triggered." },
-        ],
-      };
+      await sendFeatureChatMessage({ featureId, userId: auth.userId, message });
+      return mcpOk({ sent: true, target: "feature", featureId });
     } else {
       const task = await db.task.findUnique({
         where: { id: taskId },
         select: { workspaceId: true },
       });
+      const err = verifyWorkspace(task, auth, "Task");
+      if (err) return err;
 
-      if (!task) return mcpError("Error: Task not found");
-      if (task.workspaceId !== auth.workspaceId) {
-        return mcpError("Error: Task does not belong to this workspace");
-      }
-
-      await sendMessageToStakwork({
-        taskId: taskId!,
-        message,
-        userId: auth.userId,
-      });
-
-      return {
-        content: [
-          { type: "text", text: "Message sent. The task workflow has been triggered." },
-        ],
-      };
+      await sendMessageToStakwork({ taskId: taskId!, message, userId: auth.userId });
+      return mcpOk({ sent: true, target: "task", taskId });
     }
   } catch (error) {
     console.error("Error sending message:", error);
@@ -467,17 +438,15 @@ export async function mcpListTasks(
       take: 40,
     });
 
-    const result = tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      priority: t.priority,
-      updatedAt: t.updatedAt.toISOString(),
-    }));
-
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    return mcpOk(
+      tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        updatedAt: t.updatedAt.toISOString(),
+      })),
+    );
   } catch (error) {
     console.error("Error listing tasks:", error);
     return mcpError("Error: Could not list tasks");
@@ -507,71 +476,23 @@ export async function mcpReadTask(
       },
     });
 
-    if (!task) return mcpError("Error: Task not found");
-    if (task.workspaceId !== auth.workspaceId) {
-      return mcpError("Error: Task does not belong to this workspace");
-    }
+    const err = verifyWorkspace(task, auth, "Task");
+    if (err) return err;
 
-    const messages = await db.chatMessage.findMany({
-      where: { taskId },
-      include: {
-        artifacts: {
-          where: {
-            type: { in: [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN] },
-          },
-          select: {
-            type: true,
-            content: true,
-          },
-        },
-        createdBy: {
-          select: { name: true },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
+    const chatHistory = await fetchChatHistoryForMcp({ taskId });
 
-    // Artifact types where only the last occurrence should be sent
-    const lastOnlyTypes: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
-
-    const lastIndexOf: Partial<Record<ArtifactType, number>> = {};
-    for (let i = messages.length - 1; i >= 0; i--) {
-      for (const a of messages[i].artifacts) {
-        if (lastOnlyTypes.includes(a.type) && !(a.type in lastIndexOf)) {
-          lastIndexOf[a.type] = i;
-        }
-      }
-      if (lastOnlyTypes.every((t) => t in lastIndexOf)) break;
-    }
-
-    const chatHistory = messages.map((msg, idx) => ({
-      role: msg.role,
-      message: msg.message,
-      createdBy: msg.createdBy?.name || null,
-      createdAt: msg.createdAt.toISOString(),
-      artifacts: msg.artifacts
-        .filter((a) => !lastOnlyTypes.includes(a.type) || lastIndexOf[a.type] === idx)
-        .map((a) => ({ type: a.type, content: a.content })),
-    }));
-
-    const isWorkflowRunning = task.workflowStatus === "IN_PROGRESS";
-
-    const result = {
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      status: task.status,
-      priority: task.priority,
-      workflowStatus: task.workflowStatus,
-      isWorkflowRunning,
-      featureId: task.featureId,
-      branch: task.branch,
+    return mcpOk({
+      id: task!.id,
+      title: task!.title,
+      description: task!.description,
+      status: task!.status,
+      priority: task!.priority,
+      workflowStatus: task!.workflowStatus,
+      isWorkflowRunning: task!.workflowStatus === "IN_PROGRESS",
+      featureId: task!.featureId,
+      branch: task!.branch,
       chatHistory,
-    };
-
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    });
   } catch (error) {
     console.error("Error reading task:", error);
     return mcpError("Error: Could not read task");
@@ -604,23 +525,12 @@ export async function mcpCreateTask(
       },
     });
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              id: task.id,
-              title: task.title,
-              status: task.status,
-              priority: task.priority,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+    return mcpOk({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+    });
   } catch (error) {
     console.error("Error creating task:", error);
     const msg =
@@ -686,14 +596,7 @@ export async function mcpCheckStatus(
       items.sort(statusItemComparator);
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(items.slice(0, TARGET_COUNT), null, 2),
-        },
-      ],
-    };
+    return mcpOk(items.slice(0, TARGET_COUNT));
   } catch (error) {
     console.error("Error checking status:", error);
     return mcpError("Error: Could not check status");
