@@ -25,6 +25,7 @@ export interface ActionMenuItem {
   label: string;
   icon?: LucideIcon;
   variant?: "default" | "destructive";
+  disabled?: boolean;
   onClick?: () => void | Promise<void>;
   confirmation?: {
     title: string;
@@ -99,6 +100,7 @@ export function ActionMenu({
               <div key={index}>
                 <DropdownMenuItem
                   variant={action.variant}
+                  disabled={action.disabled}
                   onClick={(e) => handleActionClick(action, index, e)}
                 >
                   {Icon && <Icon className="h-4 w-4" />}

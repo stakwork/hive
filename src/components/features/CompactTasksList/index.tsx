@@ -81,6 +81,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { updateTicket } = useRoadmapTaskMutations();
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
   const [queueStats, setQueueStats] = useState<{ queuedCount: number; unusedVms: number } | null>(null);
 
   const defaultPhase = feature.phases?.[0];
@@ -228,6 +229,25 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       }
     } catch (error) {
       console.error("Failed to delete task:", error);
+    }
+  };
+
+  const handleStartTask = async (taskId: string) => {
+    if (startingTaskId) return;
+    setStartingTaskId(taskId);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startWorkflow: true }),
+      });
+      if (!response.ok) throw new Error("Failed to start task");
+      // Pusher real-time updates handle the visual status transition automatically
+    } catch (error) {
+      console.error("Failed to start task:", error);
+      toast.error("Failed to start task");
+    } finally {
+      setStartingTaskId(null);
     }
   };
 
@@ -395,6 +415,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               },
             },
           ];
+
+          if (task.status === "TODO") {
+            actionMenuItems.unshift({
+              label: "Start Task",
+              icon: Play,
+              variant: "default",
+              disabled: startingTaskId === task.id,
+              onClick: () => handleStartTask(task.id),
+              separator: true,
+            });
+          }
 
           const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
           const isRetrying = retryingTaskId === task.id;
