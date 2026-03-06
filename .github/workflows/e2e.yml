@@ -9,8 +9,13 @@ on:
       - master
 
 jobs:
-  playwright:
+  playwright-shards:
+    name: Playwright (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     services:
       postgres:
@@ -35,12 +40,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Generate Prisma client
         env:
@@ -98,7 +104,52 @@ jobs:
           PGDATABASE: hive_db
           PGHOST: localhost
           PGPORT: 5432
-        run: npx playwright test
+        run: npx playwright test --workers=1 --shard=${{ matrix.shard }}/3 --reporter=blob
+
+      - name: Upload Playwright Blob Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-blob-${{ matrix.shard }}
+          path: blob-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  playwright-report:
+    name: Merge Playwright Reports
+    runs-on: ubuntu-latest
+    if: always()
+    needs: playwright-shards
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Playwright Blob Reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: playwright-blob-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge blob reports into HTML
+        run: |
+          if [ -d ./all-blob-reports ] && find ./all-blob-reports -name '*.zip' -print -quit | grep -q .; then
+            npx playwright merge-reports --reporter html ./all-blob-reports
+          else
+            mkdir -p playwright-report
+            echo "<html><body><h1>No Playwright blob reports found</h1></body></html>" > playwright-report/index.html
+          fi
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
@@ -107,3 +158,25 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+  playwright:
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - playwright-shards
+      - playwright-report
+
+    steps:
+      - name: Validate shard and report jobs
+        run: |
+          if [ "${{ needs.playwright-shards.result }}" != "success" ]; then
+            echo "One or more Playwright shard jobs failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.playwright-report.result }}" != "success" ]; then
+            echo "Playwright report merge job failed."
+            exit 1
+          fi
+
+          echo "All Playwright shard jobs completed successfully."
