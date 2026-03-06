@@ -45,13 +45,12 @@ describe("getPoolStatusFromPods", () => {
       expect(result.queuedCount).toBe(0);
       expect(mockTaskCount).toHaveBeenCalledWith({
         where: {
-          workspaceId: WORKSPACE_ID,
-          deleted: false,
-          status: "TODO",
-          systemAssigneeType: "TASK_COORDINATOR",
-          OR: [
-            { featureId: null },
-            { feature: { status: { not: "CANCELLED" } } },
+          AND: [
+            { workspaceId: WORKSPACE_ID },
+            { deleted: false },
+            { status: "TODO" },
+            { systemAssigneeType: "TASK_COORDINATOR" },
+            { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
           ],
         },
       });
