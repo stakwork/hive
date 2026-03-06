@@ -80,23 +80,33 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "5 hours")
 
-          # Get preview-base branch ID
-          BRANCHES_RESPONSE=$(curl -sf -H "Authorization: Bearer $NEON_API_KEY" \
+          # Get all branches (list endpoint)
+          BRANCHES_RESPONSE=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $NEON_API_KEY" \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
-          if [ -z "$BRANCHES_RESPONSE" ]; then
-            echo "❌ Empty response from Neon branches API (check NEON_API_KEY and NEON_PROJECT_ID)"
+          BRANCHES_HTTP_CODE=$(echo "$BRANCHES_RESPONSE" | tail -1)
+          BRANCHES_BODY=$(echo "$BRANCHES_RESPONSE" | head -n -1)
+
+          if [ "$BRANCHES_HTTP_CODE" != "200" ]; then
+            echo "❌ Neon branches API returned HTTP $BRANCHES_HTTP_CODE"
+            echo "Response: $BRANCHES_BODY"
             exit 1
           fi
-          PARENT_BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r '.branches[] | select(.name=="preview-base") | .id')
+          if [ -z "$BRANCHES_BODY" ]; then
+            echo "❌ Empty response from Neon branches API"
+            exit 1
+          fi
+
+          # Get preview-base branch ID
+          PARENT_BRANCH_ID=$(echo "$BRANCHES_BODY" | jq -r '.branches[] | select(.name=="preview-base") | .id')
 
           if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
             echo "❌ Could not find preview-base branch"
-            echo "Available branches: $(echo "$BRANCHES_RESPONSE" | jq -r '.branches[].name' 2>/dev/null || echo 'could not parse')"
+            echo "Available branches: $(echo "$BRANCHES_BODY" | jq -r '.branches[].name' 2>/dev/null || echo 'could not parse')"
             exit 1
           fi
 
           # Create or reuse PR branch
-          BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+          BRANCH_ID=$(echo "$BRANCHES_BODY" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
             RESPONSE=$(curl -s -X POST \
@@ -123,7 +133,7 @@ jobs:
           done
 
           # Create or reuse endpoint
-          ENDPOINTS_RESPONSE=$(curl -sf -H "Authorization: Bearer $NEON_API_KEY" \
+          ENDPOINTS_RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
           ENDPOINT_ID=$(echo "$ENDPOINTS_RESPONSE" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id" 2>/dev/null || echo "")
 
