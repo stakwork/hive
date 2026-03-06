@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Loader2, PenLine, Link2 } from "lucide-react";
@@ -39,6 +40,7 @@ export default function WhiteboardsPage() {
   const { id: workspaceId, slug } = useWorkspace();
   const [whiteboards, setWhiteboards] = useState<WhiteboardItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -48,12 +50,22 @@ export default function WhiteboardsPage() {
 
     try {
       const res = await fetch(`/api/whiteboards?workspaceId=${workspaceId}`);
+      if (!res.ok) {
+        const msg =
+          res.status === 401
+            ? "Session expired — please refresh the page."
+            : "Failed to load whiteboards.";
+        setError(msg);
+        return;
+      }
       const data = await res.json();
       if (data.success) {
+        setError(null);
         setWhiteboards(data.data);
       }
     } catch (error) {
       console.error("Error loading whiteboards:", error);
+      setError("Failed to load whiteboards.");
     } finally {
       setLoading(false);
     }
@@ -76,6 +88,10 @@ export default function WhiteboardsPage() {
           name: `Whiteboard ${whiteboards.length + 1}`,
         }),
       });
+      if (!res.ok) {
+        toast.error("Failed to create whiteboard — please try again.");
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         router.push(`/w/${slug}/whiteboards/${data.data.id}`);
@@ -143,7 +159,14 @@ export default function WhiteboardsPage() {
         }
       />
 
-      {whiteboards.length === 0 ? (
+      {error && !loading && (
+        <div className="text-center py-12">
+          <p className="text-destructive mb-2">Error loading whiteboards</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && whiteboards.length === 0 && (
         <Card className="border-dashed">
           <CardHeader className="text-center py-12">
             <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -155,7 +178,9 @@ export default function WhiteboardsPage() {
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : (
+      )}
+
+      {!loading && !error && whiteboards.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {whiteboards.map((wb) => (
             <Link
