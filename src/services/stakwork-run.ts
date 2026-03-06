@@ -701,8 +701,12 @@ export async function processStakworkRunWebhook(
   // Serialize result based on type
   let serializedResult: string | null = null;
   if (result !== undefined && result !== null) {
-    serializedResult =
-      typeof result === "string" ? result : JSON.stringify(result);
+    let obj = typeof result === "string" ? JSON.parse(result) : result;
+    // AI sometimes returns { "phases": "[{...}]" } instead of { "phases": [{...}] }
+    if (type === StakworkRunType.TASK_GENERATION && obj && typeof obj === "object" && typeof obj.phases === "string") {
+      obj = { ...obj, phases: JSON.parse(obj.phases) };
+    }
+    serializedResult = JSON.stringify(obj);
   }
 
   // Step 1: Atomic update to prevent race conditions
