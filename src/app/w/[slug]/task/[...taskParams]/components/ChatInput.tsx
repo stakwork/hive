@@ -46,6 +46,7 @@ interface ChatInputProps {
   hasPrArtifact?: boolean;
   taskMode?: string;
   taskId?: string;
+  featureId?: string;
   onOpenBountyRequest?: () => void;
   stakworkProjectId?: string | null;
   onRetry?: () => Promise<void>;
@@ -66,6 +67,7 @@ export function ChatInput({
   hasPrArtifact = false,
   taskMode,
   taskId,
+  featureId,
   onOpenBountyRequest,
   stakworkProjectId,
   onRetry,
@@ -138,20 +140,24 @@ export function ChatInput({
   };
 
   const uploadToS3 = async (image: PendingImage): Promise<string> => {
-    if (!taskId) {
+    let endpoint: string;
+    let body: Record<string, unknown>;
+
+    if (featureId) {
+      endpoint = "/api/upload/image";
+      body = { featureId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else if (taskId) {
+      endpoint = "/api/upload/presigned-url";
+      body = { taskId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else {
       throw new Error("Task ID is required for image upload");
     }
 
     // Request presigned URL
-    const presignedResponse = await fetch("/api/upload/presigned-url", {
+    const presignedResponse = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId,
-        filename: image.filename,
-        contentType: image.mimeType,
-        size: image.size,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!presignedResponse.ok) {

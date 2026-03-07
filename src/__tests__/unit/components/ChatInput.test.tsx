@@ -979,6 +979,139 @@ describe("ChatInput - Task Mode", () => {
   });
 });
 
+// ── uploadToS3 branching tests ─────────────────────────────────────────────────
+
+describe("ChatInput - uploadToS3 branching", () => {
+  const baseProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset fetch mock between tests
+    global.fetch = vi.fn();
+    // jsdom doesn't implement URL.createObjectURL; stub it out
+    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  test("calls /api/upload/image with featureId when featureId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskMode="task" />);
+
+    // Drop a file to trigger handleFiles → uploadImage → uploadToS3
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // Wait for the fetch calls to resolve
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+    });
+  });
+
+  test("calls /api/upload/presigned-url with taskId when only taskId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "tasks/task-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"taskId":"task-1"'),
+        })
+      );
+    });
+  });
+
+  test("shows error toast when neither taskId nor featureId is provided", async () => {
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // fetch should never be called since the error is thrown before any network call
+    await vi.waitFor(() => {
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  test("featureId takes precedence over taskId when both are provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+      // Should not have called the task endpoint
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.anything()
+      );
+    });
+  });
+});
+
 // ── @mention autocomplete tests ────────────────────────────────────────────────
 
 describe("ChatInput - @mention autocomplete (plan chat)", () => {
