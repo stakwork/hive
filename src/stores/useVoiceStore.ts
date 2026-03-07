@@ -73,7 +73,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         if (topic !== "lk-chat-topic") return;
         try {
           const raw = JSON.parse(new TextDecoder().decode(payload));
-          const msg: AgentMessage = { sender: "agent", ...raw };
+          // Messages with a `sender` field are from a user (voice or text);
+          // Jamie's responses never include `sender`.
+          const sender = raw.sender ? "user" : "agent";
+          const msg: AgentMessage = { ...raw, sender };
           set((s) => ({ messages: [...s.messages, msg] }));
         } catch {
           // ignore malformed messages
