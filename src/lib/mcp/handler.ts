@@ -136,6 +136,7 @@ async function getWorkspaceAuth(
   return {
     auth: {
       workspaceId: extra.workspaceId,
+      workspaceSlug: extra.workspaceSlug,
       userId,
     },
   };
@@ -344,14 +345,25 @@ function createServer(): McpServer {
     {
       title: "Check Status",
       description:
-        "Get a unified status overview of the workspace. Returns up to 12 active features and tasks updated in the last 7 days, sorted by items needing attention first (workflowStatus COMPLETED), then by most recent. Excludes completed and cancelled items.",
-      inputSchema: {},
+        "Get a unified status overview of the workspace. Returns up to 12 active features and tasks updated in the last 7 days, sorted by items needing attention first (workflowStatus COMPLETED), then by most recent. Excludes completed and cancelled items. When a creator is provided, only shows items created by or assigned to that user.",
+      inputSchema: {
+        creator: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the user (matched against name or alias). When provided, filters to items created by or assigned to this user. Falls back to workspace owner if not found.",
+          ),
+      },
     },
-    async (_args, extra) => {
+    async ({ creator }: { creator?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "check_status");
       if (result.error) return result.error;
-      return mcpCheckStatus(result.auth!);
+      // Resolve the creator separately — only filter when explicitly provided
+      const filterUserId = creator
+        ? await resolveWorkspaceUser(result.auth!.workspaceId, creator)
+        : undefined;
+      return mcpCheckStatus(result.auth!, filterUserId);
     },
   );
 
