@@ -6,7 +6,6 @@ import { sendMessageToStakwork } from "@/services/task-workflow";
 import {
   ArtifactType,
   Priority,
-  FeaturePriority,
   TaskStatus,
   FeatureStatus,
 } from "@prisma/client";
@@ -543,14 +542,7 @@ export async function mcpCreateTask(
 // Check status (unified features + tasks view)
 // ---------------------------------------------------------------------------
 
-/** How far back each priority tier can reach. */
-const PRIORITY_LOOKBACK_DAYS: Record<string, number> = {
-  CRITICAL: 30,
-  HIGH: 7,
-  MEDIUM: 3,
-  LOW: 1,
-};
-
+const LOOKBACK_DAYS = 7;
 const TARGET_COUNT = 12;
 
 /** Terminal statuses we exclude — these don't need attention. */
@@ -564,32 +556,15 @@ function daysAgo(n: number): Date {
 }
 
 /**
- * Unified status check: returns up to ~12 items (features + tasks) ordered by
- * needsAttention items (workflowStatus === COMPLETED) first, then most-recent-first.
- * Higher-priority items can reach further back in time; lower-priority items
- * only appear if very recent.
- *
- * If the initial pass yields fewer than TARGET_COUNT results, a second pass
- * doubles the lookback windows to try to fill the list.
+ * Unified status check: returns up to 12 items (features + tasks) ordered by
+ * needsAttention (workflowStatus === COMPLETED) first, then most-recent-first.
+ * Only items updated within the last 7 days are included.
  */
 export async function mcpCheckStatus(
   auth: WorkspaceAuth,
 ): Promise<McpToolResult> {
   try {
-    const items = await fetchStatusItems(auth, 1);
-    if (items.length < TARGET_COUNT) {
-      const wider = await fetchStatusItems(auth, 2);
-      // Merge, dedupe by id, re-sort
-      const seen = new Set(items.map((i) => i.id));
-      for (const w of wider) {
-        if (!seen.has(w.id)) {
-          items.push(w);
-          seen.add(w.id);
-        }
-      }
-      items.sort(statusItemComparator);
-    }
-
+    const items = await fetchStatusItems(auth);
     return mcpOk(items.slice(0, TARGET_COUNT));
   } catch (error) {
     console.error("Error checking status:", error);
@@ -617,28 +592,11 @@ function statusItemComparator(a: StatusItem, b: StatusItem): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
-/**
- * Fetch features and tasks within priority-based lookback windows.
- * `multiplier` widens the windows (1 = normal, 2 = doubled).
- */
+/** Fetch features and tasks updated within the last LOOKBACK_DAYS. */
 async function fetchStatusItems(
   auth: WorkspaceAuth,
-  multiplier: number,
 ): Promise<StatusItem[]> {
-  // Build OR conditions: one per priority tier with its own date cutoff
-  const taskOrConditions = Object.entries(PRIORITY_LOOKBACK_DAYS).map(
-    ([priority, days]) => ({
-      priority: priority as Priority,
-      updatedAt: { gte: daysAgo(days * multiplier) },
-    }),
-  );
-
-  const featureOrConditions = Object.entries(PRIORITY_LOOKBACK_DAYS).map(
-    ([priority, days]) => ({
-      priority: priority as FeaturePriority,
-      updatedAt: { gte: daysAgo(days * multiplier) },
-    }),
-  );
+  const cutoff = daysAgo(LOOKBACK_DAYS);
 
   const [tasks, features] = await Promise.all([
     db.task.findMany({
@@ -647,7 +605,7 @@ async function fetchStatusItems(
         deleted: false,
         archived: false,
         status: { notIn: TERMINAL_TASK_STATUSES },
-        OR: taskOrConditions,
+        updatedAt: { gte: cutoff },
       },
       select: {
         id: true,
@@ -666,7 +624,7 @@ async function fetchStatusItems(
         workspaceId: auth.workspaceId,
         deleted: false,
         status: { notIn: TERMINAL_FEATURE_STATUSES },
-        OR: featureOrConditions,
+        updatedAt: { gte: cutoff },
       },
       select: {
         id: true,
