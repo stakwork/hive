@@ -519,6 +519,139 @@ describe("Features API - Integration Tests", () => {
         expect(data.pagination.totalCount).toBe(2);
       });
     });
+
+    describe("Owner (assigneeId) filter", () => {
+      test("filters features by assigneeId and returns only assigned features", async () => {
+        // Setup
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const assignee = await createTestUser({ name: "Assigned User" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        // Feature assigned to assignee
+        await db.feature.create({
+          data: {
+            title: "Assigned Feature",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: assignee.id,
+          },
+        });
+
+        // Feature with no assignee
+        await db.feature.create({
+          data: {
+            title: "Unassigned Feature",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+          },
+        });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=${assignee.id}`,
+          owner
+        );
+
+        // Execute
+        const response = await GET(request);
+
+        // Assert
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("Assigned Feature");
+        expect(data.data[0].assignee.id).toBe(assignee.id);
+      });
+
+      test("returns all features when assigneeId is not provided", async () => {
+        // Setup
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const assignee = await createTestUser({ name: "Assigned User" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        await db.feature.create({
+          data: {
+            title: "Assigned Feature",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: assignee.id,
+          },
+        });
+
+        await db.feature.create({
+          data: {
+            title: "Unassigned Feature",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+          },
+        });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
+          owner
+        );
+
+        // Execute
+        const response = await GET(request);
+
+        // Assert
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(2);
+        expect(data.pagination.totalCount).toBe(2);
+      });
+
+      test("does not filter by createdById when using Owner filter", async () => {
+        // The Owner column filter only passes assigneeId — createdById is not sent
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const assignee = await createTestUser({ name: "Assigned User" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        await db.feature.create({
+          data: {
+            title: "Feature with Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: assignee.id,
+          },
+        });
+
+        // Build params as the new FeaturesList does — no createdById
+        const params = new URLSearchParams({
+          workspaceId: workspace.id,
+          assigneeId: assignee.id,
+        });
+
+        expect(params.has("createdById")).toBe(false);
+        expect(params.has("assigneeId")).toBe(true);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?${params.toString()}`,
+          owner
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("Feature with Assignee");
+      });
+    });
   });
 
   describe("POST /api/features", () => {
