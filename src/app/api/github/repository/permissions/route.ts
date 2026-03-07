@@ -145,8 +145,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Three-branch check: distinguish between "app not installed" vs "user not authorised" vs happy path
-    const sourceControlOrg = await db.sourceControlOrg.findUnique({
-      where: { githubLogin: githubOwner },
+    // Use case-insensitive lookup since GitHub logins are case-insensitive
+    const sourceControlOrg = await db.sourceControlOrg.findFirst({
+      where: { githubLogin: { equals: githubOwner, mode: "insensitive" } },
     });
 
     if (!sourceControlOrg) {
