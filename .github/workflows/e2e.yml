@@ -140,12 +140,23 @@ jobs:
         with:
           pattern: playwright-blob-*
           path: all-blob-reports
-          merge-multiple: true
 
       - name: Merge blob reports into HTML
         run: |
-          if [ -d ./all-blob-reports ] && find ./all-blob-reports -name '*.zip' -print -quit | grep -q .; then
-            npx playwright merge-reports --reporter html ./all-blob-reports
+          mkdir -p merged-blob-reports
+          if [ -d ./all-blob-reports ]; then
+            find ./all-blob-reports -name '*.zip' -exec cp {} merged-blob-reports/ \;
+            # Remove any corrupted/truncated zip files
+            for f in merged-blob-reports/*.zip; do
+              [ -f "$f" ] || continue
+              if ! unzip -t "$f" > /dev/null 2>&1; then
+                echo "Skipping invalid zip: $f"
+                rm "$f"
+              fi
+            done
+          fi
+          if find merged-blob-reports -name '*.zip' -print -quit 2>/dev/null | grep -q .; then
+            npx playwright merge-reports --reporter html ./merged-blob-reports
           else
             mkdir -p playwright-report
             echo "<html><body><h1>No Playwright blob reports found</h1></body></html>" > playwright-report/index.html
