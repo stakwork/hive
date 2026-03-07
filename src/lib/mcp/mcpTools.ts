@@ -17,6 +17,7 @@ export interface SwarmCredentials {
 
 export interface WorkspaceAuth {
   workspaceId: string;
+  workspaceSlug: string;
   userId: string;
 }
 
@@ -110,6 +111,71 @@ function verifyWorkspace(
 }
 
 /**
+ * Fuzzy-match a `userHint` against workspace member names / aliases.
+ * Returns the matched userId, or undefined when no match is found.
+ */
+export async function findWorkspaceUser(
+  workspaceId: string,
+  userHint: string,
+): Promise<string | undefined> {
+  const lower = userHint.toLowerCase();
+
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      ownerId: true,
+      owner: {
+        select: { id: true, name: true, sphinxAlias: true },
+      },
+      members: {
+        where: { leftAt: null },
+        select: {
+          user: {
+            select: { id: true, name: true, sphinxAlias: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!workspace) return undefined;
+
+  // Collect all candidate users (owner + members), deduped
+  const candidates = new Map<
+    string,
+    { id: string; name: string | null; sphinxAlias: string | null }
+  >();
+  if (workspace.owner) {
+    candidates.set(workspace.owner.id, workspace.owner);
+  }
+  for (const m of workspace.members) {
+    if (m.user) candidates.set(m.user.id, m.user);
+  }
+
+  // Exact match first
+  for (const user of candidates.values()) {
+    if (
+      (user.name && user.name.toLowerCase() === lower) ||
+      (user.sphinxAlias && user.sphinxAlias.toLowerCase() === lower)
+    ) {
+      return user.id;
+    }
+  }
+
+  // Softer "contains" fuzzy match
+  for (const user of candidates.values()) {
+    if (
+      (user.name && user.name.toLowerCase().includes(lower)) ||
+      (user.sphinxAlias && user.sphinxAlias.toLowerCase().includes(lower))
+    ) {
+      return user.id;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Resolve a user within a workspace by fuzzy-matching the `user` string
  * against User.name and User.sphinxAlias (case-insensitive).
  * Falls back to the workspace owner when no match is found.
@@ -119,64 +185,11 @@ export async function resolveWorkspaceUser(
   userHint?: string,
 ): Promise<string> {
   if (userHint) {
-    const lower = userHint.toLowerCase();
-
-    // Find all members + owner of this workspace
-    const workspace = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      select: {
-        ownerId: true,
-        owner: {
-          select: { id: true, name: true, sphinxAlias: true },
-        },
-        members: {
-          where: { leftAt: null },
-          select: {
-            user: {
-              select: { id: true, name: true, sphinxAlias: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (workspace) {
-      // Collect all candidate users (owner + members), deduped
-      const candidates = new Map<
-        string,
-        { id: string; name: string | null; sphinxAlias: string | null }
-      >();
-      if (workspace.owner) {
-        candidates.set(workspace.owner.id, workspace.owner);
-      }
-      for (const m of workspace.members) {
-        if (m.user) candidates.set(m.user.id, m.user);
-      }
-
-      for (const user of candidates.values()) {
-        if (
-          (user.name && user.name.toLowerCase() === lower) ||
-          (user.sphinxAlias && user.sphinxAlias.toLowerCase() === lower)
-        ) {
-          return user.id;
-        }
-      }
-
-      // If exact match failed, try "contains" as a softer fuzzy match
-      for (const user of candidates.values()) {
-        if (
-          (user.name && user.name.toLowerCase().includes(lower)) ||
-          (user.sphinxAlias && user.sphinxAlias.toLowerCase().includes(lower))
-        ) {
-          return user.id;
-        }
-      }
-
-      return workspace.ownerId;
-    }
+    const matched = await findWorkspaceUser(workspaceId, userHint);
+    if (matched) return matched;
   }
 
-  // No hint or workspace lookup failed — fall back to owner
+  // No hint or no match — fall back to owner
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
     select: { ownerId: true },
@@ -559,12 +572,15 @@ function daysAgo(n: number): Date {
  * Unified status check: returns up to 12 items (features + tasks) ordered by
  * needsAttention (workflowStatus === COMPLETED) first, then most-recent-first.
  * Only items updated within the last 7 days are included.
+ * When filterUserId is provided, only items created by or assigned to that
+ * user are returned.
  */
 export async function mcpCheckStatus(
   auth: WorkspaceAuth,
+  filterUserId?: string,
 ): Promise<McpToolResult> {
   try {
-    const items = await fetchStatusItems(auth);
+    const items = await fetchStatusItems(auth, filterUserId);
     return mcpOk(items.slice(0, TARGET_COUNT));
   } catch (error) {
     console.error("Error checking status:", error);
@@ -581,6 +597,7 @@ interface StatusItem {
   workflowStatus: string | null;
   needsAttention: boolean;
   updatedAt: string;
+  link: string;
   brief?: string | null;
   branch?: string | null;
 }
@@ -592,11 +609,21 @@ function statusItemComparator(a: StatusItem, b: StatusItem): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
-/** Fetch features and tasks updated within the last LOOKBACK_DAYS. */
+/**
+ * Fetch features and tasks updated within the last LOOKBACK_DAYS.
+ * When filterUserId is provided, only returns items where that user matches
+ * createdById OR assigneeId.
+ */
 async function fetchStatusItems(
   auth: WorkspaceAuth,
+  filterUserId?: string,
 ): Promise<StatusItem[]> {
   const cutoff = daysAgo(LOOKBACK_DAYS);
+
+  // When a specific user was requested, scope to items they created or are assigned to
+  const userFilter = filterUserId
+    ? { OR: [{ createdById: filterUserId }, { assigneeId: filterUserId }] }
+    : {};
 
   const [tasks, features] = await Promise.all([
     db.task.findMany({
@@ -606,6 +633,7 @@ async function fetchStatusItems(
         archived: false,
         status: { notIn: TERMINAL_TASK_STATUSES },
         updatedAt: { gte: cutoff },
+        ...userFilter,
       },
       select: {
         id: true,
@@ -625,6 +653,7 @@ async function fetchStatusItems(
         deleted: false,
         status: { notIn: TERMINAL_FEATURE_STATUSES },
         updatedAt: { gte: cutoff },
+        ...userFilter,
       },
       select: {
         id: true,
@@ -640,6 +669,8 @@ async function fetchStatusItems(
     }),
   ]);
 
+  const base = `https://hive.sphinx.chat/w/${auth.workspaceSlug}`;
+
   const merged: StatusItem[] = [
     ...tasks.map((t) => ({
       type: "task" as const,
@@ -650,6 +681,7 @@ async function fetchStatusItems(
       workflowStatus: t.workflowStatus,
       needsAttention: t.workflowStatus === "COMPLETED",
       updatedAt: t.updatedAt.toISOString(),
+      link: `${base}/task/${t.id}`,
       branch: t.branch,
     })),
     ...features.map((f) => ({
@@ -661,6 +693,7 @@ async function fetchStatusItems(
       workflowStatus: f.workflowStatus,
       needsAttention: f.workflowStatus === "COMPLETED",
       updatedAt: f.updatedAt.toISOString(),
+      link: `${base}/plan/${f.id}`,
       brief: f.brief,
     })),
   ];

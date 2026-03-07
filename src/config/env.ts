@@ -62,6 +62,9 @@ export const optionalEnvVars = {
   SPHINX_API_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/sphinx/action`
     : "https://bots.v2.sphinx.chat/api/action",
+  // Sphinx V2 Bot — direct DM messaging (separate server from /action)
+  V2_BOT_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/sphinx/send` : process.env.V2_BOT_URL || "",
+  V2_BOT_TOKEN: process.env.V2_BOT_TOKEN || "",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "20000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
