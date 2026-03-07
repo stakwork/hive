@@ -27,9 +27,13 @@ function formatTime(timestamp: number) {
 
 function MessageBubble({ msg }: { msg: AgentMessage }) {
   const isUser = msg.sender === "user";
+  const displayName = isUser ? "You" : "Jamie";
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-      <span className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</span>
+      <div className={`flex items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
+        <span className="text-xs font-medium text-foreground">{displayName}</span>
+        <span className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</span>
+      </div>
       <div
         className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words max-w-[85%] ${
           isUser ? "bg-primary text-primary-foreground ml-auto" : "bg-muted"
