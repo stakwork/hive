@@ -111,6 +111,71 @@ function verifyWorkspace(
 }
 
 /**
+ * Fuzzy-match a `userHint` against workspace member names / aliases.
+ * Returns the matched userId, or undefined when no match is found.
+ */
+export async function findWorkspaceUser(
+  workspaceId: string,
+  userHint: string,
+): Promise<string | undefined> {
+  const lower = userHint.toLowerCase();
+
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      ownerId: true,
+      owner: {
+        select: { id: true, name: true, sphinxAlias: true },
+      },
+      members: {
+        where: { leftAt: null },
+        select: {
+          user: {
+            select: { id: true, name: true, sphinxAlias: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!workspace) return undefined;
+
+  // Collect all candidate users (owner + members), deduped
+  const candidates = new Map<
+    string,
+    { id: string; name: string | null; sphinxAlias: string | null }
+  >();
+  if (workspace.owner) {
+    candidates.set(workspace.owner.id, workspace.owner);
+  }
+  for (const m of workspace.members) {
+    if (m.user) candidates.set(m.user.id, m.user);
+  }
+
+  // Exact match first
+  for (const user of candidates.values()) {
+    if (
+      (user.name && user.name.toLowerCase() === lower) ||
+      (user.sphinxAlias && user.sphinxAlias.toLowerCase() === lower)
+    ) {
+      return user.id;
+    }
+  }
+
+  // Softer "contains" fuzzy match
+  for (const user of candidates.values()) {
+    if (
+      (user.name && user.name.toLowerCase().includes(lower)) ||
+      (user.sphinxAlias && user.sphinxAlias.toLowerCase().includes(lower))
+    ) {
+      return user.id;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Resolve a user within a workspace by fuzzy-matching the `user` string
  * against User.name and User.sphinxAlias (case-insensitive).
  * Falls back to the workspace owner when no match is found.
@@ -120,64 +185,11 @@ export async function resolveWorkspaceUser(
   userHint?: string,
 ): Promise<string> {
   if (userHint) {
-    const lower = userHint.toLowerCase();
-
-    // Find all members + owner of this workspace
-    const workspace = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      select: {
-        ownerId: true,
-        owner: {
-          select: { id: true, name: true, sphinxAlias: true },
-        },
-        members: {
-          where: { leftAt: null },
-          select: {
-            user: {
-              select: { id: true, name: true, sphinxAlias: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (workspace) {
-      // Collect all candidate users (owner + members), deduped
-      const candidates = new Map<
-        string,
-        { id: string; name: string | null; sphinxAlias: string | null }
-      >();
-      if (workspace.owner) {
-        candidates.set(workspace.owner.id, workspace.owner);
-      }
-      for (const m of workspace.members) {
-        if (m.user) candidates.set(m.user.id, m.user);
-      }
-
-      for (const user of candidates.values()) {
-        if (
-          (user.name && user.name.toLowerCase() === lower) ||
-          (user.sphinxAlias && user.sphinxAlias.toLowerCase() === lower)
-        ) {
-          return user.id;
-        }
-      }
-
-      // If exact match failed, try "contains" as a softer fuzzy match
-      for (const user of candidates.values()) {
-        if (
-          (user.name && user.name.toLowerCase().includes(lower)) ||
-          (user.sphinxAlias && user.sphinxAlias.toLowerCase().includes(lower))
-        ) {
-          return user.id;
-        }
-      }
-
-      return workspace.ownerId;
-    }
+    const matched = await findWorkspaceUser(workspaceId, userHint);
+    if (matched) return matched;
   }
 
-  // No hint or workspace lookup failed — fall back to owner
+  // No hint or no match — fall back to owner
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
     select: { ownerId: true },
