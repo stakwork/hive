@@ -321,7 +321,7 @@ export function MarkdownRenderer({
       : children;
 
   return (
-    <div className={cn("prose dark:prose-invert max-w-full overflow-wrap-anywhere", className)}>
+    <div className={cn("prose dark:prose-invert max-w-full break-words", className)}>
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
