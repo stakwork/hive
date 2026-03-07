@@ -1257,6 +1257,48 @@ describe('ChatMessage', () => {
     });
   });
 
+  describe('Mobile Message Bubble Text Wrapping', () => {
+    it('applies break-words and overflow-hidden to user message bubble for long text/URLs', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'https://very-long-url-that-should-not-overflow-the-mobile-screen.example.com/path/to/something',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const markdownRenderer = screen.getByTestId('markdown-renderer');
+      const bubble = markdownRenderer.parentElement!;
+      expect(bubble).toHaveClass('break-words');
+      expect(bubble).toHaveClass('overflow-hidden');
+      expect(bubble).toHaveClass('min-w-0');
+    });
+
+    it('applies break-words and overflow-hidden to assistant message bubble for long text/URLs', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'https://very-long-url-that-should-not-overflow-the-mobile-screen.example.com/path/to/something',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const markdownRenderer = screen.getByTestId('markdown-renderer');
+      const bubble = markdownRenderer.parentElement!;
+      expect(bubble).toHaveClass('break-words');
+      expect(bubble).toHaveClass('overflow-hidden');
+      expect(bubble).toHaveClass('min-w-0');
+    });
+  });
+
   describe('LONGFORM Artifact Overflow Fix', () => {
     it('applies overflow constraints to LONGFORM wrapper to prevent bleeding', () => {
       const longformContent: LongformContent = {
