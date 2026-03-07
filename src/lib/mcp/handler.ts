@@ -344,7 +344,7 @@ function createServer(): McpServer {
     {
       title: "Check Status",
       description:
-        "Get a unified status overview of the workspace. Returns up to 12 active features and tasks, prioritized by urgency (CRITICAL items can reach 30 days back, LOW items only 1 day). Excludes completed and cancelled items.",
+        "Get a unified status overview of the workspace. Returns up to 12 active features and tasks updated in the last 7 days, sorted by items needing attention first (workflowStatus COMPLETED), then by most recent. Excludes completed and cancelled items.",
       inputSchema: {},
     },
     async (_args, extra) => {
