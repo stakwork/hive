@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, Volume2, VolumeOff } from "lucide-react";
 import { useVoiceStore, type AgentMessage } from "@/stores/useVoiceStore";
 import {
   Sheet,
@@ -50,6 +50,8 @@ export function VoiceMessagesDrawer({ open, onOpenChange }: VoiceMessagesDrawerP
   const transcription = useVoiceStore((s) => s.transcription);
   const isConnected = useVoiceStore((s) => s.isConnected);
   const sendMessage = useVoiceStore((s) => s.sendMessage);
+  const ttsState = useVoiceStore((s) => s.ttsState);
+  const toggleTts = useVoiceStore((s) => s.toggleTts);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [inputValue, setInputValue] = useState("");
 
@@ -77,9 +79,25 @@ export function VoiceMessagesDrawer({ open, onOpenChange }: VoiceMessagesDrawerP
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-sm flex flex-col h-full">
-        <SheetHeader>
-          <SheetTitle>Voice Agent</SheetTitle>
-          <SheetDescription>Chat with Jamie</SheetDescription>
+        <SheetHeader className="flex flex-row items-center justify-between">
+          <div>
+            <SheetTitle>Voice Agent</SheetTitle>
+            <SheetDescription>Chat with Jamie</SheetDescription>
+          </div>
+          {ttsState !== null && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleTts}
+              aria-label={ttsState === "on" ? "Mute agent voice" : "Unmute agent voice"}
+            >
+              {ttsState === "on" ? (
+                <Volume2 className="h-4 w-4" />
+              ) : (
+                <VolumeOff className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
