@@ -33,8 +33,8 @@ const baseInput = {
     "@alice — You have been assigned to task 'Fix bug': http://localhost/w/test/task/task-1",
 };
 
-const userWithPubkey = { lightningPubkey: "alice-pubkey" };
-const userWithoutPubkey = { lightningPubkey: null };
+const userWithPubkey = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null };
+const userWithoutPubkey = { lightningPubkey: null, sphinxRouteHint: null };
 
 const mockRecord = {
   id: "notif-1",
@@ -173,7 +173,9 @@ describe("createAndSendNotification", () => {
 
       expect(create).toHaveBeenCalledOnce();
       expect(mockedSendDirectMessage).toHaveBeenCalledOnce();
-      expect(mockedSendDirectMessage).toHaveBeenCalledWith("alice-pubkey", immediateInput.message);
+      expect(mockedSendDirectMessage).toHaveBeenCalledWith("alice-pubkey", immediateInput.message, {
+        routeHint: undefined,
+      });
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "notif-1" },

@@ -35,7 +35,7 @@ export async function createAndSendNotification(input: {
     // 1. Fetch target user
     const targetUser = await db.user.findUnique({
       where: { id: input.targetUserId },
-      select: { lightningPubkey: true },
+      select: { lightningPubkey: true, sphinxRouteHint: true },
     });
 
     // 2. Idempotency check — skip if PENDING record already exists
@@ -90,7 +90,9 @@ export async function createAndSendNotification(input: {
     }
 
     // 7. Immediate types: send via direct message now
-    const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message);
+    const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message, {
+      routeHint: targetUser!.sphinxRouteHint ?? undefined,
+    });
 
     // 8. Update record with outcome
     await db.notificationTrigger.update({
