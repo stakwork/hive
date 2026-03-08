@@ -52,23 +52,29 @@ function getBotToken(): string {
   return optionalEnvVars.V2_BOT_TOKEN;
 }
 
+interface ContactResponse {
+  contact_key?: string | null;
+  [key: string]: unknown;
+}
+
 /**
- * Check if a contact already exists in the bot's store.
- * Returns true if the contact is found, false otherwise.
+ * Fetch a contact from the bot's store.
+ * Returns the parsed contact object if found, or null.
  */
-async function hasContact(pubkey: string): Promise<boolean> {
+async function getContact(pubkey: string): Promise<ContactResponse | null> {
   const base = getBotBaseUrl();
   const token = getBotToken();
-  if (!base || !token) return false;
+  if (!base || !token) return null;
 
   try {
     const res = await fetch(`${base}/get_contact/${pubkey}`, {
       method: "GET",
       headers: { "x-admin-token": token },
     });
-    return res.ok;
+    if (!res.ok) return null;
+    return (await res.json()) as ContactResponse;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -97,20 +103,52 @@ async function addContact(contactInfo: string): Promise<void> {
   }
 }
 
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 15;
+
+/**
+ * Wait for the key exchange to complete by polling get_contact
+ * until contact_key is populated (every 2s, up to 15 attempts = 30s).
+ */
+async function waitForKeyExchange(pubkey: string): Promise<boolean> {
+  for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const contact = await getContact(pubkey);
+    if (contact?.contact_key) {
+      logger.info(`[SPHINX DM] Key exchange complete for ${pubkey.slice(0, 12)}… (attempt ${i + 1})`, "SPHINX_DM");
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Ensure a contact exists in the bot's store before sending.
  * If routeHint is provided, builds "{pubkey}_{routeHint}" as contact_info.
  * Skipped in mock mode (base URL contains "/api/mock/").
+ *
+ * If the contact is new, calls add_contact then polls get_contact every
+ * 2 seconds (up to 30s) waiting for the key exchange to complete.
  */
 async function ensureContact(dest: string, routeHint?: string): Promise<void> {
   if (!routeHint) return;
   const base = getBotBaseUrl();
   if (base.includes("/api/mock/")) return;
-  const exists = await hasContact(dest);
-  if (exists) return;
-  const contactInfo = `${dest}_${routeHint}`;
-  logger.info(`[SPHINX DM] Adding contact for ${dest.slice(0, 12)}…`, "SPHINX_DM");
-  await addContact(contactInfo);
+
+  const existing = await getContact(dest);
+  if (existing?.contact_key) return;
+
+  if (!existing) {
+    const contactInfo = `${dest}_${routeHint}`;
+    logger.info(`[SPHINX DM] Adding contact for ${dest.slice(0, 12)}…`, "SPHINX_DM");
+    await addContact(contactInfo);
+  }
+
+  // Poll until key exchange completes (contact_key is set)
+  const ready = await waitForKeyExchange(dest);
+  if (!ready) {
+    logger.warn(`[SPHINX DM] Key exchange did not complete within 30s for ${dest.slice(0, 12)}…`, "SPHINX_DM");
+  }
 }
 
 /**
