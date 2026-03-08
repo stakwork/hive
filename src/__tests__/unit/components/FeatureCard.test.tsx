@@ -105,4 +105,26 @@ describe("FeatureCard", () => {
       expect(screen.queryByText("Production")).not.toBeInTheDocument();
     });
   });
+
+  describe("Bell icon (needsReview)", () => {
+    it("does not show bell icon when feature is COMPLETED even with pending stakwork runs", () => {
+      const completedFeature = {
+        ...mockFeature,
+        status: "COMPLETED" as const,
+        _count: { stakworkRuns: 2 },
+      };
+      render(<FeatureCard feature={completedFeature} />);
+      expect(screen.queryByTestId("needs-review-icon")).not.toBeInTheDocument();
+    });
+
+    it("shows bell icon when feature is IN_PROGRESS with pending stakwork runs", () => {
+      const inProgressFeature = {
+        ...mockFeature,
+        status: "IN_PROGRESS" as const,
+        _count: { stakworkRuns: 2 },
+      };
+      render(<FeatureCard feature={inProgressFeature} />);
+      expect(screen.getByTestId("needs-review-icon")).toBeInTheDocument();
+    });
+  });
 });
