@@ -626,8 +626,8 @@ export default function TaskChatPage() {
       }
 
       // Create new task with workflow info
-      const taskTitle = workflowName 
-        ? `${workflowName}${workflowVersionId ? ` (v${workflowVersionId.substring(0, 8)})` : ''}`
+      const taskTitle = workflowName
+        ? `${workflowName} (ID: ${workflowId}${workflowVersionId ? ` · V${workflowVersionId.substring(0, 8)}` : ''})`
         : `Workflow ${workflowId}`;
       const response = await fetch("/api/tasks", {
         method: "POST",
