@@ -975,6 +975,10 @@ export default function TaskChatPage() {
 
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
+      if (!currentWorkflowContext.workflowRefId) {
+        toast.error("Error", { description: "Workflow reference ID is missing. Please reload the workflow." });
+        return;
+      }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
       if (!messageText) return; // Need a message if no step selected
 
@@ -1444,9 +1448,30 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
-  const handleVersionChange = useCallback((versionId: string) => {
-    setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
-  }, []);
+  const handleVersionChange = useCallback(async (versionId: string) => {
+    if (!currentWorkflowContext) return;
+    const { workflowId, workflowRefId: prevWorkflowRefId } = currentWorkflowContext;
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/workflows/${workflowId}/versions`);
+      if (!response.ok) throw new Error(`Failed to fetch versions: ${response.statusText}`);
+      const data = await response.json();
+      const versions: Array<{ workflow_version_id: string; ref_id: string }> = data.versions ?? data ?? [];
+      const match = versions.find((v) => v.workflow_version_id === versionId);
+      if (!match) {
+        console.error(`handleVersionChange: version "${versionId}" not found in versions list — retaining previous workflowRefId`);
+        setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
+        return;
+      }
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: match.ref_id } : prev,
+      );
+    } catch (error) {
+      console.error("handleVersionChange: failed to resolve workflowRefId, retaining previous value", error);
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: prevWorkflowRefId } : prev,
+      );
+    }
+  }, [currentWorkflowContext, slug]);
 
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
