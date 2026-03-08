@@ -13,8 +13,9 @@ import { NotificationTriggerType, NotificationTriggerStatus, TaskStatus } from "
 import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
 
 // Mock Sphinx so no HTTP calls are made
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // Mock Pusher
@@ -50,11 +51,11 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     await resetDatabase();
 
     user = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", sphinxAlias: "owner-alias" },
+      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
     });
 
-    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createSphinxEnabledWorkspace({
+    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createTestWorkspace({
       ownerId: user.id,
       slug: generateUniqueSlug("ws-halted"),
     });

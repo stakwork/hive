@@ -5,31 +5,24 @@ import {
   NotificationMethod,
 } from "@prisma/client";
 import { db } from "@/lib/db";
-import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
+import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 
 vi.mock("@/lib/db");
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn(),
-}));
-const mockDecryptField = vi.fn(() => "decrypted-secret");
-vi.mock("@/lib/encryption", () => ({
-  EncryptionService: {
-    getInstance: vi.fn(() => ({
-      decryptField: mockDecryptField,
-    })),
-  },
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn(),
+  isDirectMessageConfigured: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
 
-const mockedSendToSphinx = vi.mocked(sendToSphinx);
+const mockedSendDirectMessage = vi.mocked(sendDirectMessage);
+const mockedIsDirectMessageConfigured = vi.mocked(isDirectMessageConfigured);
 
 // Shared mock fns — reassigned fresh in beforeEach
 let findFirst: ReturnType<typeof vi.fn>;
 let create: ReturnType<typeof vi.fn>;
 let update: ReturnType<typeof vi.fn>;
-let workspaceFindUnique: ReturnType<typeof vi.fn>;
 let userFindUnique: ReturnType<typeof vi.fn>;
 
 const baseInput = {
@@ -40,16 +33,8 @@ const baseInput = {
     "@alice — You have been assigned to task 'Fix bug': http://localhost/w/test/task/task-1",
 };
 
-const configuredWorkspace = {
-  sphinxEnabled: true,
-  sphinxBotId: "bot-id",
-  sphinxBotSecret:
-    '{"data":"enc","iv":"iv","tag":"tag","keyId":"k1","version":1,"encryptedAt":"2024-01-01"}',
-  sphinxChatPubkey: "chat-pubkey",
-};
-
-const userWithAlias = { sphinxAlias: "alice" };
-const userWithoutAlias = { sphinxAlias: null };
+const userWithPubkey = { lightningPubkey: "alice-pubkey" };
+const userWithoutPubkey = { lightningPubkey: null };
 
 const mockRecord = {
   id: "notif-1",
@@ -75,31 +60,29 @@ describe("createAndSendNotification", () => {
     findFirst = vi.fn();
     create = vi.fn();
     update = vi.fn();
-    workspaceFindUnique = vi.fn();
     userFindUnique = vi.fn();
 
     Object.assign(db, {
       notificationTrigger: { findFirst, create, update },
-      workspace: { findUnique: workspaceFindUnique },
       user: { findUnique: userFindUnique },
     });
+
+    mockedIsDirectMessageConfigured.mockReturnValue(true);
   });
 
   describe("idempotency", () => {
     it("returns early without creating a record when a PENDING record already exists", async () => {
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
+      userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(mockRecord);
 
       await createAndSendNotification(baseInput);
 
       expect(create).not.toHaveBeenCalled();
-      expect(mockedSendToSphinx).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
     });
 
     it("uses explicit null for taskId and featureId in the idempotency query", async () => {
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
+      userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(mockRecord);
 
       await createAndSendNotification({
@@ -114,17 +97,12 @@ describe("createAndSendNotification", () => {
     });
   });
 
-  describe("Sphinx not configured — workspace", () => {
-    it("inserts a SKIPPED row and does not send when Sphinx is disabled", async () => {
+  describe("DM not configured — isDirectMessageConfigured returns false", () => {
+    it("inserts a SKIPPED row and does not send when DM is not configured", async () => {
+      mockedIsDirectMessageConfigured.mockReturnValue(false);
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
-      workspaceFindUnique.mockResolvedValue({
-        sphinxEnabled: false,
-        sphinxBotId: null,
-        sphinxBotSecret: null,
-        sphinxChatPubkey: null,
-      });
-      userFindUnique.mockResolvedValue(userWithAlias);
+      userFindUnique.mockResolvedValue(userWithPubkey);
 
       await createAndSendNotification(baseInput);
 
@@ -133,39 +111,16 @@ describe("createAndSendNotification", () => {
           data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
         })
       );
-      expect(mockedSendToSphinx).not.toHaveBeenCalled();
-      expect(update).not.toHaveBeenCalled();
-    });
-
-    it("inserts a SKIPPED row and does not send when Sphinx credentials are missing", async () => {
-      findFirst.mockResolvedValue(null);
-      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
-      workspaceFindUnique.mockResolvedValue({
-        sphinxEnabled: true,
-        sphinxBotId: null,
-        sphinxBotSecret: null,
-        sphinxChatPubkey: null,
-      });
-      userFindUnique.mockResolvedValue(userWithAlias);
-
-      await createAndSendNotification(baseInput);
-
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
-        })
-      );
-      expect(mockedSendToSphinx).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
   });
 
-  describe("Sphinx not configured — user has no sphinxAlias", () => {
-    it("inserts a SKIPPED row and does not send when user has no sphinxAlias", async () => {
+  describe("DM not configured — user has no lightningPubkey", () => {
+    it("inserts a SKIPPED row and does not send when user has no lightningPubkey", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithoutAlias);
+      userFindUnique.mockResolvedValue(userWithoutPubkey);
 
       await createAndSendNotification(baseInput);
 
@@ -174,18 +129,17 @@ describe("createAndSendNotification", () => {
           data: expect.objectContaining({ status: NotificationTriggerStatus.SKIPPED }),
         })
       );
-      expect(mockedSendToSphinx).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
     });
   });
 
   describe("send success", () => {
-    it("creates record, calls sendToSphinx, and updates record to SENT with timestamp", async () => {
+    it("creates record, calls sendDirectMessage, and updates record to SENT with timestamp", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
-      mockedSendToSphinx.mockResolvedValue({ success: true, messageId: "msg-1" });
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
       update.mockResolvedValue({
         ...mockRecord,
         status: NotificationTriggerStatus.SENT,
@@ -194,15 +148,8 @@ describe("createAndSendNotification", () => {
       await createAndSendNotification(baseInput);
 
       expect(create).toHaveBeenCalledOnce();
-      expect(mockedSendToSphinx).toHaveBeenCalledOnce();
-      expect(mockedSendToSphinx).toHaveBeenCalledWith(
-        expect.objectContaining({
-          botId: "bot-id",
-          chatPubkey: "chat-pubkey",
-          botSecret: "decrypted-secret",
-        }),
-        baseInput.message
-      );
+      expect(mockedSendDirectMessage).toHaveBeenCalledOnce();
+      expect(mockedSendDirectMessage).toHaveBeenCalledWith("alice-pubkey", baseInput.message);
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "notif-1" },
@@ -213,31 +160,14 @@ describe("createAndSendNotification", () => {
         })
       );
     });
-
-    it("decrypts sphinxBotSecret before sending", async () => {
-      findFirst.mockResolvedValue(null);
-      create.mockResolvedValue(mockRecord);
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
-      mockedSendToSphinx.mockResolvedValue({ success: true });
-      update.mockResolvedValue(mockRecord);
-
-      await createAndSendNotification(baseInput);
-
-      expect(mockDecryptField).toHaveBeenCalledWith(
-        "sphinxBotSecret",
-        configuredWorkspace.sphinxBotSecret
-      );
-    });
   });
 
   describe("send failure", () => {
-    it("updates record to FAILED with timestamp when sendToSphinx returns success: false", async () => {
+    it("updates record to FAILED with timestamp when sendDirectMessage returns success: false", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
-      mockedSendToSphinx.mockResolvedValue({ success: false, error: "timeout" });
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      mockedSendDirectMessage.mockResolvedValue({ success: false, error: "timeout" });
       update.mockResolvedValue({
         ...mockRecord,
         status: NotificationTriggerStatus.FAILED,
@@ -258,40 +188,34 @@ describe("createAndSendNotification", () => {
 
   describe("never throws", () => {
     it("resolves without throwing even when db.notificationTrigger.findFirst throws", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockRejectedValue(new Error("DB connection failed"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
 
     it("resolves without throwing even when db.notificationTrigger.create throws", async () => {
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
+      userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(null);
       create.mockRejectedValue(new Error("constraint violation"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
 
-    it("resolves without throwing even when db.notificationTrigger.create throws (Sphinx disabled)", async () => {
-      workspaceFindUnique.mockResolvedValue({
-        sphinxEnabled: false,
-        sphinxBotId: null,
-        sphinxBotSecret: null,
-        sphinxChatPubkey: null,
-      });
-      userFindUnique.mockResolvedValue(userWithAlias);
+    it("resolves without throwing even when db.notificationTrigger.create throws (DM disabled)", async () => {
+      mockedIsDirectMessageConfigured.mockReturnValue(false);
+      userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(null);
       create.mockRejectedValue(new Error("constraint violation"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
 
-    it("resolves without throwing even when sendToSphinx throws", async () => {
+    it("resolves without throwing even when sendDirectMessage throws", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
-      workspaceFindUnique.mockResolvedValue(configuredWorkspace);
-      userFindUnique.mockResolvedValue(userWithAlias);
-      mockedSendToSphinx.mockRejectedValue(new Error("network error"));
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      mockedSendDirectMessage.mockRejectedValue(new Error("network error"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
