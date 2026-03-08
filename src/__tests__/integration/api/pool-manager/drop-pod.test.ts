@@ -1,14 +1,13 @@
 import { describe, test, beforeEach, vi, expect } from "vitest";
 import { POST } from "@/app/api/pool-manager/drop-pod/[workspaceId]/route";
 import {
-  createAuthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   expectNotFound,
   expectForbidden,
   createPostRequest,
+  createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 import {
   createTestUser,
@@ -98,11 +97,10 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
   });
 
   describe("Authentication", () => {
-    test("returns 401 when session is missing", async () => {
-      getMockedSession().mockResolvedValue(null);
-
+    test("returns 401 when no auth credentials present", async () => {
       const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
+        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123",
+        {}
       );
 
       const response = await POST(request, {
@@ -110,41 +108,6 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       });
 
       await expectUnauthorized(response);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    test("returns 401 when user is missing from session", async () => {
-       
-      getMockedSession().mockResolvedValue({ user: null } as any);
-
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
-      });
-
-      await expectUnauthorized(response);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    test("returns 401 when user ID is missing from session", async () => {
-      getMockedSession().mockResolvedValue({
-        user: { email: "test@example.com" },
-        expires: new Date().toISOString(),
-         
-      } as any);
-
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
-      });
-
-      await expectError(response, "Invalid user session", 401);
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
@@ -152,10 +115,10 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
   describe("Workspace Validation", () => {
     test("returns 400 when workspaceId is missing", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/?podId=pod-123"
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/pool-manager/drop-pod/?podId=pod-123",
+        user
       );
 
       const response = await POST(request, {
@@ -177,10 +140,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}`,
+        owner
       );
 
       const response = await POST(request, {
@@ -193,10 +155,10 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
     test("returns 404 when workspace does not exist", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/nonexistent-workspace-id?podId=pod-123"
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/pool-manager/drop-pod/nonexistent-workspace-id?podId=pod-123",
+        user
       );
 
       const response = await POST(request, {
@@ -215,10 +177,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       // Delete swarm if it exists
       await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
+        owner
       );
 
       const response = await POST(request, {
@@ -245,10 +206,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMemberUser));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
+        nonMemberUser
       );
 
       const response = await POST(request, {
@@ -276,10 +236,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         swarmId: swarm.id,
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`,
+        owner
       );
 
       const response = await POST(request, {
@@ -310,10 +269,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         swarmId: swarm.id,
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(memberUser));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`,
+        memberUser
       );
 
       const response = await POST(request, {
@@ -343,10 +301,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         portMappings: [3000, 3010, 15551, 15552],
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`,
+        owner
       );
 
       const response = await POST(request, {
@@ -369,10 +326,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=nonexistent-pod&latest=true`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=nonexistent-pod&latest=true`,
+        owner
       );
 
       const response = await POST(request, {
@@ -412,8 +368,6 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       // Mock updatePodRepositories fetch call
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -422,8 +376,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         text: async () => "Success",
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`,
+        owner
       );
 
       const response = await POST(request, {
@@ -468,10 +423,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}&latest=true`,
+        owner
       );
 
       const response = await POST(request, {
