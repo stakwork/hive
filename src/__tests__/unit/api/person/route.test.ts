@@ -27,6 +27,13 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
+const mockSendDirectMessage = vi.fn().mockResolvedValue({ success: true });
+const mockIsDirectMessageConfigured = vi.fn().mockReturnValue(true);
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: (...args: unknown[]) => mockSendDirectMessage(...args),
+  isDirectMessageConfigured: () => mockIsDirectMessageConfigured(),
+}));
+
 // --- Imports (after mocks) ---
 
 import { POST } from "@/app/person/route";
