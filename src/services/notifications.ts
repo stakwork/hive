@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 import { logger } from "@/lib/logger";
 
-const DEFERRED_NOTIFICATION_TYPES = new Set([
+const DEFERRED_NOTIFICATION_TYPES = new Set<NotificationTriggerType>([
   NotificationTriggerType.TASK_ASSIGNED,
   NotificationTriggerType.FEATURE_ASSIGNED,
   NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
