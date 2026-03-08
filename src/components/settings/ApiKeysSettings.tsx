@@ -56,7 +56,7 @@ import type { ApiKeyListItem, CreateApiKeyResponse } from "@/lib/schemas/api-key
 
 export function ApiKeysSettings() {
   const { workspace } = useWorkspace();
-  const { canWrite } = useWorkspaceAccess();
+  const { canAdmin } = useWorkspaceAccess();
 
   const [isLoading, setIsLoading] = useState(true);
   const [apiKeys, setApiKeys] = useState<ApiKeyListItem[]>([]);
@@ -199,7 +199,7 @@ export function ApiKeysSettings() {
   if (!workspace) return null;
 
   // Only show to users with write access (DEVELOPER+)
-  if (!canWrite) return null;
+  if (!canAdmin) return null;
 
   // Filter out revoked keys for display (or show them differently)
   const activeKeys = apiKeys.filter((key) => !key.isRevoked);

@@ -6,12 +6,14 @@ import { Sidebar } from '@/components/Sidebar';
 import * as useWorkspaceModule from '@/hooks/useWorkspace';
 import * as usePoolStatusModule from '@/hooks/usePoolStatus';
 import * as useFeatureFlagModule from '@/hooks/useFeatureFlag';
+import * as useWorkspaceAccessModule from '@/hooks/useWorkspaceAccess';
 import * as runtimeModule from '@/lib/runtime';
 
 // Mock the hooks and components
 vi.mock('@/hooks/useWorkspace');
 vi.mock('@/hooks/usePoolStatus');
 vi.mock('@/hooks/useFeatureFlag');
+vi.mock('@/hooks/useWorkspaceAccess');
 vi.mock('@/lib/runtime');
 vi.mock('@/components/NavUser', () => ({
   NavUser: () => <div data-testid="nav-user">NavUser</div>,
@@ -67,6 +69,16 @@ describe('Sidebar - Navigation Links', () => {
       error: null,
       refetch: vi.fn(),
     });
+
+    // Mock useWorkspaceAccess - default to admin so Settings link renders
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
   });
 
   it('should render top-level navigation items as <a> elements with correct hrefs', () => {

@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
@@ -98,6 +99,7 @@ interface SidebarContentProps {
   user: SidebarProps['user'];
   isBugReportOpen: boolean;
   setIsBugReportOpen: (open: boolean) => void;
+  canAdmin: boolean;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -168,6 +170,7 @@ function SidebarContent({
   user,
   isBugReportOpen,
   setIsBugReportOpen,
+  canAdmin,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -336,22 +339,24 @@ function SidebarContent({
       {/* Voice Agent Indicator */}
       <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
       {/* Settings */}
-      <div className="px-4 pb-2">
-        <Button
-          asChild
-          data-testid="settings-button"
-          variant="ghost"
-          className="w-full justify-start"
-        >
-          <Link
-            href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
-            onClick={() => setIsOpen(false)}
+      {canAdmin && (
+        <div className="px-4 pb-2">
+          <Button
+            asChild
+            data-testid="settings-button"
+            variant="ghost"
+            className="w-full justify-start"
           >
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </Link>
-        </Button>
-      </div>
+            <Link
+              href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
+              onClick={() => setIsOpen(false)}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </Link>
+          </Button>
+        </div>
+      )}
       <Separator />
       {/* User Popover */}
       <div className="p-4">
@@ -374,6 +379,7 @@ function SidebarContent({
 
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { canAdmin } = useWorkspaceAccess();
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
@@ -456,6 +462,7 @@ export function Sidebar({ user }: SidebarProps) {
               user={user}
               isBugReportOpen={isBugReportOpen}
               setIsBugReportOpen={setIsBugReportOpen}
+              canAdmin={canAdmin}
             />
           </SheetContent>
         </Sheet>
@@ -476,6 +483,7 @@ export function Sidebar({ user }: SidebarProps) {
             user={user}
             isBugReportOpen={isBugReportOpen}
             setIsBugReportOpen={setIsBugReportOpen}
+            canAdmin={canAdmin}
           />
         </div>
       </div>
