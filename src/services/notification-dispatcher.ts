@@ -126,7 +126,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
     taskId: string | null;
     featureId: string | null;
     message: string | null;
-    targetUser: { lightningPubkey: string | null };
+    targetUser: { lightningPubkey: string | null; sphinxRouteHint: string | null };
   }>;
 
   try {
@@ -136,7 +136,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         sendAfter: { lte: new Date() },
       },
       include: {
-        targetUser: { select: { lightningPubkey: true } },
+        targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true } },
       },
     });
   } catch (error) {
@@ -175,7 +175,8 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       }
 
       // Send the stored message
-      const sendResult = await sendDirectMessage(pubkey, record.message);
+      const routeHint = record.targetUser?.sphinxRouteHint ?? undefined;
+      const sendResult = await sendDirectMessage(pubkey, record.message, { routeHint });
 
       await db.notificationTrigger.update({
         where: { id: record.id },
