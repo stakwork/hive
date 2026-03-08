@@ -10,8 +10,9 @@ import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 import { NotificationTriggerType, NotificationTriggerStatus, TaskStatus, WorkflowStatus } from "@prisma/client";
 
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("@/lib/pusher", () => ({
@@ -37,14 +38,14 @@ describe("FEATURE_COMPLETED notification", () => {
     await resetDatabase();
 
     owner = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", sphinxAlias: "owner-alias" },
+      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
     });
     assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", sphinxAlias: "assignee-alias" },
+      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
     });
 
-    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createSphinxEnabledWorkspace({
+    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createTestWorkspace({
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-complete",

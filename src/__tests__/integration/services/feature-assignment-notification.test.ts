@@ -11,8 +11,9 @@ import { resetDatabase } from "@/__tests__/support/utilities/database";
 import { NotificationTriggerType, NotificationTriggerStatus } from "@prisma/client";
 
 // Mock Sphinx delivery so no real HTTP calls are made
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // Mock pusher so it doesn't fail in test env
@@ -42,11 +43,11 @@ describe("FEATURE_ASSIGNED notification", () => {
       data: { email: "owner@test.com", name: "Owner" },
     });
     assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", sphinxAlias: "assignee-alias" },
+      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
     });
 
-    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createSphinxEnabledWorkspace({
+    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createTestWorkspace({
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-assign",

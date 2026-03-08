@@ -38,8 +38,9 @@ vi.mock("@/services/roadmap/feature-status-sync", () => ({
 vi.mock("@/lib/pods/utils", () => ({
   releaseTaskPod: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // Import route AFTER mocks
@@ -56,23 +57,10 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
 
     testSetup = await createWebhookTestScenario();
 
-    // Enable Sphinx on workspace and set sphinxAlias on user so notifications are created
-    const { EncryptionService } = await import("@/lib/encryption");
-    const encryptedSecret = JSON.stringify(
-      EncryptionService.getInstance().encryptField("sphinxBotSecret", "test-bot-secret")
-    );
-    await db.workspace.update({
-      where: { id: testSetup.workspace.id },
-      data: {
-        sphinxEnabled: true,
-        sphinxBotId: "test-bot-id",
-        sphinxBotSecret: encryptedSecret,
-        sphinxChatPubkey: "test-chat-pubkey",
-      },
-    });
+    // Set lightningPubkey on user so DM notifications are eligible
     await db.user.update({
       where: { id: testSetup.user.id },
-      data: { sphinxAlias: "user-alias" },
+      data: { lightningPubkey: "test-pubkey-user" },
     });
 
     // Create task with the test workspace owner as creator
