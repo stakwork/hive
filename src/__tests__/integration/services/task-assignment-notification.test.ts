@@ -79,6 +79,8 @@ describe("TASK_ASSIGNED notification", () => {
   });
 
   it("creates a TASK_ASSIGNED notification_trigger row when assigning to another user", async () => {
+    const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
+
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
     await new Promise((r) => setTimeout(r, 100));
@@ -93,7 +95,11 @@ describe("TASK_ASSIGNED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
+    expect(sendDirectMessage).not.toHaveBeenCalled();
   });
 
   it("does NOT create a notification when self-assigning", async () => {
@@ -188,5 +194,6 @@ describe("TASK_ASSIGNED notification — DM not configured (no lightningPubkey)"
 
     expect(record).not.toBeNull();
     expect(record!.status).toBe(NotificationTriggerStatus.SKIPPED);
+    expect(record!.sendAfter).toBeNull();
   });
 });

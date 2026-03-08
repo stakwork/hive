@@ -111,7 +111,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates PLAN_AWAITING_APPROVAL notification for PLAN artifact with featureId", async () => {
@@ -133,7 +136,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates PLAN_TASKS_GENERATED notification for TASKS artifact with featureId", async () => {
@@ -155,7 +161,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates GRAPH_CHAT_RESPONSE notification for task response without plan artifacts", async () => {
@@ -187,6 +196,9 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 });

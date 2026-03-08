@@ -883,6 +883,8 @@ model NotificationTrigger {
   status                 NotificationTriggerStatus @default(PENDING) @map("status")
   notificationMethod     NotificationMethod        @map("notification_method")
   notificationTimestamps DateTime[]                @default([]) @map("notification_timestamps")
+  sendAfter              DateTime?                 @map("send_after")
+  message                String?
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")
   feature                Feature?                  @relation(fields: [featureId], references: [id])
@@ -894,6 +896,7 @@ model NotificationTrigger {
   @@index([status])
   @@index([notificationType])
   @@index([targetUserId, notificationType, status])
+  @@index([sendAfter, status])
   @@map("notification_triggers")
 }
 
@@ -1179,6 +1182,7 @@ enum NotificationTriggerStatus {
   SENT
   FAILED
   SKIPPED
+  CANCELLED
 }
 
 enum NotificationMethod {
