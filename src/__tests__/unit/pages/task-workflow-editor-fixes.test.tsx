@@ -243,6 +243,118 @@ describe('Task Page - Workflow Editor fixes', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
+  // handleVersionChange — resolves workflowRefId from versions API
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleVersionChange — resolves workflowRefId from versions API', () => {
+    let setCurrentWorkflowContext: ReturnType<typeof vi.fn>;
+
+    const baseContext = {
+      workflowId: 42,
+      workflowName: 'My Workflow',
+      workflowRefId: 'old-ref-id',
+      workflowVersionId: 'old-version-id',
+    };
+
+    const versionsResponse = {
+      versions: [
+        { workflow_version_id: 'ver-aaa', ref_id: 'ref-aaa' },
+        { workflow_version_id: 'ver-bbb', ref_id: 'ref-bbb' },
+      ],
+    };
+
+    beforeEach(() => {
+      setCurrentWorkflowContext = vi.fn();
+    });
+
+    /**
+     * Simulates the async handleVersionChange logic from page.tsx.
+     */
+    async function simulateHandleVersionChange(opts: {
+      versionId: string;
+      context: typeof baseContext | null;
+      slug?: string;
+      fetchImpl?: () => Promise<unknown>;
+    }) {
+      const { versionId, context, slug = 'test-workspace', fetchImpl } = opts;
+
+      if (!context) return;
+
+      const { workflowId, workflowRefId: prevWorkflowRefId } = context;
+
+      global.fetch = fetchImpl
+        ? vi.fn().mockImplementation(fetchImpl)
+        : vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => versionsResponse,
+          });
+
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/workflows/${workflowId}/versions`);
+        if (!(response as Response).ok) throw new Error('not ok');
+        const data = await (response as Response).json() as { versions?: Array<{ workflow_version_id: string; ref_id: string }> };
+        const versions = data.versions ?? [];
+        const match = versions.find((v) => v.workflow_version_id === versionId);
+
+        if (!match) {
+          setCurrentWorkflowContext((prev: typeof baseContext | null) =>
+            prev ? { ...prev, workflowVersionId: versionId } : prev,
+          );
+          return;
+        }
+
+        setCurrentWorkflowContext((prev: typeof baseContext | null) =>
+          prev ? { ...prev, workflowVersionId: versionId, workflowRefId: match.ref_id } : prev,
+        );
+      } catch {
+        setCurrentWorkflowContext((prev: typeof baseContext | null) =>
+          prev ? { ...prev, workflowVersionId: versionId, workflowRefId: prevWorkflowRefId } : prev,
+        );
+      }
+    }
+
+    it('happy path: updates both workflowVersionId and workflowRefId atomically', async () => {
+      await simulateHandleVersionChange({ versionId: 'ver-bbb', context: baseContext });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledTimes(1);
+      // Invoke the updater with the base context to inspect the result
+      const updater = setCurrentWorkflowContext.mock.calls[0][0] as (prev: typeof baseContext) => typeof baseContext;
+      const result = updater(baseContext);
+      expect(result.workflowVersionId).toBe('ver-bbb');
+      expect(result.workflowRefId).toBe('ref-bbb');
+    });
+
+    it('fetch failure: retains previous workflowRefId, still updates workflowVersionId', async () => {
+      await simulateHandleVersionChange({
+        versionId: 'ver-aaa',
+        context: baseContext,
+        fetchImpl: async () => { throw new Error('network error'); },
+      });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledTimes(1);
+      const updater = setCurrentWorkflowContext.mock.calls[0][0] as (prev: typeof baseContext) => typeof baseContext;
+      const result = updater(baseContext);
+      expect(result.workflowVersionId).toBe('ver-aaa');
+      expect(result.workflowRefId).toBe('old-ref-id');
+    });
+
+    it('version not found: retains previous workflowRefId', async () => {
+      await simulateHandleVersionChange({ versionId: 'ver-unknown', context: baseContext });
+
+      expect(setCurrentWorkflowContext).toHaveBeenCalledTimes(1);
+      const updater = setCurrentWorkflowContext.mock.calls[0][0] as (prev: typeof baseContext) => typeof baseContext;
+      const result = updater(baseContext);
+      expect(result.workflowVersionId).toBe('ver-unknown');
+      expect(result.workflowRefId).toBe('old-ref-id');
+    });
+
+    it('null context guard: setCurrentWorkflowContext is never called', async () => {
+      await simulateHandleVersionChange({ versionId: 'ver-aaa', context: null });
+
+      expect(setCurrentWorkflowContext).not.toHaveBeenCalled();
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Restore workflow context on page reload — last-match scan
   // ────────────────────────────────────────────────────────────────────────────
   describe('workflow_editor context restore — last-match scan', () => {
