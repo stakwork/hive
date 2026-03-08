@@ -36,11 +36,21 @@ describe("Workspace API Keys Integration Tests", () => {
       ],
     });
 
+    const adminUser = await createTestUser({ name: "Admin User" });
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: scenario.workspace.id,
+        userId: adminUser.id,
+        role: "ADMIN",
+      },
+    });
+
     return {
       ownerUser: scenario.owner,
       workspace: scenario.workspace,
       developerUser: scenario.members[0],
       viewerUser: scenario.members[1],
+      adminUser,
     };
   }
 
@@ -112,7 +122,7 @@ describe("Workspace API Keys Integration Tests", () => {
       await expectUnauthorized(response);
     });
 
-    test("should return 403 when user is viewer (no write access)", async () => {
+    test("should return 403 when user is viewer (no admin access)", async () => {
       const { viewerUser, workspace } = await createTestWorkspaceWithUsers();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(viewerUser));
@@ -125,6 +135,38 @@ describe("Workspace API Keys Integration Tests", () => {
       });
 
       await expectForbidden(response);
+    });
+
+    test("should return 403 when user is developer (no admin access)", async () => {
+      const { developerUser, workspace } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developerUser));
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/api-keys`
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      await expectForbidden(response);
+    });
+
+    test("should allow admin to list API keys", async () => {
+      const { adminUser, workspace } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/api-keys`
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response);
+      expect(data.keys).toBeDefined();
+      expect(Array.isArray(data.keys)).toBe(true);
     });
 
     test("should return 404 for non-existent workspace", async () => {
@@ -204,7 +246,7 @@ describe("Workspace API Keys Integration Tests", () => {
       expect(keyInDb?.expiresAt).toBeTruthy();
     });
 
-    test("should allow developer to create API key", async () => {
+    test("should return 403 when developer tries to create API key", async () => {
       const { developerUser, workspace } = await createTestWorkspaceWithUsers();
 
       getMockedSession().mockResolvedValue(
@@ -221,8 +263,30 @@ describe("Workspace API Keys Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
+      await expectForbidden(response);
+    });
+
+    test("should allow admin to create API key", async () => {
+      const { adminUser, workspace } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(adminUser)
+      );
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/api-keys`,
+        {
+          name: "Admin Key",
+        }
+      );
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
       const data = await expectSuccess(response, 201);
-      expect(data.name).toBe("Developer Key");
+      expect(data.name).toBe("Admin Key");
+      expect(data.key).toBeDefined();
+      expect(data.key.startsWith("hive_")).toBe(true);
     });
 
     test("should return 400 for missing name", async () => {
@@ -314,8 +378,8 @@ describe("Workspace API Keys Integration Tests", () => {
       expect(keyInDb?.revokedById).toBe(ownerUser.id);
     });
 
-    test("should allow developer to revoke their own key", async () => {
-      const { developerUser, workspace } = await createTestWorkspaceWithUsers();
+    test("should return 403 when developer tries to revoke a key", async () => {
+      const { developerUser, ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Create an API key owned by developer
       const apiKey = await db.workspaceApiKey.create({
@@ -324,42 +388,6 @@ describe("Workspace API Keys Integration Tests", () => {
           name: "Developer Key",
           keyPrefix: "hive_dev",
           keyHash: "devkeyhash",
-          createdById: developerUser.id,
-        },
-      });
-
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(developerUser)
-      );
-
-      const request = createDeleteRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/api-keys/${apiKey.id}`
-      );
-      const response = await DELETE(request, {
-        params: Promise.resolve({ slug: workspace.slug, keyId: apiKey.id }),
-      });
-
-      const data = await expectSuccess(response);
-      expect(data.success).toBe(true);
-
-      // Verify key was revoked
-      const keyInDb = await db.workspaceApiKey.findUnique({
-        where: { id: apiKey.id },
-      });
-      expect(keyInDb?.revokedAt).toBeTruthy();
-    });
-
-    test("should prevent developer from revoking another user's key", async () => {
-      const { ownerUser, developerUser, workspace } =
-        await createTestWorkspaceWithUsers();
-
-      // Create an API key owned by owner
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
-          name: "Owner Key",
-          keyPrefix: "hive_own",
-          keyHash: "ownerkeyhash",
           createdById: ownerUser.id,
         },
       });
@@ -375,7 +403,7 @@ describe("Workspace API Keys Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug, keyId: apiKey.id }),
       });
 
-      await expectForbidden(response, "can only revoke your own keys");
+      await expectForbidden(response);
 
       // Verify key was NOT revoked
       const keyInDb = await db.workspaceApiKey.findUnique({

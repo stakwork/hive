@@ -33,6 +33,10 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
+  if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
+    notFound();
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Workspace Settings" description="Manage workspace configuration, members, and settings." />
