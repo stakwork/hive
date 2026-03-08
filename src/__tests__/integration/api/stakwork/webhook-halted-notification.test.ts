@@ -96,7 +96,10 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(user.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates a WORKFLOW_HALTED notification for feature (plan mode) path", async () => {
@@ -125,6 +128,9 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(user.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 });
