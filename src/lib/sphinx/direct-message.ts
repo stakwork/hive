@@ -11,11 +11,7 @@ export interface SendMessageBody {
   reply_uuid?: string;
   msg_type?: number;
   wait?: boolean;
-}
-
-export interface AddContactBody {
-  contact_info: string;
-  alias?: string;
+  route_hint?: string;
 }
 
 export interface SphinxDMResponse {
@@ -34,83 +30,16 @@ export interface SendDMResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBotBaseUrl(): string {
-  const base = optionalEnvVars.V2_BOT_URL;
-  if (!base) return "";
-  return base.replace(/\/+$/, "");
-}
-
 function getBotUrl(): string {
-  const base = getBotBaseUrl();
+  const base = optionalEnvVars.V2_BOT_URL;
   if (!base) return "";
   // In mock mode the full URL is already set; in production append /send
   if (base.includes("/api/mock/")) return base;
-  return `${base}/send`;
+  return `${base.replace(/\/+$/, "")}/send`;
 }
 
 function getBotToken(): string {
   return optionalEnvVars.V2_BOT_TOKEN;
-}
-
-/**
- * Check if a contact already exists in the bot's store.
- * Returns true if the contact is found, false otherwise.
- */
-async function hasContact(pubkey: string): Promise<boolean> {
-  const base = getBotBaseUrl();
-  const token = getBotToken();
-  if (!base || !token) return false;
-
-  try {
-    const res = await fetch(`${base}/get_contact/${pubkey}`, {
-      method: "GET",
-      headers: { "x-admin-token": token },
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Add a contact to the bot's store so it can route messages.
- * contact_info format: "{pubkey}_{lsp_pubkey}_{scid}"
- */
-async function addContact(contactInfo: string): Promise<void> {
-  const base = getBotBaseUrl();
-  const token = getBotToken();
-  if (!base || !token) return;
-
-  const body: AddContactBody = { contact_info: contactInfo };
-  const res = await fetch(`${base}/add_contact`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-admin-token": token,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`add_contact failed: ${res.status} - ${text}`);
-  }
-}
-
-/**
- * Ensure a contact exists in the bot's store before sending.
- * If routeHint is provided, builds "{pubkey}_{routeHint}" as contact_info.
- * Skipped in mock mode (base URL contains "/api/mock/").
- */
-async function ensureContact(dest: string, routeHint?: string): Promise<void> {
-  if (!routeHint) return;
-  const base = getBotBaseUrl();
-  if (base.includes("/api/mock/")) return;
-  const exists = await hasContact(dest);
-  if (exists) return;
-  const contactInfo = `${dest}_${routeHint}`;
-  logger.info(`[SPHINX DM] Adding contact for ${dest.slice(0, 12)}…`, "SPHINX_DM");
-  await addContact(contactInfo);
 }
 
 /**
@@ -128,9 +57,8 @@ export function isDirectMessageConfigured(): boolean {
  * This uses the V2 Bot `/send` endpoint — a separate server from the
  * tribe broadcast endpoint at `/api/action`.
  *
- * If a routeHint is provided the function will first ensure the recipient
- * exists as a contact in the bot's store (get_contact → add_contact) before
- * calling /send.
+ * If a routeHint is provided it is passed as `route_hint` in the request
+ * body. The bot handles contact creation and key exchange internally.
  *
  * @param dest      - Recipient's Lightning public key (66-char hex)
  * @param content   - Message text
@@ -150,17 +78,15 @@ export async function sendDirectMessage(
     return { success: false, error: msg };
   }
 
+  const body: SendMessageBody = {
+    dest,
+    content,
+    wait: opts.wait ?? false,
+    ...(opts.amt_msat != null && { amt_msat: opts.amt_msat }),
+    ...(opts.routeHint != null && { route_hint: opts.routeHint }),
+  };
+
   try {
-    // Ensure recipient contact exists before sending
-    await ensureContact(dest, opts.routeHint);
-
-    const body: SendMessageBody = {
-      dest,
-      content,
-      wait: opts.wait ?? false,
-      ...(opts.amt_msat != null && { amt_msat: opts.amt_msat }),
-    };
-
     const response = await fetch(url, {
       method: "POST",
       headers: {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { EncryptionService } from "@/lib/encryption";
+import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 
 export async function POST(request: NextRequest) {
   const encryptionService = EncryptionService.getInstance();
@@ -54,7 +55,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.info("Updated user profile from /person", "SPHINX_PERSON", { userId: matchedUserId });
+    logger.info("Updated user profile from /person", "SPHINX_PERSON", {
+      userId: matchedUserId,
+      owner_route_hint: owner_route_hint ?? null,
+    });
+
+    // Add contact + send welcome DM so the key exchange completes early,
+    // well before any real notifications need to be delivered.
+    // NOTE: this fires on every /person call, not just the first link.
+    // ensureContact skips add_contact if already exists, but the welcome
+    // message is sent every time. We may want to deduplicate later.
+    if (owner_route_hint && isDirectMessageConfigured()) {
+      sendDirectMessage(owner_pubkey, "Welcome to Hive!", {
+        routeHint: owner_route_hint,
+      }).catch((err) => {
+        logger.error("Failed to send welcome DM", "SPHINX_PERSON", { error: err });
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
