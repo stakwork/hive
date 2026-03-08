@@ -302,7 +302,8 @@ describe("GET /api/cron/notification-dispatcher", () => {
     expect(sendDirectMessage).toHaveBeenCalledOnce();
     expect(sendDirectMessage).toHaveBeenCalledWith(
       "pubkey-owner-123",
-      "You have been assigned a task"
+      "You have been assigned a task",
+      { routeHint: undefined },
     );
 
     const updated = await db.notificationTrigger.findUnique({
@@ -383,7 +384,8 @@ describe("GET /api/cron/notification-dispatcher", () => {
     expect(sendDirectMessage).toHaveBeenCalledOnce();
     expect(sendDirectMessage).toHaveBeenCalledWith(
       "pubkey-owner-123",
-      "Workflow is halted, please review"
+      "Workflow is halted, please review",
+      { routeHint: undefined },
     );
 
     const updated = await db.notificationTrigger.findUnique({
