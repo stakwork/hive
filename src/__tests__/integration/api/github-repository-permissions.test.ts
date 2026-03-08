@@ -342,8 +342,8 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 403 when no GitHub tokens found", async () => {
-        // Create user without tokens
+      test("should return 200 with app_not_installed when no GitHub App installed for owner", async () => {
+        // Create user without tokens — no SourceControlOrg exists for this owner
         const testUser = await createTestUser({ name: "User Without Tokens" });
 
         getMockedSession().mockResolvedValue(
@@ -352,28 +352,60 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
+        // Use a URL whose owner has no SourceControlOrg in DB
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: testRepositoryUrls.https,
+            repositoryUrl: "https://github.com/no-org-owner/test-repo",
           }
         );
 
         const response = await POST(request);
         const data = await response.json();
 
-        expect(response.status).toBe(403);
+        expect(response.status).toBe(200);
         expect(data.success).toBe(false);
-        expect(data.error).toBe("no_github_tokens");
-        expect(data.message).toContain(
-          "No GitHub App tokens found for this repository's organization"
-        );
+        expect(data.error).toBe("app_not_installed");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 403 when tokens exist but accessToken is missing", async () => {
-        const testUser = await createTestUser();
+      test("should return 200 with user_not_authorised when org exists but user has no token", async () => {
+        // Create a SourceControlOrg for this owner (app is installed) but user has no token
+        const { sourceControlOrg } = await createTestUserWithGitHubTokens({
+          githubOwner: "installed-org",
+        });
 
+        const tokenlessUser = await createTestUser({ name: "User Without Token" });
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(tokenlessUser)
+        );
+
+        // Mock getUserAppTokens to return null for this user (no token for org)
+        vi.mocked(getUserAppTokens).mockResolvedValue(null);
+
+        const request = createPostRequest(
+          "http://localhost:3000/api/github/repository/permissions",
+          {
+            repositoryUrl: "https://github.com/installed-org/test-repo",
+          }
+        );
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.success).toBe(false);
+        expect(data.error).toBe("user_not_authorised");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      test("should return 200 with user_not_authorised when tokens exist but accessToken is missing", async () => {
+        // Create a SourceControlOrg (app installed) but user's token has no accessToken
+        await createTestUserWithGitHubTokens({
+          githubOwner: "installed-org-2",
+        });
+
+        const testUser = await createTestUser();
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
         );
@@ -386,15 +418,15 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: testRepositoryUrls.https,
+            repositoryUrl: "https://github.com/installed-org-2/test-repo",
           }
         );
 
         const response = await POST(request);
         const data = await response.json();
 
-        expect(response.status).toBe(403);
-        expect(data.error).toBe("no_github_tokens");
+        expect(response.status).toBe(200);
+        expect(data.error).toBe("user_not_authorised");
       });
     });
 
@@ -686,13 +718,18 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
     describe("Error handling edge cases", () => {
       test("should return 500 for unexpected errors", async () => {
+        // Create a SourceControlOrg so the route reaches getUserAppTokens
+        await createTestUserWithGitHubTokens({
+          githubOwner: "test-owner",
+        });
+
         const testUser = await createTestUser();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
         );
 
-        // Mock getUserAppTokens to throw an error
+        // Mock getUserAppTokens to throw an error (org exists, so we reach this call)
         vi.mocked(getUserAppTokens).mockRejectedValue(
           new Error("Database connection failed")
         );
