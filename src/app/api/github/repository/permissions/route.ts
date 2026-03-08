@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -126,7 +127,6 @@ export async function POST(request: NextRequest) {
 
     // Check if repository owner matches workspace's linked GitHub organization
     if (workspaceSlug) {
-      const { db } = await import("@/lib/db");
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
         include: { sourceControlOrg: true },
@@ -144,15 +144,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Three-branch check: distinguish between "app not installed" vs "user not authorised" vs happy path
+    // Use case-insensitive lookup since GitHub logins are case-insensitive
+    const sourceControlOrg = await db.sourceControlOrg.findFirst({
+      where: { githubLogin: { equals: githubOwner, mode: "insensitive" } },
+    });
+
+    if (!sourceControlOrg) {
+      // No SourceControlOrg → GitHub App has never been installed for this owner
+      return NextResponse.json({
+        success: false,
+        error: "app_not_installed",
+      }, { status: 200 });
+    }
+
     // Get user's GitHub App tokens for this repository's organization
     const tokens = await getUserAppTokens(session.user.id, githubOwner);
 
     if (!tokens?.accessToken) {
+      // Org exists but this user has no token — hasn't completed OAuth for this org yet
       return NextResponse.json({
         success: false,
-        error: "no_github_tokens",
-        message: "No GitHub App tokens found for this repository's organization"
-      }, { status: 403 });
+        error: "user_not_authorised",
+        message: "You need to authorise the GitHub App for this organization",
+      }, { status: 200 });
     }
 
     // Check repository permissions
