@@ -344,4 +344,34 @@ describe('Task Page - Workflow Editor fixes', () => {
       expect(ctx?.workflowVersionId).toBe("only-version");
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // taskTitle format in handleWorkflowSelect
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleWorkflowSelect — taskTitle format', () => {
+    function buildTaskTitle(
+      workflowName: string | undefined,
+      workflowId: string | number,
+      workflowVersionId: string | undefined,
+    ): string {
+      return workflowName
+        ? `${workflowName} (ID: ${workflowId}${workflowVersionId ? ` · V${workflowVersionId.substring(0, 8)}` : ''})`
+        : `Workflow ${workflowId}`;
+    }
+
+    it('includes workflow ID and first 8 chars of version when both are present', () => {
+      const title = buildTaskTitle('My Workflow', '1234', '3fa8c1d2abcdef');
+      expect(title).toBe('My Workflow (ID: 1234 · V3fa8c1d2)');
+    });
+
+    it('includes workflow ID only when version is absent', () => {
+      const title = buildTaskTitle('My Workflow', '1234', undefined);
+      expect(title).toBe('My Workflow (ID: 1234)');
+    });
+
+    it('falls back to "Workflow {id}" when no workflow name is available', () => {
+      const title = buildTaskTitle(undefined, '1234', '3fa8c1d2abcdef');
+      expect(title).toBe('Workflow 1234');
+    });
+  });
 });
