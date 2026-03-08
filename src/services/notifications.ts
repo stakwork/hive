@@ -7,6 +7,18 @@ import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 import { logger } from "@/lib/logger";
 
+const DEFERRED_NOTIFICATION_TYPES = new Set([
+  NotificationTriggerType.TASK_ASSIGNED,
+  NotificationTriggerType.FEATURE_ASSIGNED,
+  NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
+  NotificationTriggerType.PLAN_AWAITING_APPROVAL,
+  NotificationTriggerType.PLAN_TASKS_GENERATED,
+  NotificationTriggerType.WORKFLOW_HALTED,
+  NotificationTriggerType.GRAPH_CHAT_RESPONSE,
+]);
+
+const DEFERRED_DELAY_MS = 5 * 60 * 1000;
+
 export async function createAndSendNotification(input: {
   targetUserId: string;
   originatingUserId?: string;
@@ -65,10 +77,22 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 6. Send via direct message
+    // 6. Deferred types: store sendAfter + message, return without sending
+    if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
+      await db.notificationTrigger.update({
+        where: { id: record.id },
+        data: {
+          sendAfter: new Date(Date.now() + DEFERRED_DELAY_MS),
+          message: input.message,
+        },
+      });
+      return;
+    }
+
+    // 7. Immediate types: send via direct message now
     const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message);
 
-    // 7. Update record with outcome
+    // 8. Update record with outcome
     await db.notificationTrigger.update({
       where: { id: record.id },
       data: {
