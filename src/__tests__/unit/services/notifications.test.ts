@@ -134,10 +134,34 @@ describe("createAndSendNotification", () => {
     });
   });
 
-  describe("send success", () => {
-    it("creates record, calls sendDirectMessage, and updates record to SENT with timestamp", async () => {
+  describe("deferred types (e.g. TASK_ASSIGNED)", () => {
+    it("creates record with sendAfter + message and does NOT call sendDirectMessage", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      update.mockResolvedValue({ ...mockRecord });
+
+      await createAndSendNotification(baseInput);
+
+      expect(create).toHaveBeenCalledOnce();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "notif-1" },
+          data: expect.objectContaining({
+            sendAfter: expect.any(Date),
+            message: baseInput.message,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("send success (immediate type — TASK_PR_MERGED)", () => {
+    it("creates record, calls sendDirectMessage, and updates record to SENT with timestamp", async () => {
+      const immediateInput = { ...baseInput, notificationType: NotificationTriggerType.TASK_PR_MERGED };
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, notificationType: NotificationTriggerType.TASK_PR_MERGED });
       userFindUnique.mockResolvedValue(userWithPubkey);
       mockedSendDirectMessage.mockResolvedValue({ success: true });
       update.mockResolvedValue({
@@ -145,11 +169,11 @@ describe("createAndSendNotification", () => {
         status: NotificationTriggerStatus.SENT,
       });
 
-      await createAndSendNotification(baseInput);
+      await createAndSendNotification(immediateInput);
 
       expect(create).toHaveBeenCalledOnce();
       expect(mockedSendDirectMessage).toHaveBeenCalledOnce();
-      expect(mockedSendDirectMessage).toHaveBeenCalledWith("alice-pubkey", baseInput.message);
+      expect(mockedSendDirectMessage).toHaveBeenCalledWith("alice-pubkey", immediateInput.message);
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "notif-1" },
@@ -162,10 +186,11 @@ describe("createAndSendNotification", () => {
     });
   });
 
-  describe("send failure", () => {
+  describe("send failure (immediate type — TASK_PR_MERGED)", () => {
     it("updates record to FAILED with timestamp when sendDirectMessage returns success: false", async () => {
+      const immediateInput = { ...baseInput, notificationType: NotificationTriggerType.TASK_PR_MERGED };
       findFirst.mockResolvedValue(null);
-      create.mockResolvedValue(mockRecord);
+      create.mockResolvedValue({ ...mockRecord, notificationType: NotificationTriggerType.TASK_PR_MERGED });
       userFindUnique.mockResolvedValue(userWithPubkey);
       mockedSendDirectMessage.mockResolvedValue({ success: false, error: "timeout" });
       update.mockResolvedValue({
@@ -173,7 +198,7 @@ describe("createAndSendNotification", () => {
         status: NotificationTriggerStatus.FAILED,
       });
 
-      await createAndSendNotification(baseInput);
+      await createAndSendNotification(immediateInput);
 
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({
