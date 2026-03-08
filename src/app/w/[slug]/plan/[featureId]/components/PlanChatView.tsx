@@ -545,7 +545,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   if (isMobile) {
     return (
-      <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <div className="flex flex-col h-dvh">
         {showPreview ? (
           <ArtifactsPanel
             {...artifactsPanelProps}
@@ -567,7 +567,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-dvh">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">

@@ -4,8 +4,7 @@ import {
   NotificationMethod,
 } from "@prisma/client";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
-import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
+import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 import { logger } from "@/lib/logger";
 
 export async function createAndSendNotification(input: {
@@ -21,22 +20,11 @@ export async function createAndSendNotification(input: {
     const taskId = input.taskId ?? null;
     const featureId = input.featureId ?? null;
 
-    // 1. Fetch workspace and user in parallel
-    const [workspace, targetUser] = await Promise.all([
-      db.workspace.findUnique({
-        where: { id: input.workspaceId },
-        select: {
-          sphinxEnabled: true,
-          sphinxBotId: true,
-          sphinxBotSecret: true,
-          sphinxChatPubkey: true,
-        },
-      }),
-      db.user.findUnique({
-        where: { id: input.targetUserId },
-        select: { sphinxAlias: true },
-      }),
-    ]);
+    // 1. Fetch target user
+    const targetUser = await db.user.findUnique({
+      where: { id: input.targetUserId },
+      select: { lightningPubkey: true },
+    });
 
     // 2. Idempotency check — skip if PENDING record already exists
     const existing = await db.notificationTrigger.findFirst({
@@ -53,15 +41,10 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 3. Determine Sphinx eligibility
-    const sphinxReady =
-      !!workspace?.sphinxEnabled &&
-      !!workspace.sphinxBotId &&
-      !!workspace.sphinxBotSecret &&
-      !!workspace.sphinxChatPubkey &&
-      !!targetUser?.sphinxAlias;
+    // 3. Determine DM eligibility
+    const dmReady = isDirectMessageConfigured() && !!targetUser?.lightningPubkey;
 
-    // 4. Always insert a row — use SKIPPED when Sphinx is not ready
+    // 4. Always insert a row — use SKIPPED when DM is not ready
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -69,7 +52,7 @@ export async function createAndSendNotification(input: {
         taskId,
         featureId,
         notificationType: input.notificationType,
-        status: sphinxReady
+        status: dmReady
           ? NotificationTriggerStatus.PENDING
           : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
@@ -77,28 +60,15 @@ export async function createAndSendNotification(input: {
       },
     });
 
-    // 5. Stop here if Sphinx is not configured — no send attempted
-    if (!sphinxReady) {
+    // 5. Stop here if DM is not configured — no send attempted
+    if (!dmReady) {
       return;
     }
 
-    // 6. Decrypt bot secret
-    const decryptedSecret = EncryptionService.getInstance().decryptField(
-      "sphinxBotSecret",
-      workspace!.sphinxBotSecret!
-    );
+    // 6. Send via direct message
+    const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message);
 
-    // 7. Send via Sphinx
-    const result = await sendToSphinx(
-      {
-        chatPubkey: workspace!.sphinxChatPubkey!,
-        botId: workspace!.sphinxBotId!,
-        botSecret: decryptedSecret,
-      },
-      input.message
-    );
-
-    // 8. Update record with outcome
+    // 7. Update record with outcome
     await db.notificationTrigger.update({
       where: { id: record.id },
       data: {

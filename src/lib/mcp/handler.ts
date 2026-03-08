@@ -17,6 +17,7 @@ import {
   mcpCreateTask,
   mcpSendMessage,
   mcpCheckStatus,
+  findWorkspaceUser,
   resolveWorkspaceUser,
   type SwarmCredentials,
   type WorkspaceAuth,
@@ -359,9 +360,10 @@ function createServer(): McpServer {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "check_status");
       if (result.error) return result.error;
-      // Resolve the creator separately — only filter when explicitly provided
+      // Resolve the creator separately — only filter when explicitly provided.
+      // If the name doesn't match anyone, return all (no filter).
       const filterUserId = creator
-        ? await resolveWorkspaceUser(result.auth!.workspaceId, creator)
+        ? await findWorkspaceUser(result.auth!.workspaceId, creator)
         : undefined;
       return mcpCheckStatus(result.auth!, filterUserId);
     },
