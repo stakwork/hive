@@ -16,7 +16,7 @@ export function getMiddlewareContext(request: NextRequest): MiddlewareContext {
 
   // Validate auth status with type safety
   const authStatus: AuthStatus =
-    authStatusHeader === "authenticated" || authStatusHeader === "public" || authStatusHeader === "webhook"
+    authStatusHeader === "authenticated" || authStatusHeader === "public" || authStatusHeader === "webhook" || authStatusHeader === "api-token"
       ? authStatusHeader
       : "error";
 
