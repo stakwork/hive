@@ -276,7 +276,39 @@ export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
 
 // --- ELK layout ---
 
-function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
+/**
+ * Estimate whether a layered diagram should render top-to-bottom ("DOWN") or
+ * left-to-right ("RIGHT") based on graph topology.
+ *
+ * Heuristic: if the topological depth (number of distinct layers) exceeds the
+ * maximum number of nodes in any single layer, the diagram is "deep" and
+ * benefits from a DOWN orientation to avoid excessive horizontal sprawl.
+ */
+export function computeLayeredDirection(diagram: ParsedDiagram): "RIGHT" | "DOWN" {
+  const depth = new Map<string, number>();
+  for (const c of diagram.components) depth.set(c.id, 0);
+
+  // Bellman-Ford relaxation — converges in |V|-1 passes for DAGs, safe for cycles
+  const passes = diagram.components.length;
+  for (let i = 0; i < passes; i++) {
+    for (const conn of diagram.connections) {
+      const d = (depth.get(conn.from) ?? 0) + 1;
+      if (d > (depth.get(conn.to) ?? 0)) depth.set(conn.to, d);
+    }
+  }
+
+  const layerCount = Math.max(...depth.values(), 0) + 1;
+
+  const nodesPerLayer = new Map<number, number>();
+  for (const d of depth.values()) {
+    nodesPerLayer.set(d, (nodesPerLayer.get(d) ?? 0) + 1);
+  }
+  const maxNodesInLayer = Math.max(...nodesPerLayer.values(), 1);
+
+  return layerCount > maxNodesInLayer ? "DOWN" : "RIGHT";
+}
+
+function getElkOptions(algorithm: LayoutAlgorithm, direction: "RIGHT" | "DOWN" = "RIGHT"): Record<string, string> {
   const common: Record<string, string> = {
     "elk.edgeLabels.inline": "true",
     "elk.padding": "[top=40,left=40,bottom=40,right=40]",
@@ -319,7 +351,7 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
       return {
         ...common,
         "elk.algorithm": "layered",
-        "elk.direction": "RIGHT",
+        "elk.direction": direction,
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.spacing.nodeNode": "80",
         "elk.layered.spacing.nodeNodeBetweenLayers": "120",
@@ -344,12 +376,19 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
   const validConstraints = useLayerConstraints ? getValidLayerConstraints(diagram) : null;
 
+  // Determine layout direction for the layered algorithm
+  const layeredDirection = algorithm === "layered"
+    ? computeLayeredDirection(diagram)
+    : "RIGHT";
+  const outSide = layeredDirection === "DOWN" ? "SOUTH" : "EAST";
+  const inSide  = layeredDirection === "DOWN" ? "NORTH" : "WEST";
+
   // Build per-node port lists so multiple edges don't overlap.
   // Each connection endpoint gets its own port on the node.
   const outPorts = new Map<string, number>(); // nodeId → next outgoing port index
   const inPorts = new Map<string, number>();  // nodeId → next incoming port index
 
-  interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" }
+  interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" | "SOUTH" | "NORTH" }
   const edgePorts: { sourcePort: PortInfo; targetPort: PortInfo }[] = [];
 
   for (const conn of diagram.connections) {
@@ -362,8 +401,8 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
     const tgtPortId = `${conn.to}_in_${tgtIdx}`;
 
     edgePorts.push({
-      sourcePort: { portId: srcPortId, nodeId: conn.from, side: "EAST" },
-      targetPort: { portId: tgtPortId, nodeId: conn.to, side: "WEST" },
+      sourcePort: { portId: srcPortId, nodeId: conn.from, side: outSide },
+      targetPort: { portId: tgtPortId, nodeId: conn.to, side: inSide },
     });
   }
 
@@ -378,7 +417,7 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
   const elkGraph: ElkNode = {
     id: "root",
-    layoutOptions: getElkOptions(algorithm),
+    layoutOptions: getElkOptions(algorithm, layeredDirection),
     children: diagram.components.map((c) => {
       const size = componentSizes.get(c.id)!;
       const layoutOptions: Record<string, string> = {
