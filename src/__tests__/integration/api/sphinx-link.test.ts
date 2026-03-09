@@ -282,6 +282,41 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
       expect(decoded?.name).toBe(user?.name);
     });
 
+    it("should persist alias and routeHint from challenge to user", async () => {
+      // Create a challenge that includes alias and routeHint (as set by verify step)
+      await db.sphinxChallenge.delete({ where: { k1: testChallenge } });
+      const challengeWithProfile = await db.sphinxChallenge.create({
+        data: {
+          k1: "test-challenge-with-profile",
+          used: true,
+          pubkey: testPubkey,
+          alias: "satoshi",
+          routeHint: "03abc...@1.2.3.4:9735",
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        },
+      });
+
+      const user = await db.user.findUnique({ where: { id: testUserId } });
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        body: { challenge: challengeWithProfile.k1 },
+        session: {
+          user: { id: testUserId, email: user?.email, name: user?.name },
+          expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        },
+      });
+
+      expect(result.status).toBe(200);
+
+      const updatedUser = await db.user.findUnique({
+        where: { id: testUserId },
+      });
+
+      expect(updatedUser?.sphinxAlias).toBe("satoshi");
+      expect(updatedUser?.sphinxRouteHint).toBe("03abc...@1.2.3.4:9735");
+    });
+
     it("should delete used challenge after successful linking", async () => {
       const user = await db.user.findUnique({ where: { id: testUserId } });
 
