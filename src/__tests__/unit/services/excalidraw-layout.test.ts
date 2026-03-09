@@ -3,6 +3,7 @@ import {
   sanitiseDiagram,
   measureTextWidth,
   computeComponentSize,
+  computeLayeredDirection,
   FONT_SIZE,
   MIN_WIDTH,
   MAX_SINGLE_LINE_WIDTH,
@@ -243,5 +244,84 @@ describe("computeComponentSize", () => {
   test("height accounts for PADDING_H constant used for clamped text width", () => {
     // Ensure PADDING_H is exported and has expected value
     expect(PADDING_H).toBe(48);
+  });
+});
+
+describe("computeLayeredDirection", () => {
+  test("linear chain (A→B→C→D) returns DOWN — 4 layers, 1 node each", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+        { id: "C", name: "C" },
+        { id: "D", name: "D" },
+      ],
+      connections: [
+        { from: "A", to: "B", label: "" },
+        { from: "B", to: "C", label: "" },
+        { from: "C", to: "D", label: "" },
+      ],
+    };
+    expect(computeLayeredDirection(diagram)).toBe("DOWN");
+  });
+
+  test("star topology (hub→A,B,C,D) returns RIGHT — 2 layers, max 4 nodes in layer 2", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "hub", name: "Hub" },
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+        { id: "C", name: "C" },
+        { id: "D", name: "D" },
+      ],
+      connections: [
+        { from: "hub", to: "A", label: "" },
+        { from: "hub", to: "B", label: "" },
+        { from: "hub", to: "C", label: "" },
+        { from: "hub", to: "D", label: "" },
+      ],
+    };
+    expect(computeLayeredDirection(diagram)).toBe("RIGHT");
+  });
+
+  test("single node with no connections returns RIGHT — 1 layer, 1 node", () => {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "solo", name: "Solo" }],
+      connections: [],
+    };
+    expect(computeLayeredDirection(diagram)).toBe("RIGHT");
+  });
+
+  test("balanced 2-layer graph (2 sources → 3 targets) returns RIGHT — layerCount=2, maxNodes=3", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "s1", name: "S1" },
+        { id: "s2", name: "S2" },
+        { id: "t1", name: "T1" },
+        { id: "t2", name: "T2" },
+        { id: "t3", name: "T3" },
+      ],
+      connections: [
+        { from: "s1", to: "t1", label: "" },
+        { from: "s1", to: "t2", label: "" },
+        { from: "s2", to: "t3", label: "" },
+      ],
+    };
+    expect(computeLayeredDirection(diagram)).toBe("RIGHT");
+  });
+
+  test("3-layer pipeline (A→B→C) returns DOWN — layerCount=3, maxNodes=1", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+        { id: "C", name: "C" },
+      ],
+      connections: [
+        { from: "A", to: "B", label: "" },
+        { from: "B", to: "C", label: "" },
+      ],
+    };
+    expect(computeLayeredDirection(diagram)).toBe("DOWN");
   });
 });
