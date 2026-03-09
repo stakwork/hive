@@ -134,13 +134,15 @@ export async function POST(
       );
     }
 
-    // Mark challenge as used and store pubkey
+    // Mark challenge as used and store pubkey + profile info
     try {
       await db.sphinxChallenge.update({
         where: { k1: challenge },
         data: {
           used: true,
           pubkey,
+          alias: alias || null,
+          routeHint: route_hint || null,
         },
       });
     } catch (dbError) {

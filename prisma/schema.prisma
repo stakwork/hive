@@ -124,6 +124,8 @@ model SphinxChallenge {
   id        String   @id @default(cuid())
   k1        String   @unique
   pubkey    String?
+  alias     String?
+  routeHint String?  @map("route_hint")
   used      Boolean  @default(false)
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")

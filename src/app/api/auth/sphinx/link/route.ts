@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const pubkey = sphinxChallenge.pubkey;
+    const { pubkey, alias, routeHint } = sphinxChallenge;
 
     // Encrypt pubkey before storing
     let encryptedPubkey: string;
@@ -132,13 +132,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update user with encrypted pubkey and upsert Account record
+    // Update user with encrypted pubkey, alias, route hint, and upsert Account record
     try {
       await db.$transaction(async (tx) => {
-        // Update user with encrypted Lightning pubkey
+        // Update user with encrypted Lightning pubkey and Sphinx profile info
         await tx.user.update({
           where: { id: userId },
-          data: { lightningPubkey: encryptedPubkey },
+          data: {
+            lightningPubkey: encryptedPubkey,
+            sphinxAlias: alias || undefined,
+            sphinxRouteHint: routeHint || undefined,
+          },
         });
 
         // Check if user already has a Sphinx account
