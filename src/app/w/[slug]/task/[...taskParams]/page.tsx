@@ -15,6 +15,7 @@ import {
   ArtifactType,
   PullRequestContent,
   BountyContent,
+  WorkflowContent,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
@@ -162,6 +163,19 @@ export default function TaskChatPage() {
       return [...prev, message];
     });
 
+    // Update workflowRefId from incoming WORKFLOW artifact (workflow_editor mode only)
+    if (taskMode === "workflow_editor") {
+      const workflowArtifact = message.artifacts?.find(
+        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowRefId
+      );
+      if (workflowArtifact) {
+        const incomingRefId = (workflowArtifact.content as WorkflowContent).workflowRefId!;
+        setCurrentWorkflowContext((prev) =>
+          prev ? { ...prev, workflowRefId: incomingRefId } : prev
+        );
+      }
+    }
+
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
     const hasActionArtifact = message.artifacts?.some((artifact) => artifact.type === "FORM");
@@ -169,7 +183,7 @@ export default function TaskChatPage() {
     if (hasActionArtifact) {
       setIsChainVisible(false);
     }
-  }, []);
+  }, [taskMode]);
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
@@ -976,7 +990,6 @@ export default function TaskChatPage() {
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
       if (!currentWorkflowContext.workflowRefId) {
-        toast.error("Error", { description: "Workflow reference ID is missing. Please reload the workflow." });
         return;
       }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");

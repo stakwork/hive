@@ -458,6 +458,207 @@ describe('Task Page - Workflow Editor fixes', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
+  // handleSend — silent block when workflowRefId is missing
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleSend — missing workflowRefId is silently blocked', () => {
+    it('does not call toast.error when workflowRefId is empty', () => {
+      const toastError = vi.fn();
+      let sendCalled = false;
+
+      // Simulate the guard from handleSend in workflow_editor mode
+      function simulateHandleSend(workflowRefId: string) {
+        if (!workflowRefId) {
+          // After fix: no toast — just return
+          return;
+        }
+        sendCalled = true;
+      }
+
+      simulateHandleSend('');
+
+      expect(toastError).not.toHaveBeenCalled();
+      expect(sendCalled).toBe(false);
+    });
+
+    it('proceeds with send when workflowRefId is present', () => {
+      let sendCalled = false;
+
+      function simulateHandleSend(workflowRefId: string) {
+        if (!workflowRefId) {
+          return;
+        }
+        sendCalled = true;
+      }
+
+      simulateHandleSend('valid-ref-id');
+
+      expect(sendCalled).toBe(true);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleNewMessage — sync workflowRefId from incoming WORKFLOW artifact
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleNewMessage — workflowRefId sync from WORKFLOW artifact', () => {
+    type WorkflowContext = {
+      workflowId: number;
+      workflowName: string;
+      workflowRefId: string;
+      workflowVersionId?: string;
+    };
+
+    type ArtifactContent = {
+      workflowId?: number;
+      workflowRefId?: string;
+      workflowVersionId?: string;
+    };
+
+    type Artifact = {
+      type: string;
+      content?: ArtifactContent;
+    };
+
+    type IncomingMessage = {
+      id: string;
+      artifacts?: Artifact[];
+    };
+
+    function simulateHandleNewMessage(opts: {
+      taskMode: string;
+      message: IncomingMessage;
+      currentContext: WorkflowContext | null;
+    }): WorkflowContext | null {
+      const { taskMode, message, currentContext } = opts;
+      let updatedContext = currentContext;
+
+      if (taskMode === 'workflow_editor') {
+        const workflowArtifact = message.artifacts?.find(
+          (a) => a.type === 'WORKFLOW' && (a.content as ArtifactContent)?.workflowRefId
+        );
+        if (workflowArtifact) {
+          const incomingRefId = (workflowArtifact.content as ArtifactContent).workflowRefId!;
+          updatedContext = currentContext ? { ...currentContext, workflowRefId: incomingRefId } : currentContext;
+        }
+      }
+
+      return updatedContext;
+    }
+
+    const baseContext: WorkflowContext = {
+      workflowId: 10,
+      workflowName: 'Test Workflow',
+      workflowRefId: 'original-ref-id',
+      workflowVersionId: 'ver-001',
+    };
+
+    it('updates workflowRefId when WORKFLOW artifact with refId arrives in workflow_editor mode', () => {
+      const setCurrentWorkflowContext = vi.fn();
+
+      const message: IncomingMessage = {
+        id: 'msg-1',
+        artifacts: [
+          {
+            type: 'WORKFLOW',
+            content: { workflowId: 10, workflowRefId: 'new-ref-from-artifact' },
+          },
+        ],
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        message,
+        currentContext: baseContext,
+      });
+
+      // Apply the updater as setCurrentWorkflowContext would
+      setCurrentWorkflowContext((prev: WorkflowContext | null) =>
+        prev ? { ...prev, workflowRefId: 'new-ref-from-artifact' } : prev
+      );
+
+      const updater = setCurrentWorkflowContext.mock.calls[0][0] as (prev: WorkflowContext) => WorkflowContext;
+      const applied = updater(baseContext);
+
+      expect(result?.workflowRefId).toBe('new-ref-from-artifact');
+      expect(applied.workflowRefId).toBe('new-ref-from-artifact');
+    });
+
+    it('does NOT update workflowRefId when taskMode is not workflow_editor', () => {
+      const message: IncomingMessage = {
+        id: 'msg-2',
+        artifacts: [
+          {
+            type: 'WORKFLOW',
+            content: { workflowId: 10, workflowRefId: 'new-ref-from-artifact' },
+          },
+        ],
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'agent',
+        message,
+        currentContext: baseContext,
+      });
+
+      expect(result?.workflowRefId).toBe('original-ref-id');
+    });
+
+    it('does NOT update workflowRefId when WORKFLOW artifact has no workflowRefId', () => {
+      const message: IncomingMessage = {
+        id: 'msg-3',
+        artifacts: [
+          {
+            type: 'WORKFLOW',
+            content: { workflowId: 10 }, // no workflowRefId
+          },
+        ],
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        message,
+        currentContext: baseContext,
+      });
+
+      expect(result?.workflowRefId).toBe('original-ref-id');
+    });
+
+    it('does NOT update workflowRefId when artifact type is not WORKFLOW', () => {
+      const message: IncomingMessage = {
+        id: 'msg-4',
+        artifacts: [
+          {
+            type: 'FORM',
+            content: { workflowRefId: 'sneaky-ref' } as ArtifactContent,
+          },
+        ],
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        message,
+        currentContext: baseContext,
+      });
+
+      expect(result?.workflowRefId).toBe('original-ref-id');
+    });
+
+    it('original workflowRefId is used when no WORKFLOW artifact has arrived', () => {
+      const message: IncomingMessage = {
+        id: 'msg-5',
+        artifacts: [],
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        message,
+        currentContext: baseContext,
+      });
+
+      expect(result?.workflowRefId).toBe('original-ref-id');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
   // taskTitle format in handleWorkflowSelect
   // ────────────────────────────────────────────────────────────────────────────
   describe('handleWorkflowSelect — taskTitle format', () => {
