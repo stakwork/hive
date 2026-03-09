@@ -486,6 +486,7 @@ export async function createDiagramStakworkRun(input: {
       runId: run.id,
       workspaceId: input.workspaceId,
       featureId: input.featureId ?? null,
+      whiteboardId: input.whiteboardId,
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
