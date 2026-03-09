@@ -161,8 +161,9 @@ export const useWebhookHighlights = () => {
         channel.unbind(PUSHER_EVENTS.HIGHLIGHT_NODES, handleHighlightEvent)
         pusher.unsubscribe(channelName)
       }
-    } catch (error) {
-      console.error('Error subscribing to webhook highlights:', error)
+    } catch {
+      // Pusher env vars may not be configured (e.g. dev, VM, E2E)
+      return;
     }
   }, [workspace?.slug, fetchNodes, fetchSubgraph, addHighlightChunk, addNewNode, addCallout])
 }
