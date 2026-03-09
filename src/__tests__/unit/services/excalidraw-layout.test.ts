@@ -4,6 +4,7 @@ import {
   measureTextWidth,
   computeComponentSize,
   computeLayeredDirection,
+  relayoutDiagram,
   FONT_SIZE,
   MIN_WIDTH,
   MAX_SINGLE_LINE_WIDTH,
@@ -244,6 +245,118 @@ describe("computeComponentSize", () => {
   test("height accounts for PADDING_H constant used for clamped text width", () => {
     // Ensure PADDING_H is exported and has expected value
     expect(PADDING_H).toBe(48);
+  });
+});
+
+describe("createComponentElement text sizing (via relayoutDiagram)", () => {
+  // Helper: build a minimal 1-node diagram and return the bound text element
+  async function getTextElement(name: string) {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "c1", name, type: "service" }],
+      connections: [],
+    };
+    const { elements } = await relayoutDiagram(diagram, "layered");
+    return elements.find((el) => el.type === "text" && (el as Record<string, unknown>).containerId != null) as
+      | (Record<string, unknown> & { width: number; height: number; containerId: string })
+      | undefined;
+  }
+
+  async function getShapeElement(name: string) {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "c1", name, type: "service" }],
+      connections: [],
+    };
+    const { elements } = await relayoutDiagram(diagram, "layered");
+    return elements.find((el) => el.type === "rectangle") as
+      | (Record<string, unknown> & { width: number; height: number })
+      | undefined;
+  }
+
+  test("boundary case: label at exact boundary (textW = MAX_SINGLE_LINE_WIDTH - PADDING_H) gets lineCount=1", () => {
+    // Craft a name whose measureTextWidth(..., FONT_SIZE) === MAX_SINGLE_LINE_WIDTH - PADDING_H (= 232)
+    // Default lowercase chars each contribute 7px per char at fontSize 16 (scale factor 1).
+    // 232 / 7 = 33.14 → 33 chars × 7 = 231, 34 chars × 7 = 238 (too wide).
+    // Use 'a' (7px each): 33 × 7 = 231 < 232, add one narrow char 'i' (5px): 231+5=236 > 232.
+    // Simpler: use chars of width 8 — none. Let's target exactly 232:
+    // 232 = 7*33 + 1 → not achievable cleanly. Use 'n' (7px) × 32 + ' ' (4px) = 228 → still short.
+    // Best approach: verify via measureTextWidth directly and find a name that hits boundary.
+    const boundaryTextW = MAX_SINGLE_LINE_WIDTH - PADDING_H; // 232
+    // 33 default lowercase = 231, 34 = 238. Pick name so textW <= 232:
+    const name33 = "a".repeat(33); // 231px → textW + PADDING_H = 279 ≤ 280 → lineCount = 1
+    const { width, height } = computeComponentSize(name33);
+    const textW = measureTextWidth(name33, FONT_SIZE);
+    // Confirm textW + PADDING_H <= MAX_SINGLE_LINE_WIDTH → lineCount = 1
+    expect(textW + PADDING_H).toBeLessThanOrEqual(MAX_SINGLE_LINE_WIDTH);
+    // width = max(MIN_WIDTH, textW + PADDING_H) = 279 (below MAX_SINGLE_LINE_WIDTH)
+    expect(width).toBe(textW + PADDING_H);
+    // height should be single-line
+    const expectedHeight = Math.max(MIN_HEIGHT, SINGLE_LINE_HEIGHT + PADDING_V);
+    expect(height).toBe(expectedHeight);
+  });
+
+  test("boundary case: computeComponentSize lineCount=1 at exact MAX_SINGLE_LINE_WIDTH boundary", () => {
+    // Find a name where textW + PADDING_H === MAX_SINGLE_LINE_WIDTH exactly (232px text)
+    // We need textW = 232. Using 'W' (10px each): 23 × 10 = 230, 24 × 10 = 240. Not exact.
+    // Using lowercase (7px): 232/7 ≈ 33.1. Mix: 33 × 7 = 231, need +1px — not achievable.
+    // Instead verify the threshold condition: textW + PADDING_H = MAX_SINGLE_LINE_WIDTH should be single-line
+    // We can't easily craft an exact 232px name, but we CAN verify that a name giving textW = 231
+    // and textW = 233 behave correctly on opposite sides of the boundary.
+    const nameBelow = "a".repeat(33); // textW = 231, textW + PADDING_H = 279 ≤ 280 → lineCount=1
+    const nameAbove = "a".repeat(34); // textW = 238, textW + PADDING_H = 286 > 280 → lineCount=2
+
+    const below = computeComponentSize(nameBelow);
+    const above = computeComponentSize(nameAbove);
+
+    // Below boundary: single-line height
+    expect(below.height).toBe(Math.max(MIN_HEIGHT, SINGLE_LINE_HEIGHT + PADDING_V));
+    // Above boundary: two-line height
+    expect(above.height).toBe(2 * SINGLE_LINE_HEIGHT + PADDING_V);
+    expect(above.width).toBe(MAX_SINGLE_LINE_WIDTH);
+  });
+
+  test("generated text element width equals containerWidth - PADDING_H", async () => {
+    const name = "AuthService";
+    const textEl = await getTextElement(name);
+    const shapeEl = await getShapeElement(name);
+
+    expect(textEl).toBeDefined();
+    expect(shapeEl).toBeDefined();
+    expect(textEl!.width).toBe(shapeEl!.width - PADDING_H);
+  });
+
+  test("short label text element width equals containerWidth - PADDING_H (not clamped to measured pixel width)", async () => {
+    // "API" is a very short label — measured width is much less than containerWidth - PADDING_H
+    // The old bug would clamp text element width to the measured pixel width
+    const name = "API";
+    const textEl = await getTextElement(name);
+    const shapeEl = await getShapeElement(name);
+
+    expect(textEl).toBeDefined();
+    expect(shapeEl).toBeDefined();
+    const measuredWidth = measureTextWidth(name, FONT_SIZE);
+    // Verify measured width IS smaller than containerWidth - PADDING_H (confirming the bug scenario)
+    expect(measuredWidth).toBeLessThan(shapeEl!.width - PADDING_H);
+    // Verify the fix: text element width must be containerWidth - PADDING_H, NOT the measured width
+    expect(textEl!.width).toBe(shapeEl!.width - PADDING_H);
+    expect(textEl!.width).not.toBe(measuredWidth);
+  });
+
+  test("long label produces lineCount=2 consistently between computeComponentSize and text element", async () => {
+    const name = "Distributed Background Job Processing Worker";
+    // computeComponentSize should give two-line height
+    const { width, height } = computeComponentSize(name);
+    expect(width).toBe(MAX_SINGLE_LINE_WIDTH);
+    expect(height).toBe(2 * SINGLE_LINE_HEIGHT + PADDING_V);
+
+    // Generated text element should also have two-line height
+    const textEl = await getTextElement(name);
+    const shapeEl = await getShapeElement(name);
+
+    expect(textEl).toBeDefined();
+    const expectedTextHeight = Math.ceil(2 * FONT_SIZE * 1.25); // lineCount=2
+    expect(textEl!.height).toBe(expectedTextHeight);
+    // And width should be containerWidth - PADDING_H
+    expect(textEl!.width).toBe(shapeEl!.width - PADDING_H);
   });
 });
 

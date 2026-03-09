@@ -605,9 +605,9 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, FONT_SIZE);
   const shape = component.shape ?? "rounded-rect";
-  const lineCount = width >= MAX_SINGLE_LINE_WIDTH ? 2 : 1;
+  const lineCount = (textWidth + PADDING_H) > MAX_SINGLE_LINE_WIDTH ? 2 : 1;
   const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
-  const clampedTextWidth = Math.min(textWidth, width - PADDING_H);
+  const boundTextWidth = width - PADDING_H;
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
@@ -644,9 +644,9 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const text: ExcalidrawElement = {
     id: textId,
     type: "text",
-    x: component.x + width / 2 - clampedTextWidth / 2,
+    x: component.x + width / 2 - boundTextWidth / 2,
     y: component.y + height / 2 - textHeight / 2,
-    width: clampedTextWidth,
+    width: boundTextWidth,
     height: textHeight,
     angle: 0,
     strokeColor: "#1e1e1e",
