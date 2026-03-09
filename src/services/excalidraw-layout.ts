@@ -132,31 +132,53 @@ function generateSeed(): number {
 const NARROW_CHARS = new Set("iltf1.,;:!|'".split(""));
 const WIDE_CHARS = new Set("ABCDEFGHJKLNOPQRSUVXYZ".split(""));
 const VERY_WIDE_CHARS = new Set("mwMW@%".split(""));
+const PUNCTUATION_CHARS = new Set("-_/".split(""));
 
-function measureTextWidth(text: string, fontSize: number): number {
+export function measureTextWidth(text: string, fontSize: number): number {
   let width = 0;
   for (const ch of text) {
-    if (NARROW_CHARS.has(ch)) width += 5;
+    if (ch === " ") width += 4;
+    else if (PUNCTUATION_CHARS.has(ch)) width += 5;
+    else if (NARROW_CHARS.has(ch)) width += 5;
     else if (VERY_WIDE_CHARS.has(ch)) width += 12;
     else if (WIDE_CHARS.has(ch)) width += 10;
-    else width += 8;
+    else width += 7; // default lowercase / unmatched (reduced from 8)
   }
   return width * (fontSize / 16);
 }
 
-function computeComponentSize(name: string, shape?: ComponentShape | null): { width: number; height: number } {
-  const textW = measureTextWidth(name, 16);
-  const paddingH = 48;
-  const paddingV = 40;
-  const baseWidth = Math.max(120, textW + paddingH);
-  const baseHeight = Math.max(60, 25 + paddingV);
+// Shared sizing constants — exported so createComponentElement stays in sync
+export const FONT_SIZE = 16;
+export const LINE_HEIGHT = 1.25;
+export const SINGLE_LINE_HEIGHT = Math.ceil(FONT_SIZE * LINE_HEIGHT); // 20px
+export const PADDING_H = 48;
+export const PADDING_V = 32;
+export const MIN_WIDTH = 120;
+export const MAX_SINGLE_LINE_WIDTH = 280;
+export const MIN_HEIGHT = 60;
+
+export function computeComponentSize(name: string, shape?: ComponentShape | null): { width: number; height: number } {
+  const textW = measureTextWidth(name, FONT_SIZE);
+  let width: number;
+  let lineCount: number;
+
+  if (textW + PADDING_H <= MAX_SINGLE_LINE_WIDTH) {
+    width = Math.max(MIN_WIDTH, textW + PADDING_H);
+    lineCount = 1;
+  } else {
+    // Label too long for one line — wrap to two lines at max width
+    width = MAX_SINGLE_LINE_WIDTH;
+    lineCount = 2;
+  }
+
+  const height = Math.max(MIN_HEIGHT, lineCount * SINGLE_LINE_HEIGHT + PADDING_V);
 
   // Diamonds display text in the inscribed rectangle, so they need ~1.4× size
   if (shape === "diamond") {
-    return { width: Math.round(baseWidth * 1.42), height: Math.round(baseHeight * 1.42) };
+    return { width: Math.round(width * 1.42), height: Math.round(height * 1.42) };
   }
 
-  return { width: baseWidth, height: baseHeight };
+  return { width, height };
 }
 
 // --- Layer ordering for ELK constraints ---
@@ -542,8 +564,11 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const strokeColor = component.color ?? defaults.strokeColor;
   const backgroundColor = component.backgroundColor ?? defaults.backgroundColor;
   const { width, height } = component;
-  const textWidth = measureTextWidth(component.name, 16);
+  const textWidth = measureTextWidth(component.name, FONT_SIZE);
   const shape = component.shape ?? "rounded-rect";
+  const lineCount = width >= MAX_SINGLE_LINE_WIDTH ? 2 : 1;
+  const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
+  const clampedTextWidth = Math.min(textWidth, width - PADDING_H);
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
@@ -580,10 +605,10 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const text: ExcalidrawElement = {
     id: textId,
     type: "text",
-    x: component.x + width / 2 - textWidth / 2,
-    y: component.y + height / 2 - 12,
-    width: textWidth,
-    height: 25,
+    x: component.x + width / 2 - clampedTextWidth / 2,
+    y: component.y + height / 2 - textHeight / 2,
+    width: clampedTextWidth,
+    height: textHeight,
     angle: 0,
     strokeColor: "#1e1e1e",
     backgroundColor: "transparent",
