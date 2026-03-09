@@ -632,7 +632,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     ? computeWordWrapLineCount(component.name, innerWidth)
     : 1;
   const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
-  const clampedTextWidth = width >= MAX_SINGLE_LINE_WIDTH ? innerWidth : Math.min(textWidth, innerWidth);
+  const clampedTextWidth = innerWidth;
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
