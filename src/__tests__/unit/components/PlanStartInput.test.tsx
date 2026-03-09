@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // Hoist mocks so they are available before module resolution
 const { mockSpeechRecognitionState, mockUseSpeechRecognition, mockUseControlKeyHold } =
@@ -32,10 +33,14 @@ vi.mock("@/hooks/useControlKeyHold", () => ({
   useControlKeyHold: mockUseControlKeyHold,
 }));
 
+// Module-level mock with a mutable return value
+const mockUseWorkspace = vi.fn(() => ({
+  workspace: { repositories: [], slug: "current-ws" },
+  workspaces: [] as Array<{ slug: string; name: string }>,
+}));
+
 vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({
-    workspace: { repositories: [] },
-  }),
+  useWorkspace: () => mockUseWorkspace(),
 }));
 
 // Mock framer-motion to avoid animation issues in tests
@@ -51,7 +56,17 @@ vi.mock("framer-motion", () => ({
   },
 }));
 
+// jsdom does not implement scrollIntoView; cmdk calls it internally
+if (typeof window !== "undefined") {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+}
+
 import { PlanStartInput } from "@/app/w/[slug]/plan/new/components/PlanStartInput";
+
+const mentionWorkspaces = [
+  { slug: "test-ws", name: "Test WS" },
+  { slug: "other-ws", name: "Other WS" },
+];
 
 describe("PlanStartInput", () => {
   const onSubmit = vi.fn();
@@ -62,6 +77,11 @@ describe("PlanStartInput", () => {
     mockSpeechRecognitionState.transcript = "";
     mockSpeechRecognitionState.isSupported = false;
     mockUseSpeechRecognition.mockImplementation(() => ({ ...mockSpeechRecognitionState }));
+    // Reset to default (no workspaces)
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [], slug: "current-ws" },
+      workspaces: [],
+    });
   });
 
   test("send button is not inside an absolutely-positioned container", () => {
@@ -96,5 +116,66 @@ describe("PlanStartInput", () => {
 
     const textarea = screen.getByTestId("plan-start-input");
     expect(textarea.className).not.toContain("pb-16");
+  });
+
+  describe("@mention workspace dropdown", () => {
+    test("typing @test shows matching workspace in dropdown", async () => {
+      mockUseWorkspace.mockReturnValue({
+        workspace: { repositories: [], slug: "current-ws" },
+        workspaces: mentionWorkspaces,
+      });
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input");
+      await userEvent.type(textarea, "@test");
+
+      expect(screen.getByTestId("mention-item-test-ws")).toBeInTheDocument();
+    });
+
+    test("pressing Escape dismisses the mention dropdown", async () => {
+      mockUseWorkspace.mockReturnValue({
+        workspace: { repositories: [], slug: "current-ws" },
+        workspaces: mentionWorkspaces,
+      });
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input");
+      await userEvent.type(textarea, "@test");
+
+      expect(screen.getByTestId("mention-item-test-ws")).toBeInTheDocument();
+
+      fireEvent.keyDown(textarea, { key: "Escape" });
+
+      expect(screen.queryByTestId("mention-item-test-ws")).not.toBeInTheDocument();
+    });
+
+    test("clicking a mention item inserts @slug into the textarea", async () => {
+      mockUseWorkspace.mockReturnValue({
+        workspace: { repositories: [], slug: "current-ws" },
+        workspaces: mentionWorkspaces,
+      });
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "@test");
+
+      const item = screen.getByTestId("mention-item-test-ws");
+      fireEvent.click(item);
+
+      expect(textarea.value).toContain("@test-ws");
+    });
+
+    test("mention dropdown does not appear when isLoading is true", async () => {
+      mockUseWorkspace.mockReturnValue({
+        workspace: { repositories: [], slug: "current-ws" },
+        workspaces: mentionWorkspaces,
+      });
+
+      render(<PlanStartInput onSubmit={onSubmit} isLoading={true} />);
+      const textarea = screen.getByTestId("plan-start-input");
+      await userEvent.type(textarea, "@test");
+
+      expect(screen.queryByTestId("mention-item-test-ws")).not.toBeInTheDocument();
+    });
   });
 });
