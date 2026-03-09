@@ -36,6 +36,14 @@ function parseWorkflowJson(jsonString: string | null): Record<string, unknown> |
   }
 }
 
+function omitPosition(step: unknown): unknown {
+  if (step && typeof step === "object" && !Array.isArray(step)) {
+    const { position: _position, ...rest } = step as Record<string, unknown>;
+    return rest;
+  }
+  return step;
+}
+
 export function computeWorkflowDiff(
   originalJson: string | null,
   updatedJson: string | null,
@@ -66,7 +74,7 @@ export function computeWorkflowDiff(
       const stepVal = (inUpdated ? updatedTransitions[key] : origTransitions[key]) as Record<string, unknown> | null;
       const stepId = stepVal?.id as string | undefined;
       if (stepId && stepId !== key) changedStepIds.add(stepId);
-    } else if (JSON.stringify(origTransitions[key]) !== JSON.stringify(updatedTransitions[key])) {
+    } else if (JSON.stringify(omitPosition(origTransitions[key])) !== JSON.stringify(omitPosition(updatedTransitions[key]))) {
       // Modified
       changedStepIds.add(key);
       const stepVal = updatedTransitions[key] as Record<string, unknown> | null;

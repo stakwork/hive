@@ -69,6 +69,20 @@ describe("computeWorkflowDiff", () => {
       expect(changedStepIds.size).toBe(0);
     });
 
+    it("does NOT flag a step when only position has changed", () => {
+      const original = makeJson({ stepA: { name: "A", timeout: 10, position: { x: 0, y: 0 } } });
+      const updated = makeJson({ stepA: { name: "A", timeout: 10, position: { x: 100, y: 200 } } });
+      const { changedStepIds } = computeWorkflowDiff(original, updated);
+      expect(changedStepIds.size).toBe(0);
+    });
+
+    it("flags a step when position AND another field have changed", () => {
+      const original = makeJson({ stepA: { name: "A", timeout: 10, position: { x: 0, y: 0 } } });
+      const updated = makeJson({ stepA: { name: "A", timeout: 20, position: { x: 100, y: 200 } } });
+      const { changedStepIds } = computeWorkflowDiff(original, updated);
+      expect(changedStepIds.has("stepA")).toBe(true);
+    });
+
     it("includes step.id from value in changedStepIds when key differs from step.id", () => {
       const original = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 10 } });
       const updated = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 20 } });
