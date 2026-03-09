@@ -209,9 +209,8 @@ describe("computeWordWrapLineCount", () => {
   });
 
   test("very long label returns 3 or more lines", () => {
-    // 8+ short words overflow two lines at 232px inner width
     const lines = computeWordWrapLineCount(
-      "Async Distributed Background Job Worker Queue Processing Service Node Manager",
+      "Async Distributed Background Job Worker Queue Processing Service Node Manager Controller Orchestrator",
       innerWidth
     );
     expect(lines).toBeGreaterThanOrEqual(3);
@@ -251,7 +250,7 @@ describe("computeComponentSize", () => {
   });
 
   test("very long label (3+ lines) produces height greater than two-line box", () => {
-    const name = "Async Distributed Background Job Worker Queue Processing Service Node Manager";
+    const name = "Async Distributed Background Job Worker Queue Processing Service Node Manager Controller Orchestrator";
     const { height } = computeComponentSize(name);
     const twoLineHeight = 2 * SINGLE_LINE_HEIGHT + PADDING_V;
     expect(height).toBeGreaterThan(twoLineHeight);
