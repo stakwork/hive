@@ -130,6 +130,12 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
+    // Allow API token auth to bypass landing page (service-to-service calls)
+    // The route handler is responsible for validating the token value itself
+    if (isApiRoute && request.headers.get("x-api-token")) {
+      return continueRequest(requestHeaders, "api-token");
+    }
+
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
       const token = await getToken({
@@ -161,10 +167,6 @@ export async function middleware(request: NextRequest) {
       secureCookie: shouldUseSecureCookie(request),
     });
     if (!token) {
-      // Allow API token auth to pass through to route handlers
-      if (isApiRoute && request.headers.get("x-api-token")) {
-        return continueRequest(requestHeaders, "webhook");
-      }
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
       }
