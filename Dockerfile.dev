@@ -6,8 +6,9 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and prisma schema (needed for postinstall)
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
 
 # Install all dependencies (including dev dependencies)
 RUN npm ci
