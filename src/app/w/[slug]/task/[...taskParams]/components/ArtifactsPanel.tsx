@@ -21,7 +21,7 @@ const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
 
 // Tabs that should auto-switch when they first become available,
 // overriding whatever tab is currently active (e.g. ephemeral WORKFLOW).
-const PRIORITY_TABS: ArtifactType[] = ["IDE"];
+const PRIORITY_TABS: ArtifactType[] = ["BROWSER"];
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
