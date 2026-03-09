@@ -3,6 +3,7 @@ import {
   sanitiseDiagram,
   measureTextWidth,
   computeComponentSize,
+  computeWordWrapLineCount,
   computeLayeredDirection,
   FONT_SIZE,
   MIN_WIDTH,
@@ -194,6 +195,34 @@ describe("measureTextWidth", () => {
   });
 });
 
+describe("computeWordWrapLineCount", () => {
+  const innerWidth = MAX_SINGLE_LINE_WIDTH - PADDING_H; // 232px
+
+  test("short label that fits on one line returns 1", () => {
+    expect(computeWordWrapLineCount("API", innerWidth)).toBe(1);
+  });
+
+  test("label that wraps to two lines returns 2", () => {
+    // "Distributed Background Job Processing Worker" measured to need exactly 2 lines
+    const lines = computeWordWrapLineCount("Distributed Background Job Processing Worker", innerWidth);
+    expect(lines).toBe(2);
+  });
+
+  test("very long label returns 3 or more lines", () => {
+    // 8+ short words overflow two lines at 232px inner width
+    const lines = computeWordWrapLineCount(
+      "Async Distributed Background Job Worker Queue Processing Service Node Manager",
+      innerWidth
+    );
+    expect(lines).toBeGreaterThanOrEqual(3);
+  });
+
+  test("single word always stays on one line regardless of length", () => {
+    // A word with no spaces can never be broken across lines
+    expect(computeWordWrapLineCount("SingleWordComponent", innerWidth)).toBe(1);
+  });
+});
+
 describe("computeComponentSize", () => {
   test("short label (API) produces node at MIN_WIDTH × MIN_HEIGHT", () => {
     const { width, height } = computeComponentSize("API");
@@ -210,17 +239,25 @@ describe("computeComponentSize", () => {
     expect(height).toBe(expectedHeight);
   });
 
-  test("long label (Distributed Background Job Processing Worker) produces MAX_SINGLE_LINE_WIDTH wide two-line box", () => {
-    const { width, height } = computeComponentSize("Distributed Background Job Processing Worker");
+  test("long label (Distributed Background Job Processing Worker) produces MAX_SINGLE_LINE_WIDTH wide dynamic-line box", () => {
+    const name = "Distributed Background Job Processing Worker";
+    const { width, height } = computeComponentSize(name);
     expect(width).toBe(MAX_SINGLE_LINE_WIDTH);
-    // Two-line height
-    const twoLineHeight = 2 * SINGLE_LINE_HEIGHT + PADDING_V;
-    expect(height).toBe(twoLineHeight);
+    // Height driven by actual word-wrap line count, not hard-coded 2
+    const lineCount = computeWordWrapLineCount(name, MAX_SINGLE_LINE_WIDTH - PADDING_H);
+    const expectedHeight = Math.max(MIN_HEIGHT, lineCount * SINGLE_LINE_HEIGHT + PADDING_V);
+    expect(height).toBe(expectedHeight);
     expect(height).toBeGreaterThan(MIN_HEIGHT);
   });
 
+  test("very long label (3+ lines) produces height greater than two-line box", () => {
+    const name = "Async Distributed Background Job Worker Queue Processing Service Node Manager";
+    const { height } = computeComponentSize(name);
+    const twoLineHeight = 2 * SINGLE_LINE_HEIGHT + PADDING_V;
+    expect(height).toBeGreaterThan(twoLineHeight);
+  });
+
   test("diamond shape applies 1.42× multiplier to both width and height", () => {
-    const base = computeComponentSize("API"); // MIN_WIDTH × MIN_HEIGHT
     const diamond = computeComponentSize("API", "diamond");
     expect(diamond.width).toBe(Math.round(MIN_WIDTH * 1.42));
     expect(diamond.height).toBe(Math.round(MIN_HEIGHT * 1.42));
