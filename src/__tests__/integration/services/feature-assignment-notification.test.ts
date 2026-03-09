@@ -94,7 +94,11 @@ describe("FEATURE_ASSIGNED notification", () => {
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
+    expect(sendDirectMessage).not.toHaveBeenCalled();
   }, 10000);
 
   it("does NOT create a notification when self-assigning", async () => {
