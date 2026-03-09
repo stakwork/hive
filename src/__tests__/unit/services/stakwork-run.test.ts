@@ -3637,6 +3637,7 @@ describe("Stakwork Run Service", () => {
             set_var: expect.objectContaining({
               attributes: expect.objectContaining({
                 vars: expect.objectContaining({
+                  whiteboardId: "wb-1",
                   swarmUrl: "https://swarm.example.com",
                   swarmSecretAlias: "my-secret-alias",
                   poolName: "my-pool",
