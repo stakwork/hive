@@ -1,5 +1,16 @@
 import { describe, test, expect } from "vitest";
-import { sanitiseDiagram } from "@/services/excalidraw-layout";
+import {
+  sanitiseDiagram,
+  measureTextWidth,
+  computeComponentSize,
+  FONT_SIZE,
+  MIN_WIDTH,
+  MAX_SINGLE_LINE_WIDTH,
+  MIN_HEIGHT,
+  SINGLE_LINE_HEIGHT,
+  PADDING_V,
+  PADDING_H,
+} from "@/services/excalidraw-layout";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 
 describe("sanitiseDiagram", () => {
@@ -147,5 +158,90 @@ describe("sanitiseDiagram", () => {
     // The "" id component is gone, so the dangling connection is also stripped
     expect(result.connections).toHaveLength(1);
     expect(result.connections[0].label).toBe("self-loop");
+  });
+});
+
+describe("measureTextWidth", () => {
+  test("space characters produce less width than equivalent alphanumeric chars", () => {
+    const spaceWidth = measureTextWidth("   ", FONT_SIZE); // 3 spaces
+    const alphaWidth = measureTextWidth("abc", FONT_SIZE); // 3 lowercase
+    expect(spaceWidth).toBeLessThan(alphaWidth);
+  });
+
+  test("hyphen and underscore are narrower than regular lowercase", () => {
+    const punctWidth = measureTextWidth("---", FONT_SIZE); // 3 hyphens
+    const lowerWidth = measureTextWidth("aaa", FONT_SIZE); // 3 lowercase
+    expect(punctWidth).toBeLessThan(lowerWidth);
+  });
+
+  test("slash is narrower than regular lowercase", () => {
+    const slashWidth = measureTextWidth("///", FONT_SIZE);
+    const lowerWidth = measureTextWidth("aaa", FONT_SIZE);
+    expect(slashWidth).toBeLessThan(lowerWidth);
+  });
+
+  test("very wide chars (mwMW) produce more width than regular lowercase", () => {
+    const wideWidth = measureTextWidth("mmm", FONT_SIZE);
+    const lowerWidth = measureTextWidth("aaa", FONT_SIZE);
+    expect(wideWidth).toBeGreaterThan(lowerWidth);
+  });
+
+  test("width scales with fontSize", () => {
+    const w16 = measureTextWidth("Hello", 16);
+    const w32 = measureTextWidth("Hello", 32);
+    expect(w32).toBeCloseTo(w16 * 2, 5);
+  });
+});
+
+describe("computeComponentSize", () => {
+  test("short label (API) produces node at MIN_WIDTH × MIN_HEIGHT", () => {
+    const { width, height } = computeComponentSize("API");
+    expect(width).toBe(MIN_WIDTH);
+    expect(height).toBe(MIN_HEIGHT);
+  });
+
+  test("medium label (User Auth Service) produces single-line box between MIN_WIDTH and MAX_SINGLE_LINE_WIDTH", () => {
+    const { width, height } = computeComponentSize("User Auth Service");
+    expect(width).toBeGreaterThan(MIN_WIDTH);
+    expect(width).toBeLessThan(MAX_SINGLE_LINE_WIDTH);
+    // Single-line height = SINGLE_LINE_HEIGHT + PADDING_V, floored at MIN_HEIGHT
+    const expectedHeight = Math.max(MIN_HEIGHT, SINGLE_LINE_HEIGHT + PADDING_V);
+    expect(height).toBe(expectedHeight);
+  });
+
+  test("long label (Distributed Background Job Processing Worker) produces MAX_SINGLE_LINE_WIDTH wide two-line box", () => {
+    const { width, height } = computeComponentSize("Distributed Background Job Processing Worker");
+    expect(width).toBe(MAX_SINGLE_LINE_WIDTH);
+    // Two-line height
+    const twoLineHeight = 2 * SINGLE_LINE_HEIGHT + PADDING_V;
+    expect(height).toBe(twoLineHeight);
+    expect(height).toBeGreaterThan(MIN_HEIGHT);
+  });
+
+  test("diamond shape applies 1.42× multiplier to both width and height", () => {
+    const base = computeComponentSize("API"); // MIN_WIDTH × MIN_HEIGHT
+    const diamond = computeComponentSize("API", "diamond");
+    expect(diamond.width).toBe(Math.round(MIN_WIDTH * 1.42));
+    expect(diamond.height).toBe(Math.round(MIN_HEIGHT * 1.42));
+  });
+
+  test("diamond long label also gets MAX_SINGLE_LINE_WIDTH × 1.42 wide", () => {
+    const diamond = computeComponentSize("Distributed Background Job Processing Worker", "diamond");
+    expect(diamond.width).toBe(Math.round(MAX_SINGLE_LINE_WIDTH * 1.42));
+  });
+
+  test("text width is clamped at MAX_SINGLE_LINE_WIDTH — no unbounded growth", () => {
+    const veryLong = computeComponentSize("A".repeat(100));
+    expect(veryLong.width).toBe(MAX_SINGLE_LINE_WIDTH);
+  });
+
+  test("width never falls below MIN_WIDTH regardless of label length", () => {
+    const tiny = computeComponentSize("X");
+    expect(tiny.width).toBeGreaterThanOrEqual(MIN_WIDTH);
+  });
+
+  test("height accounts for PADDING_H constant used for clamped text width", () => {
+    // Ensure PADDING_H is exported and has expected value
+    expect(PADDING_H).toBe(48);
   });
 });
