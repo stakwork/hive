@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { createSphinxToken } from "@/lib/auth/sphinx-token";
+import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -217,6 +218,15 @@ export async function POST(request: NextRequest) {
       logger.error("Failed to delete used challenge", "SPHINX_AUTH", { 
         error: deleteError, 
         challenge 
+      });
+    }
+
+    // Send welcome DM to complete the key exchange early
+    if (routeHint && isDirectMessageConfigured()) {
+      sendDirectMessage(pubkey, "Welcome to Hive!", {
+        routeHint,
+      }).catch((err) => {
+        logger.error("Failed to send welcome DM", "SPHINX_AUTH", { error: err, userId });
       });
     }
 
