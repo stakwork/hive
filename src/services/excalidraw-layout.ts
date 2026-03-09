@@ -134,6 +134,16 @@ const WIDE_CHARS = new Set("ABCDEFGHJKLNOPQRSUVXYZ".split(""));
 const VERY_WIDE_CHARS = new Set("mwMW@%".split(""));
 const PUNCTUATION_CHARS = new Set("-_/".split(""));
 
+// Shared sizing constants — exported so createComponentElement stays in sync
+export const FONT_SIZE = 16;
+export const LINE_HEIGHT = 1.25;
+export const SINGLE_LINE_HEIGHT = Math.ceil(FONT_SIZE * LINE_HEIGHT); // 20px
+export const PADDING_H = 48;
+export const PADDING_V = 32;
+export const MIN_WIDTH = 120;
+export const MAX_SINGLE_LINE_WIDTH = 280;
+export const MIN_HEIGHT = 60;
+
 export function measureTextWidth(text: string, fontSize: number): number {
   let width = 0;
   for (const ch of text) {
@@ -147,15 +157,26 @@ export function measureTextWidth(text: string, fontSize: number): number {
   return width * (fontSize / 16);
 }
 
-// Shared sizing constants — exported so createComponentElement stays in sync
-export const FONT_SIZE = 16;
-export const LINE_HEIGHT = 1.25;
-export const SINGLE_LINE_HEIGHT = Math.ceil(FONT_SIZE * LINE_HEIGHT); // 20px
-export const PADDING_H = 48;
-export const PADDING_V = 32;
-export const MIN_WIDTH = 120;
-export const MAX_SINGLE_LINE_WIDTH = 280;
-export const MIN_HEIGHT = 60;
+/**
+ * Compute how many lines a label needs when word-wrapped at `availableWidth`.
+ * Uses the same character-width heuristic as `measureTextWidth`.
+ */
+export function computeWordWrapLineCount(name: string, availableWidth: number): number {
+  const words = name.split(" ");
+  let lines = 1;
+  let lineWidth = 0;
+  for (const word of words) {
+    const wordWidth = measureTextWidth(word, FONT_SIZE);
+    const gap = lineWidth === 0 ? 0 : measureTextWidth(" ", FONT_SIZE);
+    if (lineWidth + gap + wordWidth > availableWidth) {
+      lines++;
+      lineWidth = wordWidth;
+    } else {
+      lineWidth += gap + wordWidth;
+    }
+  }
+  return lines;
+}
 
 export function computeComponentSize(name: string, shape?: ComponentShape | null): { width: number; height: number } {
   const textW = measureTextWidth(name, FONT_SIZE);
@@ -166,9 +187,10 @@ export function computeComponentSize(name: string, shape?: ComponentShape | null
     width = Math.max(MIN_WIDTH, textW + PADDING_H);
     lineCount = 1;
   } else {
-    // Label too long for one line — wrap to two lines at max width
+    // Label too long for one line — word-wrap at inner width to get true line count
+    const innerWidth = MAX_SINGLE_LINE_WIDTH - PADDING_H;
     width = MAX_SINGLE_LINE_WIDTH;
-    lineCount = 2;
+    lineCount = computeWordWrapLineCount(name, innerWidth);
   }
 
   const height = Math.max(MIN_HEIGHT, lineCount * SINGLE_LINE_HEIGHT + PADDING_V);
@@ -605,9 +627,12 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, FONT_SIZE);
   const shape = component.shape ?? "rounded-rect";
-  const lineCount = (textWidth + PADDING_H) > MAX_SINGLE_LINE_WIDTH ? 2 : 1;
+  const innerWidth = width - PADDING_H;
+  const lineCount = width >= MAX_SINGLE_LINE_WIDTH
+    ? computeWordWrapLineCount(component.name, innerWidth)
+    : 1;
   const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
-  const boundTextWidth = width - PADDING_H;
+  const clampedTextWidth = width >= MAX_SINGLE_LINE_WIDTH ? innerWidth : Math.min(textWidth, innerWidth);
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
@@ -644,9 +669,9 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const text: ExcalidrawElement = {
     id: textId,
     type: "text",
-    x: component.x + width / 2 - boundTextWidth / 2,
+    x: component.x + width / 2 - clampedTextWidth / 2,
     y: component.y + height / 2 - textHeight / 2,
-    width: boundTextWidth,
+    width: clampedTextWidth,
     height: textHeight,
     angle: 0,
     strokeColor: "#1e1e1e",
