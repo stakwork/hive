@@ -141,7 +141,7 @@ export const SINGLE_LINE_HEIGHT = Math.ceil(FONT_SIZE * LINE_HEIGHT); // 20px
 export const PADDING_H = 48;
 export const PADDING_V = 32;
 export const MIN_WIDTH = 120;
-export const MAX_SINGLE_LINE_WIDTH = 280;
+export const MAX_SINGLE_LINE_WIDTH = 400;
 export const MIN_HEIGHT = 60;
 
 export function measureTextWidth(text: string, fontSize: number): number {
@@ -150,9 +150,9 @@ export function measureTextWidth(text: string, fontSize: number): number {
     if (ch === " ") width += 4;
     else if (PUNCTUATION_CHARS.has(ch)) width += 5;
     else if (NARROW_CHARS.has(ch)) width += 5;
-    else if (VERY_WIDE_CHARS.has(ch)) width += 12;
-    else if (WIDE_CHARS.has(ch)) width += 10;
-    else width += 7; // default lowercase / unmatched (reduced from 8)
+    else if (VERY_WIDE_CHARS.has(ch)) width += 13;
+    else if (WIDE_CHARS.has(ch)) width += 11;
+    else width += 9; // default lowercase / unmatched — tuned for Helvetica 16px
   }
   return width * (fontSize / 16);
 }
@@ -627,12 +627,15 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const { width, height } = component;
   const textWidth = measureTextWidth(component.name, FONT_SIZE);
   const shape = component.shape ?? "rounded-rect";
-  const innerWidth = width - PADDING_H;
+  // Excalidraw uses BOUND_TEXT_PADDING = 5 per side for bound text in containers.
+  // Match that so the initial text element width equals what autoResize would compute.
+  const BOUND_TEXT_PADDING = 5;
+  const textAreaWidth = width - BOUND_TEXT_PADDING * 2;
   const lineCount = width >= MAX_SINGLE_LINE_WIDTH
-    ? computeWordWrapLineCount(component.name, innerWidth)
+    ? computeWordWrapLineCount(component.name, textAreaWidth)
     : 1;
   const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
-  const clampedTextWidth = width >= MAX_SINGLE_LINE_WIDTH ? innerWidth : Math.min(textWidth, innerWidth);
+  const clampedTextWidth = width >= MAX_SINGLE_LINE_WIDTH ? textAreaWidth : Math.min(textWidth, textAreaWidth);
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
