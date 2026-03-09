@@ -191,6 +191,7 @@ export default function WhiteboardsPage() {
                     size="icon"
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       setDeleteId(wb.id);
                     }}
