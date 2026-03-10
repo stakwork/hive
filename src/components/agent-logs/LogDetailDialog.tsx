@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, User, Bot, Wrench, Code2 } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, Share2 } from "lucide-react";
+import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
 
@@ -376,6 +377,16 @@ export function LogDetailDialog({
         </div>
 
         <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await navigator.clipboard.writeText(window.location.href);
+              toast.success("Link copied to clipboard!");
+            }}
+          >
+            <Share2 className="w-4 h-4 mr-2" />
+            Share
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
