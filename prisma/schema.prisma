@@ -60,6 +60,7 @@ model User {
   sphinxAlias              String?                 @map("sphinx_alias")
   voiceSignatureKey        String?                 @map("voice_signature_key")
   sphinxRouteHint          String?                 @map("sphinx_route_hint")
+  iosDeviceToken           String?                 @map("ios_device_token")
   accounts                 Account[]
   chatMessages             ChatMessage[]           @relation("ChatMessageSender")
   assignedFeatures         Feature[]               @relation("FeatureAssignee")
