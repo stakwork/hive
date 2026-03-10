@@ -29,6 +29,7 @@ export async function repoAgent(
     toolsConfig?: unknown;
     jsonSchema?: Record<string, unknown>;
     model?: string;
+    skills?: Record<string, boolean>;
   }
 ): Promise<Record<string, string>> {
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
