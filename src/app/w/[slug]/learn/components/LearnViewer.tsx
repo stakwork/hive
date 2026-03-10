@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { LearnSidebar } from "./LearnSidebar";
 import { LearnDocViewer } from "./LearnDocViewer";
+import { DiagramViewer } from "./DiagramViewer";
+import { CreateDiagramModal } from "./CreateDiagramModal";
 import { toast } from "sonner";
 
 interface Doc {
@@ -16,12 +18,21 @@ interface Concept {
   content?: string;
 }
 
+interface Diagram {
+  id: string;
+  name: string;
+  body: string;
+  description?: string | null;
+}
+
 interface ActiveItem {
-  type: "doc" | "concept";
+  type: "doc" | "concept" | "diagram";
   repoName?: string;
   id?: string;
   name: string;
   content: string;
+  body?: string;
+  description?: string | null;
 }
 
 interface LearnViewerProps {
@@ -31,15 +42,32 @@ interface LearnViewerProps {
 export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [activeItem, setActiveItem] = useState<ActiveItem | null>(null);
   const [isDocsLoading, setIsDocsLoading] = useState(true);
   const [isConceptsLoading, setIsConceptsLoading] = useState(true);
+  const [isDiagramsLoading, setIsDiagramsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreateDiagramOpen, setIsCreateDiagramOpen] = useState(false);
+
+  const fetchDiagrams = async () => {
+    try {
+      const response = await fetch(`/api/learnings/diagrams?workspace=${workspaceSlug}`);
+      if (response.ok) {
+        const data = await response.json();
+        setDiagrams(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch diagrams:", error);
+    } finally {
+      setIsDiagramsLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch docs and concepts in parallel
+        // Fetch docs, concepts, and diagrams in parallel
         const [docsResponse, conceptsResponse] = await Promise.all([
           fetch(`/api/learnings/docs?workspace=${workspaceSlug}`),
           fetch(`/api/learnings/features?workspace=${workspaceSlug}`),
@@ -47,7 +75,6 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
         if (docsResponse.ok) {
           const docsData = await docsResponse.json();
-          // Parse docs response format: [{ "repo/name": { documentation: string } }]
           const parsedDocs: Doc[] = [];
           if (Array.isArray(docsData)) {
             docsData.forEach((item) => {
@@ -91,9 +118,13 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         setIsConceptsLoading(false);
         toast.error("Failed to load documentation and concepts");
       }
+
+      // Fetch diagrams separately so failure doesn't block docs/concepts
+      await fetchDiagrams();
     }
 
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug]);
 
   const handleDocClick = (repoName: string, content: string) => {
@@ -106,15 +137,8 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   };
 
   const handleConceptClick = async (id: string, name: string, content: string) => {
-    // Show immediately with whatever content we have
-    setActiveItem({
-      type: "concept",
-      id,
-      name,
-      content,
-    });
+    setActiveItem({ type: "concept", id, name, content });
 
-    // If no content cached, fetch the full documentation
     if (!content) {
       try {
         const response = await fetch(
@@ -123,13 +147,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         if (response.ok) {
           const data = await response.json();
           const documentation = data?.feature?.documentation || "";
-          setActiveItem({
-            type: "concept",
-            id,
-            name,
-            content: documentation,
-          });
-          // Cache it in local state so we don't re-fetch
+          setActiveItem({ type: "concept", id, name, content: documentation });
           setConcepts((prev) =>
             prev.map((c) => (c.id === id ? { ...c, content: documentation } : c))
           );
@@ -139,6 +157,20 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         toast.error("Failed to load concept documentation");
       }
     }
+  };
+
+  const handleDiagramClick = (
+    id: string,
+    name: string,
+    body: string,
+    description?: string | null
+  ) => {
+    setActiveItem({ type: "diagram", id, name, content: "", body, description });
+  };
+
+  const handleDiagramCreated = async () => {
+    setIsDiagramsLoading(true);
+    await fetchDiagrams();
   };
 
   const handleSave = async (content: string) => {
@@ -157,20 +189,14 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
           }),
         });
 
-        if (!response.ok) {
-          throw new Error("Failed to save documentation");
-        }
+        if (!response.ok) throw new Error("Failed to save documentation");
 
-        // Update local state
         setDocs((prev) =>
           prev.map((doc) =>
-            doc.repoName === activeItem.repoName
-              ? { ...doc, content }
-              : doc
+            doc.repoName === activeItem.repoName ? { ...doc, content } : doc
           )
         );
         setActiveItem({ ...activeItem, content });
-
         toast.success("Documentation saved successfully");
       } else if (activeItem.type === "concept" && activeItem.id) {
         const response = await fetch(
@@ -178,27 +204,18 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              documentation: content,
-              workspace: workspaceSlug,
-            }),
+            body: JSON.stringify({ documentation: content, workspace: workspaceSlug }),
           }
         );
 
-        if (!response.ok) {
-          throw new Error("Failed to save concept documentation");
-        }
+        if (!response.ok) throw new Error("Failed to save concept documentation");
 
-        // Update local state
         setConcepts((prev) =>
           prev.map((concept) =>
-            concept.id === activeItem.id
-              ? { ...concept, content }
-              : concept
+            concept.id === activeItem.id ? { ...concept, content } : concept
           )
         );
         setActiveItem({ ...activeItem, content });
-
         toast.success("Concept documentation saved successfully");
       }
     } catch (error) {
@@ -211,31 +228,50 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
   const getActiveItemKey = () => {
     if (!activeItem) return null;
-    return activeItem.type === "doc"
-      ? `doc-${activeItem.repoName}`
-      : `concept-${activeItem.id}`;
+    if (activeItem.type === "doc") return `doc-${activeItem.repoName}`;
+    if (activeItem.type === "concept") return `concept-${activeItem.id}`;
+    return `diagram-${activeItem.id}`;
   };
 
   return (
     <div className="flex h-full w-full">
       {/* Main content area */}
       <div className="flex-1 pr-80">
-        <LearnDocViewer
-          activeItem={activeItem}
-          onSave={handleSave}
-          isSaving={isSaving}
-        />
+        {activeItem?.type === "diagram" ? (
+          <DiagramViewer
+            name={activeItem.name}
+            body={activeItem.body ?? ""}
+            description={activeItem.description}
+          />
+        ) : (
+          <LearnDocViewer
+            activeItem={activeItem as Parameters<typeof LearnDocViewer>[0]["activeItem"]}
+            onSave={handleSave}
+            isSaving={isSaving}
+          />
+        )}
       </div>
 
       {/* Right sidebar */}
       <LearnSidebar
         docs={docs}
         concepts={concepts}
+        diagrams={diagrams}
         activeItemKey={getActiveItemKey()}
         onDocClick={handleDocClick}
         onConceptClick={handleConceptClick}
+        onDiagramClick={handleDiagramClick}
+        onCreateDiagram={() => setIsCreateDiagramOpen(true)}
         isDocsLoading={isDocsLoading}
         isConceptsLoading={isConceptsLoading}
+        isDiagramsLoading={isDiagramsLoading}
+      />
+
+      <CreateDiagramModal
+        isOpen={isCreateDiagramOpen}
+        onClose={() => setIsCreateDiagramOpen(false)}
+        workspaceSlug={workspaceSlug}
+        onDiagramCreated={handleDiagramCreated}
       />
     </div>
   );

@@ -50,6 +50,7 @@
     "@excalidraw/excalidraw": "^0.18.0",
     "@google/generative-ai": "^0.21.0",
     "@hookform/resolvers": "^5.2.1",
+    "@mermaid-js/layout-elk": "^0.2.1",
     "@noble/secp256k1": "^2.3.0",
     "@octokit/rest": "^22.0.1",
     "@prisma/client": "^6.11.0",
