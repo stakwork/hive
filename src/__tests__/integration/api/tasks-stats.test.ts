@@ -12,7 +12,7 @@ import type { User, Workspace } from "@prisma/client";
 
 // Test Helpers
 const TestHelpers = {
-  expectSuccess: async (response: Response, expected: { total: number; inProgress: number; waitingForInput: number }) => {
+  expectSuccess: async (response: Response, expected: { total: number; inProgress: number; waitingForInput: number; queuedCount?: number }) => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.success).toBe(true);
@@ -72,6 +72,31 @@ async function addWorkspaceMember(workspaceId: string, userId: string, role: str
       workspaceId,
       userId,
       role: role as any,
+    },
+  });
+}
+
+async function createCoordinatorTask(
+  workspaceId: string,
+  userId: string,
+  options?: {
+    deleted?: boolean;
+    taskStatus?: "TODO" | "IN_PROGRESS" | "DONE";
+    systemAssigneeType?: string;
+  },
+) {
+  return db.task.create({
+    data: {
+      title: `Coordinator Task ${generateUniqueId("ctask")}`,
+      description: "Coordinator task description",
+      workspaceId,
+      status: (options?.taskStatus ?? "TODO") as any,
+      priority: "MEDIUM",
+      workflowStatus: "PENDING",
+      deleted: options?.deleted || false,
+      systemAssigneeType: (options?.systemAssigneeType ?? "TASK_COORDINATOR") as any,
+      createdById: userId,
+      updatedById: userId,
     },
   });
 }
@@ -490,9 +515,11 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       expect(data.data).toHaveProperty("total");
       expect(data.data).toHaveProperty("inProgress");
       expect(data.data).toHaveProperty("waitingForInput");
+      expect(data.data).toHaveProperty("queuedCount");
       expect(typeof data.data.total).toBe("number");
       expect(typeof data.data.inProgress).toBe("number");
       expect(typeof data.data.waitingForInput).toBe("number");
+      expect(typeof data.data.queuedCount).toBe("number");
     });
 
     test("should return correct status code and headers", async () => {
@@ -550,7 +577,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       );
       const response = await GET(request);
 
-      await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
+      await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0, queuedCount: 0 });
     });
 
     test("should handle workspace with all tasks in same status", async () => {
@@ -564,7 +591,80 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       );
       const response = await GET(request);
 
-      await TestHelpers.expectSuccess(response, { total: 3, inProgress: 0, waitingForInput: 0 });
+      await TestHelpers.expectSuccess(response, { total: 3, inProgress: 0, waitingForInput: 0, queuedCount: 0 });
+    });
+  });
+
+  describe("Task Counting - Queued (queuedCount)", () => {
+    test("returns queuedCount: 0 when no coordinator-queued tasks exist", async () => {
+      // Only regular TODO tasks, no TASK_COORDINATOR assignment
+      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
+
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
+        testUser
+      );
+      const response = await GET(request);
+
+      await TestHelpers.expectSuccess(response, { total: 1, inProgress: 0, waitingForInput: 0, queuedCount: 0 });
+    });
+
+    test("returns correct queuedCount when TODO + TASK_COORDINATOR tasks exist", async () => {
+      await createCoordinatorTask(testWorkspace.id, testUser.id);
+      await createCoordinatorTask(testWorkspace.id, testUser.id);
+      await createCoordinatorTask(testWorkspace.id, testUser.id);
+      // Regular task — should not be counted
+      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
+
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
+        testUser
+      );
+      const response = await GET(request);
+
+      await TestHelpers.expectSuccess(response, { total: 4, inProgress: 0, waitingForInput: 0, queuedCount: 3 });
+    });
+
+    test("does not count deleted coordinator tasks in queuedCount", async () => {
+      await createCoordinatorTask(testWorkspace.id, testUser.id);
+      await createCoordinatorTask(testWorkspace.id, testUser.id, { deleted: true });
+
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
+        testUser
+      );
+      const response = await GET(request);
+
+      await TestHelpers.expectSuccess(response, { total: 1, inProgress: 0, waitingForInput: 0, queuedCount: 1 });
+    });
+
+    test("does not count non-TODO coordinator tasks in queuedCount", async () => {
+      await createCoordinatorTask(testWorkspace.id, testUser.id, { taskStatus: "TODO" });
+      await createCoordinatorTask(testWorkspace.id, testUser.id, { taskStatus: "IN_PROGRESS" });
+      await createCoordinatorTask(testWorkspace.id, testUser.id, { taskStatus: "DONE" });
+
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
+        testUser
+      );
+      const response = await GET(request);
+
+      await TestHelpers.expectSuccess(response, { total: 3, inProgress: 0, waitingForInput: 0, queuedCount: 1 });
+    });
+
+    test("does not count non-TASK_COORDINATOR TODO tasks in queuedCount", async () => {
+      // TODO task with a different system assignee type
+      await createCoordinatorTask(testWorkspace.id, testUser.id, { systemAssigneeType: "BOUNTY_HUNTER" });
+      // Genuine coordinator task
+      await createCoordinatorTask(testWorkspace.id, testUser.id);
+
+      const request = createAuthenticatedGetRequest(
+        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
+        testUser
+      );
+      const response = await GET(request);
+
+      await TestHelpers.expectSuccess(response, { total: 2, inProgress: 0, waitingForInput: 0, queuedCount: 1 });
     });
   });
 });

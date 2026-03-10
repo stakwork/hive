@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       totalCount,
       inProgressCount,
       waitingForInputCount,
+      queuedCount,
     ] = await Promise.all([
       // Total tasks
       db.task.count({
@@ -69,6 +70,15 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
+      // Coordinator-queued TODO tasks
+      db.task.count({
+        where: {
+          workspaceId,
+          deleted: false,
+          status: "TODO",
+          systemAssigneeType: "TASK_COORDINATOR",
+        },
+      }),
     ]);
 
     return NextResponse.json(
@@ -78,6 +88,7 @@ export async function GET(request: NextRequest) {
           total: totalCount,
           inProgress: inProgressCount,
           waitingForInput: waitingForInputCount,
+          queuedCount,
         },
       },
       { status: 200 },
