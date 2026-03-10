@@ -223,7 +223,7 @@ export function BugReportSlideout({
             throw new Error(error.message || "Failed to get upload URL");
           }
 
-          const { presignedUrl, publicUrl } = await uploadResponse.json();
+          const { presignedUrl, s3Path } = await uploadResponse.json();
 
           // Upload file to S3
           const s3Response = await fetch(presignedUrl, {
@@ -243,7 +243,7 @@ export function BugReportSlideout({
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              brief: `![Bug Screenshot](${publicUrl})\n\n**Reported from:** ${currentUrl}\n\n${description}`,
+              brief: `![Bug Screenshot](/api/features/${feature.id}/image?path=${encodeURIComponent(s3Path)})\n\n**Reported from:** ${currentUrl}\n\n${description}`,
             }),
           });
 
