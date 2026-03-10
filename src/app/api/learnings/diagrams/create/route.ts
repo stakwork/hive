@@ -6,14 +6,10 @@ import { repoAgent } from "@/lib/ai/askTools";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { extractMermaidBody } from "@/lib/ai/utils";
 
 const MERMAID_INSTRUCTION =
   "\n\nReturn a mermaid diagram surrounded by backticks like ```mermaid ... ```. Only return the mermaid block, no other commentary.";
-
-export function extractMermaidBody(text: string): string | null {
-  const match = /```mermaid\s*([\s\S]*?)```/.exec(text);
-  return match ? match[1].trim() : null;
-}
 
 export async function POST(request: NextRequest) {
   try {

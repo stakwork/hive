@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractMermaidBody } from "@/app/api/learnings/diagrams/create/route";
+import { extractMermaidBody } from "@/lib/ai/utils";
 
 describe("extractMermaidBody", () => {
   it("extracts the body from a valid fenced mermaid block", () => {
