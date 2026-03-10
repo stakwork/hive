@@ -84,6 +84,15 @@ export async function POST(
       select: { id: true, sphinxAlias: true },
     });
 
+    // Validate that every requested invitee exists and has a Sphinx alias
+    const missingAlias = invitees.find((u) => !u.sphinxAlias);
+    if (missingAlias || invitees.length < ids.length) {
+      return NextResponse.json(
+        { error: "One or more invitees does not have a Sphinx alias configured" },
+        { status: 400 }
+      );
+    }
+
     // Decrypt bot secret and build sphinxConfig once
     const encryptionService = EncryptionService.getInstance();
     const decryptedSecret = encryptionService.decryptField("sphinxBotSecret", workspace.sphinxBotSecret);
@@ -101,11 +110,6 @@ export async function POST(
     let failed = 0;
 
     for (const invitee of invitees) {
-      if (!invitee.sphinxAlias) {
-        failed++;
-        continue;
-      }
-
       const message = `@${invitee.sphinxAlias} — ${inviterName} has invited you to collaborate on '${feature.title}': ${planUrl}`;
       const result = await sendToSphinx(sphinxConfig, message);
 
@@ -115,9 +119,6 @@ export async function POST(
         failed++;
       }
     }
-
-    // Count users not found in DB as failed
-    failed += ids.length - invitees.length;
 
     if (sent === 0) {
       return NextResponse.json(
