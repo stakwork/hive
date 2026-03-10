@@ -1,11 +1,13 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/auth/device-token/route";
 
 // --- mocks -----------------------------------------------------------
 
-vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
-vi.mock("@/lib/auth/nextauth", () => ({ authOptions: {} }));
+vi.mock("@/lib/middleware/utils", () => ({
+  getMiddlewareContext: vi.fn(),
+  requireAuth: vi.fn(),
+}));
 vi.mock("@/lib/db", () => ({
   db: { user: { update: vi.fn() } },
 }));
@@ -13,10 +15,12 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn() },
 }));
 
-import { getServerSession } from "next-auth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 
 // ---------------------------------------------------------------------
+
+const MOCK_USER = { id: "user-1", email: "u@test.com", name: "Test" };
 
 function makeRequest(body?: unknown): NextRequest {
   return new NextRequest("http://localhost/api/auth/device-token", {
@@ -26,13 +30,25 @@ function makeRequest(body?: unknown): NextRequest {
   });
 }
 
+function authenticatedAs(user = MOCK_USER) {
+  vi.mocked(getMiddlewareContext).mockReturnValue({ authStatus: "authenticated", user } as any);
+  vi.mocked(requireAuth).mockReturnValue(user as any);
+}
+
+function unauthenticated() {
+  vi.mocked(getMiddlewareContext).mockReturnValue({ authStatus: "error" } as any);
+  vi.mocked(requireAuth).mockReturnValue(
+    NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  );
+}
+
 describe("POST /api/auth/device-token", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    unauthenticated();
 
     const res = await POST(makeRequest({ ios_device_token: "abc" }));
 
@@ -41,7 +57,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("stores the token when ios_device_token is a non-empty string", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
     vi.mocked(db.user.update).mockResolvedValue({} as any);
 
     const res = await POST(makeRequest({ ios_device_token: "token-abc123" }));
@@ -55,7 +71,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("clears the token when ios_device_token is an empty string", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
     vi.mocked(db.user.update).mockResolvedValue({} as any);
 
     const res = await POST(makeRequest({ ios_device_token: "" }));
@@ -68,7 +84,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("is a no-op and returns 200 when ios_device_token is absent from body", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
 
     const res = await POST(makeRequest({}));
 
@@ -78,7 +94,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("is a no-op and returns 200 when body is empty / non-JSON", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
 
     const req = new NextRequest("http://localhost/api/auth/device-token", {
       method: "POST",
@@ -90,7 +106,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("silently ignores unknown fields and does not write to DB", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
 
     const res = await POST(makeRequest({ android_device_token: "android-tok" }));
 
@@ -99,7 +115,7 @@ describe("POST /api/auth/device-token", () => {
   });
 
   it("returns 500 when DB update fails", async () => {
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as any);
+    authenticatedAs();
     vi.mocked(db.user.update).mockRejectedValue(new Error("DB error"));
 
     const res = await POST(makeRequest({ ios_device_token: "tok" }));

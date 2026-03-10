@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
@@ -8,23 +7,21 @@ import { logger } from "@/lib/logger";
  * POST /api/auth/device-token
  *
  * Registers or clears device push notification tokens on the authenticated user's record.
+ * Supports both web session cookies and Bearer tokens (iOS app).
  *
  * Request body (all fields optional):
  * - ios_device_token?: string — absent = no-op, "" = clear, non-empty = store
  *
  * Responses:
  * - 200 { success: true }
- * - 401: No active session
+ * - 401: Not authenticated
  * - 500: DB error
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userId = session.user.id;
+  const context = getMiddlewareContext(req);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+  const userId = userOrResponse.id;
 
   let body: Record<string, unknown> = {};
   try {
