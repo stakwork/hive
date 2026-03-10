@@ -385,6 +385,7 @@ describe('BugReportSlideout', () => {
           json: async () => ({
             presignedUrl: 'https://s3.amazonaws.com/presigned-url',
             publicUrl: 'https://s3.amazonaws.com/public-url/screenshot.png',
+            s3Path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
           }),
         })
         // Third call: Upload to S3
@@ -437,12 +438,12 @@ describe('BugReportSlideout', () => {
         headers: { 'Content-Type': 'image/png' },
       });
 
-      // Verify feature update with image
+      // Verify feature update with image uses persistent S3 path (not expiring publicUrl)
       expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/features/feature-123', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brief: '![Bug Screenshot](https://s3.amazonaws.com/public-url/screenshot.png)\n\n**Reported from:** https://example.com/w/test-workspace/plan\n\nBug with screenshot',
+          brief: `![Bug Screenshot](/api/features/feature-123/image?path=${encodeURIComponent('features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png')})\n\n**Reported from:** https://example.com/w/test-workspace/plan\n\nBug with screenshot`,
         }),
       });
 
@@ -1237,6 +1238,7 @@ describe('BugReportSlideout', () => {
           json: async () => ({
             presignedUrl: 'https://s3.example.com/upload',
             publicUrl: 'https://s3.example.com/image.png',
+            s3Path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
           }),
         })
         // S3 upload
