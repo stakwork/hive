@@ -6,11 +6,15 @@ import {
 } from "@prisma/client";
 import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
+import { sendHubPushNotification } from "@/lib/hub/push-notification";
 
 vi.mock("@/lib/db");
 vi.mock("@/lib/sphinx/direct-message", () => ({
   sendDirectMessage: vi.fn(),
   isDirectMessageConfigured: vi.fn(),
+}));
+vi.mock("@/lib/hub/push-notification", () => ({
+  sendHubPushNotification: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
@@ -18,12 +22,14 @@ vi.mock("@/lib/logger", () => ({
 
 const mockedSendDirectMessage = vi.mocked(sendDirectMessage);
 const mockedIsDirectMessageConfigured = vi.mocked(isDirectMessageConfigured);
+const mockedSendHubPushNotification = vi.mocked(sendHubPushNotification);
 
 // Shared mock fns — reassigned fresh in beforeEach
 let findFirst: ReturnType<typeof vi.fn>;
 let create: ReturnType<typeof vi.fn>;
 let update: ReturnType<typeof vi.fn>;
 let userFindUnique: ReturnType<typeof vi.fn>;
+let workspaceFindUnique: ReturnType<typeof vi.fn>;
 
 const baseInput = {
   targetUserId: "user-1",
@@ -33,8 +39,10 @@ const baseInput = {
     "@alice — You have been assigned to task 'Fix bug': http://localhost/w/test/task/task-1",
 };
 
-const userWithPubkey = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null };
-const userWithoutPubkey = { lightningPubkey: null, sphinxRouteHint: null };
+const userWithPubkey = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null, iosDeviceToken: null };
+const userWithPubkeyAndToken = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null, iosDeviceToken: "device-token-abc" };
+const userWithoutPubkey = { lightningPubkey: null, sphinxRouteHint: null, iosDeviceToken: null };
+const mockWorkspace = { slug: "test-workspace" };
 
 const mockRecord = {
   id: "notif-1",
@@ -61,13 +69,17 @@ describe("createAndSendNotification", () => {
     create = vi.fn();
     update = vi.fn();
     userFindUnique = vi.fn();
+    workspaceFindUnique = vi.fn();
 
     Object.assign(db, {
       notificationTrigger: { findFirst, create, update },
       user: { findUnique: userFindUnique },
+      workspace: { findUnique: workspaceFindUnique },
     });
 
     mockedIsDirectMessageConfigured.mockReturnValue(true);
+    mockedSendHubPushNotification.mockResolvedValue({ success: true });
+    workspaceFindUnique.mockResolvedValue(mockWorkspace);
   });
 
   describe("idempotency", () => {
@@ -245,6 +257,72 @@ describe("createAndSendNotification", () => {
       mockedSendDirectMessage.mockRejectedValue(new Error("network error"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
+    });
+  });
+
+  describe("HUB push — immediate send path", () => {
+    const immediateInput = { ...baseInput, notificationType: NotificationTriggerType.TASK_PR_MERGED, taskId: "task-1" };
+
+    it("fires HUB push when iosDeviceToken is set on an immediate send", async () => {
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, notificationType: NotificationTriggerType.TASK_PR_MERGED });
+      userFindUnique.mockResolvedValue(userWithPubkeyAndToken);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(immediateInput);
+
+      expect(mockedSendHubPushNotification).toHaveBeenCalledOnce();
+      expect(mockedSendHubPushNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deviceToken: "device-token-abc",
+          message: immediateInput.message,
+          workspaceSlug: "test-workspace",
+          taskId: "task-1",
+        })
+      );
+    });
+
+    it("does NOT fire HUB push when iosDeviceToken is absent", async () => {
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, notificationType: NotificationTriggerType.TASK_PR_MERGED });
+      userFindUnique.mockResolvedValue(userWithPubkey); // no iosDeviceToken
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(immediateInput);
+
+      expect(mockedSendHubPushNotification).not.toHaveBeenCalled();
+    });
+
+    it("does NOT fire HUB push on the deferred path (TASK_ASSIGNED)", async () => {
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      userFindUnique.mockResolvedValue(userWithPubkeyAndToken);
+      update.mockResolvedValue({});
+
+      // baseInput uses TASK_ASSIGNED which is deferred
+      await createAndSendNotification({ ...baseInput, taskId: "task-1" });
+
+      expect(mockedSendHubPushNotification).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("still completes successfully even if HUB push fails", async () => {
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue({ ...mockRecord, notificationType: NotificationTriggerType.TASK_PR_MERGED });
+      userFindUnique.mockResolvedValue(userWithPubkeyAndToken);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+      mockedSendHubPushNotification.mockResolvedValue({ success: false, error: "hub down" });
+      update.mockResolvedValue({});
+
+      await expect(createAndSendNotification(immediateInput)).resolves.toBeUndefined();
+      // DM status update should still happen
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SENT }),
+        })
+      );
     });
   });
 });
