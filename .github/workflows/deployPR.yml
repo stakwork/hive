@@ -142,6 +142,17 @@ jobs:
           ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
           ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
+          # Verify the candidate endpoint actually exists (it may have been deleted after expiry
+          # while the branch record still exists, causing "endpoint not found" in the wait loop)
+          if [ -n "$ENDPOINT_ID" ] && [ "$ENDPOINT_ID" != "null" ]; then
+            PROBE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            if ! echo "$PROBE" | jq -e ".endpoint" > /dev/null 2>&1; then
+              echo "⚠️  Cached endpoint $ENDPOINT_ID no longer exists — will create a new one"
+              ENDPOINT_ID=""
+            fi
+          fi
+
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
             RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoint" \
               -X POST \
