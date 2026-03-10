@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -85,6 +85,65 @@ const compactStyles = {
   hr: "my-4 border-t",
   link: "underline underline-offset-4 hover:opacity-80 transition-colors text-sm",
 } as const;
+
+const FEATURE_IMAGE_PATTERN = /\/api\/features\/.+\/image\?path=/;
+
+interface FeatureImageProps {
+  src: string;
+  alt?: string;
+  className: string;
+}
+
+function FeatureImage({ src, alt, className }: FeatureImageProps) {
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setIsError(false);
+    fetch(src)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch image URL");
+        return res.json();
+      })
+      .then(({ url }: { url: string }) => {
+        if (!cancelled) {
+          setResolvedUrl(url);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsError(true);
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  if (isLoading) {
+    return (
+      <span
+        className={`${className} inline-block bg-muted animate-pulse rounded-md`}
+        style={{ minWidth: "200px", minHeight: "120px" }}
+        aria-label="Loading image..."
+      />
+    );
+  }
+
+  if (isError || !resolvedUrl) {
+    return <span className="text-muted-foreground text-sm italic">Image unavailable</span>;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className={className} src={resolvedUrl} alt={alt || "Image"} loading="lazy" />
+  );
+}
 
 const createComponents = (
   styles: ReturnType<typeof createStyles>,
@@ -258,10 +317,17 @@ const createComponents = (
       );
     }
 
+    const imageClassName = cn(`${(styleConfig.image, styles.border)} rounded-md`);
+
+    // Resolve fresh presigned URL for feature images stored as S3 paths
+    if (FEATURE_IMAGE_PATTERN.test(srcString)) {
+      return <FeatureImage src={srcString} alt={alt} className={imageClassName} />;
+    }
+
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        className={cn(`${(styleConfig.image, styles.border)} rounded-md`)}
+        className={imageClassName}
         src={src ?? ""}
         alt={alt || "Image"}
         loading="lazy"
