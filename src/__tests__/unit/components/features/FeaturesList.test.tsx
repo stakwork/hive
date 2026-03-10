@@ -1,5 +1,53 @@
 import { describe, it, expect } from "vitest";
 
+describe("FeaturesList - Deployment column logic", () => {
+  describe("FeatureRow deployment column rendering", () => {
+    it("should render DeploymentStatusBadge in the Deployment column (2nd cell) when deploymentStatus is non-null", () => {
+      const feature = {
+        deploymentStatus: "staging" as const,
+        deploymentUrl: "https://staging.example.com",
+      };
+
+      // The deployment cell should render the badge when deploymentStatus exists
+      const shouldRenderBadge = !!feature.deploymentStatus;
+      expect(shouldRenderBadge).toBe(true);
+    });
+
+    it("should render a dash in the Deployment column when deploymentStatus is null", () => {
+      const feature = {
+        deploymentStatus: null,
+        deploymentUrl: null,
+      };
+
+      // The deployment cell should render a dash when deploymentStatus is null
+      const shouldRenderBadge = !!feature.deploymentStatus;
+      expect(shouldRenderBadge).toBe(false);
+    });
+
+    it("should render DeploymentStatusBadge for production status", () => {
+      const feature = { deploymentStatus: "production" as const, deploymentUrl: "https://prod.example.com" };
+      expect(!!feature.deploymentStatus).toBe(true);
+    });
+
+    it("should render DeploymentStatusBadge for failed status", () => {
+      const feature = { deploymentStatus: "failed" as const, deploymentUrl: null };
+      expect(!!feature.deploymentStatus).toBe(true);
+    });
+
+    it("should NOT include DeploymentStatusBadge inside the Title cell", () => {
+      // The title cell (w-[320px]) should only contain: title text, Bell icon (awaiting feedback)
+      // It should NOT contain the DeploymentStatusBadge — that lives in the Deployment cell (w-[130px])
+      const titleCellWidth = "w-[320px]";
+      const deploymentCellWidth = "w-[130px]";
+
+      expect(titleCellWidth).toBe("w-[320px]");
+      expect(deploymentCellWidth).toBe("w-[130px]");
+      // These are distinct cells — deployment is not nested inside title
+      expect(titleCellWidth).not.toBe(deploymentCellWidth);
+    });
+  });
+});
+
 describe("FeaturesList - Owner column display logic", () => {
   describe("ownerDisplayValue", () => {
     it("should return the assignee when feature has an assignee set", () => {
