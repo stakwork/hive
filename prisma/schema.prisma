@@ -199,6 +199,7 @@ model Workspace {
   sphinxChatPubkey       String?                 @map("sphinx_chat_pubkey")
   sphinxEnabled          Boolean                 @default(false) @map("sphinx_enabled")
   agentLogs              AgentLog[]
+  diagrams               DiagramWorkspace[]
   features               Feature[]
   janitorConfig          JanitorConfig?
   janitorRecommendations JanitorRecommendation[]
@@ -1189,4 +1190,28 @@ enum NotificationTriggerStatus {
 
 enum NotificationMethod {
   SPHINX
+}
+
+model Diagram {
+  id          String             @id @default(cuid())
+  name        String
+  body        String             // raw mermaid source
+  description String?
+  createdBy   String             @map("created_by") // userId
+  createdAt   DateTime           @default(now()) @map("created_at")
+  workspaces  DiagramWorkspace[]
+
+  @@map("diagrams")
+}
+
+model DiagramWorkspace {
+  id          String    @id @default(cuid())
+  diagramId   String    @map("diagram_id")
+  workspaceId String    @map("workspace_id")
+  diagram     Diagram   @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([diagramId, workspaceId])
+  @@index([workspaceId])
+  @@map("diagram_workspaces")
 }
