@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,9 +83,13 @@ export default function AgentLogsPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  // Dialog state — initialise from URL so deep-links auto-open the modal
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(
+    () => searchParams?.get("logId") ?? null
+  );
+  const [dialogOpen, setDialogOpen] = useState(
+    () => !!searchParams?.get("logId")
+  );
 
   // Navigate to a specific page and update URL
   const goToPage = useCallback((n: number) => {
@@ -157,6 +161,20 @@ export default function AgentLogsPage() {
   const handleRowClick = (logId: string) => {
     setSelectedLogId(logId);
     setDialogOpen(true);
+    const p = new URLSearchParams(searchParams?.toString() || "");
+    p.set("logId", logId);
+    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      setSelectedLogId(null);
+      const p = new URLSearchParams(searchParams?.toString() || "");
+      p.delete("logId");
+      const newUrl = p.toString() ? `${pathname}?${p.toString()}` : pathname;
+      router.replace(newUrl, { scroll: false });
+    }
   };
 
   return (
@@ -329,7 +347,7 @@ export default function AgentLogsPage() {
 
       <LogDetailDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         logId={selectedLogId}
       />
     </div>
