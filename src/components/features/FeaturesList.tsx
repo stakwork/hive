@@ -117,7 +117,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[469px] font-medium truncate">
+      <TableCell className="w-[320px] font-medium truncate">
         <div className="flex items-center gap-2">
           {isRenaming ? (
             <input
@@ -145,13 +145,17 @@ function FeatureRow({
               </TooltipContent>
             </Tooltip>
           )}
-          {!isRenaming && feature.deploymentStatus && (
-            <DeploymentStatusBadge
-              environment={feature.deploymentStatus}
-              deploymentUrl={feature.deploymentUrl}
-            />
-          )}
         </div>
+      </TableCell>
+      <TableCell className="w-[130px]" onClick={(e) => e.stopPropagation()}>
+        {feature.deploymentStatus ? (
+          <DeploymentStatusBadge
+            environment={feature.deploymentStatus}
+            deploymentUrl={feature.deploymentUrl}
+          />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
@@ -740,7 +744,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[469px]">Title</TableHead>
+                  <TableHead className="w-[320px]">Title</TableHead>
+                  <TableHead className="w-[130px]">Deployment</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
                   <TableHead className="w-[150px]">Owner</TableHead>
@@ -752,8 +757,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-[469px]">
+                    <TableCell className="w-[320px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
+                    </TableCell>
+                    <TableCell className="w-[130px]">
+                      <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
@@ -849,7 +857,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                   <Table className="table-fixed">
                     <TableHeader className="bg-muted/50">
                       <TableRow>
-                        <TableHead className="w-[469px]">
+                        <TableHead className="w-[320px]">
                           <SortableColumnHeader
                             label="Title"
                             field="title"
@@ -857,6 +865,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onSort={(order) => handleSort("title", order)}
                           />
                         </TableHead>
+                        <TableHead className="w-[130px]">Deployment</TableHead>
                         <TableHead className="w-[120px]">
                           <FilterDropdownHeader
                             label="Status"
@@ -913,7 +922,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                     <TableBody>
                       {filteredFeatures.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-32 text-center">
+                          <TableCell colSpan={8} className="h-32 text-center">
                             <p className="text-muted-foreground">No features match your filters</p>
                           </TableCell>
                         </TableRow>
