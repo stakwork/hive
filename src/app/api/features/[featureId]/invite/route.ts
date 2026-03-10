@@ -8,7 +8,7 @@ import type { SphinxConfig } from "@/lib/sphinx/daily-pr-summary";
 
 export const runtime = "nodejs";
 
-// POST /api/features/[featureId]/invite - Send Sphinx invite to a workspace member
+// POST /api/features/[featureId]/invite - Send Sphinx invite(s) to workspace member(s)
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ featureId: string }> }
@@ -22,11 +22,21 @@ export async function POST(
 
     const { featureId } = await params;
     const body = await request.json();
-    const { inviteeUserId } = body;
+    const { inviteeUserId, inviteeUserIds } = body;
 
-    if (!inviteeUserId) {
+    // Normalise to array — accept either singular (backward compat) or plural
+    const ids: string[] = inviteeUserIds ?? (inviteeUserId ? [inviteeUserId] : []);
+
+    if (ids.length === 0) {
       return NextResponse.json(
-        { error: "inviteeUserId is required" },
+        { error: "At least one invitee is required" },
+        { status: 400 }
+      );
+    }
+
+    if (ids.length > 3) {
+      return NextResponse.json(
+        { error: "Cannot invite more than 3 members at once" },
         { status: 400 }
       );
     }
@@ -68,50 +78,56 @@ export async function POST(
       );
     }
 
-    // Fetch invitee
-    const invitee = await db.user.findUnique({
-      where: { id: inviteeUserId },
-      select: { sphinxAlias: true },
+    // Fetch all invitees in one query
+    const invitees = await db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, sphinxAlias: true },
     });
 
-    if (!invitee || !invitee.sphinxAlias) {
+    // Validate that every requested invitee exists and has a Sphinx alias
+    const missingAlias = invitees.find((u) => !u.sphinxAlias);
+    if (missingAlias || invitees.length < ids.length) {
       return NextResponse.json(
-        { error: "Invitee does not have a Sphinx alias configured" },
+        { error: "One or more invitees does not have a Sphinx alias configured" },
         { status: 400 }
       );
     }
 
-    // Decrypt bot secret
+    // Decrypt bot secret and build sphinxConfig once
     const encryptionService = EncryptionService.getInstance();
     const decryptedSecret = encryptionService.decryptField("sphinxBotSecret", workspace.sphinxBotSecret);
 
-    // Build plan URL
-    const planUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/plan/${featureId}`;
-
-    // Get inviter name
-    const inviterName = session.user.name || "A team member";
-
-    // Format message
-    const message = `@${invitee.sphinxAlias} — ${inviterName} has invited you to collaborate on '${feature.title}': ${planUrl}`;
-
-    // Build Sphinx config
     const sphinxConfig: SphinxConfig = {
       chatPubkey: workspace.sphinxChatPubkey,
       botId: workspace.sphinxBotId,
       botSecret: decryptedSecret,
     };
 
-    // Send to Sphinx
-    const result = await sendToSphinx(sphinxConfig, message);
+    const planUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/plan/${featureId}`;
+    const inviterName = session.user.name || "A team member";
 
-    if (!result.success) {
+    let sent = 0;
+    let failed = 0;
+
+    for (const invitee of invitees) {
+      const message = `@${invitee.sphinxAlias} — ${inviterName} has invited you to collaborate on '${feature.title}': ${planUrl}`;
+      const result = await sendToSphinx(sphinxConfig, message);
+
+      if (result.success) {
+        sent++;
+      } else {
+        failed++;
+      }
+    }
+
+    if (sent === 0) {
       return NextResponse.json(
-        { error: result.error || "Failed to send Sphinx invite" },
+        { error: "All invites failed to send", sent, failed },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, sent, failed });
   } catch (error) {
     console.error("Error sending Sphinx invite:", error);
     return NextResponse.json(
