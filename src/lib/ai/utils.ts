@@ -105,6 +105,11 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
   };
 }
 
+export function extractMermaidBody(text: string): string | null {
+  const match = /```mermaid\s*([\s\S]*?)```/.exec(text);
+  return match ? match[1].trim() : null;
+}
+
 export async function generateWithStreaming<T extends z.ZodTypeAny>(
   model: Parameters<typeof streamObject>[0]['model'],
   schema: T,
