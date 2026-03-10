@@ -6,7 +6,7 @@ import { repoAgent } from "@/lib/ai/askTools";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
-import { extractMermaidBody } from "@/lib/ai/utils";
+import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
 
 const MERMAID_INSTRUCTION =
   "\n\nReturn a mermaid diagram surrounded by backticks like ```mermaid ... ```. Only return the mermaid block, no other commentary.";

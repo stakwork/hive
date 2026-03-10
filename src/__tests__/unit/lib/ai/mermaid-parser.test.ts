@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractMermaidBody } from "@/lib/ai/utils";
+import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
 
 describe("extractMermaidBody", () => {
   it("extracts the body from a valid fenced mermaid block", () => {
