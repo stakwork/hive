@@ -448,6 +448,79 @@ describe("Integration: /api/cron/task-coordinator", () => {
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       expect(startTaskWorkflow).not.toHaveBeenCalled();
     });
+
+    test("should unassign coordinator task whose dependency has a CANCELLED PR artifact", async () => {
+      // Create the blocking task (will have a CANCELLED PR artifact)
+      const blockingTask = await db.task.create({
+        data: {
+          title: "Cancelled PR Task",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "IN_PROGRESS",
+          mode: "agent",
+          sourceType: "USER",
+          priority: "HIGH",
+        },
+      });
+
+      // Add a chat message with a CANCELLED PR artifact to the blocking task
+      const chatMessage = await db.chatMessage.create({
+        data: {
+          taskId: blockingTask.id,
+          message: "PR was closed without merging",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: chatMessage.id,
+          type: "PULL_REQUEST",
+          content: {
+            url: "https://github.com/org/repo/pull/42",
+            status: "CANCELLED",
+          },
+        },
+      });
+
+      // Create the coordinator-assigned task that depends on the blocked task
+      const coordinatorTask = await db.task.create({
+        data: {
+          title: "Permanently Blocked Coordinator Task",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "agent",
+          sourceType: "TASK_COORDINATOR",
+          systemAssigneeType: "TASK_COORDINATOR",
+          priority: "HIGH",
+          dependsOnTaskIds: [blockingTask.id],
+        },
+      });
+
+      // Verify systemAssigneeType is set before the sweep
+      const beforeSweep = await db.task.findUnique({ where: { id: coordinatorTask.id } });
+      expect(beforeSweep?.systemAssigneeType).toBe("TASK_COORDINATOR");
+
+      // Execute the cron endpoint
+      const mockRequest = createAuthenticatedRequest();
+      process.env.TASK_COORDINATOR_ENABLED = "true";
+
+      const response = await GET(mockRequest);
+      expect(response.status).toBe(200);
+
+      // Verify the coordinator task was unassigned (systemAssigneeType cleared)
+      const afterSweep = await db.task.findUnique({ where: { id: coordinatorTask.id } });
+      expect(afterSweep?.systemAssigneeType).toBeNull();
+
+      // Verify startTaskWorkflow was NOT called — unassigned, not dispatched
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      expect(startTaskWorkflow).not.toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: coordinatorTask.id })
+      );
+    });
   });
 
   describe("Phase 3: Recommendation Sweep", () => {

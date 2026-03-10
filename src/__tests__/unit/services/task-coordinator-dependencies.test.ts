@@ -14,7 +14,8 @@ vi.mock("@/lib/db", () => ({
 const { db: mockDb } = await import("@/lib/db");
 
 // Import function under test
-const { areDependenciesSatisfied } = await import("@/services/task-coordinator-cron");
+const { checkDependencies } = await import("@/services/task-coordinator-cron");
+import type { DependencyCheckResult } from "@/services/task-coordinator-cron";
 
 // Test Helpers - Mock data factories
 const TestHelpers = {
@@ -100,7 +101,7 @@ const TestHelpers = {
   },
 };
 
-describe("areDependenciesSatisfied", () => {
+describe("checkDependencies", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
@@ -116,39 +117,39 @@ describe("areDependenciesSatisfied", () => {
   });
 
   describe("Empty Dependencies", () => {
-    test("should return true for empty array without database query", async () => {
-      const result = await areDependenciesSatisfied([]);
+    test("should return SATISFIED for empty array without database query", async () => {
+      const result = await checkDependencies([]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
       expect(mockDb.task.findMany).not.toHaveBeenCalled();
     });
 
-    test("should return true for empty array immediately", async () => {
-      const result = await areDependenciesSatisfied([]);
+    test("should return SATISFIED for empty array immediately", async () => {
+      const result = await checkDependencies([]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
   });
 
   describe("Missing Dependencies", () => {
-    test("should return false when dependency not found in database", async () => {
+    test("should return PENDING when dependency not found in database", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Expected 1 dependencies, found 0")
       );
     });
 
-    test("should return false when only some dependencies found", async () => {
+    test("should return PENDING when only some dependencies found", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE");
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2", "task-3"]);
+      const result = await checkDependencies(["task-1", "task-2", "task-3"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Expected 3 dependencies, found 1")
       );
@@ -157,7 +158,7 @@ describe("areDependenciesSatisfied", () => {
     test("should log warning message with correct counts", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      await areDependenciesSatisfied(["task-1", "task-2"]);
+      await checkDependencies(["task-1", "task-2"]);
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         "[TaskCoordinator] Dependency validation warning: Expected 2 dependencies, found 0"
@@ -167,7 +168,7 @@ describe("areDependenciesSatisfied", () => {
     test("should query database with correct task IDs", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      await areDependenciesSatisfied(["task-1", "task-2"]);
+      await checkDependencies(["task-1", "task-2"]);
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith({
         where: {
@@ -194,56 +195,67 @@ describe("areDependenciesSatisfied", () => {
   });
 
   describe("Dependencies without PR Artifacts", () => {
-    test("should return true when dependency status is DONE and no PR artifacts", async () => {
+    test("should return SATISFIED when dependency status is DONE and no PR artifacts", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
-    test("should return false when dependency status is TODO and no PR artifacts", async () => {
+    test("should return PENDING when dependency status is TODO and no PR artifacts", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "TODO", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when dependency status is IN_PROGRESS and no PR artifacts", async () => {
+    test("should return PENDING when dependency status is IN_PROGRESS and no PR artifacts", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when dependency status is BLOCKED and no PR artifacts", async () => {
+    test("should return PENDING when dependency status is BLOCKED and no PR artifacts", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "BLOCKED", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when dependency status is CANCELLED and no PR artifacts", async () => {
+    test("should return PERMANENTLY_BLOCKED when dependency status is CANCELLED and no PR artifacts", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "CANCELLED", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PERMANENTLY_BLOCKED");
+    });
+
+    test("should log permanently cancelled message when dep is CANCELLED with no PR", async () => {
+      const task1 = TestHelpers.createMockTask("task-1", "CANCELLED", []);
+      TestHelpers.setupMockTasksInDatabase([task1]);
+
+      await checkDependencies(["task-1"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        "[TaskCoordinator] Dependency task-1 is permanently cancelled (no PR, status: CANCELLED)"
+      );
     });
 
     test("should log message when dependency not satisfied without PR", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "TODO", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         "[TaskCoordinator] Dependency task-1 not satisfied - no PR artifact, status: TODO"
@@ -254,7 +266,7 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(consoleLogSpy).not.toHaveBeenCalledWith(
         expect.stringContaining("not satisfied")
@@ -263,37 +275,55 @@ describe("areDependenciesSatisfied", () => {
   });
 
   describe("Dependencies with PR Artifacts", () => {
-    test("should return true when latest PR artifact status is DONE", async () => {
+    test("should return SATISFIED when latest PR artifact status is DONE", async () => {
       const artifact = TestHelpers.createMockPRArtifact("art-1", "msg-1", "DONE");
       const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
-    test("should return false when latest PR artifact status is IN_PROGRESS", async () => {
+    test("should return PENDING when latest PR artifact status is IN_PROGRESS", async () => {
       const artifact = TestHelpers.createMockPRArtifact("art-1", "msg-1", "IN_PROGRESS");
       const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when latest PR artifact status is CANCELLED", async () => {
+    test("should return PERMANENTLY_BLOCKED when latest PR artifact status is CANCELLED", async () => {
       const artifact = TestHelpers.createMockPRArtifact("art-1", "msg-1", "CANCELLED");
       const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PERMANENTLY_BLOCKED");
+    });
+
+    test("should log permanently cancelled message when PR artifact is CANCELLED", async () => {
+      const artifact = TestHelpers.createMockPRArtifact(
+        "art-1",
+        "msg-1",
+        "CANCELLED",
+        "https://github.com/org/repo/pull/123"
+      );
+      const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
+      const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
+      TestHelpers.setupMockTasksInDatabase([task1]);
+
+      await checkDependencies(["task-1"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        "[TaskCoordinator] Dependency task-1 is permanently cancelled (PR: https://github.com/org/repo/pull/123, status: CANCELLED)"
+      );
     });
 
     test("should ignore task status when PR artifact exists", async () => {
@@ -302,9 +332,9 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "TODO", [message]); // Task status TODO but PR DONE
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true); // PR status takes precedence
+      expect(result).toBe("SATISFIED"); // PR status takes precedence
     });
 
     test("should use latest PR artifact by createdAt when multiple exist", async () => {
@@ -332,12 +362,12 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message1, message2]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true); // Latest PR (recentArtifact) is DONE
+      expect(result).toBe("SATISFIED"); // Latest PR (recentArtifact) is DONE
     });
 
-    test("should return false when latest PR is not DONE even if older PR is DONE", async () => {
+    test("should return PENDING when latest PR is not DONE even if older PR is DONE", async () => {
       const oldDate = new Date("2024-01-01T10:00:00Z");
       const recentDate = new Date("2024-01-02T10:00:00Z");
 
@@ -362,9 +392,9 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message1, message2]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false); // Latest PR (recentArtifact) is IN_PROGRESS
+      expect(result).toBe("PENDING"); // Latest PR (recentArtifact) is IN_PROGRESS
     });
 
     test("should log message when PR dependency not satisfied", async () => {
@@ -378,7 +408,7 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         "[TaskCoordinator] Dependency task-1 not satisfied - has PR artifact (https://github.com/org/repo/pull/123), latest status: IN_PROGRESS"
@@ -392,7 +422,7 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining("has PR artifact (unknown)")
@@ -406,7 +436,7 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining("latest status: unknown")
@@ -415,18 +445,18 @@ describe("areDependenciesSatisfied", () => {
   });
 
   describe("Multiple Dependencies", () => {
-    test("should return true when all dependencies satisfied without PR", async () => {
+    test("should return SATISFIED when all dependencies satisfied without PR", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       const task2 = TestHelpers.createMockTask("task-2", "DONE", []);
       const task3 = TestHelpers.createMockTask("task-3", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1, task2, task3]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2", "task-3"]);
+      const result = await checkDependencies(["task-1", "task-2", "task-3"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
-    test("should return true when all dependencies satisfied with PR", async () => {
+    test("should return SATISFIED when all dependencies satisfied with PR", async () => {
       const artifact1 = TestHelpers.createMockPRArtifact("art-1", "msg-1", "DONE");
       const message1 = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact1]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message1]);
@@ -437,40 +467,40 @@ describe("areDependenciesSatisfied", () => {
 
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
-    test("should return false when first dependency not satisfied", async () => {
+    test("should return PENDING when first dependency not satisfied", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "TODO", []);
       const task2 = TestHelpers.createMockTask("task-2", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when middle dependency not satisfied", async () => {
+    test("should return PENDING when middle dependency not satisfied", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       const task2 = TestHelpers.createMockTask("task-2", "TODO", []);
       const task3 = TestHelpers.createMockTask("task-3", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1, task2, task3]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2", "task-3"]);
+      const result = await checkDependencies(["task-1", "task-2", "task-3"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should return false when last dependency not satisfied", async () => {
+    test("should return PENDING when last dependency not satisfied", async () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       const task2 = TestHelpers.createMockTask("task-2", "TODO", []);
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
     test("should handle mixed PR and non-PR dependencies all satisfied", async () => {
@@ -482,9 +512,9 @@ describe("areDependenciesSatisfied", () => {
 
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
     test("should handle mixed PR and non-PR dependencies with PR not satisfied", async () => {
@@ -496,9 +526,9 @@ describe("areDependenciesSatisfied", () => {
 
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
     test("should handle mixed PR and non-PR dependencies with manual not satisfied", async () => {
@@ -510,9 +540,28 @@ describe("areDependenciesSatisfied", () => {
 
       TestHelpers.setupMockTasksInDatabase([task1, task2]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
+    });
+
+    test("should return PERMANENTLY_BLOCKED (fail-fast) when one dep is CANCELLED PR and another is PENDING", async () => {
+      const cancelledArtifact = TestHelpers.createMockPRArtifact(
+        "art-1",
+        "msg-1",
+        "CANCELLED",
+        "https://github.com/org/repo/pull/99"
+      );
+      const message1 = TestHelpers.createMockChatMessage("msg-1", "task-1", [cancelledArtifact]);
+      const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message1]); // CANCELLED PR
+
+      const task2 = TestHelpers.createMockTask("task-2", "TODO", []); // Still pending
+
+      TestHelpers.setupMockTasksInDatabase([task1, task2]);
+
+      const result = await checkDependencies(["task-1", "task-2"]);
+
+      expect(result).toBe("PERMANENTLY_BLOCKED"); // Fail-fast on first blocked dep
     });
 
     test("should stop checking after first unsatisfied dependency", async () => {
@@ -521,7 +570,7 @@ describe("areDependenciesSatisfied", () => {
       const task3 = TestHelpers.createMockTask("task-3", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1, task2, task3]);
 
-      await areDependenciesSatisfied(["task-1", "task-2", "task-3"]);
+      await checkDependencies(["task-1", "task-2", "task-3"]);
 
       // Only first dependency's log should appear
       expect(consoleLogSpy).toHaveBeenCalledWith(
@@ -537,14 +586,14 @@ describe("areDependenciesSatisfied", () => {
   });
 
   describe("Circular Dependencies", () => {
-    test("should return false when circular dependency detected via missing tasks", async () => {
+    test("should return PENDING when circular dependency detected via missing tasks", async () => {
       // Circular reference: task-1 depends on task-2, task-2 depends on task-1
       // When checking task-1's dependencies, task-2 might not be found
       TestHelpers.setupMockTasksInDatabase([]);
 
-      const result = await areDependenciesSatisfied(["task-1", "task-2"]);
+      const result = await checkDependencies(["task-1", "task-2"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Expected 2 dependencies, found 0")
       );
@@ -554,9 +603,9 @@ describe("areDependenciesSatisfied", () => {
       // Task depends on itself - will fail due to missing dependency
       TestHelpers.setupMockTasksInDatabase([]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
   });
 
@@ -565,9 +614,9 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
     test("should handle task with chatMessages but no artifacts", async () => {
@@ -575,9 +624,9 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
     test("should handle multiple messages with no PR artifacts", async () => {
@@ -586,34 +635,33 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", [message1, message2]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
     });
 
-    test("should handle PR artifact with empty content object", async () => {
+    test("should return PENDING for PR artifact with empty content object", async () => {
       const artifact = TestHelpers.createMockPRArtifact("art-1", "msg-1", "DONE");
-      artifact.content = {}; // Empty content
+      artifact.content = {}; // Empty content — status is undefined, not "DONE"
       const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      // content.status is undefined, not "DONE", so dependency not satisfied
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
-    test("should handle PR artifact with null content", async () => {
+    test("should return PENDING for PR artifact with null content", async () => {
       const artifact = TestHelpers.createMockPRArtifact("art-1", "msg-1", "DONE");
       artifact.content = null as any;
       const message = TestHelpers.createMockChatMessage("msg-1", "task-1", [artifact]);
       const task1 = TestHelpers.createMockTask("task-1", "IN_PROGRESS", [message]);
       TestHelpers.setupMockTasksInDatabase([task1]);
 
-      const result = await areDependenciesSatisfied(["task-1"]);
+      const result = await checkDependencies(["task-1"]);
 
-      expect(result).toBe(false);
+      expect(result).toBe("PENDING");
     });
 
     test("should handle many dependencies efficiently", async () => {
@@ -623,9 +671,9 @@ describe("areDependenciesSatisfied", () => {
       const taskIds = tasks.map((t) => t.id);
       TestHelpers.setupMockTasksInDatabase(tasks);
 
-      const result = await areDependenciesSatisfied(taskIds);
+      const result = await checkDependencies(taskIds);
 
-      expect(result).toBe(true);
+      expect(result).toBe("SATISFIED");
       expect(mockDb.task.findMany).toHaveBeenCalledTimes(1); // Single batch query
     });
 
@@ -633,11 +681,11 @@ describe("areDependenciesSatisfied", () => {
       const task1 = TestHelpers.createMockTask("task-1", "DONE", []);
       TestHelpers.setupMockTasksInDatabase([task1, task1]); // Duplicate in response
 
-      const result = await areDependenciesSatisfied(["task-1", "task-1"]);
+      const result = await checkDependencies(["task-1", "task-1"]);
 
       // Should warn about mismatch (expects 2, found 1 unique)
       // This tests defensive behavior against unexpected data
-      expect(result).toBe(true); // Both references to same task, which is DONE
+      expect(result).toBe("SATISFIED"); // Both references to same task, which is DONE
     });
   });
 
@@ -645,7 +693,7 @@ describe("areDependenciesSatisfied", () => {
     test("should include chatMessages with artifacts in query", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -667,7 +715,7 @@ describe("areDependenciesSatisfied", () => {
     test("should order chatMessages by createdAt desc", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -685,7 +733,7 @@ describe("areDependenciesSatisfied", () => {
     test("should filter artifacts to only PULL_REQUEST type", async () => {
       TestHelpers.setupMockTasksInDatabase([]);
 
-      await areDependenciesSatisfied(["task-1"]);
+      await checkDependencies(["task-1"]);
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
