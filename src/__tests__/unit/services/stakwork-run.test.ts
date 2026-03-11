@@ -1140,6 +1140,125 @@ describe("Stakwork Run Service", () => {
         })
       );
     });
+
+    test("should throw active_run error when a PENDING TASK_GENERATION run already exists for the same feature", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const existingRun = { id: "existing-run-1", status: WorkflowStatus.PENDING };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(existingRun);
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.TASK_GENERATION,
+            workspaceId: "ws-1",
+            featureId: "feature-1",
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("active_run:existing-run-1");
+
+      // Should not create a new DB record
+      expect(db.stakworkRun.create).not.toHaveBeenCalled();
+    });
+
+    test("should throw active_run error when an IN_PROGRESS TASK_GENERATION run already exists for the same feature", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const existingRun = { id: "existing-run-2", status: WorkflowStatus.IN_PROGRESS };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(existingRun);
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.TASK_GENERATION,
+            workspaceId: "ws-1",
+            featureId: "feature-1",
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("active_run:existing-run-2");
+
+      expect(db.stakworkRun.create).not.toHaveBeenCalled();
+    });
+
+    test("should NOT apply the duplicate guard for non-TASK_GENERATION types", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockUser = { id: "user-1", githubAuth: null };
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+        id: "feature-1",
+        title: "T",
+        brief: null,
+        userStories: [],
+        workspace: { description: "" },
+        phases: [],
+      });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        projectId: 99,
+        status: WorkflowStatus.IN_PROGRESS,
+      });
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
+      mockedStakworkService.mockReturnValue({ stakworkRequest: mockStakworkRequest } as any);
+
+      // Should NOT call findFirst for the duplicate guard
+      const result = await createStakworkRun(
+        { type: StakworkRunType.ARCHITECTURE, workspaceId: "ws-1", featureId: "feature-1" },
+        "user-1"
+      );
+
+      expect(result.status).toBe(WorkflowStatus.IN_PROGRESS);
+      // findFirst should NOT have been called for the active-run guard
+      // (it may still be called internally for other reasons, but the guard skips ARCHITECTURE)
+      const findFirstCalls = (mockedDb.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mock.calls;
+      const guardCalls = findFirstCalls.filter((call: unknown[]) => {
+        const args = call[0] as { where?: { type?: StakworkRunType } } | undefined;
+        return args?.where?.type === StakworkRunType.ARCHITECTURE;
+      });
+      expect(guardCalls).toHaveLength(0);
+    });
   });
 
   describe("processStakworkRunWebhook", () => {
@@ -2785,7 +2904,11 @@ describe("Stakwork Run Service", () => {
         ],
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      // First call: webhook lookup finds the ARCHITECTURE run.
+      // Second call: TASK_GENERATION duplicate guard — no active run exists yet.
+      mockedDb.stakworkRun.findFirst = vi.fn()
+        .mockResolvedValueOnce(mockRun)
+        .mockResolvedValue(null);
       mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
       mockedDb.stakworkRun.create = vi.fn().mockResolvedValue({
         id: "run-2",
