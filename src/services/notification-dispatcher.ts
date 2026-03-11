@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendDirectMessage } from "@/lib/sphinx/direct-message";
+import { sendHubPushNotification } from "@/lib/hub/push-notification";
 import {
   NotificationTriggerStatus,
   NotificationTriggerType,
@@ -126,7 +127,9 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
     taskId: string | null;
     featureId: string | null;
     message: string | null;
-    targetUser: { lightningPubkey: string | null; sphinxRouteHint: string | null };
+    targetUser: { lightningPubkey: string | null; sphinxRouteHint: string | null; iosDeviceToken: string | null };
+    task: { workspace: { slug: string } } | null;
+    feature: { workspace: { slug: string } } | null;
   }>;
 
   try {
@@ -136,7 +139,9 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         sendAfter: { lte: new Date() },
       },
       include: {
-        targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true } },
+        targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
+        task: { select: { workspace: { select: { slug: true } } } },
+        feature: { select: { workspace: { select: { slug: true } } } },
       },
     });
   } catch (error) {
@@ -177,6 +182,21 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       // Send the stored message
       const routeHint = record.targetUser?.sphinxRouteHint ?? undefined;
       const sendResult = await sendDirectMessage(pubkey, record.message, { routeHint });
+
+      // Fire HUB push in parallel (fire-and-forget) if device token and workspace slug are set
+      const workspaceSlug = record.task?.workspace?.slug ?? record.feature?.workspace?.slug;
+      const iosDeviceToken = record.targetUser?.iosDeviceToken;
+      if (iosDeviceToken && workspaceSlug) {
+        void sendHubPushNotification({
+          deviceToken: iosDeviceToken,
+          message: record.message!,
+          workspaceSlug,
+          taskId: record.taskId ?? undefined,
+          featureId: record.featureId ?? undefined,
+        }).catch((err) =>
+          logger.error("[NotificationDispatcher] HUB push failed", "HUB_PUSH", { err, recordId: record.id })
+        );
+      }
 
       await db.notificationTrigger.update({
         where: { id: record.id },
