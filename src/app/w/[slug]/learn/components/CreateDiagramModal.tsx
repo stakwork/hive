@@ -18,6 +18,9 @@ interface CreateDiagramModalProps {
   onClose: () => void;
   workspaceSlug: string;
   onDiagramCreated: () => void;
+  editMode?: boolean;
+  diagramId?: string;
+  initialName?: string;
 }
 
 export function CreateDiagramModal({
@@ -25,6 +28,9 @@ export function CreateDiagramModal({
   onClose,
   workspaceSlug,
   onDiagramCreated,
+  editMode = false,
+  diagramId,
+  initialName,
 }: CreateDiagramModalProps) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -41,22 +47,32 @@ export function CreateDiagramModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !prompt.trim()) return;
+    if (!prompt.trim()) return;
+    if (!editMode && !name.trim()) return;
 
     setIsCreating(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/learnings/diagrams/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: workspaceSlug, name: name.trim(), prompt: prompt.trim() }),
-      });
+      let response: Response;
+      if (editMode) {
+        response = await fetch("/api/learnings/diagrams/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspace: workspaceSlug, diagramId, prompt: prompt.trim() }),
+        });
+      } else {
+        response = await fetch("/api/learnings/diagrams/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspace: workspaceSlug, name: name.trim(), prompt: prompt.trim() }),
+        });
+      }
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data?.error ?? "Failed to create diagram");
+        setError(data?.error ?? (editMode ? "Failed to edit diagram" : "Failed to create diagram"));
         return;
       }
 
@@ -75,7 +91,7 @@ export function CreateDiagramModal({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>New Diagram</DialogTitle>
+          <DialogTitle>{editMode ? "Edit Diagram" : "New Diagram"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -86,9 +102,9 @@ export function CreateDiagramModal({
             <Input
               id="diagram-name"
               placeholder="e.g., Authentication Flow"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isCreating}
+              value={editMode ? (initialName ?? "") : name}
+              onChange={(e) => { if (!editMode) setName(e.target.value); }}
+              disabled={isCreating || editMode}
             />
           </div>
 
@@ -98,7 +114,7 @@ export function CreateDiagramModal({
             </label>
             <Textarea
               id="diagram-prompt"
-              placeholder="Describe the diagram you want to generate..."
+              placeholder={editMode ? "Describe the changes you want to make..." : "Describe the diagram you want to generate..."}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               disabled={isCreating}
@@ -122,7 +138,7 @@ export function CreateDiagramModal({
             <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isCreating || !name.trim() || !prompt.trim()}>
+            <Button type="submit" disabled={isCreating || (!editMode && !name.trim()) || !prompt.trim()}>
               {isCreating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin mr-2" />
