@@ -276,6 +276,20 @@ jobs:
             fi
           fi
 
+          if echo "$MIGRATION_STATUS" | grep -q "20260227180738_add_feature_id_to_screenshots"; then
+            echo "Found add_feature_id_to_screenshots migration, checking if it needs resolution..."
+            
+            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';")
+            
+            if [ "$COLUMN_EXISTS" = "1" ]; then
+              echo "Column already exists, marking migration as applied..."
+              npx prisma migrate resolve --applied 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as applied"
+            else
+              echo "Column doesn't exist, marking migration as rolled back for retry..."
+              npx prisma migrate resolve --rolled-back 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as rolled back"
+            fi
+          fi
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"

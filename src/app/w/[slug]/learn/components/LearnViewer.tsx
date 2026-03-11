@@ -49,6 +49,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [isDiagramsLoading, setIsDiagramsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreateDiagramOpen, setIsCreateDiagramOpen] = useState(false);
+  const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null);
 
   const fetchDiagrams = async () => {
     try {
@@ -173,6 +174,11 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     await fetchDiagrams();
   };
 
+  const handleEditDiagram = (diagram: Diagram) => {
+    setEditingDiagram(diagram);
+    setIsCreateDiagramOpen(true);
+  };
+
   const handleSave = async (content: string) => {
     if (!activeItem) return;
 
@@ -262,6 +268,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         onConceptClick={handleConceptClick}
         onDiagramClick={handleDiagramClick}
         onCreateDiagram={() => setIsCreateDiagramOpen(true)}
+        onEditDiagram={handleEditDiagram}
         isDocsLoading={isDocsLoading}
         isConceptsLoading={isConceptsLoading}
         isDiagramsLoading={isDiagramsLoading}
@@ -269,9 +276,15 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
       <CreateDiagramModal
         isOpen={isCreateDiagramOpen}
-        onClose={() => setIsCreateDiagramOpen(false)}
+        onClose={() => {
+          setIsCreateDiagramOpen(false);
+          setEditingDiagram(null);
+        }}
         workspaceSlug={workspaceSlug}
         onDiagramCreated={handleDiagramCreated}
+        editMode={!!editingDiagram}
+        diagramId={editingDiagram?.id}
+        initialName={editingDiagram?.name}
       />
     </div>
   );
