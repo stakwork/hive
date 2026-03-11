@@ -1160,6 +1160,7 @@ enum StakworkRunType {
   POD_LAUNCH_FAILURE
   DIAGRAM_GENERATION
   LEARNING
+  REPO_AGENT
 }
 
 enum StakworkRunDecision {
