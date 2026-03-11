@@ -72,98 +72,88 @@ describe("updateFeatureStatusFromTasks", () => {
     });
   });
 
-  describe("ERROR Priority - Highest", () => {
-    test("sets feature to CANCELLED when task has WorkflowStatus.ERROR", async () => {
+  describe("FAILED/ERROR — feature status unchanged", () => {
+    test("does not update feature when task has WorkflowStatus.ERROR", async () => {
       const tasks = [
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
-    test("sets feature to CANCELLED when task has WorkflowStatus.FAILED", async () => {
+    test("does not update feature when task has WorkflowStatus.FAILED", async () => {
       const tasks = [
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
-    test("ERROR takes precedence over BLOCKED status", async () => {
+    test("does not update feature when FAILED task is mixed with BLOCKED task", async () => {
       const tasks = [
         { status: TaskStatus.BLOCKED, workflowStatus: WorkflowStatus.PENDING },
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
-    test("ERROR takes precedence over IN_PROGRESS status", async () => {
+    test("does not update feature when FAILED task is mixed with IN_PROGRESS task", async () => {
       const tasks = [
         { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.IN_PROGRESS },
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
-    test("ERROR takes precedence over COMPLETED status", async () => {
+    test("does not update feature when ERROR task is mixed with COMPLETED task", async () => {
       const tasks = [
         { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("does not update feature when mix of FAILED and IN_PROGRESS tasks (early return before IN_PROGRESS check)", async () => {
+      const tasks = [
+        { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.IN_PROGRESS },
+        { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
+        { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.PENDING },
+      ];
+
+      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+
+      await updateFeatureStatusFromTasks(mockFeatureId);
+
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -479,8 +469,8 @@ describe("updateFeatureStatusFromTasks", () => {
   });
 
   describe("Complex Multi-Task Scenarios", () => {
-    test("correctly prioritizes with all status types present", async () => {
-      // ERROR should win even with all other statuses present
+    test("leaves feature unchanged when all status types present including ERROR", async () => {
+      // ERROR/FAILED causes early return — feature never touched
       const tasks = [
         { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
         { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.IN_PROGRESS },
@@ -489,19 +479,14 @@ describe("updateFeatureStatusFromTasks", () => {
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
-    test("handles multiple ERROR tasks", async () => {
+    test("leaves feature unchanged when multiple ERROR/FAILED tasks", async () => {
       const tasks = [
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
@@ -509,16 +494,11 @@ describe("updateFeatureStatusFromTasks", () => {
       ];
 
       vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
-      vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(updateFeature).toHaveBeenCalledWith(
-        mockFeatureId,
-        mockOwnerId,
-        { status: FeatureStatus.CANCELLED }
-      );
+      expect(updateFeature).not.toHaveBeenCalled();
+      expect(db.feature.findUnique).not.toHaveBeenCalled();
     });
 
     test("handles large number of tasks efficiently", async () => {
