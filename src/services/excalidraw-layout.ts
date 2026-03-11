@@ -631,11 +631,9 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   // Match that so the initial text element width equals what autoResize would compute.
   const BOUND_TEXT_PADDING = 5;
   const textAreaWidth = width - BOUND_TEXT_PADDING * 2;
-  const lineCount = width >= MAX_SINGLE_LINE_WIDTH
-    ? computeWordWrapLineCount(component.name, textAreaWidth)
-    : 1;
+  const lineCount = computeWordWrapLineCount(component.name, textAreaWidth);
   const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
-  const clampedTextWidth = width >= MAX_SINGLE_LINE_WIDTH ? textAreaWidth : Math.min(textWidth, textAreaWidth);
+  const clampedTextWidth = Math.min(textWidth, textAreaWidth);
 
   // Map shape to Excalidraw element type and roundness
   const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
