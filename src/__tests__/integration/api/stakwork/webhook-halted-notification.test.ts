@@ -35,6 +35,22 @@ vi.mock("@/services/roadmap/feature-status-sync", () => ({
   updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
 
+/** Poll DB until a matching record appears (avoids flaky fixed-delay waits). */
+async function waitForNotification(
+  where: Record<string, unknown>,
+  timeoutMs = 5000,
+  intervalMs = 100,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const record = await db.notificationTrigger.findFirst({ where: where as any });
+    if (record) return record;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return null;
+}
+
 function makeRequest(body: object): NextRequest {
   return new NextRequest("http://localhost:3000/api/stakwork/webhook", {
     method: "POST",
@@ -84,14 +100,9 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
 
-    // Allow async notification to settle
-    await new Promise((r) => setTimeout(r, 200));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-        taskId: task.id,
-      },
+    const record = await waitForNotification({
+      notificationType: NotificationTriggerType.WORKFLOW_HALTED,
+      taskId: task.id,
     });
 
     expect(record).not.toBeNull();
@@ -117,13 +128,9 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
 
-    await new Promise((r) => setTimeout(r, 200));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-        featureId: feature.id,
-      },
+    const record = await waitForNotification({
+      notificationType: NotificationTriggerType.WORKFLOW_HALTED,
+      featureId: feature.id,
     });
 
     expect(record).not.toBeNull();
