@@ -163,6 +163,7 @@ describe("getPRCountForRepo", () => {
     expect(calledUrl).toContain("repo%3Astakwork%2Fhive");
     expect(calledUrl).toContain("is%3Apr");
     expect(calledUrl).toContain("created%3A%3E%3D2026-01-01");
+    expect(calledUrl).toContain("page=1");
   });
 
   it("sends the Authorization header", async () => {
@@ -200,5 +201,54 @@ describe("getPRCountForRepo", () => {
 
     const result = await getPRCountForRepo("owner/repo", "token", since);
     expect(result.items).toEqual([]);
+  });
+
+  it("paginates when first page returns 100 items", async () => {
+    const since = new Date("2026-01-01T00:00:00.000Z");
+
+    // Page 1: 100 items
+    const page1Items = Array.from({ length: 100 }, (_, i) => ({
+      created_at: `2026-01-${String(15 - Math.floor(i / 10)).padStart(2, "0")}T10:00:00.000Z`,
+    }));
+    // Page 2: 50 items (last page)
+    const page2Items = Array.from({ length: 50 }, (_, i) => ({
+      created_at: `2026-01-${String(5 - Math.floor(i / 20)).padStart(2, "0")}T10:00:00.000Z`,
+    }));
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ total_count: 150, items: page1Items }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ total_count: 150, items: page2Items }),
+      });
+
+    const result = await getPRCountForRepo("owner/repo", "token", since);
+
+    expect(result.items).toHaveLength(150);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[0][0]).toContain("page=1");
+    expect(mockFetch.mock.calls[1][0]).toContain("page=2");
+  });
+
+  it("does not paginate when first page has fewer than 100 items", async () => {
+    const since = new Date("2026-01-01T00:00:00.000Z");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        total_count: 50,
+        items: Array.from({ length: 50 }, (_, i) => ({
+          created_at: `2026-01-${String(15 - Math.floor(i / 10)).padStart(2, "0")}T10:00:00.000Z`,
+        })),
+      }),
+    });
+
+    const result = await getPRCountForRepo("owner/repo", "token", since);
+
+    expect(result.items).toHaveLength(50);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
