@@ -16,6 +16,7 @@ vi.mock("@/hooks/useDebounce", () => ({
 }));
 
 // Mock Next.js router
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("next/navigation", () => ({
     prefetch: vi.fn(),
   }),
   usePathname: () => "/w/test-workspace/tasks",
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock TaskCard component
@@ -118,6 +120,7 @@ describe("TasksList - Sorting Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockSearchParams = new URLSearchParams();
 
     // Setup default mocks
     vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
@@ -125,13 +128,23 @@ describe("TasksList - Sorting Functionality", () => {
     } as any);
 
     vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
-      stats: { total: 4, active: 4, archived: 0 },
+      stats: { total: 4, active: 4, archived: 0, queuedCount: 0 },
       loading: false,
     } as any);
 
     // Mock useWorkspaceTasks to return sorted tasks based on parameters
     vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
-      (workspaceId, workspaceSlug, enabled, pageLimit, showArchived, searchQuery, filters, showAllStatuses, sortBy = "updatedAt", sortOrder = "desc") => {
+      (workspaceId, workspaceSlug, enabled, pageLimit, showArchived, searchQuery, filters, showAllStatuses, sortBy = "updatedAt", sortOrder = "desc", queue = false) => {
+        if (queue) {
+          return {
+            tasks: [],
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
         const sortedTasks = getSortedTasks(sortBy, sortOrder);
         return {
           tasks: sortedTasks,
@@ -451,7 +464,7 @@ describe("TasksList - Workflows Kanban Column", () => {
     } as any);
 
     vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
-      stats: { total: 2, active: 2, archived: 0 },
+      stats: { total: 2, active: 2, archived: 0, queuedCount: 0 },
       loading: false,
     } as any);
   });
@@ -572,5 +585,174 @@ describe("TasksList - Workflows Kanban Column", () => {
     // workflow_editor task has status IN_PROGRESS, so it should appear there
     const inProgressColumn = screen.getByTestId("kanban-column-IN_PROGRESS");
     expect(within(inProgressColumn).getByTestId("task-card-wf-task-1")).toBeInTheDocument();
+  });
+});
+
+describe("TasksList - Queue Tab", () => {
+  const mockRefetch = vi.fn();
+  const mockLoadMore = vi.fn();
+
+  const queuedTaskMocks = [
+    {
+      id: "queued-1",
+      title: "Queued Task One",
+      status: "TODO" as const,
+      systemAssigneeType: "TASK_COORDINATOR" as const,
+      priority: "CRITICAL" as const,
+      createdAt: "2024-01-01T10:00:00Z",
+      updatedAt: "2024-01-01T10:00:00Z",
+      hasActionArtifact: false,
+    },
+    {
+      id: "queued-2",
+      title: "Queued Task Two",
+      status: "TODO" as const,
+      systemAssigneeType: "TASK_COORDINATOR" as const,
+      priority: "HIGH" as const,
+      createdAt: "2024-01-02T10:00:00Z",
+      updatedAt: "2024-01-02T10:00:00Z",
+      hasActionArtifact: false,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockSearchParams = new URLSearchParams();
+
+    vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
+      waitingForInputCount: 0,
+    } as any);
+
+    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
+      stats: { total: 4, active: 4, archived: 0, queuedCount: 2 },
+      loading: false,
+    } as any);
+
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+      (_workspaceId, _workspaceSlug, _enabled, _pageLimit, _showArchived, _search, _filters, _showAllStatuses, _sortBy, _sortOrder, queue = false) => {
+        if (queue) {
+          return {
+            tasks: queuedTaskMocks,
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+        return {
+          tasks: mockTasks,
+          loading: false,
+          error: null,
+          pagination: { hasMore: false },
+          loadMore: mockLoadMore,
+          refetch: mockRefetch,
+        } as any;
+      }
+    );
+  });
+
+  it("should render Queue tab between Active and Archived", async () => {
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const tabs = screen.getAllByRole("tab");
+    const tabNames = tabs.map((t) => t.textContent?.replace(/\d+/, "").trim());
+    const activeIdx = tabNames.findIndex((n) => n === "Active");
+    const queueIdx = tabNames.findIndex((n) => n?.includes("Queue"));
+    const archivedIdx = tabNames.findIndex((n) => n === "Archived");
+
+    expect(queueIdx).toBeGreaterThan(activeIdx);
+    expect(archivedIdx).toBeGreaterThan(queueIdx);
+  });
+
+  it("should show Queue tab badge with correct count when queuedCount > 0", async () => {
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-tab-badge")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("queue-tab-badge")).toHaveTextContent("2");
+  });
+
+  it("should not show Queue tab badge when queuedCount is 0", async () => {
+    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
+      stats: { total: 4, active: 4, archived: 0, queuedCount: 0 },
+      loading: false,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("queue-tab-badge")).not.toBeInTheDocument();
+  });
+
+  it("should initialise to Queue tab when ?tab=queue URL param is present", async () => {
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const queueTab = screen.getByTestId("queue-tab");
+    expect(queueTab).toHaveAttribute("data-state", "active");
+  });
+
+  it("should show queued tasks when Queue tab is active", async () => {
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-tab-content")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("task-card-queued-1")).toBeInTheDocument();
+    expect(screen.getByTestId("task-card-queued-2")).toBeInTheDocument();
+  });
+
+  it("should show empty state when no tasks are queued", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+      (_workspaceId, _workspaceSlug, _enabled, _pageLimit, _showArchived, _search, _filters, _showAllStatuses, _sortBy, _sortOrder, queue = false) => {
+        if (queue) {
+          return {
+            tasks: [],
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+        return {
+          tasks: mockTasks,
+          loading: false,
+          error: null,
+          pagination: { hasMore: false },
+          loadMore: mockLoadMore,
+          refetch: mockRefetch,
+        } as any;
+      }
+    );
+
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-empty-state")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No tasks in queue")).toBeInTheDocument();
   });
 });
