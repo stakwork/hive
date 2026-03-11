@@ -21,6 +21,10 @@ async function createTaskForFiltering(
     podId?: string | null;
     status?: TaskStatus;
     archived?: boolean;
+    deleted?: boolean;
+    systemAssigneeType?: string | null;
+    priority?: string;
+    createdAt?: Date;
   }
 ) {
   const taskId = generateUniqueId("task");
@@ -38,6 +42,10 @@ async function createTaskForFiltering(
       podId: options.podId !== undefined ? options.podId : null,
       archived: options.archived || false,
       archivedAt: options.archived ? new Date() : null,
+      deleted: options.deleted || false,
+      ...(options.systemAssigneeType !== undefined && { systemAssigneeType: options.systemAssigneeType as any }),
+      ...(options.priority !== undefined && { priority: options.priority as any }),
+      ...(options.createdAt !== undefined && { createdAt: options.createdAt }),
     },
   });
 }
@@ -565,6 +573,238 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
             expect(data.data[0].workflowStatus).toBe(status);
           }
         }
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+  });
+
+  describe("Queue Filter (queue=true)", () => {
+    test("returns only TODO + TASK_COORDINATOR tasks", async () => {
+      const testUser = await createTestUser({ name: "Queue Filter User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Queued Task 1",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Queued Task 2",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      // Not queued: wrong status
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "In Progress Task",
+        status: TaskStatus.IN_PROGRESS,
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      // Not queued: no systemAssigneeType
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Regular TODO Task",
+        status: TaskStatus.TODO,
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(2);
+        expect(data.data.every((t: any) => t.title.startsWith("Queued"))).toBe(true);
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+
+    test("excludes deleted tasks", async () => {
+      const testUser = await createTestUser({ name: "Queue Delete User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Visible Queued Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Deleted Queued Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: true,
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("Visible Queued Task");
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+
+    test("excludes archived tasks", async () => {
+      const testUser = await createTestUser({ name: "Queue Archive User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Active Queued Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        archived: false,
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Archived Queued Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        archived: true,
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("Active Queued Task");
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+
+    test("returns results ordered by priority desc then createdAt asc", async () => {
+      const testUser = await createTestUser({ name: "Queue Order User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      const now = new Date();
+      const t = (offset: number) => new Date(now.getTime() + offset * 1000);
+
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "LOW old",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "LOW",
+        createdAt: t(0),
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "HIGH",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "HIGH",
+        createdAt: t(2),
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "CRITICAL",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "CRITICAL",
+        createdAt: t(4),
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "MEDIUM old",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "MEDIUM",
+        createdAt: t(1),
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "MEDIUM new",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "MEDIUM",
+        createdAt: t(3),
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(5);
+        // Priority order: CRITICAL > HIGH > MEDIUM > LOW
+        expect(data.data[0].title).toBe("CRITICAL");
+        expect(data.data[1].title).toBe("HIGH");
+        // MEDIUM old before MEDIUM new (createdAt asc)
+        expect(data.data[2].title).toBe("MEDIUM old");
+        expect(data.data[3].title).toBe("MEDIUM new");
+        expect(data.data[4].title).toBe("LOW old");
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+
+    test("ignores sortBy/sortOrder params and uses fixed queue ordering", async () => {
+      const testUser = await createTestUser({ name: "Queue Sort User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      const now = new Date();
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "HIGH Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "HIGH",
+        createdAt: new Date(now.getTime() + 5000),
+      });
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "LOW Task",
+        status: TaskStatus.TODO,
+        systemAssigneeType: "TASK_COORDINATOR",
+        priority: "LOW",
+        createdAt: new Date(now.getTime()),
+      });
+
+      try {
+        // Even with sortBy=createdAt&sortOrder=desc, queue ordering should win
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&sortBy=createdAt&sortOrder=desc&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(2);
+        // HIGH comes first regardless of createdAt
+        expect(data.data[0].title).toBe("HIGH Task");
+        expect(data.data[1].title).toBe("LOW Task");
+      } finally {
+        await cleanup([testWorkspace.id], [testUser.id]);
+      }
+    });
+
+    test("returns empty array when no coordinator-queued tasks exist", async () => {
+      const testUser = await createTestUser({ name: "Queue Empty User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+
+      // Only regular tasks, no coordinator-queued ones
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {
+        title: "Regular Task",
+        status: TaskStatus.IN_PROGRESS,
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&queue=true&limit=100`,
+          testUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(0);
       } finally {
         await cleanup([testWorkspace.id], [testUser.id]);
       }
