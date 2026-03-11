@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 /**
- * POST /api/auth/device-token
+ * POST /api/device-token
  *
  * Registers or clears device push notification tokens on the authenticated user's record.
  * Supports both web session cookies and Bearer tokens (iOS app).
