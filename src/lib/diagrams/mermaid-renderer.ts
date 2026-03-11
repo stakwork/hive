@@ -44,6 +44,7 @@ const THEME_VARS = {
 
 const SHARED_CONFIG = {
   startOnLoad: false,
+  suppressErrorRendering: true,
   theme: "dark" as const,
   securityLevel: "loose" as const,
   fontFamily: "inherit",
