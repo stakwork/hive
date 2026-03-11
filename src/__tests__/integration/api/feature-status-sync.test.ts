@@ -360,7 +360,7 @@ describe("Feature Status Sync Integration Tests", () => {
       expect(updatedFeature?.status).toBe(FeatureStatus.IN_PROGRESS);
     });
 
-    test("should sync feature status to CANCELLED when workflow fails", async () => {
+    test("should leave feature status unchanged when workflow fails", async () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
 
       // Simulate stakwork webhook for task1 failure
@@ -382,12 +382,12 @@ describe("Feature Status Sync Integration Tests", () => {
 
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
 
-      // Verify feature status was synced to CANCELLED (error state)
+      // Verify feature status was NOT changed — failed task workflow must not mutate feature status
       const updatedFeature = await db.feature.findUnique({
         where: { id: feature.id },
       });
 
-      expect(updatedFeature?.status).toBe(FeatureStatus.CANCELLED);
+      expect(updatedFeature?.status).toBe(feature.status);
     });
 
     test("should not fail when task has no featureId", async () => {
