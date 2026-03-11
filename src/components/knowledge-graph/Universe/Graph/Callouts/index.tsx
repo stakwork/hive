@@ -51,7 +51,7 @@ const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
     <group ref={htmlRef} visible={false}>
       <Html
         center
-        zIndexRange={[100, 101]}
+        zIndexRange={[51, 52]}
         style={{
           transition: 'opacity 0.2s',
           pointerEvents: 'none',

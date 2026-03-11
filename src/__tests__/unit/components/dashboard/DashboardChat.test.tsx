@@ -74,6 +74,21 @@ vi.mock(
 
 import { DashboardChat } from "@/components/dashboard/DashboardChat";
 
+// ── z-index stacking tests ────────────────────────────────────────────────────
+describe("DashboardChat — z-index stacking", () => {
+  test("wrapper div in dashboard carries z-[200] so it renders above HtmlNodesLayer", () => {
+    // Verify the dashboard index file has the correct z-index class
+    // This is a static assertion on the source to prevent regression
+    const fs = require("fs");
+    const src = fs.readFileSync(
+      require("path").join(process.cwd(), "src/app/w/[slug]/dashboard/index.tsx"),
+      "utf8"
+    );
+    expect(src).toContain("z-[200]");
+    expect(src).not.toContain("z-100");
+  });
+});
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 function mockFetch(...responses: Array<{ ok: boolean; body: unknown }>) {
   let callCount = 0;

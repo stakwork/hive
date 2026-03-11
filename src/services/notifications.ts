@@ -5,6 +5,7 @@ import {
 } from "@prisma/client";
 import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
+import { sendHubPushNotification } from "@/lib/hub/push-notification";
 import { logger } from "@/lib/logger";
 
 const DEFERRED_NOTIFICATION_TYPES = new Set<NotificationTriggerType>([
@@ -32,11 +33,17 @@ export async function createAndSendNotification(input: {
     const taskId = input.taskId ?? null;
     const featureId = input.featureId ?? null;
 
-    // 1. Fetch target user
-    const targetUser = await db.user.findUnique({
-      where: { id: input.targetUserId },
-      select: { lightningPubkey: true, sphinxRouteHint: true },
-    });
+    // 1. Fetch target user and workspace slug in parallel
+    const [targetUser, workspace] = await Promise.all([
+      db.user.findUnique({
+        where: { id: input.targetUserId },
+        select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true },
+      }),
+      db.workspace.findUnique({
+        where: { id: input.workspaceId },
+        select: { slug: true },
+      }),
+    ]);
 
     // 2. Idempotency check — skip if PENDING record already exists
     const existing = await db.notificationTrigger.findFirst({
@@ -93,6 +100,19 @@ export async function createAndSendNotification(input: {
     const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message, {
       routeHint: targetUser!.sphinxRouteHint ?? undefined,
     });
+
+    // 7a. Fire HUB push in parallel (fire-and-forget) if device token is set
+    if (targetUser?.iosDeviceToken && workspace?.slug) {
+      void sendHubPushNotification({
+        deviceToken: targetUser.iosDeviceToken,
+        message: input.message,
+        workspaceSlug: workspace.slug,
+        taskId: input.taskId ?? undefined,
+        featureId: input.featureId ?? undefined,
+      }).catch((err) =>
+        logger.error("[Notifications] HUB push failed", "HUB_PUSH", { err })
+      );
+    }
 
     // 8. Update record with outcome
     await db.notificationTrigger.update({

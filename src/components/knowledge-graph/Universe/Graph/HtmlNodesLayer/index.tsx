@@ -41,7 +41,7 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
           position={[node.x || 0, node.y || 0, node.z || 0]}
           center
           sprite
-          zIndexRange={[100, 0]}
+          zIndexRange={[50, 0]}
         >
           <div className="group relative">
             {/* Glow effect background */}
