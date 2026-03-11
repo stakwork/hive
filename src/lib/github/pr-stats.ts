@@ -15,7 +15,7 @@ export const PR_WINDOWS: PRWindowKey[] = ["24h", "48h", "1w", "2w", "1mo"];
 /**
  * Calls GitHub Search API for PRs created in the given repo since `since`.
  * Uses serviceConfigs.github.baseURL so that USE_MOCKS mode routes to the mock endpoint.
- * Makes a single call per repo (1-month window) — callers bucket in memory.
+ * Paginates through all results (GitHub Search API caps at 1000 total).
  */
 export async function getPRCountForRepo(
   repoFullName: string,
@@ -24,25 +24,40 @@ export async function getPRCountForRepo(
 ): Promise<{ items: { createdAt: Date }[] }> {
   const sinceStr = since.toISOString().split("T")[0]; // YYYY-MM-DD
   const searchQuery = `repo:${repoFullName} is:pr created:>=${sinceStr}`;
-  const url = `${serviceConfigs.github.baseURL}/search/issues?q=${encodeURIComponent(searchQuery)}&per_page=100`;
+  const baseUrl = `${serviceConfigs.github.baseURL}/search/issues?q=${encodeURIComponent(searchQuery)}&per_page=100`;
 
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github.v3+json",
-      Authorization: `token ${githubToken}`,
-    },
-  });
+  const allItems: { createdAt: Date }[] = [];
+  let page = 1;
+  const maxPages = 10; // GitHub Search API caps at 1000 results total
 
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+  while (page <= maxPages) {
+    const response = await fetch(`${baseUrl}&page=${page}`, {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+        Authorization: `token ${githubToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const rawItems: Array<{ created_at: string }> = data.items || [];
+
+    for (const item of rawItems) {
+      allItems.push({ createdAt: new Date(item.created_at) });
+    }
+
+    // Stop if we got fewer than per_page results or reached total_count
+    if (rawItems.length < 100 || allItems.length >= (data.total_count ?? 0)) {
+      break;
+    }
+
+    page++;
   }
 
-  const data = await response.json();
-  const rawItems: Array<{ created_at: string }> = data.items || [];
-
-  return {
-    items: rawItems.map((item) => ({ createdAt: new Date(item.created_at) })),
-  };
+  return { items: allItems };
 }
 
 /**
