@@ -5,7 +5,9 @@ import {
   computeComponentSize,
   computeWordWrapLineCount,
   computeLayeredDirection,
+  relayoutDiagram,
   FONT_SIZE,
+  LINE_HEIGHT,
   MIN_WIDTH,
   MAX_SINGLE_LINE_WIDTH,
   MIN_HEIGHT,
@@ -359,5 +361,61 @@ describe("computeLayeredDirection", () => {
       ],
     };
     expect(computeLayeredDirection(diagram)).toBe("DOWN");
+  });
+});
+
+// Helper: build a minimal diagram with a single component and run relayoutDiagram.
+// Returns the bound text element (type === 'text' with containerId set).
+async function getBoundTextElement(name: string) {
+  const diagram: ParsedDiagram = {
+    components: [{ id: "c1", name }],
+    connections: [],
+  };
+  const result = await relayoutDiagram(diagram);
+  const textEl = result.elements.find(
+    (el) => el.type === "text" && (el as Record<string, unknown>).containerId != null
+  ) as Record<string, unknown> | undefined;
+  return textEl;
+}
+
+describe("createComponentElement text height", () => {
+  test("short label (API) produces text element with height === SINGLE_LINE_HEIGHT", async () => {
+    const textEl = await getBoundTextElement("API");
+    expect(textEl).toBeDefined();
+    expect(textEl!.height).toBe(SINGLE_LINE_HEIGHT);
+    expect(SINGLE_LINE_HEIGHT).toBe(Math.ceil(FONT_SIZE * LINE_HEIGHT));
+  });
+
+  test("multi-word label that fits as single-line container stays single-line in text element", async () => {
+    // 'User Auth Service' fits within MAX_SINGLE_LINE_WIDTH (container is narrow).
+    // textAreaWidth = containerWidth - 10 >= full textWidth, so no wrapping occurs.
+    const name = "User Auth Service";
+    const textW = measureTextWidth(name, FONT_SIZE);
+    // Confirm it's a narrow container (would have triggered the old lineCount=1 short-circuit)
+    expect(textW + PADDING_H).toBeLessThan(MAX_SINGLE_LINE_WIDTH);
+
+    const textEl = await getBoundTextElement(name);
+    expect(textEl).toBeDefined();
+    // lineCount must be 1 — textAreaWidth is always wider than the label in this branch
+    const expectedLineCount = computeWordWrapLineCount(name, Math.max(MIN_WIDTH, textW + PADDING_H) - 10);
+    expect(expectedLineCount).toBe(1);
+    expect(textEl!.height).toBe(SINGLE_LINE_HEIGHT);
+  });
+
+  test("long label (wide container) produces text element taller than SINGLE_LINE_HEIGHT", async () => {
+    // This label exceeds MAX_SINGLE_LINE_WIDTH when padded, so containerWidth = MAX_SINGLE_LINE_WIDTH.
+    // The old code also handled this correctly; verify the fix preserves that behaviour.
+    const name = "Async Distributed Background Job Worker Queue Processing Service";
+    const textW = measureTextWidth(name, FONT_SIZE);
+    expect(textW + PADDING_H).toBeGreaterThan(MAX_SINGLE_LINE_WIDTH);
+
+    const textAreaWidth = MAX_SINGLE_LINE_WIDTH - 10; // containerWidth - BOUND_TEXT_PADDING*2
+    const lineCount = computeWordWrapLineCount(name, textAreaWidth);
+    expect(lineCount).toBeGreaterThanOrEqual(2);
+
+    const textEl = await getBoundTextElement(name);
+    expect(textEl).toBeDefined();
+    expect(textEl!.height).toBeGreaterThan(SINGLE_LINE_HEIGHT);
+    expect(textEl!.height).toBeGreaterThanOrEqual(Math.ceil(2 * FONT_SIZE * LINE_HEIGHT));
   });
 });
