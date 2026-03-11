@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId,
           deleted: false,
+          archived: false,
           status: "TODO",
           systemAssigneeType: "TASK_COORDINATOR",
         },
