@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, BookOpen, Lightbulb, GitBranch, Plus } from "lucide-react";
+import { ChevronDown, BookOpen, Lightbulb, GitBranch, Plus, Pencil } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ interface LearnSidebarProps {
   onConceptClick: (id: string, name: string, content: string) => void;
   onDiagramClick: (id: string, name: string, body: string, description?: string | null) => void;
   onCreateDiagram: () => void;
+  onEditDiagram: (diagram: Diagram) => void;
   isDocsLoading: boolean;
   isConceptsLoading: boolean;
   isDiagramsLoading: boolean;
@@ -48,6 +49,7 @@ export function LearnSidebar({
   onConceptClick,
   onDiagramClick,
   onCreateDiagram,
+  onEditDiagram,
   isDocsLoading,
   isConceptsLoading,
   isDiagramsLoading,
@@ -258,21 +260,33 @@ export function LearnSidebar({
                       const itemKey = `diagram-${diagram.id}`;
                       const isActive = activeItemKey === itemKey;
                       return (
-                        <button
-                          key={diagram.id}
-                          data-testid="learn-diagram-item"
-                          onClick={() =>
-                            onDiagramClick(diagram.id, diagram.name, diagram.body, diagram.description)
-                          }
-                          className={cn(
-                            "w-full text-left p-2 rounded-md text-sm transition-colors",
-                            isActive
-                              ? "bg-muted/60 font-medium"
-                              : "bg-muted/30 hover:bg-muted/50"
-                          )}
-                        >
-                          {diagram.name}
-                        </button>
+                        <div key={diagram.id} className="group relative flex items-center gap-1">
+                          <button
+                            data-testid="learn-diagram-item"
+                            onClick={() =>
+                              onDiagramClick(diagram.id, diagram.name, diagram.body, diagram.description)
+                            }
+                            className={cn(
+                              "flex-1 text-left p-2 rounded-md text-sm transition-colors",
+                              isActive
+                                ? "bg-muted/60 font-medium"
+                                : "bg-muted/30 hover:bg-muted/50"
+                            )}
+                          >
+                            {diagram.name}
+                          </button>
+                          <button
+                            data-testid="edit-diagram-button"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditDiagram(diagram);
+                            }}
+                            title="Edit diagram"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
                       );
                     })
                   )}
