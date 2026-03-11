@@ -562,6 +562,8 @@ describe("Stakwork Run Service", () => {
       mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
       mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
       mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      // No active run — guard should pass
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(null);
       mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
       mockedDb.stakworkRun.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
