@@ -233,6 +233,10 @@ describe("POST /api/learnings/diagrams/create", () => {
     expect(saved?.name).toBe("Auth Flow");
     expect(saved?.createdBy).toBe(owner.id);
 
+    // Verify groupId is set to the diagram's own id (versioning root)
+    expect(saved?.groupId).toBe(data.diagram.id);
+    expect(data.diagram.groupId).toBe(data.diagram.id);
+
     // Verify workspace link
     const link = await db.diagramWorkspace.findFirst({
       where: { diagramId: data.diagram.id, workspaceId: workspace.id },
