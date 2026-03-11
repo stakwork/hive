@@ -120,7 +120,7 @@ describe("GET /api/learnings/diagrams", () => {
   it("should return only diagrams linked to the queried workspace", async () => {
     // Create a diagram for the target workspace
     const diagram1 = await db.diagram.create({
-      data: { name: "Auth Flow", body: "graph TD\n  A --> B", description: null, createdBy: owner.id },
+      data: { name: "Auth Flow", body: "graph TD\n  A --> B", description: null, createdBy: owner.id, groupId: generateUniqueId("group") },
     });
     await db.diagramWorkspace.create({
       data: { diagramId: diagram1.id, workspaceId: workspace.id },
@@ -128,7 +128,7 @@ describe("GET /api/learnings/diagrams", () => {
 
     // Create a diagram for the OTHER workspace (should not be returned)
     const diagram2 = await db.diagram.create({
-      data: { name: "Other Flow", body: "graph TD\n  X --> Y", description: null, createdBy: otherOwner.id },
+      data: { name: "Other Flow", body: "graph TD\n  X --> Y", description: null, createdBy: otherOwner.id, groupId: generateUniqueId("group") },
     });
     await db.diagramWorkspace.create({
       data: { diagramId: diagram2.id, workspaceId: otherWorkspace.id },
@@ -158,6 +158,7 @@ describe("GET /api/learnings/diagrams", () => {
         body: "graph TD\n  A --> B",
         description: null,
         createdBy: owner.id,
+        groupId: generateUniqueId("group"),
         createdAt: new Date("2024-01-01T10:00:00Z"),
       },
     });
@@ -171,6 +172,7 @@ describe("GET /api/learnings/diagrams", () => {
         body: "graph TD\n  C --> D",
         description: null,
         createdBy: owner.id,
+        groupId: generateUniqueId("group"),
         createdAt: new Date("2024-06-01T10:00:00Z"),
       },
     });
@@ -210,5 +212,76 @@ describe("GET /api/learnings/diagrams", () => {
     const data = await response.json();
 
     expect(data[0].description).toBeNull();
+  });
+
+  it("should return only the latest version per groupId when multiple versions exist", async () => {
+    const groupId = `group-dedup-${Date.now()}`;
+
+    // Version 1 (older)
+    const v1 = await db.diagram.create({
+      data: {
+        name: "Auth Flow",
+        body: "graph TD\n  A --> B",
+        description: null,
+        createdBy: owner.id,
+        groupId,
+        createdAt: new Date("2024-01-01T10:00:00Z"),
+      },
+    });
+    await db.diagramWorkspace.create({ data: { diagramId: v1.id, workspaceId: workspace.id } });
+
+    // Version 2 (newer — should be returned)
+    const v2 = await db.diagram.create({
+      data: {
+        name: "Auth Flow",
+        body: "graph TD\n  A --> B\n  B --> C",
+        description: null,
+        createdBy: owner.id,
+        groupId,
+        createdAt: new Date("2024-06-01T10:00:00Z"),
+      },
+    });
+    await db.diagramWorkspace.create({ data: { diagramId: v2.id, workspaceId: workspace.id } });
+
+    const request = createAuthenticatedGetRequest(
+      "/api/learnings/diagrams",
+      owner,
+      { workspace: workspace.slug }
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    // Only one entry for this groupId
+    const forGroup = data.filter((d: { groupId: string }) => d.groupId === groupId);
+    expect(forGroup).toHaveLength(1);
+    expect(forGroup[0].id).toBe(v2.id);
+    expect(forGroup[0].body).toBe("graph TD\n  A --> B\n  B --> C");
+  });
+
+  it("should include groupId in each response item", async () => {
+    const groupId = `group-field-${Date.now()}`;
+    const diagram = await db.diagram.create({
+      data: {
+        name: "Field Check",
+        body: "graph TD\n  A --> B",
+        description: null,
+        createdBy: owner.id,
+        groupId,
+      },
+    });
+    await db.diagramWorkspace.create({ data: { diagramId: diagram.id, workspaceId: workspace.id } });
+
+    const request = createAuthenticatedGetRequest(
+      "/api/learnings/diagrams",
+      owner,
+      { workspace: workspace.slug }
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data[0]).toHaveProperty("groupId");
+    expect(data[0].groupId).toBe(groupId);
   });
 });
