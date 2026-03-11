@@ -1160,6 +1160,7 @@ enum StakworkRunType {
   POD_LAUNCH_FAILURE
   DIAGRAM_GENERATION
   LEARNING
+  REPO_AGENT
 }
 
 enum StakworkRunDecision {
@@ -1200,8 +1201,10 @@ model Diagram {
   description String?
   createdBy   String             @map("created_by") // userId
   createdAt   DateTime           @default(now()) @map("created_at")
+  groupId     String             @default("") @map("group_id")
   workspaces  DiagramWorkspace[]
 
+  @@index([groupId])
   @@map("diagrams")
 }
 

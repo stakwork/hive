@@ -18,10 +18,10 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspace, name, prompt } = body;
+    const { workspace, diagramId, prompt } = body;
 
-    if (!workspace || !name || !prompt) {
-      return NextResponse.json({ error: "Missing required fields: workspace, name, prompt" }, { status: 400 });
+    if (!workspace || !diagramId || !prompt) {
+      return NextResponse.json({ error: "Missing required fields: workspace, diagramId, prompt" }, { status: 400 });
     }
 
     const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
@@ -32,10 +32,14 @@ export async function POST(request: NextRequest) {
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    // Get workspace access to retrieve workspace ID
     const workspaceAccess = await validateWorkspaceAccess(workspace, userOrResponse.id, true);
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
+    }
+
+    const existingDiagram = await db.diagram.findUnique({ where: { id: diagramId } });
+    if (!existingDiagram) {
+      return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
 
     const primaryRepo = await getPrimaryRepository(workspaceAccess.workspace.id);
@@ -49,7 +53,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
-    const augmentedPrompt = prompt + MERMAID_INSTRUCTION;
+    const augmentedPrompt =
+      `<current-diagram>\n${existingDiagram.body}\n</current-diagram>\n<user-prompt>\n${prompt}\n</user-prompt>` +
+      MERMAID_INSTRUCTION;
 
     const agentResult = await repoAgent(baseSwarmUrl, decryptedSwarmApiKey, {
       repo_url: primaryRepo.repositoryUrl,
@@ -65,21 +71,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No mermaid diagram found in response" }, { status: 422 });
     }
 
-    const diagram = await db.diagram.create({
+    const newDiagram = await db.diagram.create({
       data: {
-        name,
+        name: existingDiagram.name,
         body: extractedBody,
         description: null,
         createdBy: userOrResponse.id,
+        groupId: existingDiagram.groupId,
       },
     });
 
-    // Set groupId = id so this diagram is its own group (versioning root)
-    await db.diagram.update({ where: { id: diagram.id }, data: { groupId: diagram.id } });
-
     await db.diagramWorkspace.create({
       data: {
-        diagramId: diagram.id,
+        diagramId: newDiagram.id,
         workspaceId: workspaceAccess.workspace.id,
       },
     });
@@ -87,15 +91,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       diagram: {
-        id: diagram.id,
-        name: diagram.name,
-        body: diagram.body,
-        description: diagram.description,
-        groupId: diagram.id,
+        id: newDiagram.id,
+        name: newDiagram.name,
+        body: newDiagram.body,
+        description: newDiagram.description,
+        groupId: newDiagram.groupId,
       },
     });
   } catch (error) {
-    console.error("Create diagram API error:", error);
-    return NextResponse.json({ error: "Failed to create diagram" }, { status: 500 });
+    console.error("Edit diagram API error:", error);
+    return NextResponse.json({ error: "Failed to edit diagram" }, { status: 500 });
   }
 }
