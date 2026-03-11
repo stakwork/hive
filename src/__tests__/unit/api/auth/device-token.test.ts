@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST } from "@/app/api/auth/device-token/route";
+import { POST } from "@/app/api/device-token/route";
 
 // --- mocks -----------------------------------------------------------
 
@@ -23,7 +23,7 @@ import { db } from "@/lib/db";
 const MOCK_USER = { id: "user-1", email: "u@test.com", name: "Test" };
 
 function makeRequest(body?: unknown): NextRequest {
-  return new NextRequest("http://localhost/api/auth/device-token", {
+  return new NextRequest("http://localhost/api/device-token", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -42,7 +42,7 @@ function unauthenticated() {
   );
 }
 
-describe("POST /api/auth/device-token", () => {
+describe("POST /api/device-token", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -96,7 +96,7 @@ describe("POST /api/auth/device-token", () => {
   it("is a no-op and returns 200 when body is empty / non-JSON", async () => {
     authenticatedAs();
 
-    const req = new NextRequest("http://localhost/api/auth/device-token", {
+    const req = new NextRequest("http://localhost/api/device-token", {
       method: "POST",
     });
     const res = await POST(req);

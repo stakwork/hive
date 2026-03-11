@@ -1,5 +1,5 @@
 /**
- * Integration tests for POST /api/auth/device-token
+ * Integration tests for POST /api/device-token
  *
  * Exercises the full request cycle against a real test-DB user record,
  * verifying DB state after each operation.
@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { POST } from "@/app/api/auth/device-token/route";
+import { POST } from "@/app/api/device-token/route";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 
@@ -23,14 +23,14 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 function makeRequest(body?: unknown): NextRequest {
-  return new NextRequest("http://localhost/api/auth/device-token", {
+  return new NextRequest("http://localhost/api/device-token", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
 
-describe("POST /api/auth/device-token — integration", () => {
+describe("POST /api/device-token — integration", () => {
   let userId: string;
 
   beforeEach(async () => {
