@@ -10,6 +10,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type PRWindowKey = "24h" | "48h" | "1w" | "2w" | "1mo";
 
@@ -95,6 +102,21 @@ export default function WorkspacePRStats({ workspaceId }: WorkspacePRStatsProps)
   const showTotals = data.repos.length > 1;
 
   return (
+    <div className="space-y-1">
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground cursor-help">
+            <Info className="h-3 w-3" />
+            Merged / New PRs — GitHub API limited to 1,000 PRs per repo
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>GitHub Search API returns a maximum of 1,000 results per repo per time window.</p>
+          <p>Repos exceeding this limit may show incomplete totals.</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
     <Table>
       <TableHeader>
         <TableRow>
@@ -125,5 +147,6 @@ export default function WorkspacePRStats({ workspaceId }: WorkspacePRStatsProps)
         )}
       </TableBody>
     </Table>
+    </div>
   );
 }
