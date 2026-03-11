@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import CopySwarmPasswordButton from "./CopySwarmPasswordButton";
 import AdminJanitorToggles from "./AdminJanitorToggles";
+import WorkspacePRStats from "./WorkspacePRStats";
 
 export default async function AdminWorkspaceDetailPage({
   params,
@@ -211,6 +212,16 @@ export default async function AdminWorkspaceDetailPage({
           </CardHeader>
           <CardContent>
             <AdminJanitorToggles workspaceId={workspaceId} />
+          </CardContent>
+        </Card>
+
+        {/* PR Statistics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>PR Statistics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WorkspacePRStats workspaceId={workspaceId} />
           </CardContent>
         </Card>
       </div>
