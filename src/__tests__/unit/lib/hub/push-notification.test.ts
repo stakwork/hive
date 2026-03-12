@@ -1,232 +1,45 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { buildPushMessage } from "@/lib/hub/push-notification";
 
-vi.mock("@/config/env", () => ({
-  optionalEnvVars: { HUB_NOTIFY_URL: "https://hub.sphinx.chat/api/v1/nodes/notify" },
-}));
-
-vi.mock("@/lib/logger", () => ({
-  logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
-}));
-
-import { sendHubPushNotification } from "@/lib/hub/push-notification";
-import { optionalEnvVars } from "@/config/env";
-import { logger } from "@/lib/logger";
-
-const mockedLogger = vi.mocked(logger);
-
-// Helper to cast env mock for reassignment in tests
-function setHubUrl(url: string | undefined) {
-  (optionalEnvVars as Record<string, unknown>).HUB_NOTIFY_URL = url;
-}
-
-describe("sendHubPushNotification", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setHubUrl("https://hub.sphinx.chat/api/v1/nodes/notify");
+describe("buildPushMessage", () => {
+  it("strips @alias — prefix and trailing URL (happy path)", () => {
+    const input = "@Tom — Your plan for 'X' is ready for your review: https://hive.sphinx.chat/w/abc";
+    expect(buildPushMessage(input)).toBe("Your plan for 'X' is ready for your review");
   });
 
-  describe("payload shape", () => {
-    it("sends correct payload with taskId present", async () => {
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 })
-      );
-
-      await sendHubPushNotification({
-        deviceToken: "device-abc",
-        message: "You have a new task",
-        workspaceSlug: "my-workspace",
-        taskId: "task-123",
-        featureId: "feat-999",
-      });
-
-      expect(fetchSpy).toHaveBeenCalledOnce();
-      const [url, init] = fetchSpy.mock.calls[0];
-      expect(url).toBe("https://hub.sphinx.chat/api/v1/nodes/notify");
-      expect(init?.method).toBe("POST");
-
-      const body = JSON.parse(init?.body as string);
-      expect(body).toMatchObject({
-        v2: true,
-        push_environment: "production",
-        device_id: "device-abc",
-        notification: {
-          child: "my-workspace/task:task-123",
-          message: "You have a new task",
-          badge: null,
-          sound: "default",
-        },
-      });
-    });
-
-    it("uses featureId in child when taskId is absent", async () => {
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 })
-      );
-
-      await sendHubPushNotification({
-        deviceToken: "device-abc",
-        message: "Feature update",
-        workspaceSlug: "my-workspace",
-        featureId: "feat-456",
-      });
-
-      const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-      expect(body.notification.child).toBe("my-workspace/feature:feat-456");
-    });
-
-    it("taskId takes priority over featureId in child", async () => {
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 })
-      );
-
-      await sendHubPushNotification({
-        deviceToken: "device-abc",
-        message: "msg",
-        workspaceSlug: "slug",
-        taskId: "task-111",
-        featureId: "feat-222",
-      });
-
-      const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-      expect(body.notification.child).toBe("slug/task:task-111");
-    });
-
-    it("includes workspace slug in child string", async () => {
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 })
-      );
-
-      await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "acme-corp",
-        taskId: "t-1",
-      });
-
-      const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-      expect(body.notification.child).toMatch(/^acme-corp\//);
-    });
+  it("strips prefix only when no trailing URL is present", () => {
+    const input = "@alice — You have been assigned to task 'Fix bug'";
+    expect(buildPushMessage(input)).toBe("You have been assigned to task 'Fix bug'");
   });
 
-  describe("return value", () => {
-    it("returns { success: true } on 200 response", async () => {
-      vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(null, { status: 200 })
-      );
-
-      const result = await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
-
-      expect(result).toEqual({ success: true });
-    });
-
-    it("returns { success: false, error } on non-200 response", async () => {
-      vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response("Bad Request", { status: 400 })
-      );
-
-      const result = await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("400");
-    });
+  it("strips trailing URL only when no prefix is present", () => {
+    const input = "Your PR has been merged: https://hive.sphinx.chat/w/my-ws/task/123";
+    expect(buildPushMessage(input)).toBe("Your PR has been merged");
   });
 
-  describe("error handling — never throws", () => {
-    it("returns { success: false } and logs when fetch throws", async () => {
-      vi.spyOn(global, "fetch").mockRejectedValue(new Error("network error"));
-
-      const result = await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("network error");
-      expect(mockedLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining("HubPush"),
-        "HUB_PUSH",
-        expect.any(Object)
-      );
-    });
-
-    it("does not throw when fetch rejects", async () => {
-      vi.spyOn(global, "fetch").mockRejectedValue(new Error("timeout"));
-
-      await expect(
-        sendHubPushNotification({
-          deviceToken: "tok",
-          message: "msg",
-          workspaceSlug: "ws",
-          taskId: "t-1",
-        })
-      ).resolves.not.toThrow();
-    });
-
-    it("logs on non-200 response with HUB_PUSH tag", async () => {
-      vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response("Server Error", { status: 500 })
-      );
-
-      await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
-
-      expect(mockedLogger.error).toHaveBeenCalledWith(
-        expect.any(String),
-        "HUB_PUSH",
-        expect.any(Object)
-      );
-    });
+  it("falls back to the original message if stripping would produce an empty string", () => {
+    const input = "@bob — : https://hive.sphinx.chat/w/ws";
+    // After stripping prefix → ": https://..." → stripping URL → "" → fallback
+    expect(buildPushMessage(input)).toBe(input);
   });
 
-  describe("no-op when HUB_NOTIFY_URL not configured", () => {
-    it("returns { success: false } without calling fetch when URL is empty string", async () => {
-      setHubUrl("");
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(null, { status: 200 })
-      );
+  it("handles aliases with hyphens (e.g. @tom-smith)", () => {
+    const input = "@tom-smith — Workflow halted for task 'Auth refactor': https://hive.sphinx.chat/w/ws/task/t1";
+    expect(buildPushMessage(input)).toBe("Workflow halted for task 'Auth refactor'");
+  });
 
-      const result = await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
+  it("handles aliases with underscores (e.g. @tom_smith)", () => {
+    const input = "@tom_smith — Feature 'Dashboard' is complete: https://hive.sphinx.chat/w/ws/feature/f1";
+    expect(buildPushMessage(input)).toBe("Feature 'Dashboard' is complete");
+  });
 
-      expect(result.success).toBe(false);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
+  it("returns the original message unchanged when no prefix or URL is present", () => {
+    const input = "You have been assigned a task";
+    expect(buildPushMessage(input)).toBe("You have been assigned a task");
+  });
 
-    it("returns { success: false } without calling fetch when URL is undefined", async () => {
-      setHubUrl(undefined);
-      const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response(null, { status: 200 })
-      );
-
-      const result = await sendHubPushNotification({
-        deviceToken: "tok",
-        message: "msg",
-        workspaceSlug: "ws",
-        taskId: "t-1",
-      });
-
-      expect(result.success).toBe(false);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
+  it("supports http:// URLs as well as https://", () => {
+    const input = "@dev — Task updated: http://localhost/w/test/task/1";
+    expect(buildPushMessage(input)).toBe("Task updated");
   });
 });

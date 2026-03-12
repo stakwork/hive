@@ -15,6 +15,7 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
 }));
 vi.mock("@/lib/hub/push-notification", () => ({
   sendHubPushNotification: vi.fn(),
+  buildPushMessage: vi.fn((msg: string) => msg),
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
