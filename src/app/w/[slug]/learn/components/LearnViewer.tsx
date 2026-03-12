@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { LearnSidebar } from "./LearnSidebar";
 import { LearnDocViewer } from "./LearnDocViewer";
 import { DiagramViewer } from "./DiagramViewer";
@@ -40,6 +41,10 @@ interface LearnViewerProps {
 }
 
 export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [docs, setDocs] = useState<Doc[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
@@ -50,6 +55,12 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCreateDiagramOpen, setIsCreateDiagramOpen] = useState(false);
   const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null);
+
+  const setUrlParam = (key: "doc" | "concept" | "diagram", value: string) => {
+    const p = new URLSearchParams();
+    p.set(key, encodeURIComponent(value));
+    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+  };
 
   const fetchDiagrams = async (): Promise<Diagram[]> => {
     try {
@@ -98,8 +109,12 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
           }
           setDocs(parsedDocs);
 
-          // Auto-select first doc
-          if (parsedDocs.length > 0) {
+          // Auto-select first doc only when no URL param is present
+          const hasUrlParam =
+            searchParams.get("doc") ||
+            searchParams.get("concept") ||
+            searchParams.get("diagram");
+          if (!hasUrlParam && parsedDocs.length > 0) {
             const firstDoc = parsedDocs[0];
             setActiveItem({
               type: "doc",
@@ -131,6 +146,36 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug]);
 
+  // Restore active item from URL params once all data has loaded
+  useEffect(() => {
+    if (isDocsLoading || isConceptsLoading || isDiagramsLoading) return;
+
+    const docParam = searchParams.get("doc");
+    const conceptParam = searchParams.get("concept");
+    const diagramParam = searchParams.get("diagram");
+
+    if (docParam) {
+      const repoName = decodeURIComponent(docParam);
+      const match = docs.find((d) => d.repoName === repoName);
+      if (match) {
+        setActiveItem({ type: "doc", repoName: match.repoName, name: match.repoName, content: match.content });
+      } else if (docs.length > 0) {
+        setActiveItem({ type: "doc", repoName: docs[0].repoName, name: docs[0].repoName, content: docs[0].content });
+      }
+    } else if (conceptParam) {
+      const id = decodeURIComponent(conceptParam);
+      const match = concepts.find((c) => c.id === id);
+      if (match) handleConceptClick(match.id, match.name, match.content || "");
+    } else if (diagramParam) {
+      const id = decodeURIComponent(diagramParam);
+      const match = diagrams.find((d) => d.id === id);
+      if (match) {
+        setActiveItem({ type: "diagram", id: match.id, name: match.name, content: "", body: match.body, description: match.description });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDocsLoading, isConceptsLoading, isDiagramsLoading]);
+
   const refreshConcepts = async () => {
     try {
       const response = await fetch(
@@ -152,10 +197,12 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
       name: repoName,
       content,
     });
+    setUrlParam("doc", repoName);
   };
 
   const handleConceptClick = async (id: string, name: string, content: string) => {
     setActiveItem({ type: "concept", id, name, content });
+    setUrlParam("concept", id);
 
     if (!content) {
       try {
@@ -184,6 +231,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     description?: string | null
   ) => {
     setActiveItem({ type: "diagram", id, name, content: "", body, description });
+    setUrlParam("diagram", id);
   };
 
   const handleDiagramCreated = async () => {
