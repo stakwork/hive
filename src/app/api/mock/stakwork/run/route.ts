@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const vars = body?.workflow_params?.set_var?.attributes?.vars ?? {};
 
-    const { webhookUrl: wh, swarmUrl, swarmApiKey, repo_url, prompt } = vars as Record<string, string>;
+    const { webhookUrl: wh, swarmUrl, swarmApiKey, repo_url, prompt, swarmSecretAlias, swarmDomain } = vars as Record<string, string>;
     webhookUrl = wh;
 
     const missing = (["webhookUrl", "swarmUrl", "swarmApiKey", "repo_url", "prompt"] as const).filter(
@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
     const agentResult = await repoAgent(swarmUrl, swarmApiKey, {
       repo_url,
       prompt,
+      swarmSecretAlias: swarmSecretAlias ?? null,
+      swarmDomain: swarmDomain ?? undefined,
       pat: vars.pat as string | undefined,
       username: vars.username as string | undefined,
       commit: vars.commit as string | undefined,
