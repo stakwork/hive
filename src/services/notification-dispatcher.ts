@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendDirectMessage } from "@/lib/sphinx/direct-message";
 import { sendHubPushNotification } from "@/lib/hub/push-notification";
+import { EncryptionService } from "@/lib/encryption";
 import {
   NotificationTriggerStatus,
   NotificationTriggerType,
@@ -151,6 +152,11 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
     return result;
   }
 
+  logger.info(
+    `[NotificationDispatcher] Found ${due.length} due notification(s)`,
+    "NOTIFICATION_DISPATCHER"
+  );
+
   for (const record of due) {
     try {
       const cancel = await shouldCancel(
@@ -164,17 +170,29 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
           where: { id: record.id },
           data: { status: NotificationTriggerStatus.CANCELLED },
         });
+        logger.info(
+          `[NotificationDispatcher] Cancelled ${record.notificationType} (${record.id}) — entity resolved`,
+          "NOTIFICATION_DISPATCHER"
+        );
         result.cancelled++;
         continue;
       }
 
-      // Defensive: re-check that the recipient still has a pubkey
-      const pubkey = record.targetUser?.lightningPubkey;
+      // Defensive: re-check that the recipient still has a pubkey and decrypt it
+      const encryptionService = EncryptionService.getInstance();
+      const pubkey = record.targetUser?.lightningPubkey
+        ? encryptionService.decryptField("lightningPubkey", record.targetUser.lightningPubkey)
+        : null;
       if (!pubkey || !record.message) {
         await db.notificationTrigger.update({
           where: { id: record.id },
           data: { status: NotificationTriggerStatus.CANCELLED },
         });
+        logger.info(
+          `[NotificationDispatcher] Cancelled ${record.notificationType} (${record.id}) — no pubkey or message`,
+          "NOTIFICATION_DISPATCHER",
+          { hasPubkey: !!pubkey, hasMessage: !!record.message }
+        );
         result.cancelled++;
         continue;
       }
@@ -209,8 +227,16 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       });
 
       if (sendResult.success) {
+        logger.info(
+          `[NotificationDispatcher] Sent ${record.notificationType} (${record.id}) to ${pubkey.slice(0, 8)}…`,
+          "NOTIFICATION_DISPATCHER"
+        );
         result.dispatched++;
       } else {
+        logger.warn(
+          `[NotificationDispatcher] Failed to send ${record.notificationType} (${record.id}): ${sendResult.error}`,
+          "NOTIFICATION_DISPATCHER"
+        );
         result.failed++;
         result.errors.push(
           `Record ${record.id}: send failed — ${sendResult.error ?? "unknown error"}`
