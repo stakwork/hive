@@ -172,6 +172,15 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   // Tasks are now sorted by the backend API, no need for client-side sorting
   const sortedTasks = tasks;
 
+  // Merge queued tasks into kanban items so they always appear in the Queue column
+  // regardless of pagination (the main query may not include them if >100 tasks)
+  const kanbanItems = (() => {
+    if (queuedTasks.length === 0) return sortedTasks;
+    const mainTaskIds = new Set(sortedTasks.map((t) => t.id));
+    const missingQueuedTasks = queuedTasks.filter((t) => !mainTaskIds.has(t.id));
+    return missingQueuedTasks.length > 0 ? [...missingQueuedTasks, ...sortedTasks] : sortedTasks;
+  })();
+
   // Refresh task list when global notification count changes
   useEffect(() => {
     refetch();
@@ -280,7 +289,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             return viewType === "list" ? null : (
               <div className="mt-4">
                 <KanbanView
-                  items={sortedTasks}
+                  items={kanbanItems}
                   columns={kanbanColumns}
                   getItemStatus={(task: any): TaskKanbanStatus =>
                     workspaceSlug === "stakwork" && task.mode === "workflow_editor"
