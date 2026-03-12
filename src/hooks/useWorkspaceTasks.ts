@@ -108,6 +108,36 @@ interface UseWorkspaceTasksResult {
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
 }
 
+interface BuildTasksUrlParams {
+  workspaceId: string;
+  page: number;
+  limit: number;
+  queue?: boolean;
+  includeLatestMessage?: boolean;
+  showArchived?: boolean;
+  search?: string;
+  filters?: { sourceType?: string; status?: string; priority?: string; hasPod?: boolean };
+  showAllStatuses?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
+function buildTasksUrl({ workspaceId, page, limit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder }: BuildTasksUrlParams): string {
+  if (queue) {
+    return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}&queue=true${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+  }
+  const archivedParam = showArchived ? '&includeArchived=true' : '';
+  const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+  const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
+  const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
+  const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
+  const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
+  const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
+  const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
+  const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
+  return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
+}
+
 export function useWorkspaceTasks(
   workspaceId: string | null,
   workspaceSlug?: string | null,
@@ -145,22 +175,7 @@ export function useWorkspaceTasks(
     setError(null);
 
     try {
-      let url: string;
-      if (queue) {
-        // Queue mode: API handles all ordering/filtering, skip archived/sort/status params
-        url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}&queue=true${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
-      } else {
-        const archivedParam = showArchived ? '&includeArchived=true' : '';
-        const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-        const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
-        const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
-        const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
-        const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-        const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-        const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
-        const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
-        url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
-      }
+      const url = buildTasksUrl({ workspaceId, page, limit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder });
 
       const response = await fetch(url, {
         method: "GET",
@@ -211,21 +226,7 @@ export function useWorkspaceTasks(
       let finalPagination: PaginationData | null = null;
 
       for (let page = 1; page <= storedPage; page++) {
-        let url: string;
-        if (queue) {
-          url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}&queue=true${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
-        } else {
-          const archivedParam = showArchived ? '&includeArchived=true' : '';
-          const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-          const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
-          const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
-          const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
-          const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-          const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-          const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
-          const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
-          url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
-        }
+        const url = buildTasksUrl({ workspaceId, page, limit: pageLimit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder });
         const response = await fetch(url, {
           method: "GET",
           headers: {
