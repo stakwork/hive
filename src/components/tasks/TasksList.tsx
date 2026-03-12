@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
@@ -201,22 +200,15 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     return <EmptyState workspaceSlug={workspaceSlug} />;
   }
 
-  const queuedCount = stats?.queuedCount ?? 0;
-
   return (
     <Card data-testid="tasks-list-loaded">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <CardHeader className="flex flex-row items-center justify-between">
           <TabsList>
-            <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="queue" data-testid="queue-tab">
               Queue
-              {queuedCount > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs" data-testid="queue-tab-badge">
-                  {queuedCount}
-                </Badge>
-              )}
             </TabsTrigger>
+            <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="archived">Archived</TabsTrigger>
           </TabsList>
           <ToggleGroup type="single" value={viewType} onValueChange={handleViewChange}>
