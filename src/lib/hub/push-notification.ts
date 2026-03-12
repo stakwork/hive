@@ -1,6 +1,24 @@
 import { optionalEnvVars } from "@/config/env";
 import { logger } from "@/lib/logger";
 
+/**
+ * Strips the recipient name prefix (`@alias — `) and trailing URL (`: https://...`)
+ * from a DM message string, returning a clean push-only body.
+ * Falls back to the original message if stripping produces an empty string.
+ *
+ * Example:
+ *   "@Tom — Your plan for 'X' is ready: https://hive.sphinx.chat/w/abc"
+ *   → "Your plan for 'X' is ready"
+ */
+export function buildPushMessage(message: string): string {
+  let result = message;
+  // Strip leading "@alias — " prefix (alias may contain hyphens/underscores)
+  result = result.replace(/^@\S+ — /, "");
+  // Strip trailing ": https?://..." URL
+  result = result.replace(/: https?:\/\/\S+$/, "");
+  return result.trim() || message;
+}
+
 export interface HubPushInput {
   deviceToken: string;
   message: string;

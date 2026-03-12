@@ -15,6 +15,7 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
 }));
 vi.mock("@/lib/hub/push-notification", () => ({
   sendHubPushNotification: vi.fn(),
+  buildPushMessage: vi.fn((msg: string) => msg),
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
@@ -276,6 +277,7 @@ describe("createAndSendNotification", () => {
       expect(mockedSendHubPushNotification).toHaveBeenCalledWith(
         expect.objectContaining({
           deviceToken: "device-token-abc",
+          // buildPushMessage is mocked as pass-through; real stripping is tested in unit/lib/hub/push-notification.test.ts
           message: immediateInput.message,
           workspaceSlug: "test-workspace",
           taskId: "task-1",
