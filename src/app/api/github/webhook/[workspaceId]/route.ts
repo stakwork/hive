@@ -255,26 +255,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           );
 
           if (tasks.length === 0) {
-            const matchingArtifacts = await db.$queryRaw<
-              Array<{
-                task_id: string;
-                workspace_id: string;
-                deleted: boolean;
-                archived: boolean;
-                status: TaskStatus;
-                workflow_status: WorkflowStatus | null;
-              }>
-            >(
-              Prisma.sql`
-                SELECT t.id as task_id, t.workspace_id, t.deleted, t.archived, t.status, t.workflow_status
-                FROM artifacts a
-                JOIN chat_messages m ON a.message_id = m.id
-                JOIN tasks t ON m.task_id = t.id
-                WHERE a.type = 'PULL_REQUEST'
-                  AND a.content->>'url' = ${prUrl}
-              `,
-            );
-
             console.warn(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - no active tasks found`, {
               delivery,
               workspaceId: repository.workspaceId,
@@ -283,16 +263,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               prUrl,
               merged: isMerged,
               mergedAt,
-              matchingArtifactCount: matchingArtifacts.length,
-              diagnosis: matchingArtifacts.length === 0 ? "no_matching_pr_artifact" : "matching_tasks_filtered_out",
-              matchingTasks: matchingArtifacts.map((task) => ({
-                taskId: task.task_id,
-                workspaceId: task.workspace_id,
-                deleted: task.deleted,
-                archived: task.archived,
-                status: task.status,
-                workflowStatus: task.workflow_status,
-              })),
             });
             return NextResponse.json({ success: true }, { status: 202 });
           }
