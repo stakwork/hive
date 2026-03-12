@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // Coordinator-queued TODO tasks
+      // Coordinator-queued TODO tasks (must match /api/tasks?queue=true filters)
       db.task.count({
         where: {
           workspaceId,
@@ -78,6 +78,15 @@ export async function GET(request: NextRequest) {
           archived: false,
           status: "TODO",
           systemAssigneeType: "TASK_COORDINATOR",
+          sourceType: { not: "USER_JOURNEY" },
+          AND: [
+            {
+              OR: [
+                { featureId: null },
+                { feature: { status: { not: "CANCELLED" } } },
+              ],
+            },
+          ],
         },
       }),
     ]);
