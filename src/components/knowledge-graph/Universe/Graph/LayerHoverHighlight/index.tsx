@@ -161,10 +161,10 @@ export const LayerHoverHighlight = () => {
     const boundsKey = `${Math.round(currentBounds.minX)}-${Math.round(currentBounds.maxX)}-${Math.round(currentBounds.minZ)}-${Math.round(currentBounds.maxZ)}`
 
     // Check if the mouse is actually within the bounds of the nodes in this layer
-    const isWithinBounds = 
-      worldX >= currentBounds.minX && 
-      worldX <= currentBounds.maxX && 
-      worldZ >= currentBounds.minZ && 
+    const isWithinBounds =
+      worldX >= currentBounds.minX &&
+      worldX <= currentBounds.maxX &&
+      worldZ >= currentBounds.minZ &&
       worldZ <= currentBounds.maxZ
 
     if (!isWithinBounds) {
@@ -240,6 +240,7 @@ export const LayerHoverHighlight = () => {
       <Html
         position={[maxX + 80, yPosition, centerZ]}
         center
+        zIndexRange={[100, 101]}
         sprite={false}
         style={{
           pointerEvents: 'none',
