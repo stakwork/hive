@@ -172,14 +172,17 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   // Tasks are now sorted by the backend API, no need for client-side sorting
   const sortedTasks = tasks;
 
-  // Merge queued tasks into kanban items so they always appear in the Queue column
-  // regardless of pagination (the main query may not include them if >100 tasks)
-  const kanbanItems = (() => {
+  // Merge queued tasks into the active-task kanban board so they always appear
+  // in the Queue column regardless of pagination.
+  const activeKanbanItems = (() => {
     if (queuedTasks.length === 0) return sortedTasks;
     const mainTaskIds = new Set(sortedTasks.map((t) => t.id));
     const missingQueuedTasks = queuedTasks.filter((t) => !mainTaskIds.has(t.id));
     return missingQueuedTasks.length > 0 ? [...missingQueuedTasks, ...sortedTasks] : sortedTasks;
   })();
+
+  const kanbanItems = activeTab === "queue" ? queuedTasks : activeKanbanItems;
+  const kanbanLoading = activeTab === "queue" ? queueLoading : loading;
 
   // Refresh task list when global notification count changes
   useEffect(() => {
@@ -312,9 +315,9 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                     if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
                     return 0;
                   }}
-                  loading={loading}
+                  loading={kanbanLoading}
                 />
-                {pagination?.hasMore && (
+                {activeTab !== "queue" && pagination?.hasMore && (
                   <div className="pt-3 border-t flex justify-center mt-4">
                     <Button
                       variant="outline"
