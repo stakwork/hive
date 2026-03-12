@@ -131,6 +131,20 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug]);
 
+  const refreshConcepts = async () => {
+    try {
+      const response = await fetch(
+        `/api/learnings/features?workspace=${workspaceSlug}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setConcepts(Array.isArray(data) ? data : data.features || []);
+      }
+    } catch (error) {
+      console.error("Failed to refresh concepts:", error);
+    }
+  };
+
   const handleDocClick = (repoName: string, content: string) => {
     setActiveItem({
       type: "doc",
@@ -276,6 +290,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
       {/* Right sidebar */}
       <LearnSidebar
+        workspaceSlug={workspaceSlug}
         docs={docs}
         concepts={concepts}
         diagrams={diagrams}
@@ -285,6 +300,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         onDiagramClick={handleDiagramClick}
         onCreateDiagram={() => setIsCreateDiagramOpen(true)}
         onEditDiagram={handleEditDiagram}
+        onConceptCreated={refreshConcepts}
         isDocsLoading={isDocsLoading}
         isConceptsLoading={isConceptsLoading}
         isDiagramsLoading={isDiagramsLoading}
