@@ -1207,7 +1207,7 @@ export async function triggerLiveModeFix(
       mode: "live",
     });
 
-    if (!result.stakworkData?.success) {
+    if (!result.stakworkData?.projectId) {
       log.error("Failed to trigger Stakwork workflow", {
         taskId,
         error: result.stakworkData?.error,
@@ -1215,7 +1215,7 @@ export async function triggerLiveModeFix(
       return { success: false, error: "Failed to trigger Stakwork workflow" };
     }
 
-    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.data?.project_id });
+    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.projectId });
     return { success: true };
   } catch (error) {
     log.error("Error triggering live mode fix", { taskId, error: String(error) });

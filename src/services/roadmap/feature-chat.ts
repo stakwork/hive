@@ -329,24 +329,25 @@ export async function sendFeatureChatMessage({
       subAgents: extraSwarms,
     });
 
-    // Set workflow status to IN_PROGRESS as soon as Stakwork is called
-    const updateData: Record<string, unknown> = {
-      workflowStatus: WorkflowStatus.IN_PROGRESS,
-      workflowStartedAt: new Date(),
-    };
-    if (stakworkData?.data?.project_id) {
-      updateData.stakworkProjectId = stakworkData.data.project_id;
-    }
-    await db.feature.update({
-      where: { id: featureId },
-      data: updateData,
-    });
+    // Only update workflow status when Stakwork confirms a project was created
+    if (stakworkData?.projectId) {
+      await db.feature.update({
+        where: { id: featureId },
+        data: {
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: new Date(),
+          stakworkProjectId: stakworkData.projectId,
+        },
+      });
 
-    await pusherServer.trigger(
-      getFeatureChannelName(featureId),
-      PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-      { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
-    );
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      );
+    }
+    // All other cases (network error, non-2xx, body-level failure, missing project_id):
+    // no-op — leave workflowStatus unchanged
   }
 
   return { chatMessage, stakworkData };
