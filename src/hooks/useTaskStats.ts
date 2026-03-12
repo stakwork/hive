@@ -7,6 +7,7 @@ export interface TaskStats {
   total: number;
   inProgress: number;
   waitingForInput: number;
+  queuedCount: number;
 }
 
 interface UseTaskStatsResult {
