@@ -87,7 +87,7 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
-        run: npx next dev &
+        run: npm run dev &
 
       - name: Wait for application to be ready
         run: npx wait-on http://localhost:3000 --timeout 300000

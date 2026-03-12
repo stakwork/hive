@@ -6,22 +6,22 @@ export const fetchCache = "force-no-store";
 
 /**
  * Mock Pool Manager workspace delete endpoint
- * DELETE /api/mock/pool-manager/pools/[poolName]/workspaces/[workspaceId]
+ * DELETE /api/mock/pool-manager/pools/[poolName]/workspaces/[podId]
  */
 
 interface RouteContext {
   params: Promise<{
     poolName: string;
-    workspaceId: string;
+    podId: string;
   }>;
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const { poolName, workspaceId } = await context.params;
+    const { poolName, podId } = await context.params;
     const pool = mockPoolState.getOrCreatePool(poolName);
 
-    const podIndex = pool.pods.findIndex((p) => p.id === workspaceId);
+    const podIndex = pool.pods.findIndex((p) => p.id === podId);
 
     if (podIndex === -1) {
       return NextResponse.json({ error: "Pod not found" }, { status: 404 });
