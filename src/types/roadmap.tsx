@@ -4,7 +4,7 @@ import type {
   PaginatedApiResponse,
 } from "./common";
 import React from "react";
-import { Inbox, Calendar, Loader2, CheckCircle, XCircle, PlayCircle } from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle, PlayCircle, Workflow } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 export type { FeatureStatus, FeaturePriority, TaskStatus, Priority };
@@ -67,6 +67,14 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
     bgColor: "bg-red-50/30 dark:bg-red-950/10",
   },
 ];
+
+export const WORKFLOW_EDITOR_KANBAN_COLUMN: KanbanColumn<"WORKFLOW_EDITOR"> = {
+  status: "WORKFLOW_EDITOR",
+  title: "Workflows",
+  icon: <Workflow className="h-4 w-4" />,
+  color: "text-violet-600 dark:text-violet-400",
+  bgColor: "bg-violet-50/30 dark:bg-violet-950/10",
+};
 
 export const TASK_KANBAN_COLUMNS: KanbanColumn<TaskStatus>[] = [
   {
