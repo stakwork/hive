@@ -113,7 +113,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
         if (conceptsResponse.ok) {
           const conceptsData = await conceptsResponse.json();
-          setConcepts(Array.isArray(conceptsData) ? conceptsData : []);
+          setConcepts(Array.isArray(conceptsData) ? conceptsData : conceptsData.features || []);
         }
         setIsConceptsLoading(false);
       } catch (error) {
