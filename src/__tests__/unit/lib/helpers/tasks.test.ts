@@ -14,9 +14,14 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
     },
     task: {
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
   },
+}));
+
+vi.mock("@/lib/pods/utils", () => ({
+  releaseTaskPod: vi.fn(),
 }));
 
 vi.mock("@/config/services", () => ({
@@ -30,6 +35,7 @@ vi.mock("@/config/services", () => ({
 // Import mocked functions
 import { getUserAppTokens } from "@/lib/githubApp";
 import { db } from "@/lib/db";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -39,6 +45,8 @@ global.fetch = mockFetch as typeof fetch;
 function createMockTask(overrides: Partial<{
   id: string;
   status: TaskStatus;
+  podId: string | null;
+  workspaceId: string;
   chatMessages: unknown[];
 }> = {}) {
   return {
@@ -77,6 +85,12 @@ describe("extractPrArtifact", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.task.findUnique).mockResolvedValue(null as any);
+    vi.mocked(releaseTaskPod).mockResolvedValue({
+      success: true,
+      podDropped: true,
+      taskCleared: true,
+    });
   });
 
   afterEach(() => {
@@ -166,7 +180,28 @@ describe("extractPrArtifact", () => {
       expect(db.artifact.update).not.toHaveBeenCalled();
     });
 
-    test("skips GitHub API call for merged PRs (status: DONE)", async () => {
+    test("releases assigned pod when artifact is already marked DONE", async () => {
+      const prArtifact = createMockPrArtifact({ status: "DONE" });
+      const message = createMockChatMessage([prArtifact]);
+      const task = createMockTask({
+        chatMessages: [message],
+        podId: "pod-123",
+        workspaceId: "workspace-123",
+      });
+
+      await extractPrArtifact(task as any, mockUserId);
+
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: "pod-123",
+        workspaceId: "workspace-123",
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    });
+
+    test("skips GitHub API call for merged PRs (status: DONE) while syncing task state", async () => {
       const prArtifact = createMockPrArtifact({
         status: "DONE",
         url: "https://github.com/owner/repo/pull/100",
@@ -180,7 +215,10 @@ describe("extractPrArtifact", () => {
       expect(getUserAppTokens).not.toHaveBeenCalled();
       expect(mockFetch).not.toHaveBeenCalled();
       expect(db.artifact.update).not.toHaveBeenCalled();
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.task.update).toHaveBeenCalledWith({
+        where: { id: task.id },
+        data: { status: TaskStatus.DONE },
+      });
     });
   });
 
@@ -316,6 +354,54 @@ describe("extractPrArtifact", () => {
       });
 
       expect(result?.content.status).toBe("DONE");
+    });
+
+    test("releases pod when merged PR is detected from GitHub and task context must be reloaded", async () => {
+      const prArtifact = createMockPrArtifact({
+        status: "IN_PROGRESS",
+        url: "https://github.com/owner/repo/pull/42",
+      });
+      const message = createMockChatMessage([prArtifact]);
+      const task = createMockTask({
+        id: "task-release",
+        status: TaskStatus.IN_PROGRESS,
+        chatMessages: [message],
+      });
+
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken: "github-token",
+      });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          state: "closed",
+          merged_at: "2024-01-15T10:30:00Z",
+        }),
+      });
+      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.task.findUnique).mockResolvedValue({
+        workspaceId: "workspace-456",
+        podId: "pod-456",
+      } as any);
+
+      await extractPrArtifact(task, mockUserId);
+
+      expect(db.task.findUnique).toHaveBeenCalledWith({
+        where: { id: task.id },
+        select: {
+          workspaceId: true,
+          podId: true,
+        },
+      });
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: "pod-456",
+        workspaceId: "workspace-456",
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
     });
 
     test("updates artifact to CANCELLED when PR is closed but not merged", async () => {
