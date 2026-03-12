@@ -61,10 +61,11 @@ export async function GET(
   const now = new Date();
   const oneMonthAgo = new Date(now.getTime() - WINDOW_DURATIONS_MS["1mo"]);
 
-  // Single raw SQL query for all merged PULL_REQUEST artifacts in the last 30 days
+  // Single raw SQL query for unique merged PULL_REQUEST artifacts in the last 30 days
+  // Deduplicate by PR URL to avoid counting multiple artifacts for the same PR
   type ArtifactRow = { repo: string; created_at: Date };
   const rawArtifacts = await db.$queryRaw<ArtifactRow[]>`
-    SELECT a.content->>'repo' as repo, a.created_at
+    SELECT DISTINCT ON (a.content->>'url') a.content->>'repo' as repo, a.created_at
     FROM artifacts a
     JOIN chat_messages m ON a.message_id = m.id
     JOIN tasks t ON m.task_id = t.id
@@ -72,6 +73,7 @@ export async function GET(
       AND t.workspace_id = ${workspaceId}
       AND a.created_at >= ${oneMonthAgo}
       AND a.content->>'status' = 'DONE'
+    ORDER BY a.content->>'url', a.created_at ASC
   `;
 
   // Bucket hive artifacts in memory per repo
