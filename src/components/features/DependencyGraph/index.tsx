@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Node,
   Edge,
   Controls,
   Background,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -22,19 +24,62 @@ import { cn } from "@/lib/utils";
 const DEFAULT_NODE_WIDTH = 300;
 const DEFAULT_NODE_HEIGHT = 100;
 
-export function DependencyGraph<T extends GraphEntity>({
+/**
+ * Fires fitView whenever `open` transitions to true (i.e. the collapsible
+ * finishes its open animation and the container has real dimensions).
+ * A small delay lets the CSS transition complete before we measure.
+ */
+function FitViewOnOpen({ open }: { open: boolean }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (!open) return;
+    // Fire twice: once at 200ms (catches fast renders) and once at 500ms
+    // (catches slow collapsible animations where the container was still height:0 at first fire)
+    const id1 = setTimeout(() => fitView({ padding: 0.3, duration: 200 }), 200);
+    const id2 = setTimeout(() => fitView({ padding: 0.3, duration: 200 }), 500);
+    return () => { clearTimeout(id1); clearTimeout(id2); };
+  }, [open, fitView]);
+  return null;
+}
+
+/**
+ * Inner graph component. Kept separate so it can safely use `useReactFlow`
+ * (which requires a ReactFlowProvider ancestor).
+ *
+ * The critical pattern here is that `nodeTypes` is derived from a stable ref
+ * (`renderNodeRef`) rather than from a freshly-created callback. This prevents
+ * React Flow from remounting nodes on every render, which would tear down
+ * edge handle connections and make edges invisible.
+ */
+function GraphInner<T extends GraphEntity>({
   entities,
   getDependencies,
   renderNode,
   onNodeClick,
   direction = "LR",
-  emptyStateMessage = "No items to display",
-  noDependenciesMessage = {
-    title: "No Dependencies Yet",
-    description: "Add dependencies to see them visualized here.",
-  },
-  className,
-}: DependencyGraphProps<T>) {
+  open = true,
+}: Pick<
+  DependencyGraphProps<T>,
+  "entities" | "getDependencies" | "renderNode" | "onNodeClick" | "direction" | "open"
+>) {
+  // Keep the latest renderNode in a ref so the node component (defined below)
+  // always calls the current version without ever needing to be recreated.
+  const renderNodeRef = useRef(renderNode);
+  useEffect(() => {
+    renderNodeRef.current = renderNode;
+  }, [renderNode]);
+
+  // nodeTypes must be a stable object — defined once per mount.
+  // Using renderNodeRef.current inside means the node always renders fresh
+  // data without the nodeTypes object itself ever changing.
+  const nodeTypes = useMemo(
+    () => ({
+      customNode: ({ data }: { data: T }) => <>{renderNodeRef.current(data)}</>,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [] // intentionally empty — we want this created ONCE
+  );
+
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = entities.map((entity) => ({
       id: entity.id,
@@ -87,18 +132,59 @@ export function DependencyGraph<T extends GraphEntity>({
     [onNodeClick]
   );
 
-  const CustomNode = useCallback(
-    ({ data }: { data: T }) => <>{renderNode(data)}</>,
-    [renderNode]
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onNodeClick={handleNodeClick}
+      nodeTypes={nodeTypes}
+      minZoom={0.1}
+      maxZoom={1.5}
+      defaultEdgeOptions={{
+        type: "smoothstep",
+        style: { strokeWidth: 3, stroke: "#3b82f6" },
+        markerEnd: {
+          type: "arrowclosed",
+          width: 20,
+          height: 20,
+        },
+      }}
+      proOptions={{ hideAttribution: true }}
+      fitView
+      fitViewOptions={{ padding: 0.3 }}
+    >
+      <FitViewOnOpen open={open} />
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={20}
+        size={1.5}
+        color="#94a3b8"
+      />
+      <Controls
+        showZoom={true}
+        showFitView={true}
+        showInteractive={false}
+      />
+    </ReactFlow>
   );
+}
 
-  const nodeTypes = useMemo(
-    () => ({
-      customNode: CustomNode,
-    }),
-    [CustomNode]
-  );
-
+export function DependencyGraph<T extends GraphEntity>({
+  entities,
+  getDependencies,
+  renderNode,
+  onNodeClick,
+  direction = "LR",
+  emptyStateMessage = "No items to display",
+  noDependenciesMessage = {
+    title: "No Dependencies Yet",
+    description: "Add dependencies to see them visualized here.",
+  },
+  className,
+  open = true,
+}: DependencyGraphProps<T>) {
   if (entities.length === 0) {
     return (
       <Empty className="h-[500px]">
@@ -125,61 +211,17 @@ export function DependencyGraph<T extends GraphEntity>({
   }
 
   return (
-    <div className={cn("h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative", className)}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.1}
-        maxZoom={1.5}
-        defaultEdgeOptions={{
-          type: "smoothstep",
-          style: { strokeWidth: 3, stroke: "#3b82f6" },
-          markerEnd: {
-            type: "arrowclosed",
-            width: 20,
-            height: 20,
-          },
-        }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <svg style={{ position: "absolute", width: 0, height: 0 }}>
-          <defs>
-            <marker
-              id="arrowclosed"
-              markerWidth="20"
-              markerHeight="20"
-              refX="10"
-              refY="10"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <polygon
-                points="0 0, 20 10, 0 20, 5 10"
-                fill="#3b82f6"
-                stroke="#3b82f6"
-                strokeWidth="1"
-              />
-            </marker>
-          </defs>
-        </svg>
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1.5}
-          color="#94a3b8"
+    <ReactFlowProvider>
+      <div className={cn("h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative", className)}>
+        <GraphInner
+          entities={entities}
+          getDependencies={getDependencies}
+          renderNode={renderNode}
+          onNodeClick={onNodeClick}
+          direction={direction}
+          open={open}
         />
-        <Controls
-          showZoom={true}
-          showFitView={true}
-          showInteractive={false}
-        />
-      </ReactFlow>
-    </div>
+      </div>
+    </ReactFlowProvider>
   );
 }
