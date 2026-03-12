@@ -696,6 +696,22 @@ describe("TasksList - Queue Tab", () => {
     expect(screen.getByTestId("task-card-queued-2")).toBeInTheDocument();
   });
 
+  it("should use queued tasks in kanban view when Queue tab is active", async () => {
+    localStorage.setItem("tasks-view-preference", "kanban");
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kanban-view")).toBeInTheDocument();
+    });
+
+    const queueColumn = screen.getByTestId("kanban-column-QUEUE");
+    expect(within(queueColumn).getByTestId("task-card-queued-1")).toBeInTheDocument();
+    expect(within(queueColumn).getByTestId("task-card-queued-2")).toBeInTheDocument();
+    expect(within(queueColumn).queryByTestId("task-card-task-1")).not.toBeInTheDocument();
+  });
+
   it("should show empty state when no tasks are queued", async () => {
     vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
       (_workspaceId, _workspaceSlug, _enabled, _pageLimit, _showArchived, _search, _filters, _showAllStatuses, _sortBy, _sortOrder, queue = false) => {
