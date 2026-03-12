@@ -517,7 +517,7 @@ export async function POST(request: NextRequest) {
 
           for (const dbArtifact of chatMessage.artifacts) {
             if (dbArtifact.type === ArtifactType.FORM) {
-              void createAndSendNotification({
+              await createAndSendNotification({
                 targetUserId: feature.createdById,
                 workspaceId: feature.workspaceId,
                 featureId,
@@ -525,7 +525,7 @@ export async function POST(request: NextRequest) {
                 message: `@${alias} — Your plan for '${feature.title}' has a question waiting for your input: ${planUrl}`,
               });
             } else if (dbArtifact.type === ArtifactType.PLAN) {
-              void createAndSendNotification({
+              await createAndSendNotification({
                 targetUserId: feature.createdById,
                 workspaceId: feature.workspaceId,
                 featureId,
@@ -533,7 +533,7 @@ export async function POST(request: NextRequest) {
                 message: `@${alias} — Your plan for '${feature.title}' is ready for your review: ${planUrl}`,
               });
             } else if (dbArtifact.type === ArtifactType.TASKS) {
-              void createAndSendNotification({
+              await createAndSendNotification({
                 targetUserId: feature.createdById,
                 workspaceId: feature.workspaceId,
                 featureId,
@@ -567,7 +567,7 @@ export async function POST(request: NextRequest) {
           const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
           if (workspace) {
             const taskUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/task/${taskId}`;
-            void createAndSendNotification({
+            await createAndSendNotification({
               targetUserId,
               workspaceId: task.workspaceId,
               taskId,
