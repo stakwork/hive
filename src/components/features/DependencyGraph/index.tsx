@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ReactFlow,
   Node,
@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { getLayoutedElements } from "./layouts/dagre";
 import type { DependencyGraphProps, GraphEntity } from "./types";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { cn } from "@/lib/utils";
 
 // Account for actual rendered size including padding, borders, and shadows
 // The RoadmapTaskNode has min-w-[250px] but renders larger with content
@@ -32,6 +33,7 @@ export function DependencyGraph<T extends GraphEntity>({
     title: "No Dependencies Yet",
     description: "Add dependencies to see them visualized here.",
   },
+  className,
 }: DependencyGraphProps<T>) {
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = entities.map((entity) => ({
@@ -123,7 +125,7 @@ export function DependencyGraph<T extends GraphEntity>({
   }
 
   return (
-    <div className="h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative">
+    <div className={cn("h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative", className)}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
