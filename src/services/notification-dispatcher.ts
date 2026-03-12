@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendDirectMessage } from "@/lib/sphinx/direct-message";
-import { sendHubPushNotification } from "@/lib/hub/push-notification";
+import { sendHubPushNotification, buildPushMessage } from "@/lib/hub/push-notification";
 import { EncryptionService } from "@/lib/encryption";
 import {
   NotificationTriggerStatus,
@@ -207,7 +207,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       if (iosDeviceToken && workspaceSlug) {
         void sendHubPushNotification({
           deviceToken: iosDeviceToken,
-          message: record.message!,
+          message: buildPushMessage(record.message!),
           workspaceSlug,
           taskId: record.taskId ?? undefined,
           featureId: record.featureId ?? undefined,
