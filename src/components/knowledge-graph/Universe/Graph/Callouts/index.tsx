@@ -1,6 +1,6 @@
 import { useStoreId } from '@/stores/StoreProvider'
-import { getStoreBundle } from '@/stores/createStoreFactory'
 import { DEFAULT_CALLOUT_TTL_MS } from '@/stores/calloutConstants'
+import { getStoreBundle } from '@/stores/createStoreFactory'
 import type { GraphCallout } from '@/stores/graphStore.types'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
@@ -51,7 +51,7 @@ const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
     <group ref={htmlRef} visible={false}>
       <Html
         center
-        zIndexRange={[51, 52]}
+        zIndexRange={[100, 101]}
         style={{
           transition: 'opacity 0.2s',
           pointerEvents: 'none',
