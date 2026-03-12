@@ -51,18 +51,21 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [isCreateDiagramOpen, setIsCreateDiagramOpen] = useState(false);
   const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null);
 
-  const fetchDiagrams = async () => {
+  const fetchDiagrams = async (): Promise<Diagram[]> => {
     try {
       const response = await fetch(`/api/learnings/diagrams?workspace=${workspaceSlug}`);
       if (response.ok) {
         const data = await response.json();
-        setDiagrams(Array.isArray(data) ? data : []);
+        const list: Diagram[] = Array.isArray(data) ? data : [];
+        setDiagrams(list);
+        return list;
       }
     } catch (error) {
       console.error("Failed to fetch diagrams:", error);
     } finally {
       setIsDiagramsLoading(false);
     }
+    return [];
   };
 
   useEffect(() => {
@@ -171,7 +174,20 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
   const handleDiagramCreated = async () => {
     setIsDiagramsLoading(true);
-    await fetchDiagrams();
+    const fresh = await fetchDiagrams();
+    if (activeItem?.type === "diagram" && activeItem.id) {
+      const updated = fresh.find((d) => d.name === activeItem.name);
+      if (updated) {
+        setActiveItem({
+          type: "diagram",
+          id: updated.id,
+          name: updated.name,
+          content: "",
+          body: updated.body,
+          description: updated.description,
+        });
+      }
+    }
   };
 
   const handleEditDiagram = (diagram: Diagram) => {
