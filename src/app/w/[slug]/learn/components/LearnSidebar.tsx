@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ChevronDown,
   BookOpen,
@@ -69,6 +69,11 @@ interface LearnSidebarProps {
   isDiagramsLoading: boolean;
 }
 
+function getRepoFromConceptId(id: string): string {
+  const parts = id.split("/");
+  return parts.slice(0, 2).join("/");
+}
+
 export function LearnSidebar({
   workspaceSlug,
   docs,
@@ -91,6 +96,7 @@ export function LearnSidebar({
   const [isDocsExpanded, setIsDocsExpanded] = useState(true);
   const [isConceptsExpanded, setIsConceptsExpanded] = useState(true);
   const [isDiagramsExpanded, setIsDiagramsExpanded] = useState(true);
+  const [expandedRepoGroups, setExpandedRepoGroups] = useState<Record<string, boolean>>({});
 
   // Process Repository state
   const [selectedRepoId, setSelectedRepoId] = useState("");
@@ -101,6 +107,39 @@ export function LearnSidebar({
   const [autoLearnEnabled, setAutoLearnEnabled] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Seed new repo groups (default to expanded), preserve existing toggle state
+  useEffect(() => {
+    const newKeys = concepts.reduce<Record<string, boolean>>((acc, concept) => {
+      const repo = getRepoFromConceptId(concept.id);
+      if (!(repo in expandedRepoGroups) && !(repo in acc)) {
+        acc[repo] = true;
+      }
+      return acc;
+    }, {});
+    if (Object.keys(newKeys).length > 0) {
+      setExpandedRepoGroups((prev) => ({ ...newKeys, ...prev }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [concepts]);
+
+  const toggleRepoGroup = (repo: string) => {
+    setExpandedRepoGroups((prev) => ({ ...prev, [repo]: !prev[repo] }));
+  };
+
+  const groupedConcepts = useMemo(() => {
+    const order: string[] = [];
+    const map: Record<string, Concept[]> = {};
+    for (const concept of concepts) {
+      const repo = getRepoFromConceptId(concept.id);
+      if (!map[repo]) {
+        order.push(repo);
+        map[repo] = [];
+      }
+      map[repo].push(concept);
+    }
+    return order.map((repo) => ({ repo, concepts: map[repo] }));
+  }, [concepts]);
 
   // Set default selected repo
   useEffect(() => {
@@ -326,25 +365,64 @@ export function LearnSidebar({
                       No concepts discovered yet
                     </div>
                   ) : (
-                    concepts.map((concept) => {
-                      const itemKey = `concept-${concept.id}`;
-                      const isActive = activeItemKey === itemKey;
+                    groupedConcepts.map(({ repo, concepts: group }) => {
+                      const shortName = repo.split("/")[1] ?? repo;
+                      const isGroupExpanded = expandedRepoGroups[repo] ?? true;
                       return (
-                        <button
-                          key={concept.id}
-                          data-testid="learn-concept-item"
-                          onClick={() =>
-                            onConceptClick(concept.id, concept.name, concept.content || "")
-                          }
-                          className={cn(
-                            "w-full text-left p-2 rounded-md text-sm transition-colors",
-                            isActive
-                              ? "bg-muted/60 font-medium"
-                              : "bg-muted/30 hover:bg-muted/50"
-                          )}
-                        >
-                          {concept.name}
-                        </button>
+                        <div key={repo} data-testid="learn-concept-repo-group">
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-between pl-4 pr-2 py-1 h-auto text-xs text-muted-foreground"
+                            onClick={() => toggleRepoGroup(repo)}
+                            data-testid={`learn-concept-repo-header-${shortName}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium">{shortName}</span>
+                              <Badge variant="secondary">{group.length}</Badge>
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                "h-3 w-3 transition-transform",
+                                isGroupExpanded && "rotate-180"
+                              )}
+                            />
+                          </Button>
+                          <AnimatePresence>
+                            {isGroupExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="mt-1 space-y-1 pl-2">
+                                  {group.map((concept) => {
+                                    const itemKey = `concept-${concept.id}`;
+                                    const isActive = activeItemKey === itemKey;
+                                    return (
+                                      <button
+                                        key={concept.id}
+                                        data-testid="learn-concept-item"
+                                        onClick={() =>
+                                          onConceptClick(concept.id, concept.name, concept.content || "")
+                                        }
+                                        className={cn(
+                                          "w-full text-left p-2 rounded-md text-sm transition-colors",
+                                          isActive
+                                            ? "bg-muted/60 font-medium"
+                                            : "bg-muted/30 hover:bg-muted/50"
+                                        )}
+                                      >
+                                        {concept.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       );
                     })
                   )}
