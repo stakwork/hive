@@ -93,6 +93,77 @@ const defaultProps = {
   isDiagramsLoading: false,
 };
 
+const multiRepoConcepts = [
+  { id: "stakwork/hive/auth", name: "Auth" },
+  { id: "stakwork/hive/tasks", name: "Tasks" },
+  { id: "stakwork/staklink/agent", name: "Agent" },
+];
+
+describe("LearnSidebar — repo-grouped concepts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Stub fetch so useEffects in the component don't throw
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("renders one sub-section per unique repo", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    expect(screen.getByTestId("learn-concept-repo-header-hive")).toBeTruthy();
+    expect(screen.getByTestId("learn-concept-repo-header-staklink")).toBeTruthy();
+  });
+
+  it("each group shows correct concept count badge", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const hiveHeader = screen.getByTestId("learn-concept-repo-header-hive");
+    const stklinkHeader = screen.getByTestId("learn-concept-repo-header-staklink");
+    expect(hiveHeader.textContent).toContain("2");
+    expect(stklinkHeader.textContent).toContain("1");
+  });
+
+  it("parent Concepts badge shows total count", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const conceptsSection = screen.getByTestId("learn-concepts-section");
+    // The top-level section header contains the total badge
+    const buttons = conceptsSection.querySelectorAll("button");
+    const parentHeader = buttons[0];
+    expect(parentHeader.textContent).toContain("3");
+  });
+
+  it("toggling a repo group collapses only that group", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    // All concept buttons visible initially
+    expect(screen.getAllByTestId("learn-concept-item")).toHaveLength(3);
+
+    // Collapse hive group
+    fireEvent.click(screen.getByTestId("learn-concept-repo-header-hive"));
+
+    // hive concepts gone, staklink still visible
+    const items = screen.getAllByTestId("learn-concept-item");
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toBe("Agent");
+  });
+
+  it("all groups default to expanded", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    expect(screen.getAllByTestId("learn-concept-item")).toHaveLength(3);
+  });
+
+  it("active concept highlight is preserved", () => {
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        concepts={multiRepoConcepts}
+        activeItemKey="concept-stakwork/hive/auth"
+      />
+    );
+    const authButton = screen
+      .getAllByTestId("learn-concept-item")
+      .find((el) => el.textContent === "Auth");
+    expect(authButton?.className).toContain("bg-muted/60");
+    expect(authButton?.className).toContain("font-medium");
+  });
+});
+
 describe("LearnSidebar — edit diagram icon", () => {
   beforeEach(() => {
     vi.clearAllMocks();
