@@ -125,11 +125,11 @@ model SphinxChallenge {
   id        String   @id @default(cuid())
   k1        String   @unique
   pubkey    String?
-  alias     String?
-  routeHint String?  @map("route_hint")
   used      Boolean  @default(false)
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
+  alias     String?
+  routeHint String?  @map("route_hint")
 
   @@index([k1])
   @@index([expiresAt])
@@ -887,10 +887,10 @@ model NotificationTrigger {
   status                 NotificationTriggerStatus @default(PENDING) @map("status")
   notificationMethod     NotificationMethod        @map("notification_method")
   notificationTimestamps DateTime[]                @default([]) @map("notification_timestamps")
-  sendAfter              DateTime?                 @map("send_after")
-  message                String?
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")
+  sendAfter              DateTime?                 @map("send_after")
+  message                String?
   feature                Feature?                  @relation(fields: [featureId], references: [id])
   originatingUser        User?                     @relation("NotificationOrigin", fields: [originatingUserId], references: [id])
   targetUser             User                      @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
@@ -902,6 +902,32 @@ model NotificationTrigger {
   @@index([targetUserId, notificationType, status])
   @@index([sendAfter, status])
   @@map("notification_triggers")
+}
+
+model Diagram {
+  id          String             @id @default(cuid())
+  name        String
+  body        String
+  description String?
+  createdBy   String             @map("created_by")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  groupId     String             @default("") @map("group_id")
+  workspaces  DiagramWorkspace[]
+
+  @@index([groupId])
+  @@map("diagrams")
+}
+
+model DiagramWorkspace {
+  id          String    @id @default(cuid())
+  diagramId   String    @map("diagram_id")
+  workspaceId String    @map("workspace_id")
+  diagram     Diagram   @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([diagramId, workspaceId])
+  @@index([workspaceId])
+  @@map("diagram_workspaces")
 }
 
 enum ChatRole {
@@ -1192,30 +1218,4 @@ enum NotificationTriggerStatus {
 
 enum NotificationMethod {
   SPHINX
-}
-
-model Diagram {
-  id          String             @id @default(cuid())
-  name        String
-  body        String             // raw mermaid source
-  description String?
-  createdBy   String             @map("created_by") // userId
-  createdAt   DateTime           @default(now()) @map("created_at")
-  groupId     String             @default("") @map("group_id")
-  workspaces  DiagramWorkspace[]
-
-  @@index([groupId])
-  @@map("diagrams")
-}
-
-model DiagramWorkspace {
-  id          String    @id @default(cuid())
-  diagramId   String    @map("diagram_id")
-  workspaceId String    @map("workspace_id")
-  diagram     Diagram   @relation(fields: [diagramId], references: [id], onDelete: Cascade)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@unique([diagramId, workspaceId])
-  @@index([workspaceId])
-  @@map("diagram_workspaces")
 }

@@ -16,6 +16,7 @@ export interface DependencyGraphProps<T extends GraphEntity> {
     title: string;
     description: string;
   };
+  className?: string;
 }
 
 export interface LayoutConfig {
