@@ -3,11 +3,9 @@ import { POST } from "@/app/api/upload/presigned-url/route";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   generateUniqueId,
   createPostRequest,
-  getMockedSession,
+  createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
 // Create mock S3 service methods
@@ -21,15 +19,6 @@ const mockS3Service = {
 // Mock S3 service to avoid AWS SDK calls
 vi.mock("@/services/s3", () => ({
   getS3Service: vi.fn(() => mockS3Service),
-}));
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
 }));
 
 describe("POST /api/upload/presigned-url Integration Tests", () => {
@@ -94,8 +83,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
   describe("Authentication Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
         taskId: "test-task-id",
         filename: "test.jpg",
@@ -107,15 +94,11 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
       expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data.error).toBe("Authentication required");
+      expect(data.error).toBe("Unauthorized");
       expect(mockS3Service.generatePresignedUploadUrl).not.toHaveBeenCalled();
     });
 
-    test("should return 401 for session without user", async () => {
-      getMockedSession().mockResolvedValue({
-        user: null,
-      });
-
+    test("should return 401 for request without middleware headers", async () => {
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
         taskId: "test-task-id",
         filename: "test.jpg",
@@ -126,16 +109,15 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({ error: "Authentication required" });
+      expect((await response.json()).error).toBe("Unauthorized");
     });
   });
 
   describe("Input Validation Tests", () => {
     test("should return 400 for missing filename", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         // filename missing
         contentType: "image/jpeg",
@@ -152,9 +134,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should return 400 for missing contentType", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         // contentType missing
@@ -171,9 +152,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should return 400 for missing size", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -190,9 +170,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should return 400 for missing taskId", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         // taskId missing
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -209,9 +188,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should return 400 for invalid size (negative)", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -229,9 +207,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("Database Access Control Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: "non-existent-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -253,9 +230,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         data: { deleted: true, deletedAt: new Date() },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -270,7 +245,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should allow workspace owner to upload", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service methods to return success
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -282,7 +256,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -320,12 +294,11 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("File Security Tests", () => {
     test("should reject non-image MIME type (PDF)", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service to reject PDF
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "document.pdf",
         contentType: "application/pdf",
@@ -342,12 +315,11 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should reject executable MIME type (JavaScript)", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service to reject JavaScript
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "malicious.js",
         contentType: "application/javascript",
@@ -364,13 +336,12 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should reject files exceeding 10MB size limit", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service to accept file type but reject size
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "large-image.jpg",
         contentType: "image/jpeg",
@@ -387,7 +358,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should accept valid image types (JPEG, PNG, GIF, WebP)", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service to accept image
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -407,7 +377,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       ];
 
       for (const { contentType, filename } of imageTypes) {
-        const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
           taskId: testTask.id,
           filename,
           contentType,
@@ -425,7 +395,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("Path Generation Tests", () => {
     test("should generate S3 path with correct hierarchy", async () => {
       const { testUser, testTask, testWorkspace, testSwarm } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -437,7 +406,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -462,7 +431,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should sanitize filename with special characters", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -474,7 +442,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "file with spaces & special!chars@.jpg",
         contentType: "image/jpeg",
@@ -524,8 +492,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
@@ -536,7 +502,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -558,7 +524,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("Presigned URL Properties Tests", () => {
     test("should generate presigned URL with correct parameters", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -570,7 +535,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -592,7 +557,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should include correct Content-Type in presigned URL generation", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -605,7 +569,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       const contentTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
       for (const contentType of contentTypes) {
-        const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
           taskId: testTask.id,
           filename: "test.jpg",
           contentType,
@@ -620,7 +584,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should return complete response with all required fields", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -632,7 +595,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "image.png",
         contentType: "image/png",
@@ -664,7 +627,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("Error Handling Tests", () => {
     test("should handle S3 service failure gracefully", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service to pass validation but fail on URL generation
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -674,7 +636,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         new Error("AWS SDK Error: Invalid credentials"),
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -690,10 +652,9 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should handle database errors gracefully", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Use malformed task ID to trigger database error
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: "malformed-task-id-that-causes-db-error",
         filename: "test.jpg",
         contentType: "image/jpeg",
@@ -711,9 +672,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
   describe("Edge Cases", () => {
     test("should handle empty filename string", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "", // Empty string
         contentType: "image/jpeg",
@@ -729,9 +689,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should handle zero byte file size", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: "empty.jpg",
         contentType: "image/jpeg",
@@ -747,7 +706,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
     test("should handle very long filename", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3Service
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
@@ -759,7 +717,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
       const longFilename = "a".repeat(500) + ".jpg"; // 500+ character filename
 
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
         taskId: testTask.id,
         filename: longFilename,
         contentType: "image/jpeg",
