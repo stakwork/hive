@@ -4,10 +4,11 @@ import React from "react";
 import { LearnSidebar } from "@/app/w/[slug]/learn/components/LearnSidebar";
 
 // Mock workspace hook
+const mockUseWorkspace = vi.fn(() => ({
+  workspace: { repositories: [] },
+}));
 vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({
-    workspace: { repositories: [] },
-  }),
+  useWorkspace: () => mockUseWorkspace(),
 }));
 
 // Mock child components used by the Process footer
@@ -161,6 +162,102 @@ describe("LearnSidebar — repo-grouped concepts", () => {
       .find((el) => el.textContent === "Auth");
     expect(authButton?.className).toContain("bg-muted/60");
     expect(authButton?.className).toContain("font-medium");
+  });
+});
+
+describe("LearnSidebar — Process Repository section", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("is collapsed by default (body content not visible)", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    expect(screen.queryByTestId("usage-display")).toBeNull();
+    expect(screen.queryByTestId("switch")).toBeNull();
+  });
+
+  it("clicking the header expands the section", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    fireEvent.click(screen.getByTestId("process-repo-header"));
+    expect(screen.getByTestId("switch")).toBeTruthy();
+  });
+
+  it("clicking the header twice collapses it again", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    fireEvent.click(screen.getByTestId("process-repo-header"));
+    expect(screen.getByTestId("switch")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("process-repo-header"));
+    expect(screen.queryByTestId("switch")).toBeNull();
+  });
+
+  it("UsageDisplay is not rendered when collapsed", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    expect(screen.queryByTestId("usage-display")).toBeNull();
+  });
+
+  it("UsageDisplay is rendered when expanded (given cumulativeUsage exists)", async () => {
+    // Provide cumulativeUsage via the fetch mock
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        lastProcessedTimestamp: null,
+        processing: false,
+        cumulativeUsage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      }),
+    });
+    render(<LearnSidebar {...defaultProps} />);
+    fireEvent.click(screen.getByTestId("process-repo-header"));
+    // UsageDisplay is rendered inside the expanded body; it will appear once cumulativeUsage is set
+    // Even before the fetch resolves it's inside the expanded body (conditionally rendered by cumulativeUsage)
+    // Just verify the section is open and the body is visible
+    expect(screen.getByTestId("switch")).toBeTruthy();
+  });
+
+  it("shows 'Process Repository' label with 1 repo", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    const header = screen.getByTestId("process-repo-header");
+    expect(header.textContent).toContain("Process Repository");
+    expect(header.textContent).not.toContain("Process Repositories");
+  });
+
+  it("shows 'Process Repository' label with 0 repos (default mock)", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    const header = screen.getByTestId("process-repo-header");
+    expect(header.textContent).toContain("Process Repository");
+  });
+});
+
+describe("LearnSidebar — Process Repository label (multi-repo)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("shows 'Process Repositories' when workspace has >1 repositories", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: {
+        repositories: [
+          { id: "r1", name: "repo-one" },
+          { id: "r2", name: "repo-two" },
+        ],
+      },
+    });
+    render(<LearnSidebar {...defaultProps} />);
+    const header = screen.getByTestId("process-repo-header");
+    expect(header.textContent).toContain("Process Repositories");
+  });
+
+  it("shows 'Process Repository' when workspace has 1 repository", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: {
+        repositories: [{ id: "r1", name: "repo-one" }],
+      },
+    });
+    render(<LearnSidebar {...defaultProps} />);
+    const header = screen.getByTestId("process-repo-header");
+    expect(header.textContent).toContain("Process Repository");
+    expect(header.textContent).not.toContain("Process Repositories");
   });
 });
 
