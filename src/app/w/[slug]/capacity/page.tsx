@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertCircle, Server, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import React, { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 
@@ -205,9 +206,10 @@ export default function CapacityPage() {
   }
 
   const queuedCountActions = poolStatus?.queuedCount ? (
-    <span className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span> {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
-    </span>
+    <Link href={`/w/${slug}/tasks?tab=queue`} className="text-sm text-muted-foreground hover:underline">
+      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span>{" "}
+      {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
+    </Link>
   ) : undefined;
 
   return (

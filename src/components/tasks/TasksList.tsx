@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
@@ -16,13 +17,12 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
-import { Search, X, List, LayoutGrid, ArrowUpDown } from "lucide-react";
+import { Search, X, List, LayoutGrid, ArrowUpDown, Clock } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { KanbanView } from "@/components/ui/kanban-view";
-import { TASK_KANBAN_COLUMNS, WORKFLOW_EDITOR_KANBAN_COLUMN } from "@/types/roadmap";
-import { TaskStatus } from "@prisma/client";
+import { TASK_KANBAN_COLUMNS, WORKFLOW_EDITOR_KANBAN_COLUMN, TaskKanbanStatus } from "@/types/roadmap";
 import {
   Select,
   SelectContent,
@@ -30,8 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type KanbanStatus = TaskStatus | "WORKFLOW_EDITOR";
+import { useSearchParams } from "next/navigation";
 
 interface TasksListProps {
   workspaceId: string;
@@ -40,12 +39,19 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { waitingForInputCount } = useWorkspace();
+  const searchParams = useSearchParams();
 
-  // Archive tab state with localStorage persistence
-  const [activeTab, setActiveTab] = useState<"active" | "archived">(() => {
+  // Archive/Queue tab state with localStorage persistence
+  const [activeTab, setActiveTab] = useState<"queue" | "active" | "archived">(() => {
+    // URL param takes highest priority
+    const tabParam = searchParams?.get("tab");
+    if (tabParam === "queue") return "queue";
+    if (tabParam === "archived") return "archived";
+    if (tabParam === "active") return "active";
+    // Fall back to localStorage
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("tasks-tab-preference");
-      return (saved === "archived" ? "archived" : "active") as "active" | "archived";
+      if (saved === "queue" || saved === "archived" || saved === "active") return saved;
     }
     return "active";
   });
@@ -110,12 +116,28 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     apiSortBy,
     apiSortOrder
   );
+
+  // Queue data fetch — API handles all ordering, no pagination needed beyond a high limit
+  const { tasks: queuedTasks, loading: queueLoading } = useWorkspaceTasks(
+    workspaceId,
+    workspaceSlug,
+    false,
+    100,
+    false,
+    "",
+    {},
+    false,
+    undefined,
+    undefined,
+    true // queue=true
+  );
+
   const { stats } = useTaskStats(workspaceId);
 
   // Save tab preference to localStorage
   const handleTabChange = (value: string) => {
-    if (value === "active" || value === "archived") {
-      setActiveTab(value);
+    if (value === "active" || value === "archived" || value === "queue") {
+      setActiveTab(value as "queue" | "active" | "archived");
       localStorage.setItem("tasks-tab-preference", value);
     }
   };
@@ -156,7 +178,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     refetch();
   }, [waitingForInputCount, refetch]);
 
-  if (loading && tasks.length === 0) {
+  if (loading && tasks.length === 0 && activeTab !== "queue") {
     return <LoadingState />;
   }
 
@@ -179,12 +201,22 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     return <EmptyState workspaceSlug={workspaceSlug} />;
   }
 
+  const queuedCount = stats?.queuedCount ?? 0;
+
   return (
     <Card data-testid="tasks-list-loaded">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <CardHeader className="flex flex-row items-center justify-between">
           <TabsList>
             <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="queue" data-testid="queue-tab">
+              Queue
+              {queuedCount > 0 && (
+                <Badge variant="secondary" className="ml-1.5 text-xs" data-testid="queue-tab-badge">
+                  {queuedCount}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="archived">Archived</TabsTrigger>
           </TabsList>
           <ToggleGroup type="single" value={viewType} onValueChange={handleViewChange}>
@@ -257,11 +289,13 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               <div className="mt-4">
                 <KanbanView
                   items={sortedTasks}
-                  columns={kanbanColumns as any}
-                  getItemStatus={(task: any) =>
+                  columns={kanbanColumns}
+                  getItemStatus={(task: any): TaskKanbanStatus =>
                     workspaceSlug === "stakwork" && task.mode === "workflow_editor"
-                      ? ("WORKFLOW_EDITOR" as KanbanStatus)
-                      : (task.status as KanbanStatus)
+                      ? "WORKFLOW_EDITOR"
+                      : task.systemAssigneeType === "TASK_COORDINATOR" && task.status === "TODO"
+                        ? "QUEUE"
+                        : task.status
                   }
                   getItemId={(task: any) => task.id}
                   renderCard={(task: any) => (
@@ -326,6 +360,30 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                         </Button>
                       </div>
                     )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="queue" className="mt-4 space-y-3" data-testid="queue-tab-content">
+                {queueLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading queue...</div>
+                ) : queuedTasks.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground" data-testid="queue-empty-state">
+                    <Clock className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                    <p className="font-medium">No tasks in queue</p>
+                    <p className="text-sm mt-1">Tasks assigned to the Task Coordinator will appear here.</p>
+                  </div>
+                ) : (
+                  <>
+                    {queuedTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        workspaceSlug={workspaceSlug}
+                        isArchived={false}
+                        onUndoArchive={refetch}
+                      />
+                    ))}
                   </>
                 )}
               </TabsContent>
