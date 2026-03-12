@@ -47,12 +47,19 @@ vi.mock("@/components/tasks/TaskFilters", () => ({
   ),
 }));
 
-// Mock KanbanView component
+// Mock KanbanView component - captures columns for testing
 vi.mock("@/components/ui/kanban-view", () => ({
-  KanbanView: ({ items, renderCard }: any) => (
+  KanbanView: ({ items, columns, getItemStatus, renderCard }: any) => (
     <div data-testid="kanban-view">
-      {items.map((item: any) => (
-        <div key={item.id}>{renderCard(item)}</div>
+      {columns.map((col: any) => (
+        <div key={col.status} data-testid={`kanban-column-${col.status}`}>
+          <span data-testid={`kanban-column-title-${col.status}`}>{col.title}</span>
+          {items
+            .filter((item: any) => getItemStatus(item) === col.status)
+            .map((item: any) => (
+              <div key={item.id}>{renderCard(item)}</div>
+            ))}
+        </div>
       ))}
     </div>
   ),
@@ -406,5 +413,164 @@ describe("TasksList - Sorting Functionality", () => {
       expect(taskCards[0]).toHaveTextContent("First Task");
       expect(taskCards[1]).toHaveTextContent("Third Task");
     });
+  });
+});
+
+const workflowTasks = [
+  {
+    id: "wf-task-1",
+    title: "Workflow Task A",
+    status: "IN_PROGRESS" as const,
+    mode: "workflow_editor",
+    createdAt: "2024-02-01T10:00:00Z",
+    updatedAt: "2024-02-15T10:00:00Z",
+    hasActionArtifact: false,
+  },
+  {
+    id: "regular-task-1",
+    title: "Regular Task B",
+    status: "TODO" as const,
+    mode: undefined,
+    createdAt: "2024-02-05T10:00:00Z",
+    updatedAt: "2024-02-20T10:00:00Z",
+    hasActionArtifact: false,
+  },
+];
+
+describe("TasksList - Workflows Kanban Column", () => {
+  const mockRefetch = vi.fn();
+  const mockLoadMore = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    localStorage.setItem("tasks-view-preference", "kanban");
+
+    vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
+      waitingForInputCount: 0,
+    } as any);
+
+    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
+      stats: { total: 2, active: 2, archived: 0 },
+      loading: false,
+    } as any);
+  });
+
+  it("shows Workflows column when workspaceSlug is 'stakwork' and workflow_editor tasks exist", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("kanban-column-WORKFLOW_EDITOR")).toBeInTheDocument();
+    expect(screen.getByTestId("kanban-column-title-WORKFLOW_EDITOR")).toHaveTextContent("Workflows");
+  });
+
+  it("puts workflow_editor tasks only in the Workflows column on stakwork workspace", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const workflowColumn = screen.getByTestId("kanban-column-WORKFLOW_EDITOR");
+    expect(within(workflowColumn).getByTestId("task-card-wf-task-1")).toBeInTheDocument();
+
+    // Regular task must NOT appear in Workflows column
+    expect(within(workflowColumn).queryByTestId("task-card-regular-task-1")).not.toBeInTheDocument();
+
+    // Regular task must appear in its normal status column (TODO)
+    const todoColumn = screen.getByTestId("kanban-column-TODO");
+    expect(within(todoColumn).getByTestId("task-card-regular-task-1")).toBeInTheDocument();
+  });
+
+  it("does NOT show Workflows column on stakwork workspace when no workflow_editor tasks exist", async () => {
+    const nonWorkflowTasks = [
+      {
+        id: "reg-1",
+        title: "Regular Task",
+        status: "TODO" as const,
+        mode: undefined,
+        createdAt: "2024-02-01T10:00:00Z",
+        updatedAt: "2024-02-15T10:00:00Z",
+        hasActionArtifact: false,
+      },
+    ];
+
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: nonWorkflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("kanban-column-WORKFLOW_EDITOR")).not.toBeInTheDocument();
+  });
+
+  it("does NOT show Workflows column on non-stakwork workspace even when workflow_editor tasks exist", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="other-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("kanban-column-WORKFLOW_EDITOR")).not.toBeInTheDocument();
+  });
+
+  it("places workflow_editor tasks in their normal status column on non-stakwork workspace", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="other-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    // workflow_editor task has status IN_PROGRESS, so it should appear there
+    const inProgressColumn = screen.getByTestId("kanban-column-IN_PROGRESS");
+    expect(within(inProgressColumn).getByTestId("task-card-wf-task-1")).toBeInTheDocument();
   });
 });
