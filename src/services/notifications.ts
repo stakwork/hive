@@ -6,6 +6,7 @@ import {
 import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 import { sendHubPushNotification } from "@/lib/hub/push-notification";
+import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
 const DEFERRED_NOTIFICATION_TYPES = new Set<NotificationTriggerType>([
@@ -57,11 +58,20 @@ export async function createAndSendNotification(input: {
     });
 
     if (existing) {
+      logger.info(
+        `[Notifications] Skipping duplicate — PENDING record already exists for ${input.notificationType}`,
+        "NOTIFICATIONS",
+        { targetUserId: input.targetUserId, taskId, featureId, existingId: existing.id }
+      );
       return;
     }
 
-    // 3. Determine DM eligibility
-    const dmReady = isDirectMessageConfigured() && !!targetUser?.lightningPubkey;
+    // 3. Determine DM eligibility — decrypt the pubkey if present
+    const encryptionService = EncryptionService.getInstance();
+    const decryptedPubkey = targetUser?.lightningPubkey
+      ? encryptionService.decryptField("lightningPubkey", targetUser.lightningPubkey)
+      : null;
+    const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
     // 4. Always insert a row — use SKIPPED when DM is not ready
     const record = await db.notificationTrigger.create({
@@ -81,23 +91,31 @@ export async function createAndSendNotification(input: {
 
     // 5. Stop here if DM is not configured — no send attempted
     if (!dmReady) {
+      logger.info(
+        `[Notifications] DM not ready — record created as SKIPPED for ${input.notificationType}`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId, dmConfigured: isDirectMessageConfigured(), hasPubkey: !!targetUser?.lightningPubkey }
+      );
       return;
     }
 
     // 6. Deferred types: store sendAfter + message, return without sending
     if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
+      const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
       await db.notificationTrigger.update({
         where: { id: record.id },
-        data: {
-          sendAfter: new Date(Date.now() + DEFERRED_DELAY_MS),
-          message: input.message,
-        },
+        data: { sendAfter, message: input.message },
       });
+      logger.info(
+        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter.toISOString()}`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
+      );
       return;
     }
 
     // 7. Immediate types: send via direct message now
-    const result = await sendDirectMessage(targetUser!.lightningPubkey!, input.message, {
+    const result = await sendDirectMessage(decryptedPubkey!, input.message, {
       routeHint: targetUser!.sphinxRouteHint ?? undefined,
     });
 
@@ -111,6 +129,20 @@ export async function createAndSendNotification(input: {
         featureId: input.featureId ?? undefined,
       }).catch((err) =>
         logger.error("[Notifications] HUB push failed", "HUB_PUSH", { err })
+      );
+    }
+
+    if (result.success) {
+      logger.info(
+        `[Notifications] Immediate ${input.notificationType} send succeeded`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId }
+      );
+    } else {
+      logger.warn(
+        `[Notifications] Immediate ${input.notificationType} send failed: ${result.error}`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId, error: result.error }
       );
     }
 
