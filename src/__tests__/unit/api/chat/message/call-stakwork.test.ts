@@ -260,7 +260,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         });
       });
 
-      it("should update task workflow status to FAILED when Stakwork API returns error", async () => {
+      it("should leave workflowStatus unchanged when Stakwork API returns non-2xx error", async () => {
         const mockTask = {
           workspaceId: mockWorkspaceId,
           workspace: {
@@ -310,19 +310,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
 
         expect(response.status).toBe(201); // Message still created
 
-        // Verify task was marked as FAILED
-        expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
-          where: { id: mockTaskId },
-          data: {
-            workflowStatus: WorkflowStatus.FAILED,
-          },
-          select: {
-            workflowStartedAt: true,
-            workflowCompletedAt: true,
-            featureId: true,
-            workspace: { select: { slug: true } },
-          },
-        });
+        // Non-2xx → no project_id → workflowStatus left unchanged (no update)
+        expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
       });
 
       it("should handle artifacts and attachments in chat message", async () => {
@@ -1086,7 +1075,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
     });
 
     describe("Error Handling and Fault Tolerance", () => {
-      it("should handle network failures gracefully", async () => {
+      it("should handle network failures gracefully — leave workflowStatus unchanged", async () => {
         const mockTask = {
           workspaceId: mockWorkspaceId,
           workspace: {
@@ -1136,19 +1125,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         expect(response.status).toBe(201);
         expect(data.success).toBe(true);
 
-        // Task marked as FAILED
-        expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
-          where: { id: mockTaskId },
-          data: {
-            workflowStatus: WorkflowStatus.FAILED,
-          },
-          select: {
-            workflowStartedAt: true,
-            workflowCompletedAt: true,
-            featureId: true,
-            workspace: { select: { slug: true } },
-          },
-        });
+        // Network error → no project_id → workflowStatus left unchanged
+        expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
       });
 
       it("should create message even when Stakwork API fails", async () => {
