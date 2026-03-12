@@ -13,6 +13,18 @@ import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-
 import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
 
+function serializeWebhookError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return { value: error };
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
     const { workspaceId } = await params;
@@ -196,6 +208,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
       const prUrl = payload?.pull_request?.html_url;
+      const prNumber = payload?.pull_request?.number;
+      const mergedAt = payload?.pull_request?.merged_at;
 
       // Check if PR was closed (with or without merge)
       if (action === "closed" && prUrl) {
@@ -203,8 +217,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         console.log(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - processing task updates`, {
           delivery,
           workspaceId: repository.workspaceId,
+          repositoryUrl: repository.repositoryUrl,
+          prNumber,
           prUrl,
           merged: isMerged,
+          mergedAt,
         });
 
         try {
@@ -238,9 +255,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           );
 
           if (tasks.length === 0) {
-            console.log(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - no tasks found`, {
+            console.warn(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - no active tasks found`, {
               delivery,
+              workspaceId: repository.workspaceId,
+              repositoryUrl: repository.repositoryUrl,
+              prNumber,
               prUrl,
+              merged: isMerged,
+              mergedAt,
             });
             return NextResponse.json({ success: true }, { status: 202 });
           }
@@ -642,8 +664,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         } catch (error) {
           console.error("[GithubWebhook] PR merged - error processing task updates", {
             delivery,
+            workspaceId: repository.workspaceId,
+            repositoryUrl: repository.repositoryUrl,
+            prNumber,
             prUrl,
-            error,
+            mergedAt,
+            error: serializeWebhookError(error),
           });
           return NextResponse.json({ success: true }, { status: 202 });
         }
