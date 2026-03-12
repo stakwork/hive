@@ -7,6 +7,7 @@ import type { FeatureWithDetails } from "@/types/roadmap";
 import type { WorkspaceWithAccess } from "@/types/workspace";
 import { TaskStatus } from "@prisma/client";
 import userEvent from "@testing-library/user-event";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Mock Next.js router
 const mockPush = vi.fn();
@@ -43,6 +44,32 @@ vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
 
 vi.mock("@/hooks/usePusherConnection", () => ({
   usePusherConnection: vi.fn(),
+}));
+
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/components/features/DependencyGraph", () => ({
+  DependencyGraph: ({ className }: any) => (
+    <div data-testid="dependency-graph" className={className} />
+  ),
+}));
+
+vi.mock("@/components/features/DependencyGraph/nodes", () => ({
+  RoadmapTaskNode: ({ data }: any) => <div data-testid="roadmap-task-node">{data.title}</div>,
+}));
+
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({ children, open }: any) => (
+    <div data-testid="collapsible" data-open={open}>{children}</div>
+  ),
+  CollapsibleTrigger: ({ children, asChild }: any) => (
+    <div data-testid="collapsible-trigger">{children}</div>
+  ),
+  CollapsibleContent: ({ children }: any) => (
+    <div data-testid="collapsible-content">{children}</div>
+  ),
 }));
 
 // Mock UI components
@@ -905,6 +932,139 @@ describe("CompactTasksList", () => {
       // The truncate wrapper span must exist inside the trigger
       const truncateSpan = trigger.querySelector("span.truncate");
       expect(truncateSpan).toBeInTheDocument();
+    });
+  });
+
+  describe("Dependency graph section", () => {
+    test("graph section is not rendered when all tasks have empty dependsOnTaskIds", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: [] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("dependency-graph")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+    });
+
+    test("graph section is not rendered when tasks have no dependsOnTaskIds field", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1" });
+      const task2 = createMockTask({ id: "t2" });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("dependency-graph")).not.toBeInTheDocument();
+    });
+
+    test("graph section is rendered when at least one task has a dependency", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("dependency-graph")).toBeInTheDocument();
+    });
+
+    test("graphOpen initialises to false (collapsed) by default on desktop", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const collapsible = screen.getByTestId("collapsible");
+      expect(collapsible).toHaveAttribute("data-open", "false");
+    });
+
+    test("graphOpen initialises to false (collapsed) by default on mobile", () => {
+      (useIsMobile as any).mockReturnValue(true);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const collapsible = screen.getByTestId("collapsible");
+      expect(collapsible).toHaveAttribute("data-open", "false");
+    });
+
+    test("DependencyGraph receives h-[280px] className on mobile", () => {
+      (useIsMobile as any).mockReturnValue(true);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const graph = screen.getByTestId("dependency-graph");
+      expect(graph.className).toContain("h-[280px]");
+    });
+
+    test("DependencyGraph receives h-[380px] className on desktop", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const graph = screen.getByTestId("dependency-graph");
+      expect(graph.className).toContain("h-[380px]");
     });
   });
 });
