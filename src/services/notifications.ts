@@ -132,11 +132,19 @@ export async function createAndSendNotification(input: {
       );
     }
 
-    logger.info(
-      `[Notifications] Immediate ${input.notificationType} send ${result.success ? "succeeded" : "failed"}`,
-      "NOTIFICATIONS",
-      { recordId: record.id, targetUserId: input.targetUserId, success: result.success, error: result.error }
-    );
+    if (result.success) {
+      logger.info(
+        `[Notifications] Immediate ${input.notificationType} send succeeded`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId }
+      );
+    } else {
+      logger.warn(
+        `[Notifications] Immediate ${input.notificationType} send failed: ${result.error}`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId, error: result.error }
+      );
+    }
 
     // 8. Update record with outcome
     await db.notificationTrigger.update({
