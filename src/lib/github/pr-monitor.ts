@@ -20,6 +20,7 @@ import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt"
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
@@ -727,6 +728,32 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             taskId: pr.taskId,
             prNumber: result.prNumber,
           });
+
+          if (pr.podId) {
+            const releaseResult = await releaseTaskPod({
+              taskId: pr.taskId,
+              podId: pr.podId,
+              workspaceId: pr.workspaceId,
+              verifyOwnership: true,
+              clearTaskFields: true,
+              newWorkflowStatus: null,
+            });
+
+            if (releaseResult.success) {
+              log.info("Released pod for merged PR fallback", {
+                taskId: pr.taskId,
+                podId: pr.podId,
+                podDropped: releaseResult.podDropped,
+                taskCleared: releaseResult.taskCleared,
+              });
+            } else {
+              log.error("Failed to release pod for merged PR fallback", {
+                taskId: pr.taskId,
+                podId: pr.podId,
+                error: releaseResult.error,
+              });
+            }
+          }
         }
 
         stats.healthy++;
