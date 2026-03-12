@@ -2,8 +2,12 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Play, Trash2, RefreshCw, FolderOpen } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { DependencyGraph } from "@/components/features/DependencyGraph";
+import { RoadmapTaskNode } from "@/components/features/DependencyGraph/nodes";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   Select,
   SelectContent,
@@ -79,6 +83,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const router = useRouter();
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
+  const isMobile = useIsMobile();
+  const [graphOpen, setGraphOpen] = useState(!isMobile);
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
@@ -91,6 +97,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [defaultPhase?.tasks]);
+
+  const hasDependencies = useMemo(
+    () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
+    [tasks]
+  );
 
   const workspaceRepos = useMemo(
     () =>
@@ -355,6 +366,43 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           )}
         </div>
       </div>
+
+      {hasDependencies && (
+        <Collapsible open={graphOpen} onOpenChange={setGraphOpen}>
+          <CollapsibleTrigger asChild>
+            <button className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">Dependencies</span>
+                <span className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none">
+                  {tasks.filter((t) => (t.dependsOnTaskIds ?? []).length > 0).length}
+                </span>
+              </div>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${graphOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <DependencyGraph
+              entities={tasks}
+              getDependencies={(t) => t.dependsOnTaskIds ?? []}
+              renderNode={(t) => <RoadmapTaskNode data={t} />}
+              direction="TB"
+              onNodeClick={(taskId) => {
+                const task = tasks.find((t) => t.id === taskId);
+                if (task) {
+                  const route =
+                    task.status === "IN_PROGRESS" || task.status === "DONE"
+                      ? `/w/${workspaceSlug}/task/${task.id}`
+                      : `/w/${workspaceSlug}/tickets/${task.id}`;
+                  router.push(route);
+                }
+              }}
+              className={isMobile ? "h-[280px]" : "h-[380px]"}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {startableTasks.length > 0 && (
         <Button
