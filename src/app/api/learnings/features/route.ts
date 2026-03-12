@@ -44,7 +44,12 @@ export async function GET(request: NextRequest) {
       : Array.isArray(data?.features)
         ? data.features
         : [];
-    return NextResponse.json(features);
+    return NextResponse.json({
+      features,
+      lastProcessedTimestamp: data.lastProcessedTimestamp ?? null,
+      cumulativeUsage: data.cumulativeUsage ?? null,
+      processing: data.processing ?? false,
+    });
   } catch (error) {
     console.error("Features API proxy error:", error);
     return NextResponse.json({ error: "Failed to fetch features data" }, { status: 500 });
