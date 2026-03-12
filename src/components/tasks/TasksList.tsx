@@ -21,7 +21,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { KanbanView } from "@/components/ui/kanban-view";
-import { TASK_KANBAN_COLUMNS } from "@/types/roadmap";
+import { TASK_KANBAN_COLUMNS, WORKFLOW_EDITOR_KANBAN_COLUMN } from "@/types/roadmap";
 import { TaskStatus } from "@prisma/client";
 import {
   Select,
@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+type KanbanStatus = TaskStatus | "WORKFLOW_EDITOR";
 
 interface TasksListProps {
   workspaceId: string;
@@ -243,6 +245,56 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             </Select>
           </div>
 
+          {(() => {
+            const hasWorkflowEditorTasks =
+              workspaceSlug === "stakwork" &&
+              sortedTasks.some((t: any) => t.mode === "workflow_editor");
+            const kanbanColumns = hasWorkflowEditorTasks
+              ? [WORKFLOW_EDITOR_KANBAN_COLUMN, ...TASK_KANBAN_COLUMNS]
+              : TASK_KANBAN_COLUMNS;
+
+            return viewType === "list" ? null : (
+              <div className="mt-4">
+                <KanbanView
+                  items={sortedTasks}
+                  columns={kanbanColumns as any}
+                  getItemStatus={(task: any) =>
+                    workspaceSlug === "stakwork" && task.mode === "workflow_editor"
+                      ? ("WORKFLOW_EDITOR" as KanbanStatus)
+                      : (task.status as KanbanStatus)
+                  }
+                  getItemId={(task: any) => task.id}
+                  renderCard={(task: any) => (
+                    <TaskCard
+                      task={task}
+                      workspaceSlug={workspaceSlug}
+                      isArchived={activeTab === "archived"}
+                      onUndoArchive={refetch}
+                    />
+                  )}
+                  sortItems={(a: any, b: any) => {
+                    if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
+                    if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
+                    return 0;
+                  }}
+                  loading={loading}
+                />
+                {pagination?.hasMore && (
+                  <div className="pt-3 border-t flex justify-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading ? "Loading..." : "Load More"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {viewType === "list" ? (
             <>
               <TabsContent value="active" className="mt-4 space-y-3">
@@ -310,44 +362,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                 )}
               </TabsContent>
             </>
-          ) : (
-            <div className="mt-4">
-              <KanbanView
-                items={sortedTasks}
-                columns={TASK_KANBAN_COLUMNS}
-                getItemStatus={(task) => task.status as TaskStatus}
-                getItemId={(task) => task.id}
-                renderCard={(task) => (
-                  <TaskCard
-                    task={task}
-                    workspaceSlug={workspaceSlug}
-                    isArchived={activeTab === "archived"}
-                    onUndoArchive={refetch}
-                  />
-                )}
-                sortItems={(a, b) => {
-                  // Priority sorting for action artifacts, then respect user's sort preference
-                  if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
-                  if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
-                  // Already sorted by sortTasks function
-                  return 0;
-                }}
-                loading={loading}
-              />
-              {pagination?.hasMore && (
-                <div className="pt-3 border-t flex justify-center mt-4">
-                  <Button
-                    variant="outline"
-                    onClick={loadMore}
-                    disabled={loading}
-                    size="sm"
-                  >
-                    {loading ? "Loading..." : "Load More"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          ) : null}
         </CardContent>
       </Tabs>
     </Card>
