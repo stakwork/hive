@@ -991,7 +991,7 @@ describe("CompactTasksList", () => {
       expect(screen.getByTestId("dependency-graph")).toBeInTheDocument();
     });
 
-    test("graphOpen initialises to true (expanded) on desktop (useIsMobile returns false)", () => {
+    test("graphOpen initialises to false (collapsed) by default on desktop", () => {
       (useIsMobile as any).mockReturnValue(false);
       const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
       const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
@@ -1007,10 +1007,10 @@ describe("CompactTasksList", () => {
       );
 
       const collapsible = screen.getByTestId("collapsible");
-      expect(collapsible).toHaveAttribute("data-open", "true");
+      expect(collapsible).toHaveAttribute("data-open", "false");
     });
 
-    test("graphOpen initialises to false (collapsed) on mobile (useIsMobile returns true)", () => {
+    test("graphOpen initialises to false (collapsed) by default on mobile", () => {
       (useIsMobile as any).mockReturnValue(true);
       const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
       const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });

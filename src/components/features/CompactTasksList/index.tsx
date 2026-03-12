@@ -84,7 +84,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
   const isMobile = useIsMobile();
-  const [graphOpen, setGraphOpen] = useState(!isMobile);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
@@ -386,7 +386,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             <DependencyGraph
               entities={tasks}
               getDependencies={(t) => t.dependsOnTaskIds ?? []}
-              renderNode={(t) => <RoadmapTaskNode data={t} />}
+              renderNode={(t) => <RoadmapTaskNode data={t} direction="TB" />}
               direction="TB"
               onNodeClick={(taskId) => {
                 const task = tasks.find((t) => t.id === taskId);
@@ -399,6 +399,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 }
               }}
               className={isMobile ? "h-[280px]" : "h-[380px]"}
+              open={graphOpen}
             />
           </CollapsibleContent>
         </Collapsible>
