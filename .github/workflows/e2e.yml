@@ -120,7 +120,12 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
-        run: npm start &
+          PORT: 3000
+          HOSTNAME: 0.0.0.0
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          node .next/standalone/server.js &
 
       - name: Wait for application to be ready
         run: npx wait-on http://localhost:3000 --timeout 300000
