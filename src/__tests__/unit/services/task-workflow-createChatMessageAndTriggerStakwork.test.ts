@@ -142,7 +142,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       expect(result).toEqual({
         chatMessage: expect.any(Object),
         stakworkData: expect.objectContaining({
-          success: true,
+          projectId: 12345,
           data: expect.objectContaining({ project_id: 12345 }),
         }),
       });

@@ -1058,7 +1058,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       vi.mocked(db.task.update).mockResolvedValue({} as any);
     });
 
-    it("should handle Stakwork API HTTP failure (response.ok === false)", async () => {
+    it("should handle Stakwork API HTTP failure (response.ok === false) — leave workflowStatus unchanged", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
         statusText: "Internal Server Error",
@@ -1076,27 +1076,16 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Fault-tolerant design: returns 201 with workflow: undefined (no data property in failure response)
+      // Fault-tolerant design: returns 201
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
       expect(data.workflow).toBeUndefined();
 
-      // Verify task workflow status was set to FAILED
-      expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
-        where: { id: mockTaskId },
-        data: {
-          workflowStatus: WorkflowStatus.FAILED,
-        },
-        select: {
-          workflowStartedAt: true,
-          workflowCompletedAt: true,
-          featureId: true,
-          workspace: { select: { slug: true } },
-        },
-      });
+      // Non-2xx → no project_id → workflowStatus left unchanged (no update)
+      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
     });
 
-    it("should handle Stakwork API network error (fetch rejection)", async () => {
+    it("should handle Stakwork API network error (fetch rejection) — leave workflowStatus unchanged", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
       const request = createAuthenticatedPostRequest(
@@ -1111,24 +1100,13 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Fault-tolerant design: returns 201 with workflow: undefined (no data property in failure response)
+      // Fault-tolerant design: returns 201
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
       expect(data.workflow).toBeUndefined();
 
-      // Verify task workflow status was set to FAILED
-      expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
-        where: { id: mockTaskId },
-        data: {
-          workflowStatus: WorkflowStatus.FAILED,
-        },
-        select: {
-          workflowStartedAt: true,
-          workflowCompletedAt: true,
-          featureId: true,
-          workspace: { select: { slug: true } },
-        },
-      });
+      // Network error → no project_id → workflowStatus left unchanged (no update)
+      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
     });
 
     it("should return 500 on database error", async () => {
@@ -1337,7 +1315,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       });
     });
 
-    it("should handle workflow response without project_id", async () => {
+    it("should handle workflow response without project_id — leave workflowStatus unchanged", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -1364,20 +1342,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
 
-      // Verify task was updated without stakworkProjectId
-      expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
-        where: { id: mockTaskId },
-        data: {
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          workflowStartedAt: expect.any(Date),
-        },
-        select: {
-          workflowStartedAt: true,
-          workflowCompletedAt: true,
-          featureId: true,
-          workspace: { select: { slug: true } },
-        },
-      });
+      // No project_id in response → workflowStatus left unchanged (no update)
+      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
     });
   });
 
