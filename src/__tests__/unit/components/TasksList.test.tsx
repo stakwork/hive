@@ -653,7 +653,7 @@ describe("TasksList - Queue Tab", () => {
     );
   });
 
-  it("should render Queue tab between Active and Archived", async () => {
+  it("should render tabs in Queue, Active, Archived order", async () => {
     render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
 
     await waitFor(() => {
@@ -661,38 +661,13 @@ describe("TasksList - Queue Tab", () => {
     });
 
     const tabs = screen.getAllByRole("tab");
-    const tabNames = tabs.map((t) => t.textContent?.replace(/\d+/, "").trim());
-    const activeIdx = tabNames.findIndex((n) => n === "Active");
+    const tabNames = tabs.map((t) => t.textContent?.trim());
     const queueIdx = tabNames.findIndex((n) => n?.includes("Queue"));
+    const activeIdx = tabNames.findIndex((n) => n === "Active");
     const archivedIdx = tabNames.findIndex((n) => n === "Archived");
 
-    expect(queueIdx).toBeGreaterThan(activeIdx);
-    expect(archivedIdx).toBeGreaterThan(queueIdx);
-  });
-
-  it("should show Queue tab badge with correct count when queuedCount > 0", async () => {
-    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("queue-tab-badge")).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId("queue-tab-badge")).toHaveTextContent("2");
-  });
-
-  it("should not show Queue tab badge when queuedCount is 0", async () => {
-    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
-      stats: { total: 4, active: 4, archived: 0, queuedCount: 0 },
-      loading: false,
-    } as any);
-
-    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByTestId("queue-tab-badge")).not.toBeInTheDocument();
+    expect(queueIdx).toBeLessThan(activeIdx);
+    expect(activeIdx).toBeLessThan(archivedIdx);
   });
 
   it("should initialise to Queue tab when ?tab=queue URL param is present", async () => {
