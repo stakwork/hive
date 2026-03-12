@@ -6,8 +6,11 @@ import { render } from "@testing-library/react";
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ children }: any) =>
     React.createElement("div", { "data-testid": "react-flow" }, children),
+  ReactFlowProvider: ({ children }: any) =>
+    React.createElement(React.Fragment, null, children),
   useNodesState: (initial: any) => [initial, vi.fn(), vi.fn()],
   useEdgesState: (initial: any) => [initial, vi.fn(), vi.fn()],
+  useReactFlow: () => ({ fitView: vi.fn() }),
   Controls: () => React.createElement("div", { "data-testid": "controls" }),
   Background: () => React.createElement("div", { "data-testid": "background" }),
   BackgroundVariant: { Dots: "dots" },
