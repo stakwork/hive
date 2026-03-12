@@ -5,7 +5,7 @@ import {
 } from "@prisma/client";
 import { db } from "@/lib/db";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
-import { sendHubPushNotification } from "@/lib/hub/push-notification";
+import { sendHubPushNotification, buildPushMessage } from "@/lib/hub/push-notification";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
@@ -123,7 +123,7 @@ export async function createAndSendNotification(input: {
     if (targetUser?.iosDeviceToken && workspace?.slug) {
       void sendHubPushNotification({
         deviceToken: targetUser.iosDeviceToken,
-        message: input.message,
+        message: buildPushMessage(input.message),
         workspaceSlug: workspace.slug,
         taskId: input.taskId ?? undefined,
         featureId: input.featureId ?? undefined,
