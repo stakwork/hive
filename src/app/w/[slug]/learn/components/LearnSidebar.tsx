@@ -99,6 +99,7 @@ export function LearnSidebar({
   const [expandedRepoGroups, setExpandedRepoGroups] = useState<Record<string, boolean>>({});
 
   // Process Repository state
+  const [isProcessSectionExpanded, setIsProcessSectionExpanded] = useState(false);
   const [selectedRepoId, setSelectedRepoId] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -107,6 +108,8 @@ export function LearnSidebar({
   const [autoLearnEnabled, setAutoLearnEnabled] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  const processLabel = repositories.length > 1 ? "Process Repositories" : "Process Repository";
 
   // Seed new repo groups (default to expanded), preserve existing toggle state
   useEffect(() => {
@@ -529,79 +532,100 @@ export function LearnSidebar({
       </div>
 
       {/* Process Repository Section - pinned to bottom */}
-      <div className="p-4 border-t border-border bg-background">
-        <div className="flex items-center gap-2 mb-2">
-          <Sprout className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-medium text-muted-foreground">Process Repository</h3>
-          <div className="ml-auto">
-            {cumulativeUsage && <UsageDisplay usage={cumulativeUsage} />}
+      <div className="border-t border-border bg-background" data-testid="process-repo-section">
+        <Button
+          variant="ghost"
+          className="w-full justify-between p-4 h-auto rounded-none"
+          onClick={() => setIsProcessSectionExpanded(!isProcessSectionExpanded)}
+          data-testid="process-repo-header"
+        >
+          <div className="flex items-center gap-2">
+            <Sprout className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-muted-foreground">{processLabel}</span>
           </div>
-        </div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-xs text-muted-foreground">
-              {lastProcessed
-                ? `Last processed: ${formatRelativeOrDate(lastProcessed)}`
-                : "Never processed"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between mb-3 py-2 px-3 bg-muted/30 rounded-lg">
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-foreground">Auto-learn on PR merge</span>
-          </div>
-          <Switch
-            checked={autoLearnEnabled}
-            onCheckedChange={handleAutoLearnToggle}
-            disabled={isLoadingConfig}
+          <ChevronDown
+            className={cn("h-4 w-4 transition-transform", isProcessSectionExpanded && "rotate-180")}
           />
-        </div>
-        {repositories.length > 1 && (
-          <div className="mb-3">
-            <div className="flex items-center gap-2 mb-1.5">
-              <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">Repository</span>
-            </div>
-            <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Select repository" />
-              </SelectTrigger>
-              <SelectContent>
-                {repositories.map((repo) => (
-                  <SelectItem key={repo.id} value={repo.id} className="text-xs">
-                    {repo.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={handleSeedKnowledge}
-            disabled={isSeeding || isProcessing}
-            className="flex-1"
-          >
-            {isSeeding || isProcessing ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                Processing...
-              </>
-            ) : (
-              "Process"
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsCreateModalOpen(true)}
-            disabled={isSeeding || isProcessing}
-            className="px-3"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-        </div>
+        </Button>
+
+        <AnimatePresence>
+          {isProcessSectionExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="px-4 pb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    {lastProcessed
+                      ? `Last processed: ${formatRelativeOrDate(lastProcessed)}`
+                      : "Never processed"}
+                  </p>
+                  {cumulativeUsage && <UsageDisplay usage={cumulativeUsage} />}
+                </div>
+                <div className="flex items-center justify-between py-2 px-3 bg-muted/30 rounded-lg">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium text-foreground">Auto-learn on PR merge</span>
+                  </div>
+                  <Switch
+                    checked={autoLearnEnabled}
+                    onCheckedChange={handleAutoLearnToggle}
+                    disabled={isLoadingConfig}
+                  />
+                </div>
+                {repositories.length > 1 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs font-medium text-muted-foreground">Repository</span>
+                    </div>
+                    <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select repository" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {repositories.map((repo) => (
+                          <SelectItem key={repo.id} value={repo.id} className="text-xs">
+                            {repo.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSeedKnowledge}
+                    disabled={isSeeding || isProcessing}
+                    className="flex-1"
+                  >
+                    {isSeeding || isProcessing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      "Process"
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsCreateModalOpen(true)}
+                    disabled={isSeeding || isProcessing}
+                    className="px-3"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <CreateFeatureModal
