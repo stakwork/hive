@@ -635,7 +635,7 @@ describe("callStakwork Function Unit Tests", () => {
   });
 
   describe("HTTP Error Handling", () => {
-    test("should handle HTTP 400 error from Stakwork API", async () => {
+    test("should handle HTTP 400 error from Stakwork API — leave workflowStatus unchanged", async () => {
       MockSetup.setupFailedCallStakwork("Bad Request");
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
@@ -645,21 +645,22 @@ describe("callStakwork Function Unit Tests", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify task status was updated to FAILED
-      await TestHelpers.expectTaskUpdatedWithStatus(WorkflowStatus.FAILED);
+      // Verify task status was NOT updated (no project_id means no-op)
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
-    test("should handle HTTP 500 error from Stakwork API", async () => {
+    test("should handle HTTP 500 error from Stakwork API — leave workflowStatus unchanged", async () => {
       MockSetup.setupFailedCallStakwork("Internal Server Error");
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      await TestHelpers.expectTaskUpdatedWithStatus(WorkflowStatus.FAILED);
+      // Verify task status was NOT updated (infrastructure failure → no-op)
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
-    test("should handle network errors", async () => {
+    test("should handle network errors — leave workflowStatus unchanged", async () => {
       TestHelpers.setupValidSession();
       TestHelpers.setupValidTaskAndUser();
       TestHelpers.setupValidChatMessage();
@@ -679,7 +680,8 @@ describe("callStakwork Function Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      await TestHelpers.expectTaskUpdatedWithStatus(WorkflowStatus.FAILED);
+      // Network error → no project_id → no workflowStatus update
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
     test("should update task to IN_PROGRESS on successful Stakwork call", async () => {
@@ -868,15 +870,15 @@ describe("callStakwork Function Unit Tests", () => {
       expect(data.workflow).toEqual({ project_id: 789 });
     });
 
-    test("should return success false on API error", async () => {
+    test("should return 201 with no workflowStatus update on API error", async () => {
       MockSetup.setupFailedCallStakwork("Service Unavailable");
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      // Verify task was marked as failed
-      await TestHelpers.expectTaskUpdatedWithStatus(WorkflowStatus.FAILED);
+      // API error → no project_id → workflowStatus left unchanged (no update call)
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
   });
 });
