@@ -1,396 +1,510 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  clearStoredPage,
-  TASKS_PAGE_STORAGE_KEY,
-  saveCurrentPage,
-  getStoredPage,
-} from "@/hooks/useWorkspaceTasks";
+import { describe, test, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 
-describe("useWorkspaceTasks - sessionStorage helpers", () => {
-  const originalWindow = global.window;
-  let mockSessionStorage: {
-    removeItem: ReturnType<typeof vi.fn>;
-    getItem: ReturnType<typeof vi.fn>;
-    setItem: ReturnType<typeof vi.fn>;
-    clear: ReturnType<typeof vi.fn>;
-    key: ReturnType<typeof vi.fn>;
-    length: number;
-  };
+// Mock next-auth
+vi.mock("next-auth/react", () => ({
+  useSession: vi.fn(() => ({
+    data: {
+      user: {
+        id: "test-user-id",
+        name: "Test User",
+        email: "test@example.com",
+      },
+    },
+    status: "authenticated",
+  })),
+}));
+
+// Mock fetch globally
+global.fetch = vi.fn();
+
+// Mock Pusher
+vi.mock("pusher-js", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    subscribe: vi.fn().mockReturnValue({
+      bind: vi.fn(),
+      unbind: vi.fn(),
+    }),
+    unsubscribe: vi.fn(),
+    disconnect: vi.fn(),
+  })),
+}));
+
+describe("useWorkspaceTasks - URL-based pagination", () => {
+  const mockWorkspaceId = "workspace-123";
+  const mockWorkspaceSlug = "test-workspace";
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockSessionStorage = {
-      removeItem: vi.fn(),
-      getItem: vi.fn(),
-      setItem: vi.fn(),
-      clear: vi.fn(),
-      key: vi.fn(),
-      length: 0,
-    };
-
-    Object.defineProperty(global, "window", {
-      value: {
-        sessionStorage: mockSessionStorage,
-      },
-      writable: true,
-      configurable: true,
-    });
   });
 
-  afterEach(() => {
-    global.window = originalWindow;
+  const createMockResponse = (tasks: any[], page: number, hasMore: boolean) => ({
+    success: true,
+    data: tasks,
+    pagination: {
+      currentPage: page,
+      totalPages: hasMore ? page + 1 : page,
+      totalTasks: tasks.length * (hasMore ? 2 : 1),
+      hasMore,
+    },
   });
 
-  describe("TASKS_PAGE_STORAGE_KEY", () => {
-    test("should generate correct storage key pattern", () => {
-      const workspaceId = "workspace-123";
-      const result = TASKS_PAGE_STORAGE_KEY(workspaceId);
-
-      expect(result).toBe("tasks_page_workspace-123");
-    });
-
-    test("should generate different keys for different workspaces", () => {
-      const workspace1 = "workspace-abc";
-      const workspace2 = "workspace-xyz";
-
-      const key1 = TASKS_PAGE_STORAGE_KEY(workspace1);
-      const key2 = TASKS_PAGE_STORAGE_KEY(workspace2);
-
-      expect(key1).toBe("tasks_page_workspace-abc");
-      expect(key2).toBe("tasks_page_workspace-xyz");
-      expect(key1).not.toBe(key2);
-    });
-
-    test("should handle empty string workspaceId", () => {
-      const result = TASKS_PAGE_STORAGE_KEY("");
-
-      expect(result).toBe("tasks_page_");
-    });
-
-    test("should handle workspaceId with special characters", () => {
-      const workspaceId = "workspace-123-test!@#$%";
-      const result = TASKS_PAGE_STORAGE_KEY(workspaceId);
-
-      expect(result).toBe("tasks_page_workspace-123-test!@#$%");
-    });
-
-    test("should be deterministic for same input", () => {
-      const workspaceId = "test-workspace";
-      const result1 = TASKS_PAGE_STORAGE_KEY(workspaceId);
-      const result2 = TASKS_PAGE_STORAGE_KEY(workspaceId);
-
-      expect(result1).toBe(result2);
-      expect(result1).toBe("tasks_page_test-workspace");
-    });
+  const mockTask = (id: string, title: string) => ({
+    id,
+    title,
+    status: "TODO",
+    priority: "MEDIUM",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
 
-  describe("clearStoredPage", () => {
-    describe("Basic Functionality", () => {
-      test("should remove workspace-specific storage key", () => {
-        const workspaceId = "workspace-123";
-        const expectedKey = "tasks_page_workspace-123";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(1);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(expectedKey);
+  describe("initialPage parameter", () => {
+    test("should start at page 1 when initialPage is not provided", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
       });
+      global.fetch = mockFetch;
 
-      test("should use TASKS_PAGE_STORAGE_KEY pattern", () => {
-        const workspaceId = "test-workspace-456";
+      renderHook(() =>
+        useWorkspaceTasks(mockWorkspaceId, mockWorkspaceSlug, true, 10)
+      );
 
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
-      });
-
-      test("should only call removeItem once per invocation", () => {
-        const workspaceId = "workspace-single-call";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    describe("SSR Safety", () => {
-      test("should handle SSR context safely when window is undefined", () => {
-        delete (global as any).window;
-
-        expect(() => clearStoredPage("workspace-123")).not.toThrow();
-        expect(mockSessionStorage.removeItem).not.toHaveBeenCalled();
-      });
-
-      test("should not access sessionStorage when window is undefined", () => {
-        const originalWindow = global.window;
-        delete (global as any).window;
-
-        clearStoredPage("workspace-ssr-test");
-
-        expect(mockSessionStorage.removeItem).not.toHaveBeenCalled();
-
-        global.window = originalWindow;
-      });
-
-      test("should work correctly when window is defined", () => {
-        const workspaceId = "workspace-with-window";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("page=1"),
+          expect.any(Object)
         );
       });
     });
 
-    describe("Workspace Isolation", () => {
-      test("should clear storage for specific workspace only", () => {
-        const workspaceId = "workspace-isolated";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(1);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-isolated"
-        );
+    test("should start at page 1 when initialPage is 1", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
       });
+      global.fetch = mockFetch;
 
-      test("should handle multiple workspace IDs independently", () => {
-        const workspace1 = "workspace-alpha";
-        const workspace2 = "workspace-beta";
+      renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          1
+        )
+      );
 
-        clearStoredPage(workspace1);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-alpha"
-        );
-
-        vi.clearAllMocks();
-
-        clearStoredPage(workspace2);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-beta"
-        );
-      });
-
-      test("should not affect other sessionStorage keys", () => {
-        const workspaceId = "workspace-no-side-effects";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.clear).not.toHaveBeenCalled();
-        expect(mockSessionStorage.setItem).not.toHaveBeenCalled();
-      });
-    });
-
-    describe("Edge Cases", () => {
-      test("should handle empty string workspaceId", () => {
-        clearStoredPage("");
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_");
-      });
-
-      test("should handle workspaceId with special characters", () => {
-        const workspaceId = "workspace-!@#$%^&*()";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-!@#$%^&*()"
-        );
-      });
-
-      test("should handle very long workspaceId", () => {
-        const workspaceId = "workspace-" + "a".repeat(1000);
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          `tasks_page_${workspaceId}`
-        );
-      });
-
-      test("should handle workspaceId with whitespace", () => {
-        const workspaceId = "workspace with spaces";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace with spaces"
-        );
-      });
-
-      test("should handle numeric string workspaceId", () => {
-        const workspaceId = "12345";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_12345");
-      });
-    });
-
-    describe("Integration Context", () => {
-      test("should clear stored page as part of refetch workflow", () => {
-        const workspaceId = "workspace-refetch";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
-      });
-
-      test("should clear stored page for error recovery", () => {
-        const workspaceId = "workspace-error-recovery";
-
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("page=1"),
+          expect.any(Object)
         );
       });
     });
 
-    describe("Multiple Invocations", () => {
-      test("should handle multiple calls for same workspace", () => {
-        const workspaceId = "workspace-multi-call";
+    test("should replay pages 1 through N when initialPage > 1", async () => {
+      const page1Tasks = [mockTask("1", "Task 1"), mockTask("2", "Task 2")];
+      const page2Tasks = [mockTask("3", "Task 3"), mockTask("4", "Task 4")];
+      const page3Tasks = [mockTask("5", "Task 5"), mockTask("6", "Task 6")];
 
-        clearStoredPage(workspaceId);
-        clearStoredPage(workspaceId);
-        clearStoredPage(workspaceId);
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(3);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
-      });
-
-      test("should handle rapid sequential calls", () => {
-        const workspaceIds = ["ws-1", "ws-2", "ws-3"];
-
-        workspaceIds.forEach((id) => clearStoredPage(id));
-
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(3);
-        workspaceIds.forEach((id) => {
-          expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-            TASKS_PAGE_STORAGE_KEY(id)
-          );
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse(page1Tasks, 1, true),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse(page2Tasks, 2, true),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse(page3Tasks, 3, false),
         });
+      global.fetch = mockFetch;
+
+      const { result } = renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          3 // initialPage = 3
+        )
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      // Verify pages were fetched in order
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("page=1"),
+        expect.any(Object)
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("page=2"),
+        expect.any(Object)
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining("page=3"),
+        expect.any(Object)
+      );
+
+      // Verify all tasks are accumulated
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(6);
+      });
+    });
+
+    test("should handle initialPage < 1 by defaulting to 1", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
+
+      renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          0 // Invalid page
+        )
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("page=1"),
+          expect.any(Object)
+        );
       });
     });
   });
 
-  describe("saveCurrentPage", () => {
-    test("should save page number to sessionStorage", () => {
-      const workspaceId = "workspace-123";
-      const page = 2;
+  describe("onPageChange callback", () => {
+    test("should call onPageChange when loadMore is invoked", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse([mockTask("1", "Task 1")], 1, true),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse([mockTask("2", "Task 2")], 2, false),
+        });
+      global.fetch = mockFetch;
 
-      saveCurrentPage(workspaceId, page);
-
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "2"
+      const { result } = renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          1,
+          onPageChange
+        )
       );
+
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(1);
+      });
+
+      // Call loadMore
+      result.current.loadMore();
+
+      await waitFor(() => {
+        expect(onPageChange).toHaveBeenCalledWith(2);
+      });
     });
 
-    test("should handle SSR context safely", () => {
-      delete (global as any).window;
+    test("should not call onPageChange on initial mount", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
 
-      expect(() => saveCurrentPage("workspace-123", 1)).not.toThrow();
-    });
-
-    test("should convert page number to string", () => {
-      const workspaceId = "workspace-string-test";
-      const page = 5;
-
-      saveCurrentPage(workspaceId, page);
-
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "5"
+      renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          1,
+          onPageChange
+        )
       );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      // onPageChange should NOT be called on initial mount
+      expect(onPageChange).not.toHaveBeenCalled();
     });
   });
 
-  describe("getStoredPage", () => {
-    test("should retrieve stored page number", () => {
-      const workspaceId = "workspace-123";
-      mockSessionStorage.getItem.mockReturnValue("3");
+  describe("filter/search/sort changes", () => {
+    test("should call onPageChange(1) when filters change after mount", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
 
-      const result = getStoredPage(workspaceId);
-
-      expect(mockSessionStorage.getItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId)
+      const { rerender } = renderHook(
+        ({ filters }) =>
+          useWorkspaceTasks(
+            mockWorkspaceId,
+            mockWorkspaceSlug,
+            true,
+            10,
+            false,
+            "",
+            filters,
+            false,
+            "updatedAt",
+            "desc",
+            1,
+            onPageChange
+          ),
+        {
+          initialProps: { filters: {} },
+        }
       );
-      expect(result).toBe(3);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      // Clear the mock to verify onPageChange is called after mount
+      onPageChange.mockClear();
+
+      // Change filters
+      rerender({ filters: { status: ["TODO"] } });
+
+      await waitFor(() => {
+        expect(onPageChange).toHaveBeenCalledWith(1);
+      });
     });
 
-    test("should return 1 when no stored page exists", () => {
-      const workspaceId = "workspace-no-page";
-      mockSessionStorage.getItem.mockReturnValue(null);
+    test("should call onPageChange(1) when search changes after mount", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
 
-      const result = getStoredPage(workspaceId);
+      const { rerender } = renderHook(
+        ({ search }) =>
+          useWorkspaceTasks(
+            mockWorkspaceId,
+            mockWorkspaceSlug,
+            true,
+            10,
+            false,
+            search,
+            {},
+            false,
+            "updatedAt",
+            "desc",
+            1,
+            onPageChange
+          ),
+        {
+          initialProps: { search: "" },
+        }
+      );
 
-      expect(result).toBe(1);
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      onPageChange.mockClear();
+
+      // Change search
+      rerender({ search: "test query" });
+
+      await waitFor(() => {
+        expect(onPageChange).toHaveBeenCalledWith(1);
+      });
     });
 
-    test("should handle SSR context by returning 1", () => {
-      delete (global as any).window;
+    test("should call onPageChange(1) when sort changes after mount", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
 
-      const result = getStoredPage("workspace-ssr");
+      const { rerender } = renderHook(
+        ({ sortBy, sortOrder }) =>
+          useWorkspaceTasks(
+            mockWorkspaceId,
+            mockWorkspaceSlug,
+            true,
+            10,
+            false,
+            "",
+            {},
+            false,
+            sortBy,
+            sortOrder,
+            1,
+            onPageChange
+          ),
+        {
+          initialProps: { sortBy: "updatedAt", sortOrder: "desc" },
+        }
+      );
 
-      expect(result).toBe(1);
-    });
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
 
-    test("should parse stored string to integer", () => {
-      const workspaceId = "workspace-parse";
-      mockSessionStorage.getItem.mockReturnValue("42");
+      onPageChange.mockClear();
 
-      const result = getStoredPage(workspaceId);
+      // Change sort
+      rerender({ sortBy: "createdAt", sortOrder: "asc" });
 
-      expect(result).toBe(42);
+      await waitFor(() => {
+        expect(onPageChange).toHaveBeenCalledWith(1);
+      });
     });
   });
 
-  describe("Integration Tests", () => {
-    test("should work together: save, get, and clear", () => {
-      const workspaceId = "workspace-integration";
-      const page = 3;
+  describe("mount guard behavior", () => {
+    test("should distinguish initial mount from filter re-renders", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => createMockResponse([mockTask("1", "Task 1")], 1, false),
+      });
+      global.fetch = mockFetch;
 
-      saveCurrentPage(workspaceId, page);
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "3"
+      const { rerender } = renderHook(
+        ({ filters }) =>
+          useWorkspaceTasks(
+            mockWorkspaceId,
+            mockWorkspaceSlug,
+            true,
+            10,
+            false,
+            "",
+            filters,
+            false,
+            "updatedAt",
+            "desc",
+            1,
+            onPageChange
+          ),
+        {
+          initialProps: { filters: {} },
+        }
       );
 
-      mockSessionStorage.getItem.mockReturnValue("3");
-      const retrievedPage = getStoredPage(workspaceId);
-      expect(retrievedPage).toBe(3);
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
 
-      clearStoredPage(workspaceId);
-      expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId)
-      );
+      // onPageChange should NOT be called on initial mount
+      expect(onPageChange).not.toHaveBeenCalled();
+
+      // Change filters - now onPageChange SHOULD be called
+      rerender({ filters: { priority: ["HIGH"] } });
+
+      await waitFor(() => {
+        expect(onPageChange).toHaveBeenCalledWith(1);
+      });
+
+      // Verify it was called exactly once (not on mount)
+      expect(onPageChange).toHaveBeenCalledTimes(1);
     });
 
-    test("should handle complete pagination lifecycle", () => {
-      const workspaceId = "workspace-lifecycle";
+    test("should replay pages on mount but not call onPageChange", async () => {
+      const onPageChange = vi.fn();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse([mockTask("1", "Task 1")], 1, true),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => createMockResponse([mockTask("2", "Task 2")], 2, false),
+        });
+      global.fetch = mockFetch;
 
-      saveCurrentPage(workspaceId, 1);
-      saveCurrentPage(workspaceId, 2);
-      saveCurrentPage(workspaceId, 3);
+      const { result } = renderHook(() =>
+        useWorkspaceTasks(
+          mockWorkspaceId,
+          mockWorkspaceSlug,
+          true,
+          10,
+          false,
+          "",
+          {},
+          false,
+          "updatedAt",
+          "desc",
+          2, // Start at page 2
+          onPageChange
+        )
+      );
 
-      mockSessionStorage.getItem.mockReturnValue("3");
-      const currentPage = getStoredPage(workspaceId);
-      expect(currentPage).toBe(3);
+      // Wait for replay to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
 
-      clearStoredPage(workspaceId);
+      // Verify tasks were accumulated
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(2);
+      });
 
-      mockSessionStorage.getItem.mockReturnValue(null);
-      const pageAfterClear = getStoredPage(workspaceId);
-      expect(pageAfterClear).toBe(1);
+      // onPageChange should NOT be called during replay
+      expect(onPageChange).not.toHaveBeenCalled();
     });
   });
 });
