@@ -142,7 +142,7 @@ export async function updateFeatureStatusFromTasks(featureId: string): Promise<v
             featureId,
             workspaceId: feature.workspace.id,
             notificationType: NotificationTriggerType.FEATURE_COMPLETED,
-            message: `@${alias} — Feature '${feature.title}' has been marked Complete. ${featureUrl}`,
+            message: `@${alias} — Feature '${feature.title}' has been marked Complete: ${featureUrl}`,
           });
         } catch (notifError) {
           console.error(`[feature-status-sync] Error firing FEATURE_COMPLETED notification:`, notifError);
