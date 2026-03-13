@@ -515,7 +515,16 @@ export async function POST(request: NextRequest) {
           });
           const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
 
-          for (const dbArtifact of chatMessage.artifacts) {
+          // Deduplicate by artifact type so multiple artifacts of the same type
+          // (e.g. two PLAN artifacts in one response) only fire one notification.
+          const seenArtifactTypes = new Set<ArtifactType>();
+          const uniqueArtifacts = chatMessage.artifacts.filter((a) => {
+            if (seenArtifactTypes.has(a.type)) return false;
+            seenArtifactTypes.add(a.type);
+            return true;
+          });
+
+          for (const dbArtifact of uniqueArtifacts) {
             if (dbArtifact.type === ArtifactType.FORM) {
               await createAndSendNotification({
                 targetUserId: feature.createdById,

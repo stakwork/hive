@@ -94,6 +94,31 @@ describe("createAndSendNotification", () => {
       expect(mockedSendDirectMessage).not.toHaveBeenCalled();
     });
 
+    it("returns early without creating a record when a FAILED record already exists", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      findFirst.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.FAILED });
+
+      await createAndSendNotification(baseInput);
+
+      expect(create).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("queries with status in [PENDING, FAILED] for the idempotency check", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(baseInput);
+
+      expect(findFirst).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          status: { in: [NotificationTriggerStatus.PENDING, NotificationTriggerStatus.FAILED] },
+        }),
+      });
+    });
+
     it("uses explicit null for taskId and featureId in the idempotency query", async () => {
       userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(mockRecord);
