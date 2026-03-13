@@ -666,7 +666,7 @@ export async function callStakworkAPI(params: {
   if (process.env.ANTHROPIC_API_KEY) {
     vars.summaryApiKey = process.env.ANTHROPIC_API_KEY;
   }
-  if (process.env.PLAN_MODE_MODEL) {
+  if (mode === "plan_mode" && process.env.PLAN_MODE_MODEL) {
     vars.model = process.env.PLAN_MODE_MODEL;
   }
   if (taskModel === "codex") {
