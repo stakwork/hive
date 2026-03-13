@@ -1,279 +1,143 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { TaskFilters, TaskFiltersType } from "@/components/tasks/TaskFilters";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { TaskFilters } from "@/components/tasks/TaskFilters";
+
+/** Open a Radix UI DropdownMenu trigger in jsdom (requires PointerEvent polyfill in setup). */
+async function openDropdown(trigger: Element) {
+  await act(async () => {
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    fireEvent.click(trigger);
+  });
+}
 
 describe("TaskFilters Component", () => {
-  it("should render filters button", () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  const defaultProps = {
+    filters: {},
+    onFiltersChange: vi.fn(),
+    onClearFilters: vi.fn(),
+  };
 
-    render(
-      <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
+  it("renders all four filter dropdowns", () => {
+    render(<TaskFilters {...defaultProps} />);
 
-    expect(screen.getByTestId("task-filters-button")).toBeInTheDocument();
-    expect(screen.getByText("Filters")).toBeInTheDocument();
+    expect(screen.getByTestId("task-filter-status")).toBeInTheDocument();
+    expect(screen.getByTestId("task-filter-priority")).toBeInTheDocument();
+    expect(screen.getByTestId("task-filter-source")).toBeInTheDocument();
+    expect(screen.getByTestId("task-filter-pod")).toBeInTheDocument();
   });
 
-  it("should show active filter count when filters are applied", () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("does not show clear button when no filters are active", () => {
+    render(<TaskFilters {...defaultProps} />);
 
-    render(
-      <TaskFilters
-        filters={{ sourceType: "USER", priority: "HIGH" }}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
-
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.queryByTestId("clear-filters-button")).not.toBeInTheDocument();
   });
 
-  it("should show clear filters button when filters are active", () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
-
+  it("shows clear button when any filter is active", () => {
     render(
       <TaskFilters
-        filters={{ sourceType: "USER" }}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        filters={{ status: "running" }}
       />
     );
 
     expect(screen.getByTestId("clear-filters-button")).toBeInTheDocument();
   });
 
-  it("should not show clear filters button when no filters are active", () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("calls onClearFilters when clear button is clicked", () => {
+    const onClearFilters = vi.fn();
 
     render(
       <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        filters={{ status: "running" }}
+        onClearFilters={onClearFilters}
       />
     );
 
-    expect(screen.queryByTestId("clear-filters-button")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("clear-filters-button"));
+
+    expect(onClearFilters).toHaveBeenCalled();
   });
 
-  it("should open popover when filters button is clicked", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("calls onFiltersChange with correct status value when Running is selected", async () => {
+    const onFiltersChange = vi.fn();
 
     render(
       <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        onFiltersChange={onFiltersChange}
       />
     );
 
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
+    await openDropdown(screen.getByTestId("task-filter-status").querySelector("button")!);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Running" }));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("task-filters-popover")).toBeInTheDocument();
-    });
+    expect(onFiltersChange).toHaveBeenCalledWith({ status: "running" });
   });
 
-  it("should call onFiltersChange when sourceType filter is selected", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("calls onFiltersChange with correct priority value when HIGH is selected", async () => {
+    const onFiltersChange = vi.fn();
 
     render(
       <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        onFiltersChange={onFiltersChange}
       />
     );
 
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
+    await openDropdown(screen.getByTestId("task-filter-priority").querySelector("button")!);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "High" }));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-sourceType-USER")).toBeInTheDocument();
-    });
-
-    const userCheckbox = screen.getByTestId("filter-sourceType-USER");
-    fireEvent.click(userCheckbox);
-
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ sourceType: "USER" });
+    expect(onFiltersChange).toHaveBeenCalledWith({ priority: "HIGH" });
   });
 
-  it("should call onFiltersChange when priority filter is selected", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("calls onFiltersChange with correct sourceType value when USER is selected", async () => {
+    const onFiltersChange = vi.fn();
 
     render(
       <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        onFiltersChange={onFiltersChange}
       />
     );
 
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
+    await openDropdown(screen.getByTestId("task-filter-source").querySelector("button")!);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-priority-HIGH")).toBeInTheDocument();
-    });
-
-    const highPriorityCheckbox = screen.getByTestId("filter-priority-HIGH");
-    fireEvent.click(highPriorityCheckbox);
-
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ priority: "HIGH" });
+    expect(onFiltersChange).toHaveBeenCalledWith({ sourceType: "USER" });
   });
 
-  it("should call onFiltersChange when status filter is selected", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("calls onFiltersChange with hasPod boolean true when Has Pod is selected", async () => {
+    const onFiltersChange = vi.fn();
 
     render(
       <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        onFiltersChange={onFiltersChange}
       />
     );
 
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
+    await openDropdown(screen.getByTestId("task-filter-pod").querySelector("button")!);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Has Pod" }));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-status-running")).toBeInTheDocument();
-    });
-
-    const runningCheckbox = screen.getByTestId("filter-status-running");
-    fireEvent.click(runningCheckbox);
-
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ status: "running" });
+    expect(onFiltersChange).toHaveBeenCalledWith({ hasPod: true });
   });
 
-  it("should call onFiltersChange to remove filter when already selected checkbox is clicked", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
+  it("removes status key from filters when All is selected", async () => {
+    const onFiltersChange = vi.fn();
 
     render(
       <TaskFilters
-        filters={{ sourceType: "USER" }}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
+        {...defaultProps}
+        filters={{ status: "running" }}
+        onFiltersChange={onFiltersChange}
       />
     );
 
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
+    await openDropdown(screen.getByTestId("task-filter-status").querySelector("button")!);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "All" }));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-sourceType-USER")).toBeInTheDocument();
-    });
-
-    const userCheckbox = screen.getByTestId("filter-sourceType-USER");
-    fireEvent.click(userCheckbox);
-
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({});
-  });
-
-  it("should call onClearFilters when clear button is clicked", () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
-
-    render(
-      <TaskFilters
-        filters={{ sourceType: "USER", priority: "HIGH" }}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
-
-    const clearButton = screen.getByTestId("clear-filters-button");
-    fireEvent.click(clearButton);
-
-    expect(mockOnClearFilters).toHaveBeenCalled();
-  });
-
-  it("should handle multiple filters selection", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
-
-    render(
-      <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
-
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-sourceType-USER")).toBeInTheDocument();
-    });
-
-    const userCheckbox = screen.getByTestId("filter-sourceType-USER");
-    fireEvent.click(userCheckbox);
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ sourceType: "USER" });
-
-    const highPriorityCheckbox = screen.getByTestId("filter-priority-HIGH");
-    fireEvent.click(highPriorityCheckbox);
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ priority: "HIGH" });
-  });
-
-  it("should render hasPod filter options", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
-
-    render(
-      <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
-
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-hasPod-true")).toBeInTheDocument();
-      expect(screen.getByTestId("filter-hasPod-false")).toBeInTheDocument();
-    });
-  });
-
-  it("should call onFiltersChange when hasPod filter is selected", async () => {
-    const mockOnFiltersChange = vi.fn();
-    const mockOnClearFilters = vi.fn();
-
-    render(
-      <TaskFilters
-        filters={{}}
-        onFiltersChange={mockOnFiltersChange}
-        onClearFilters={mockOnClearFilters}
-      />
-    );
-
-    const filtersButton = screen.getByTestId("task-filters-button");
-    fireEvent.click(filtersButton);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("filter-hasPod-true")).toBeInTheDocument();
-    });
-
-    const hasPodCheckbox = screen.getByTestId("filter-hasPod-true");
-    fireEvent.click(hasPodCheckbox);
-
-    expect(mockOnFiltersChange).toHaveBeenCalledWith({ hasPod: true });
+    expect(onFiltersChange).toHaveBeenCalledWith({});
   });
 });
