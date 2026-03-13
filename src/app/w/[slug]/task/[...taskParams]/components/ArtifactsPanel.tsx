@@ -218,6 +218,12 @@ export function ArtifactsPanel({
         }),
       });
 
+      if (response.status === 409) {
+        // Another run is already active — sync state and treat as success
+        await refetchRun();
+        return;
+      }
+
       if (!response.ok) {
         throw new Error("Failed to generate tasks");
       }
