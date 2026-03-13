@@ -29,6 +29,29 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
+// Polyfill PointerEvent and pointer capture methods for Radix UI components.
+// Only applies in jsdom (browser-like) environments where MouseEvent and Element exist.
+if (typeof MouseEvent !== "undefined" && typeof global.PointerEvent === "undefined") {
+  class PointerEvent extends MouseEvent {
+    constructor(type: string, props: PointerEventInit = {}) {
+      super(type, props);
+    }
+  }
+  global.PointerEvent = PointerEvent as unknown as typeof global.PointerEvent;
+}
+
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+}
+
 // Mock window.matchMedia for theme hooks (only in browser/jsdom environments)
 if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'matchMedia', {
