@@ -350,7 +350,7 @@ model Repository {
   unitGlob              String?                 @default("") @map("unit_glob")
   codeIngestionEnabled  Boolean                 @default(true) @map("code_ingestion_enabled")
   docsEnabled           Boolean                 @default(true) @map("docs_enabled")
-  mocksEnabled          Boolean                 @default(true) @map("mocks_enabled")
+  mocksEnabled          Boolean                 @default(false) @map("mocks_enabled")
   embeddingsEnabled     Boolean                 @default(true) @map("embeddings_enabled")
   triggerPodRepair      Boolean                 @default(false) @map("trigger_pod_repair")
   deployments           Deployment[]
