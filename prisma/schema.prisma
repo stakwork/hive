@@ -901,6 +901,12 @@ model NotificationTrigger {
   @@index([notificationType])
   @@index([targetUserId, notificationType, status])
   @@index([sendAfter, status])
+  // Partial unique index on active records — enforced via raw SQL in migration
+  // (Prisma does not support partial unique indexes natively):
+  //   CREATE UNIQUE INDEX "notification_triggers_active_unique_idx"
+  //     ON "notification_triggers" ("target_user_id", "notification_type", "task_id", "feature_id")
+  //     WHERE status IN ('PENDING', 'FAILED');
+  @@index([targetUserId, notificationType, taskId, featureId], name: "notification_triggers_active_unique_idx")
   @@map("notification_triggers")
 }
 

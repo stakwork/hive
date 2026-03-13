@@ -31,6 +31,8 @@ let triggerFindMany: ReturnType<typeof vi.fn>;
 let triggerUpdate: ReturnType<typeof vi.fn>;
 let taskFindUnique: ReturnType<typeof vi.fn>;
 let featureFindUnique: ReturnType<typeof vi.fn>;
+let queryRaw: ReturnType<typeof vi.fn>;
+let transaction: ReturnType<typeof vi.fn>;
 
 // Base record for an active task-linked TASK_ASSIGNED notification
 function makeRecord(overrides: Partial<Record<string, unknown>> = {}) {
@@ -59,17 +61,57 @@ describe("dispatchPendingNotifications", () => {
     triggerUpdate = vi.fn().mockResolvedValue({});
     taskFindUnique = vi.fn();
     featureFindUnique = vi.fn();
+    queryRaw = vi.fn();
+
+    // $transaction executes the callback with a tx object that has $queryRaw
+    transaction = vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = { $queryRaw: queryRaw };
+      return fn(tx);
+    });
 
     Object.assign(db, {
+      $transaction: transaction,
       notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
       task: { findUnique: taskFindUnique },
       feature: { findUnique: featureFindUnique },
     });
 
+    // Default: $queryRaw returns one claimed ID, findMany returns the matching record
+    queryRaw.mockResolvedValue([{ id: "record-1" }]);
+    triggerFindMany.mockResolvedValue([makeRecord()]);
+
     // Default: task is still IN_PROGRESS → not cancelled
     taskFindUnique.mockResolvedValue({ status: TaskStatus.IN_PROGRESS });
     mockedSendDirectMessage.mockResolvedValue({ success: true });
     mockedSendHubPushNotification.mockResolvedValue({ success: true });
+  });
+
+  describe("atomic claim — SELECT FOR UPDATE SKIP LOCKED", () => {
+    it("returns zeros when $queryRaw returns an empty array (all rows locked)", async () => {
+      queryRaw.mockResolvedValue([]);
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(0);
+      expect(result.cancelled).toBe(0);
+      expect(result.failed).toBe(0);
+      // findMany should not be called when no IDs were claimed
+      expect(triggerFindMany).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("fetches full records only for the claimed IDs", async () => {
+      queryRaw.mockResolvedValue([{ id: "record-1" }, { id: "record-2" }]);
+      triggerFindMany.mockResolvedValue([makeRecord(), makeRecord({ id: "record-2" })]);
+
+      await dispatchPendingNotifications();
+
+      expect(triggerFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: ["record-1", "record-2"] } },
+        })
+      );
+    });
   });
 
   describe("HUB push — deferred dispatch path", () => {
