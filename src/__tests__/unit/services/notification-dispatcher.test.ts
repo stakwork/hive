@@ -63,14 +63,12 @@ describe("dispatchPendingNotifications", () => {
     featureFindUnique = vi.fn();
     queryRaw = vi.fn();
 
-    // $transaction executes the callback with a tx object that has $queryRaw
-    transaction = vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = { $queryRaw: queryRaw };
-      return fn(tx);
-    });
+    // No longer used — kept for type compatibility; code now calls db.$queryRaw directly
+    transaction = vi.fn();
 
     Object.assign(db, {
       $transaction: transaction,
+      $queryRaw: queryRaw,
       notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
       task: { findUnique: taskFindUnique },
       feature: { findUnique: featureFindUnique },
