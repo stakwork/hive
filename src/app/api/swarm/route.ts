@@ -152,10 +152,10 @@ export async function POST(request: NextRequest) {
             branch,
             workspaceId,
             status: RepositoryStatus.PENDING,
-            // First repository during onboarding gets all sync features enabled
+            // First repository during onboarding gets sync features enabled (mocks off by default)
             codeIngestionEnabled: true,
             docsEnabled: true,
-            mocksEnabled: true,
+            mocksEnabled: false,
             triggerPodRepair: true,
           },
         });
