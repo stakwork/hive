@@ -298,6 +298,11 @@ jobs:
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
+          # Unconditionally resolve any known previously-failed migrations before deploying.
+          # This is safe: --applied is a no-op if already applied; --rolled-back allows a clean retry.
+          npx prisma migrate resolve --applied 20260310203318_add_ios_device_token 2>/dev/null || \
+            npx prisma migrate resolve --rolled-back 20260310203318_add_ios_device_token 2>/dev/null || \
+            echo "Migration 20260310203318_add_ios_device_token already resolved or not present"
           npx prisma migrate deploy
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
