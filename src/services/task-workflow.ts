@@ -554,6 +554,7 @@ export async function callStakworkAPI(params: {
   planEdited?: boolean;
   isPrototype?: boolean;
   subAgents?: { name: string, url: string; apiKey: string; repoUrls: string }[];
+  taskModel?: string;
 }) {
   const {
     taskId,
@@ -586,6 +587,7 @@ export async function callStakworkAPI(params: {
     planEdited,
     isPrototype,
     subAgents,
+    taskModel,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -666,6 +668,10 @@ export async function callStakworkAPI(params: {
   }
   if (process.env.PLAN_MODE_MODEL) {
     vars.model = process.env.PLAN_MODE_MODEL;
+  }
+  if (taskModel === "codex") {
+    vars.agent_name = "codex";
+    vars.model = "codex";
   }
 
   // Get workflow ID (replicating workflow selection logic)
