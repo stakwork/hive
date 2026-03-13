@@ -558,6 +558,56 @@ export async function createDiagramStakworkRun(input: {
   }
 }
 
+const MAX_DIAGRAM_VERSIONS = 3;
+
+/**
+ * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
+ * Skipped when the whiteboard has no existing elements (first-time creation).
+ * Prunes oldest versions so the total stays at MAX_DIAGRAM_VERSIONS.
+ */
+async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<void> {
+  const existing = await db.whiteboard.findUnique({
+    where: { id: whiteboardId },
+    select: { elements: true, appState: true, files: true },
+  });
+
+  const elements = existing?.elements as unknown[];
+  if (!existing || !Array.isArray(elements) || elements.length === 0) return;
+
+  await db.$transaction(async (tx) => {
+    const label = `Before AI diagram – ${new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+
+    await tx.whiteboardVersion.create({
+      data: {
+        whiteboardId,
+        elements: existing.elements ?? [],
+        appState: existing.appState ?? {},
+        files: existing.files ?? {},
+        label,
+      },
+    });
+
+    const all = await tx.whiteboardVersion.findMany({
+      where: { whiteboardId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+
+    if (all.length > MAX_DIAGRAM_VERSIONS) {
+      const toDelete = all.slice(0, all.length - MAX_DIAGRAM_VERSIONS);
+      await tx.whiteboardVersion.deleteMany({
+        where: { id: { in: toDelete.map((v) => v.id) } },
+      });
+    }
+  });
+}
+
 /**
  * Extract diagram data (components + connections) from a Stakwork webhook result.
  * Stakwork may nest the diagram under `request_params.result`, so we check
@@ -811,6 +861,15 @@ export async function processStakworkRunWebhook(
           select: { title: true },
         });
 
+        // Snapshot existing whiteboard before AI overwrites it
+        const existingByFeature = await db.whiteboard.findUnique({
+          where: { featureId: feature_id },
+          select: { id: true },
+        });
+        if (existingByFeature) {
+          await snapshotWhiteboardBeforeAiUpdate(existingByFeature.id);
+        }
+
         await db.whiteboard.upsert({
           where: { featureId: feature_id },
           update: {
@@ -835,6 +894,8 @@ export async function processStakworkRunWebhook(
         });
       } else if (whiteboard_id) {
         // Standalone path: whiteboard already exists, just update elements
+        await snapshotWhiteboardBeforeAiUpdate(whiteboard_id);
+
         await db.whiteboard.update({
           where: { id: whiteboard_id },
           data: {
