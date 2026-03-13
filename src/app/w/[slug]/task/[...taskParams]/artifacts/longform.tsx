@@ -31,7 +31,6 @@ export const LongformArtifactPanel = memo(function LongformArtifactPanel({
 }: LongformArtifactPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showFade, setShowFade] = useState(true);
-  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -47,11 +46,9 @@ export const LongformArtifactPanel = memo(function LongformArtifactPanel({
   if (artifacts.length === 0) return null;
 
   return (
-    <div 
-      className="h-full flex flex-col relative"
+    <div
+      className="h-full flex flex-col relative group"
       data-testid="longform-artifact-panel"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div
         ref={scrollRef}
@@ -78,9 +75,9 @@ export const LongformArtifactPanel = memo(function LongformArtifactPanel({
       
       {/* Workflow URL Link */}
       {workflowUrl && (
-        <WorkflowUrlLink 
+        <WorkflowUrlLink
           workflowUrl={workflowUrl}
-          className={isHovered ? "opacity-100" : "opacity-0"}
+          className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
         />
       )}
     </div>
