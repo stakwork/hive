@@ -740,7 +740,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       </CardHeader>
       <CardContent>
         {loading && !hasLoadedOnce ? (
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
@@ -791,8 +791,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           </div>
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4 flex-1">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2 flex-1">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -853,7 +853,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
             {viewType === "list" ? (
               hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
-                <div className="rounded-md border">
+                <div className="rounded-md border overflow-x-auto">
                   <Table className="table-fixed">
                     <TableHeader className="bg-muted/50">
                       <TableRow>
