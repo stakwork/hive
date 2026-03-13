@@ -672,7 +672,7 @@ export async function callStakworkAPI(params: {
   if (taskModel === "codex") {
     vars.agent_name = "codex";
     vars.model = "codex";
-  } else {
+  } else if (taskModel) {
     vars.model = taskModel;
   }
 
