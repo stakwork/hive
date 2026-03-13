@@ -57,6 +57,14 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Failed to create AI generation run";
 
+    if (errorMessage.startsWith("active_run:")) {
+      const existingRunId = errorMessage.split(":")[1];
+      return NextResponse.json(
+        { error: "A run of this type is already in progress", existingRunId },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

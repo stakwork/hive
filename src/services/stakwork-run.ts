@@ -140,6 +140,21 @@ export async function createStakworkRun(
     throw new Error("Access denied");
   }
 
+  // Guard: prevent duplicate TASK_GENERATION runs
+  if (input.featureId && input.type === StakworkRunType.TASK_GENERATION) {
+    const activeRun = await db.stakworkRun.findFirst({
+      where: {
+        featureId: input.featureId,
+        type: input.type,
+        status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      },
+      select: { id: true, status: true },
+    });
+    if (activeRun) {
+      throw new Error(`active_run:${activeRun.id}`);
+    }
+  }
+
   // Decrypt sensitive data
   const decryptedPAT =
     workspace.sourceControlOrg?.tokens[0]?.token
