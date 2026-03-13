@@ -111,6 +111,8 @@ describe("FEATURE_COMPLETED notification", () => {
     // Target should be the feature's assigneeId
     expect(record!.targetUserId).toBe(assignee.id);
     expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    // Message separator is `: ` so buildPushMessage can strip the URL cleanly
+    expect(record!.message).toMatch(/marked Complete: https?:\/\//);
   });
 
   it("falls back to createdById when feature has no assignee", async () => {
