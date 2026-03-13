@@ -46,22 +46,24 @@ export async function createAndSendNotification(input: {
       }),
     ]);
 
-    // 2. Idempotency check — skip if PENDING record already exists
+    // 2. Idempotency check — skip if PENDING or FAILED record already exists.
+    //    FAILED records block retries so a previous failure for the same trigger
+    //    key does not produce a second notification row.
     const existing = await db.notificationTrigger.findFirst({
       where: {
         targetUserId: input.targetUserId,
         notificationType: input.notificationType,
         taskId,
         featureId,
-        status: NotificationTriggerStatus.PENDING,
+        status: { in: [NotificationTriggerStatus.PENDING, NotificationTriggerStatus.FAILED] },
       },
     });
 
     if (existing) {
       logger.info(
-        `[Notifications] Skipping duplicate — PENDING record already exists for ${input.notificationType}`,
+        `[Notifications] Skipping duplicate — ${existing.status} record already exists for ${input.notificationType}`,
         "NOTIFICATIONS",
-        { targetUserId: input.targetUserId, taskId, featureId, existingId: existing.id }
+        { targetUserId: input.targetUserId, taskId, featureId, existingId: existing.id, existingStatus: existing.status }
       );
       return;
     }

@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { dispatchPendingNotifications } from "@/services/notification-dispatcher";
 import { db } from "@/lib/db";
 import {
   NotificationMethod,
@@ -468,5 +469,52 @@ describe("GET /api/cron/notification-dispatcher", () => {
     expect(body).toHaveProperty("timestamp");
     expect(typeof body.dispatched).toBe("number");
     expect(Array.isArray(body.errors)).toBe(true);
+  });
+
+  // ── Concurrent dispatch deduplication ──────────────────────────────────────
+
+  test("calling dispatchPendingNotifications twice concurrently processes each due row exactly once", async () => {
+    const { owner, workspace } = await createBaseScenario();
+
+    const task = await db.task.create({
+      data: {
+        title: "Concurrent Test Task",
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        updatedById: owner.id,
+        status: TaskStatus.IN_PROGRESS,
+      },
+    });
+
+    const notification = await createPendingNotification({
+      targetUserId: owner.id,
+      taskId: task.id,
+      notificationType: NotificationTriggerType.TASK_ASSIGNED,
+      sendAfter: new Date(Date.now() - 60_000),
+      message: "You have been assigned a task",
+    });
+
+    // Run two dispatcher invocations concurrently — only one should claim the row
+    const [result1, result2] = await Promise.all([
+      dispatchPendingNotifications(),
+      dispatchPendingNotifications(),
+    ]);
+
+    // Combined dispatched count must be exactly 1 — the row is processed once
+    expect(result1.dispatched + result2.dispatched).toBe(1);
+    expect(result1.failed + result2.failed).toBe(0);
+
+    // The notification record should be in a terminal state (SENT or CANCELLED)
+    const updated = await db.notificationTrigger.findUnique({
+      where: { id: notification.id },
+    });
+    expect([
+      NotificationTriggerStatus.SENT,
+      NotificationTriggerStatus.CANCELLED,
+    ]).toContain(updated?.status);
+
+    const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
+    // sendDirectMessage must have been called at most once
+    expect(vi.mocked(sendDirectMessage).mock.calls.length).toBeLessThanOrEqual(1);
   });
 });
