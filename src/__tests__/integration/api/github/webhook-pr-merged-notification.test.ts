@@ -145,5 +145,7 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(testSetup.user.id);
     expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    // Stored message uses `: ` separator before URL so buildPushMessage can strip it cleanly
+    expect(record!.message).toMatch(/is complete: https?:\/\//);
   });
 });
