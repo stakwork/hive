@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
                 featureId: feature.id,
                 workspaceId: feature.workspaceId,
                 notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-                message: `@${alias} — A workflow for '${feature.title}' has halted and needs your attention. ${planUrl}`,
+                message: `@${alias} — A workflow for '${feature.title}' has halted and needs your attention: ${planUrl}`,
               });
             } catch (notifError) {
               console.error("[stakwork/webhook] Error firing WORKFLOW_HALTED (feature) notification:", notifError);
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
             taskId: task.id,
             workspaceId: task.workspaceId,
             notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-            message: `@${alias} — A workflow for task '${task.title}' has halted and needs your attention. ${taskUrl}`,
+            message: `@${alias} — A workflow for task '${task.title}' has halted and needs your attention: ${taskUrl}`,
           });
         } catch (notifError) {
           console.error("[stakwork/webhook] Error firing WORKFLOW_HALTED (task) notification:", notifError);
