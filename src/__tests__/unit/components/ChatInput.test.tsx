@@ -812,6 +812,37 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
+
+    test("FAILED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("HALTED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("ERROR + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + PR artifact → status area is hidden", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={true} />);
+      expect(screen.queryByTestId("workflow-status-badge")).not.toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + no PR artifact → status area is visible", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={false} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
   });
 
   describe("Textarea typing while blocking send", () => {
