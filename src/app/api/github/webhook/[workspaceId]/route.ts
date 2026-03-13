@@ -430,7 +430,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     taskId: task.task_id,
                     workspaceId: task.workspace_id,
                     notificationType: NotificationTriggerType.TASK_PR_MERGED,
-                    message: `@${alias} — PR merged: '${task.title}' is complete. ${taskUrl}`,
+                    message: `@${alias} — PR merged: '${task.title}' is complete: ${taskUrl}`,
                   });
                 }
               } catch (notifError) {
@@ -1153,7 +1153,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                       featureId: feat.id,
                       workspaceId: feat.workspaceId,
                       notificationType: NotificationTriggerType.FEATURE_DEPLOYED_PRODUCTION,
-                      message: `@${alias} — A task in '${feat.title}' has been deployed to Production. ${featureUrl}`,
+                      message: `@${alias} — A task in '${feat.title}' has been deployed to Production: ${featureUrl}`,
                     });
                   }
                 }
