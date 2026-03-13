@@ -148,7 +148,7 @@ export async function createAndSendNotification(input: {
       );
     }
 
-    // 8. Update record with outcome
+    // 8. Update record with outcome (persist message for auditability)
     await db.notificationTrigger.update({
       where: { id: record.id },
       data: {
@@ -156,6 +156,7 @@ export async function createAndSendNotification(input: {
           ? NotificationTriggerStatus.SENT
           : NotificationTriggerStatus.FAILED,
         notificationTimestamps: { push: new Date() },
+        message: input.message,
       },
     });
   } catch (error) {
