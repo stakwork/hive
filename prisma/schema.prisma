@@ -906,7 +906,6 @@ model NotificationTrigger {
   //   CREATE UNIQUE INDEX "notification_triggers_active_unique_idx"
   //     ON "notification_triggers" ("target_user_id", "notification_type", "task_id", "feature_id")
   //     WHERE status IN ('PENDING', 'FAILED');
-  @@index([targetUserId, notificationType, taskId, featureId], name: "notification_triggers_active_unique_idx")
   @@map("notification_triggers")
 }
 
