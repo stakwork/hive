@@ -672,6 +672,8 @@ export async function callStakworkAPI(params: {
   if (taskModel === "codex") {
     vars.agent_name = "codex";
     vars.model = "codex";
+  } else {
+    vars.model = taskModel;
   }
 
   // Get workflow ID (replicating workflow selection logic)
