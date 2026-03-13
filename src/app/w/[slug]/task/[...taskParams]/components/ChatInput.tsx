@@ -458,10 +458,9 @@ export function ChatInput({
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const showStatusIndicator = !hasPrArtifact && (
-    workflowStatus === WorkflowStatus.IN_PROGRESS ||
-    isTerminalState
-  );
+  const showStatusIndicator =
+    (workflowStatus === WorkflowStatus.IN_PROGRESS && !hasPrArtifact) ||
+    isTerminalState;
 
   return (
     <div className={cn(
