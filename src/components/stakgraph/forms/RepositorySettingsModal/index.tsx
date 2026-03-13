@@ -43,7 +43,7 @@ export function RepositorySettingsModal({
   const [settings, setSettings] = useState<RepositorySyncSettings>({
     codeIngestionEnabled: repository.codeIngestionEnabled ?? true,
     docsEnabled: repository.docsEnabled ?? true,
-    mocksEnabled: repository.mocksEnabled ?? true,
+    mocksEnabled: repository.mocksEnabled ?? false,
     embeddingsEnabled: repository.embeddingsEnabled ?? true,
     triggerPodRepair: false,
   });
@@ -54,7 +54,7 @@ export function RepositorySettingsModal({
     setSettings({
       codeIngestionEnabled: repository.codeIngestionEnabled ?? true,
       docsEnabled: repository.docsEnabled ?? true,
-      mocksEnabled: repository.mocksEnabled ?? true,
+      mocksEnabled: repository.mocksEnabled ?? false,
       embeddingsEnabled: repository.embeddingsEnabled ?? true,
       triggerPodRepair: false,
     });

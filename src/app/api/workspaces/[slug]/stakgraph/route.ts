@@ -474,7 +474,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             name: repo.name,
             codeIngestionEnabled: repo.codeIngestionEnabled ?? true,
             docsEnabled: repo.docsEnabled ?? true,
-            mocksEnabled: repo.mocksEnabled ?? true,
+            mocksEnabled: repo.mocksEnabled ?? false,
             embeddingsEnabled: repo.embeddingsEnabled ?? true,
             triggerPodRepair: repo.triggerPodRepair ?? false,
           })),
