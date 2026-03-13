@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
         featureId: true,
         phaseId: true,
         sourceType: true,
+        model: true,
         repository: {
           select: {
             name: true,
@@ -334,6 +335,7 @@ export async function POST(request: NextRequest) {
         podPassword,
         history,
         webhook,
+        taskModel: task.model ?? undefined,
       });
 
       if (stakworkData.projectId) {
