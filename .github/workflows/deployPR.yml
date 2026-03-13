@@ -184,18 +184,27 @@ jobs:
           fi
 
           # Verify actual DB connectivity before proceeding
+          # Neon requires sslmode=require; append if not already present
+          PSQL_URI="$CONNECTION_URI"
+          if [[ "$PSQL_URI" != *"sslmode="* ]]; then
+            if [[ "$PSQL_URI" == *"?"* ]]; then
+              PSQL_URI="${PSQL_URI}&sslmode=require"
+            else
+              PSQL_URI="${PSQL_URI}?sslmode=require"
+            fi
+          fi
           echo "Verifying database connectivity..."
-          for i in {1..20}; do
-            if psql "$CONNECTION_URI" -c "SELECT 1;" > /dev/null 2>&1; then
+          for i in {1..30}; do
+            if psql "$PSQL_URI" -c "SELECT 1;" > /dev/null 2>&1; then
               echo "✅ Database connection verified"
               break
             fi
-            if [ $i -eq 20 ]; then
-              echo "❌ Database connection failed after 20 attempts"
+            if [ $i -eq 30 ]; then
+              echo "❌ Database connection failed after 30 attempts"
               exit 1
             fi
             echo "Waiting for database connectivity... ($i)"
-            sleep 5
+            sleep 10
           done
 
           # Pass URI to next steps (delimiter format for special chars in password)
