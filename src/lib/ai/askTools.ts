@@ -217,6 +217,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
             repo_url: repoUrls.join(","),
             prompt: prompt2,
             pat,
+            toolsConfig: { learn_concepts: true },
           });
           return rr.content;
         } catch (e) {
