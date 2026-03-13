@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,52 +11,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, User, Bot, Wrench, Code2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
+import type { ParsedMessage, ToolCallContent, ToolResultContent, AgentLogStats } from "@/lib/utils/agent-log-stats";
 
 interface LogDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   logId: string | null;
-}
-
-interface ToolCallContent {
-  type: "tool-call";
-  toolCallId?: string;
-  toolName: string;
-  input?: unknown;
-}
-
-interface ToolResultContent {
-  type: "tool-result";
-  toolCallId?: string;
-  toolName?: string;
-  output?: { type: string; value: string } | string;
-}
-
-interface OpenAIToolCall {
-  id?: string;
-  type: "function";
-  function: { name: string; arguments?: string };
-}
-
-interface ParsedMessage {
-  role: string;
-  content?: string | Array<ToolCallContent | ToolResultContent | { type: string; text?: string }>;
-  reasoning?: string;
-  tool_calls?: OpenAIToolCall[];
-  tool_call_id?: string;
-}
-
-function isValidMessage(msg: unknown): msg is ParsedMessage {
-  return (
-    msg != null &&
-    typeof msg === "object" &&
-    "role" in msg &&
-    typeof (msg as ParsedMessage).role === "string"
-  );
 }
 
 function extractTextContent(message: ParsedMessage): string | null {
@@ -274,34 +239,72 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
   );
 }
 
+function StatsBar({ stats }: { stats: AgentLogStats }) {
+  const hasToolCalls = stats.totalToolCalls > 0;
+  const sortedTools = hasToolCalls
+    ? Object.entries(stats.toolFrequency).sort((a, b) => b[1] - a[1])
+    : [];
+
+  return (
+    <div className="mb-3 rounded-md border bg-muted/30 px-3 py-2 space-y-2">
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{stats.totalMessages}</span> messages
+        {" · "}
+        ~<span className="font-medium text-foreground">{stats.estimatedTokens.toLocaleString()}</span> tokens
+        {" · "}
+        <span className="font-medium text-foreground">{stats.totalToolCalls}</span> tool call{stats.totalToolCalls !== 1 ? "s" : ""}
+      </p>
+      {hasToolCalls && (
+        <div className="flex flex-wrap gap-1.5">
+          {sortedTools.map(([name, count]) => (
+            <Badge key={name} variant="secondary" className="text-xs font-mono px-1.5 py-0">
+              {name} ×{count}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LogDetailDialog({
   open,
   onOpenChange,
   logId,
 }: LogDetailDialogProps) {
-  const [content, setContent] = useState<string>("");
+  const [conversation, setConversation] = useState<ParsedMessage[] | null>(null);
+  const [stats, setStats] = useState<AgentLogStats | null>(null);
+  const [rawContent, setRawContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !logId) {
-      setContent("");
+      setConversation(null);
+      setStats(null);
+      setRawContent("");
       setError(null);
       return;
     }
 
-    const fetchContent = async () => {
+    const fetchStats = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/agent-logs/${logId}/content`);
+        const response = await fetch(`/api/agent-logs/${logId}/stats`);
         if (!response.ok) {
           throw new Error(`Failed to fetch log: ${response.statusText}`);
         }
-        const text = await response.text();
-        setContent(text);
+        const data = await response.json();
+        if (data.conversation && Array.isArray(data.conversation) && data.conversation.length > 0) {
+          setConversation(data.conversation);
+          setStats(data.stats ?? null);
+        } else {
+          // Fallback: store raw JSON for display
+          setRawContent(JSON.stringify(data, null, 2));
+        }
       } catch (err) {
-        console.error("Error fetching blob content:", err);
+        console.error("Error fetching log stats:", err);
         setError(
           err instanceof Error ? err.message : "Failed to fetch log content",
         );
@@ -310,31 +313,10 @@ export function LogDetailDialog({
       }
     };
 
-    fetchContent();
+    fetchStats();
   }, [open, logId]);
 
-  const parsedMessages = useMemo((): ParsedMessage[] | null => {
-    if (!content) return null;
-    try {
-      const parsed = JSON.parse(content);
-
-      // Extract candidate array from bare array or { messages: [...] } wrapper
-      let candidates: unknown[] | null = null;
-      if (Array.isArray(parsed)) {
-        candidates = parsed;
-      } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.messages)) {
-        candidates = parsed.messages;
-      }
-
-      if (candidates && candidates.length > 0) {
-        const valid = candidates.filter(isValidMessage);
-        if (valid.length > 0) return valid;
-      }
-    } catch {
-      // Not valid JSON — fall through to raw display
-    }
-    return null;
-  }, [content]);
+  const hasContent = conversation !== null || rawContent !== "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -359,20 +341,23 @@ export function LogDetailDialog({
             </div>
           )}
 
-          {!loading && !error && content && (
-            <ScrollArea className="h-[400px] w-full rounded-md border [&_[data-radix-scroll-area-viewport]>div]:!block">
-              {parsedMessages ? (
-                <div className="p-4 space-y-3">
-                  {parsedMessages.map((msg, i) => (
-                    <MessageBubble key={i} message={msg} />
-                  ))}
-                </div>
-              ) : (
-                <pre className="p-4 whitespace-pre-wrap break-words font-mono text-sm">
-                  {content}
-                </pre>
-              )}
-            </ScrollArea>
+          {!loading && !error && hasContent && (
+            <>
+              {stats && <StatsBar stats={stats} />}
+              <ScrollArea className="h-[400px] w-full rounded-md border [&_[data-radix-scroll-area-viewport]>div]:!block">
+                {conversation ? (
+                  <div className="p-4 space-y-3">
+                    {conversation.map((msg, i) => (
+                      <MessageBubble key={i} message={msg} />
+                    ))}
+                  </div>
+                ) : (
+                  <pre className="p-4 whitespace-pre-wrap break-words font-mono text-sm">
+                    {rawContent}
+                  </pre>
+                )}
+              </ScrollArea>
+            </>
           )}
         </div>
 
