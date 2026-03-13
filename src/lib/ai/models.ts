@@ -5,9 +5,9 @@
  */
 
 // Valid model names that can be passed from frontend
-export type ModelName = "sonnet" | "opus" | "kimi" | "gemini" | "gpt";
+export type ModelName = "sonnet" | "opus" | "kimi" | "gemini" | "gpt" | "codex";
 
-export const VALID_MODELS: ModelName[] = ["sonnet", "opus", "kimi", "gemini", "gpt"];
+export const VALID_MODELS: ModelName[] = ["sonnet", "opus", "kimi", "gemini", "gpt", "codex"];
 
 // Map model names to their API key environment variables
 export const API_KEY_ENV_VARS: Record<ModelName, string> = {
@@ -16,6 +16,7 @@ export const API_KEY_ENV_VARS: Record<ModelName, string> = {
   gpt: "OPENAI_API_KEY",
   gemini: "GOOGLE_API_KEY",
   kimi: "OPENROUTER_API_KEY",
+  codex: "OPENAI_API_KEY",
 };
 
 export function isValidModel(model: unknown): model is ModelName {
