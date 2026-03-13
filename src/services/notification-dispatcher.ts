@@ -134,17 +134,30 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
   }>;
 
   try {
-    due = await db.notificationTrigger.findMany({
-      where: {
-        status: NotificationTriggerStatus.PENDING,
-        sendAfter: { lte: new Date() },
-      },
-      include: {
-        targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
-        task: { select: { workspace: { select: { slug: true } } } },
-        feature: { select: { workspace: { select: { slug: true } } } },
-      },
+    // Atomically claim up to 100 due rows with SELECT … FOR UPDATE SKIP LOCKED
+    // so concurrent cron invocations cannot pick up the same records.
+    const claimedIds = await db.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM notification_triggers
+        WHERE status = 'PENDING'
+          AND send_after <= NOW()
+        ORDER BY send_after ASC
+        LIMIT 100
+        FOR UPDATE SKIP LOCKED
+      `;
+      return rows.map((r) => r.id);
     });
+
+    due = claimedIds.length === 0
+      ? []
+      : await db.notificationTrigger.findMany({
+          where: { id: { in: claimedIds } },
+          include: {
+            targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
+            task: { select: { workspace: { select: { slug: true } } } },
+            feature: { select: { workspace: { select: { slug: true } } } },
+          },
+        });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error("[NotificationDispatcher] Failed to query pending notifications", "NOTIFICATION_DISPATCHER", { error });
