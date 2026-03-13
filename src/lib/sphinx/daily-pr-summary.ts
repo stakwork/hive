@@ -95,9 +95,17 @@ export function formatPRSummaryMessage(
   for (const { repoFullName, mergedPRs } of repoPRs) {
     if (mergedPRs.length === 0) continue;
     content += `${mergedPRs.length} pull request${mergedPRs.length > 1 ? "s" : ""} merged in ${repoFullName}:\n\n`;
-    mergedPRs.forEach((pr, index) => {
+    const MAX_SHOWN = 3;
+    const shown = mergedPRs.slice(0, MAX_SHOWN);
+    const remaining = mergedPRs.length - shown.length;
+
+    shown.forEach((pr, index) => {
       content += `${index + 1}. ${pr.title}\n   ${pr.url}\n\n`;
     });
+
+    if (remaining > 0) {
+      content += `... and ${remaining} more\n\n`;
+    }
   }
 
   return content;
