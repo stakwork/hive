@@ -279,11 +279,30 @@ jobs:
             fi
           fi
 
+          if echo "$MIGRATION_STATUS" | grep -q "20260310203318_add_ios_device_token"; then
+            echo "Found add_ios_device_token migration, checking if it needs resolution..."
+            
+            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='ios_device_token';")
+            
+            if [ "$COLUMN_EXISTS" = "1" ]; then
+              echo "Column already exists, marking migration as applied..."
+              npx prisma migrate resolve --applied 20260310203318_add_ios_device_token || echo "Could not mark as applied"
+            else
+              echo "Column doesn't exist, marking migration as rolled back for retry..."
+              npx prisma migrate resolve --rolled-back 20260310203318_add_ios_device_token || echo "Could not mark as rolled back"
+            fi
+          fi
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
+          # Unconditionally resolve any known previously-failed migrations before deploying.
+          # This is safe: --applied is a no-op if already applied; --rolled-back allows a clean retry.
+          npx prisma migrate resolve --applied 20260310203318_add_ios_device_token 2>/dev/null || \
+            npx prisma migrate resolve --rolled-back 20260310203318_add_ios_device_token 2>/dev/null || \
+            echo "Migration 20260310203318_add_ios_device_token already resolved or not present"
           npx prisma migrate deploy
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 

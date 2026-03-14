@@ -205,8 +205,8 @@ export function ChatArea({
       {/* Task Title Header */}
       {taskTitle && (
         <div className={cn("px-4 py-3 border-b bg-muted/20", isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b")}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               {/* Back Button */}
               <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
                 <ArrowLeft className="w-4 h-4" />
@@ -221,7 +221,7 @@ export function ChatArea({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
+                    className="font-semibold text-foreground flex-1 flex flex-col items-start gap-0.5 min-w-0 group"
                     data-testid="task-title"
                   >
                     {/* Inline Breadcrumbs - only show in task chat context */}
@@ -234,15 +234,15 @@ export function ChatArea({
                     )}
                     <div className="flex items-center gap-2 w-full min-w-0">
                       <span
-                        className="truncate cursor-pointer"
+                        className="truncate cursor-pointer text-sm md:text-base"
                         title={taskTitle}
                         onClick={handleTitleEdit}
                       >
-                        {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                        {taskTitle}
                       </span>
                       {featureId && onTitleSave && (
                         <Pencil
-                          className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                          className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
                           onClick={handleTitleEdit}
                         />
                       )}
@@ -287,7 +287,7 @@ export function ChatArea({
                   data-testid="invite-button"
                 >
                   <UserPlus className="h-4 w-4" />
-                  Invite
+                  <span className="hidden md:inline">Invite</span>
                 </Button>
               </InvitePopover>
             )}

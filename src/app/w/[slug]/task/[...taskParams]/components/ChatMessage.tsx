@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useState, useMemo, useCallback } from "react";
+import React, { memo, useMemo, useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, HelpCircle, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
@@ -106,7 +106,6 @@ function AnsweredClarifyingQuestions({
 }
 
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -123,13 +122,10 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
 
   return (
     <motion.div
-      key={message.id}
-      className="space-y-3 relative"
+      className="space-y-3 relative group"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
@@ -139,8 +135,6 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
                 ? "bg-primary text-primary-foreground rounded-br-md"
                 : "bg-background text-foreground rounded-bl-md border"
             }`}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
@@ -168,7 +162,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
 
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (
-              <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
+              <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             )}
           </div>
         )}

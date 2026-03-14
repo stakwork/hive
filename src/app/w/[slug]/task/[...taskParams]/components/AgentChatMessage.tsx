@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { motion } from "framer-motion";
 import type { AgentStreamingMessage } from "@/types/agent";
 import type { ChatMessage } from "@/lib/chat";
@@ -20,7 +20,33 @@ function isAgentStreamingMessage(msg: ChatMessage | AgentStreamingMessage): msg 
   return 'content' in msg && ('textParts' in msg || 'toolCalls' in msg || 'isStreaming' in msg);
 }
 
-export function AgentChatMessage({ message }: AgentChatMessageProps) {
+// Custom comparison for React.memo — only re-render when message content actually changes
+function arePropsEqual(prev: AgentChatMessageProps, next: AgentChatMessageProps): boolean {
+  if (prev.message.id !== next.message.id) return false;
+  if (prev.message.role !== next.message.role) return false;
+
+  const prevIsStreaming = isAgentStreamingMessage(prev.message);
+  const nextIsStreaming = isAgentStreamingMessage(next.message);
+
+  if (prevIsStreaming !== nextIsStreaming) return false;
+
+  if (prevIsStreaming && nextIsStreaming) {
+    const p = prev.message as AgentStreamingMessage;
+    const n = next.message as AgentStreamingMessage;
+    return p.isStreaming === n.isStreaming && p.content === n.content;
+  }
+
+  // Both are ChatMessage
+  const p = prev.message as ChatMessage;
+  const n = next.message as ChatMessage;
+  return (
+    p.updatedAt === n.updatedAt &&
+    p.artifacts === n.artifacts &&
+    p.workflowUrl === n.workflowUrl
+  );
+}
+
+export const AgentChatMessage = memo(function AgentChatMessage({ message }: AgentChatMessageProps) {
   const isUser = message.role === "USER" || message.role === "user";
 
   // Get the text content - use 'content' for streaming messages, 'message' for ChatMessage
@@ -43,7 +69,6 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
 
   return (
     <motion.div
-      key={message.id}
       className="space-y-3 relative"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -101,4 +126,4 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
         ))}
     </motion.div>
   );
-}
+}, arePropsEqual);

@@ -288,14 +288,19 @@ describe("ChatArea", () => {
       expect(screen.getByTestId("arrow-left-icon")).toBeInTheDocument();
     });
 
-    test("truncates long task titles", () => {
+    test("renders long task titles with CSS truncation (full text in DOM, truncate class applied)", () => {
       const longTitle = "This is a very long task title that should be truncated because it exceeds the 60 character limit";
       const { props } = setupChatAreaTest({
         taskTitle: longTitle,
       });
       render(<ChatArea {...props} />);
 
-      expect(screen.getByText(`${longTitle.slice(0, 60)}...`)).toBeInTheDocument();
+      // The component renders the full title and relies on CSS `truncate` for overflow,
+      // rather than JS string slicing — assert the full text is present and the title attribute is set
+      const titleSpan = screen.getByTitle(longTitle);
+      expect(titleSpan).toBeInTheDocument();
+      expect(titleSpan).toHaveClass("truncate");
+      expect(titleSpan).toHaveTextContent(longTitle);
     });
   });
 

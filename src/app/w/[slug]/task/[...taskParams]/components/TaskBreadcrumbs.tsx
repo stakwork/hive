@@ -26,9 +26,9 @@ export default function TaskBreadcrumbs({
     : featureTitle;
 
   return (
-    <div className="text-sm text-muted-foreground">
+    <div className="text-xs text-muted-foreground max-w-full min-w-0">
       <span
-        className="hover:underline cursor-pointer"
+        className="hover:underline cursor-pointer truncate block"
         onClick={() => router.push(`/w/${workspaceSlug}/plan/${featureId}?tab=tasks`)}
         title={featureTitle}
       >

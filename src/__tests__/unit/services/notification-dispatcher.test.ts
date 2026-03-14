@@ -32,7 +32,6 @@ let triggerUpdate: ReturnType<typeof vi.fn>;
 let taskFindUnique: ReturnType<typeof vi.fn>;
 let featureFindUnique: ReturnType<typeof vi.fn>;
 let queryRaw: ReturnType<typeof vi.fn>;
-let transaction: ReturnType<typeof vi.fn>;
 
 // Base record for an active task-linked TASK_ASSIGNED notification
 function makeRecord(overrides: Partial<Record<string, unknown>> = {}) {
@@ -63,14 +62,8 @@ describe("dispatchPendingNotifications", () => {
     featureFindUnique = vi.fn();
     queryRaw = vi.fn();
 
-    // $transaction executes the callback with a tx object that has $queryRaw
-    transaction = vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = { $queryRaw: queryRaw };
-      return fn(tx);
-    });
-
     Object.assign(db, {
-      $transaction: transaction,
+      $queryRaw: queryRaw,
       notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
       task: { findUnique: taskFindUnique },
       feature: { findUnique: featureFindUnique },

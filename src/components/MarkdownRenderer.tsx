@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { memo, useState, useEffect } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -362,7 +362,7 @@ const createComponents = (
   },
 });
 
-export function MarkdownRenderer({
+export const MarkdownRenderer = memo(function MarkdownRenderer({
   children,
   className,
   variant = "assistant",
@@ -403,4 +403,4 @@ export function MarkdownRenderer({
       </ReactMarkdown>
     </div>
   );
-}
+});
