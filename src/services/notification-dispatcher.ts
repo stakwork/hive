@@ -134,24 +134,28 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
   }>;
 
   try {
-    // Atomically claim up to 100 due rows with SELECT … FOR UPDATE SKIP LOCKED
-    // so concurrent cron invocations cannot pick up the same records.
-    const claimedIds = await db.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    // Atomically claim up to 100 due rows using UPDATE … WHERE id IN (SELECT …
+    // FOR UPDATE SKIP LOCKED) RETURNING id. This is a single atomic statement:
+    // the rows are immediately moved out of PENDING status, so any concurrent
+    // dispatcher invocation will not see them in the next SELECT.
+    const claimedRows = await db.$queryRaw<Array<{ id: string }>>`
+      UPDATE notification_triggers
+      SET status = 'FAILED'
+      WHERE id IN (
         SELECT id FROM notification_triggers
         WHERE status = 'PENDING'
           AND send_after <= NOW()
         ORDER BY send_after ASC
         LIMIT 100
         FOR UPDATE SKIP LOCKED
-      `;
-      return rows.map((r) => r.id);
-    });
+      )
+      RETURNING id
+    `;
 
-    due = claimedIds.length === 0
+    due = claimedRows.length === 0
       ? []
       : await db.notificationTrigger.findMany({
-          where: { id: { in: claimedIds } },
+          where: { id: { in: claimedRows.map((r) => r.id) } },
           include: {
             targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
             task: { select: { workspace: { select: { slug: true } } } },
