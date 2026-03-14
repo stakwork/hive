@@ -36,6 +36,7 @@ describe("parseAgentLogStats", () => {
       expect(stats.totalToolCalls).toBe(0);
       expect(stats.toolFrequency).toEqual({});
       expect(stats.bashFrequency).toEqual({});
+      expect(stats.developerShellFrequency).toEqual({});
     });
 
     it("returns zero stats for invalid JSON", () => {
@@ -293,6 +294,112 @@ describe("parseAgentLogStats", () => {
     it("bashFrequency is {} in the empty/zero-stats result", () => {
       const { stats } = parseAgentLogStats(bare([]));
       expect(stats.bashFrequency).toEqual({});
+    });
+  });
+
+  describe("developer__shell tool special case", () => {
+    it("AI SDK format: 'ls -la /tmp' → developerShellFrequency: { ls: 1 }", () => {
+      const input = bare([
+        { role: "user", content: "List files" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "developer__shell", input: { command: "ls -la /tmp" } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.developerShellFrequency).toEqual({ ls: 1 });
+      expect(stats.bashFrequency).toEqual({});
+    });
+
+    it("AI SDK format: multiple calls produce correct counts", () => {
+      const input = bare([
+        { role: "user", content: "Go" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "developer__shell", input: { command: "npm run test" } },
+            { type: "tool-call", toolCallId: "2", toolName: "developer__shell", input: { command: "npm install" } },
+            { type: "tool-call", toolCallId: "3", toolName: "developer__shell", input: { command: "rg pattern ." } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.developerShellFrequency).toEqual({ npm: 2, rg: 1 });
+      expect(stats.bashFrequency).toEqual({});
+    });
+
+    it("OpenAI format: JSON arguments string with command field is split and counted correctly", () => {
+      const input = bare([
+        { role: "user", content: "Go" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "a", type: "function", function: { name: "developer__shell", arguments: JSON.stringify({ command: "git status" }) } },
+            { id: "b", type: "function", function: { name: "developer__shell", arguments: JSON.stringify({ command: "git log --oneline" }) } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.developerShellFrequency).toEqual({ git: 2 });
+      expect(stats.bashFrequency).toEqual({});
+    });
+
+    it("developer__shell does not affect bashFrequency and bash does not affect developerShellFrequency", () => {
+      const input = bare([
+        { role: "user", content: "Mixed" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "bash", input: { command: "ls -la" } },
+            { type: "tool-call", toolCallId: "2", toolName: "developer__shell", input: { command: "rg pattern ." } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({ ls: 1 });
+      expect(stats.developerShellFrequency).toEqual({ rg: 1 });
+    });
+
+    it("missing command field on a developer__shell call is safely skipped", () => {
+      const input = bare([
+        { role: "user", content: "Run" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "developer__shell", input: {} },
+            { type: "tool-call", toolCallId: "2", toolName: "developer__shell", input: null },
+            { type: "tool-call", toolCallId: "3", toolName: "developer__shell", input: { command: "" } },
+          ],
+        },
+      ]);
+      expect(() => parseAgentLogStats(input)).not.toThrow();
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.developerShellFrequency).toEqual({});
+      expect(stats.totalToolCalls).toBe(3);
+    });
+
+    it("malformed OpenAI arguments string for developer__shell is safely skipped", () => {
+      const input = bare([
+        { role: "user", content: "Run" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "a", type: "function", function: { name: "developer__shell", arguments: "not-json" } },
+          ],
+        },
+      ]);
+      expect(() => parseAgentLogStats(input)).not.toThrow();
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.developerShellFrequency).toEqual({});
+    });
+
+    it("developerShellFrequency is {} in the empty/zero-stats result", () => {
+      const { stats } = parseAgentLogStats(bare([]));
+      expect(stats.developerShellFrequency).toEqual({});
     });
   });
 
