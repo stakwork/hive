@@ -21,6 +21,7 @@ export interface RoutePolicy {
 
 export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/", strategy: "exact", access: "public" },
+  { path: "/about", strategy: "prefix", access: "public" },
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/admin", strategy: "prefix", access: "superadmin" },
