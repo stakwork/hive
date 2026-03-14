@@ -241,6 +241,7 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
 
 function StatsBar({ stats }: { stats: AgentLogStats }) {
   const [showBash, setShowBash] = useState(false);
+  const [showDeveloperShell, setShowDeveloperShell] = useState(false);
 
   const hasToolCalls = stats.totalToolCalls > 0;
   const sortedTools = hasToolCalls
@@ -249,6 +250,10 @@ function StatsBar({ stats }: { stats: AgentLogStats }) {
   const hasBashFrequency = Object.keys(stats.bashFrequency ?? {}).length > 0;
   const sortedBash = hasBashFrequency
     ? Object.entries(stats.bashFrequency).sort((a, b) => b[1] - a[1])
+    : [];
+  const hasDeveloperShellFrequency = Object.keys(stats.developerShellFrequency ?? {}).length > 0;
+  const sortedDeveloperShell = hasDeveloperShellFrequency
+    ? Object.entries(stats.developerShellFrequency).sort((a, b) => b[1] - a[1])
     : [];
 
   return (
@@ -276,6 +281,19 @@ function StatsBar({ stats }: { stats: AgentLogStats }) {
                   {name} ×{count}
                 </Badge>
               </button>
+            ) : name === "developer__shell" && hasDeveloperShellFrequency ? (
+              <button
+                key={name}
+                onClick={() => setShowDeveloperShell((s) => !s)}
+                className="inline-flex items-center"
+              >
+                <Badge
+                  variant="secondary"
+                  className="text-xs font-mono px-1.5 py-0 brightness-125 cursor-pointer hover:brightness-150 transition-[filter]"
+                >
+                  {name} ×{count}
+                </Badge>
+              </button>
             ) : (
               <Badge key={name} variant="secondary" className="text-xs font-mono px-1.5 py-0">
                 {name} ×{count}
@@ -287,6 +305,15 @@ function StatsBar({ stats }: { stats: AgentLogStats }) {
       {showBash && hasBashFrequency && (
         <div className="flex flex-wrap gap-1.5 pl-2 border-l-2 border-muted-foreground/30">
           {sortedBash.map(([cmd, count]) => (
+            <Badge key={cmd} variant="outline" className="text-xs font-mono px-1.5 py-0">
+              {cmd} ×{count}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {showDeveloperShell && hasDeveloperShellFrequency && (
+        <div className="flex flex-wrap gap-1.5 pl-2 border-l-2 border-muted-foreground/30">
+          {sortedDeveloperShell.map(([cmd, count]) => (
             <Badge key={cmd} variant="outline" className="text-xs font-mono px-1.5 py-0">
               {cmd} ×{count}
             </Badge>
