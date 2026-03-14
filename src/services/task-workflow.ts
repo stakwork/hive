@@ -443,75 +443,58 @@ export async function createChatMessageAndTriggerStakwork(params: {
       ? encryptionService.decryptField("agentPassword", task.agentPassword)
       : null;
 
-    try {
-      stakworkData = await callStakworkAPI({
-        taskId,
-        message,
-        contextTags,
-        userName,
-        accessToken,
-        swarmUrl,
-        swarmSecretAlias,
-        poolName,
-        repo2GraphUrl,
-        attachments,
-        mode,
-        taskSource: task.sourceType,
-        generateChatTitle,
-        featureContext,
-        workspaceId: task.workspace.id,
-        runBuild: task.runBuild,
-        runTestSuite: task.runTestSuite,
-        repoUrl,
-        baseBranch,
-        branch: taskBranch,
-        repoName,
-        podId: task.podId,
-        podPassword,
-        autoMergePr,
-        history,
-        featureId,
+    stakworkData = await callStakworkAPI({
+      taskId,
+      message,
+      contextTags,
+      userName,
+      accessToken,
+      swarmUrl,
+      swarmSecretAlias,
+      poolName,
+      repo2GraphUrl,
+      attachments,
+      mode,
+      taskSource: task.sourceType,
+      generateChatTitle,
+      featureContext,
+      workspaceId: task.workspace.id,
+      runBuild: task.runBuild,
+      runTestSuite: task.runTestSuite,
+      repoUrl,
+      baseBranch,
+      branch: taskBranch,
+      repoName,
+      podId: task.podId,
+      podPassword,
+      autoMergePr,
+      history,
+      featureId,
+    });
+
+    if (stakworkData.projectId) {
+      // Update task status to IN_PROGRESS if it's currently TODO
+      const currentTask = await db.task.findUnique({
+        where: { id: taskId },
+        select: { status: true },
       });
 
-      if (stakworkData.success) {
-        // Extract project ID from Stakwork response
-        if (!stakworkData.data?.project_id) {
-          console.warn("No project_id found in Stakwork response:", stakworkData);
-        }
-
-        // Update task status to IN_PROGRESS if it's currently TODO
-        const currentTask = await db.task.findUnique({
-          where: { id: taskId },
-          select: { status: true },
-        });
-
-        const additionalData: Record<string, unknown> = {};
-        if (stakworkData.data?.project_id) {
-          additionalData.stakworkProjectId = stakworkData.data.project_id;
-        }
-        if (currentTask?.status === TaskStatus.TODO) {
-          additionalData.status = TaskStatus.IN_PROGRESS;
-        }
-
-        await updateTaskWorkflowStatus({
-          taskId,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          workflowStartedAt: new Date(),
-          additionalData: Object.keys(additionalData).length > 0 ? additionalData : undefined,
-        });
-      } else {
-        await updateTaskWorkflowStatus({
-          taskId,
-          workflowStatus: WorkflowStatus.FAILED,
-        });
+      const additionalData: Record<string, unknown> = {
+        stakworkProjectId: stakworkData.projectId,
+      };
+      if (currentTask?.status === TaskStatus.TODO) {
+        additionalData.status = TaskStatus.IN_PROGRESS;
       }
-    } catch (error) {
-      console.error("Error calling Stakwork:", error);
+
       await updateTaskWorkflowStatus({
         taskId,
-        workflowStatus: WorkflowStatus.FAILED,
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        workflowStartedAt: new Date(),
+        additionalData,
       });
     }
+    // All other cases (network error, non-2xx, body-level failure, missing project_id):
+    // no-op — leave workflowStatus unchanged
   }
 
   return {
@@ -725,14 +708,14 @@ export async function callStakworkAPI(params: {
 
     if (!response.ok) {
       console.error(`Failed to send message to Stakwork: ${response.statusText}`);
-      return { success: false, error: response.statusText };
+      return { error: response.statusText };
     }
 
     const result = await response.json();
-    return { success: result.success, data: result.data };
+    return { projectId: result.data?.project_id, data: result.data };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
-    return { success: false, error: String(error) };
+    return { error: String(error) };
   }
 }
 

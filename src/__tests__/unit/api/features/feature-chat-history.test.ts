@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/services/task-workflow", () => ({
-  callStakworkAPI: vi.fn().mockResolvedValue({ data: { project_id: null } }),
+  callStakworkAPI: vi.fn().mockResolvedValue({ data: null }),
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
