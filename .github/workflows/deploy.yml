@@ -68,6 +68,9 @@ jobs:
             exit 1
           fi
 
+      - name: Inject App Version
+        run: echo "NEXT_PUBLIC_APP_VERSION=${{ github.ref_name }}" >> .env
+
       - name: Build Project Artifacts
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
