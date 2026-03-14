@@ -35,6 +35,7 @@ describe("parseAgentLogStats", () => {
       expect(stats.estimatedTokens).toBe(0);
       expect(stats.totalToolCalls).toBe(0);
       expect(stats.toolFrequency).toEqual({});
+      expect(stats.bashFrequency).toEqual({});
     });
 
     it("returns zero stats for invalid JSON", () => {
@@ -165,6 +166,133 @@ describe("parseAgentLogStats", () => {
     it("returns zero tokens for empty conversation", () => {
       const { stats } = parseAgentLogStats(bare([]));
       expect(stats.estimatedTokens).toBe(0);
+    });
+  });
+
+  describe("bash tool special case", () => {
+    it("AI SDK format: 'ls -la /tmp' → bashFrequency: { ls: 1 }", () => {
+      const input = bare([
+        { role: "user", content: "List files" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "bash", input: { command: "ls -la /tmp" } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({ ls: 1 });
+    });
+
+    it("multiple calls produce correct counts", () => {
+      const grepCalls = Array.from({ length: 12 }, (_, i) => ({
+        type: "tool-call",
+        toolCallId: `g${i}`,
+        toolName: "bash",
+        input: { command: "grep -r pattern ." },
+      }));
+      const lsCalls = Array.from({ length: 5 }, (_, i) => ({
+        type: "tool-call",
+        toolCallId: `l${i}`,
+        toolName: "bash",
+        input: { command: "ls -la" },
+      }));
+      const catCall = {
+        type: "tool-call",
+        toolCallId: "c0",
+        toolName: "bash",
+        input: { command: "cat file.txt" },
+      };
+      const input = bare([
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [...grepCalls, ...lsCalls, catCall] },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({ grep: 12, ls: 5, cat: 1 });
+    });
+
+    it("OpenAI format: JSON arguments string with command field is split and counted correctly", () => {
+      const input = bare([
+        { role: "user", content: "Go" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "a", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "git status" }) } },
+            { id: "b", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "git log --oneline" }) } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({ git: 2 });
+    });
+
+    it("single-word command with no space → { pwd: 1 }", () => {
+      const input = bare([
+        { role: "user", content: "Where am I?" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "bash", input: { command: "pwd" } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({ pwd: 1 });
+    });
+
+    it("non-bash tool calls do not add any entry to bashFrequency", () => {
+      const input = bare([
+        { role: "user", content: "Search" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "search", input: { query: "hello" } },
+          ],
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({});
+      expect(stats.toolFrequency).toEqual({ search: 1 });
+    });
+
+    it("missing command field on a bash call is safely skipped (no crash, no entry)", () => {
+      const input = bare([
+        { role: "user", content: "Run" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "1", toolName: "bash", input: {} },
+            { type: "tool-call", toolCallId: "2", toolName: "bash", input: null },
+            { type: "tool-call", toolCallId: "3", toolName: "bash", input: { command: "" } },
+          ],
+        },
+      ]);
+      expect(() => parseAgentLogStats(input)).not.toThrow();
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({});
+      expect(stats.totalToolCalls).toBe(3);
+    });
+
+    it("malformed OpenAI arguments string is safely skipped", () => {
+      const input = bare([
+        { role: "user", content: "Run" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "a", type: "function", function: { name: "bash", arguments: "not-json" } },
+          ],
+        },
+      ]);
+      expect(() => parseAgentLogStats(input)).not.toThrow();
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.bashFrequency).toEqual({});
+    });
+
+    it("bashFrequency is {} in the empty/zero-stats result", () => {
+      const { stats } = parseAgentLogStats(bare([]));
+      expect(stats.bashFrequency).toEqual({});
     });
   });
 

@@ -240,9 +240,15 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
 }
 
 function StatsBar({ stats }: { stats: AgentLogStats }) {
+  const [showBash, setShowBash] = useState(false);
+
   const hasToolCalls = stats.totalToolCalls > 0;
   const sortedTools = hasToolCalls
     ? Object.entries(stats.toolFrequency).sort((a, b) => b[1] - a[1])
+    : [];
+  const hasBashFrequency = Object.keys(stats.bashFrequency ?? {}).length > 0;
+  const sortedBash = hasBashFrequency
+    ? Object.entries(stats.bashFrequency).sort((a, b) => b[1] - a[1])
     : [];
 
   return (
@@ -256,9 +262,33 @@ function StatsBar({ stats }: { stats: AgentLogStats }) {
       </p>
       {hasToolCalls && (
         <div className="flex flex-wrap gap-1.5">
-          {sortedTools.map(([name, count]) => (
-            <Badge key={name} variant="secondary" className="text-xs font-mono px-1.5 py-0">
-              {name} ×{count}
+          {sortedTools.map(([name, count]) =>
+            name === "bash" && hasBashFrequency ? (
+              <button
+                key={name}
+                onClick={() => setShowBash((s) => !s)}
+                className="inline-flex items-center"
+              >
+                <Badge
+                  variant="secondary"
+                  className="text-xs font-mono px-1.5 py-0 brightness-125 cursor-pointer hover:brightness-150 transition-[filter]"
+                >
+                  {name} ×{count}
+                </Badge>
+              </button>
+            ) : (
+              <Badge key={name} variant="secondary" className="text-xs font-mono px-1.5 py-0">
+                {name} ×{count}
+              </Badge>
+            )
+          )}
+        </div>
+      )}
+      {showBash && hasBashFrequency && (
+        <div className="flex flex-wrap gap-1.5 pl-2 border-l-2 border-muted-foreground/30">
+          {sortedBash.map(([cmd, count]) => (
+            <Badge key={cmd} variant="outline" className="text-xs font-mono px-1.5 py-0">
+              {cmd} ×{count}
             </Badge>
           ))}
         </div>
