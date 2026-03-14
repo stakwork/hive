@@ -31,6 +31,7 @@ export interface AgentLogStats {
   estimatedTokens: number;
   totalToolCalls: number;
   toolFrequency: Record<string, number>;
+  bashFrequency: Record<string, number>;
 }
 
 export interface AgentLogStatsResult {
@@ -55,6 +56,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       estimatedTokens: 0,
       totalToolCalls: 0,
       toolFrequency: {},
+      bashFrequency: {},
     },
   };
 
@@ -94,6 +96,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
 
   // Tool call counting
   const toolFrequency: Record<string, number> = {};
+  const bashFrequency: Record<string, number> = {};
   let totalToolCalls = 0;
 
   for (const msg of conversation) {
@@ -107,6 +110,10 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
           if (tc.toolName) {
             toolFrequency[tc.toolName] = (toolFrequency[tc.toolName] ?? 0) + 1;
             totalToolCalls++;
+            if (tc.toolName === "bash") {
+              const cmd = (tc.input as { command?: string })?.command?.trim().split(" ")[0];
+              if (cmd) bashFrequency[cmd] = (bashFrequency[cmd] ?? 0) + 1;
+            }
           }
         }
       }
@@ -119,6 +126,15 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
           const name = tc.function.name;
           toolFrequency[name] = (toolFrequency[name] ?? 0) + 1;
           totalToolCalls++;
+          if (name === "bash") {
+            try {
+              const args = JSON.parse(tc.function.arguments ?? "{}") as { command?: string };
+              const cmd = args.command?.trim().split(" ")[0];
+              if (cmd) bashFrequency[cmd] = (bashFrequency[cmd] ?? 0) + 1;
+            } catch {
+              // malformed arguments — skip silently
+            }
+          }
         }
       }
     }
@@ -131,6 +147,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       estimatedTokens: Math.ceil(totalChars / 4),
       totalToolCalls,
       toolFrequency,
+      bashFrequency,
     },
   };
 }
