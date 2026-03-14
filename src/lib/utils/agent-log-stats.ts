@@ -32,6 +32,7 @@ export interface AgentLogStats {
   totalToolCalls: number;
   toolFrequency: Record<string, number>;
   bashFrequency: Record<string, number>;
+  developerShellFrequency: Record<string, number>;
 }
 
 export interface AgentLogStatsResult {
@@ -57,6 +58,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       totalToolCalls: 0,
       toolFrequency: {},
       bashFrequency: {},
+      developerShellFrequency: {},
     },
   };
 
@@ -97,6 +99,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
   // Tool call counting
   const toolFrequency: Record<string, number> = {};
   const bashFrequency: Record<string, number> = {};
+  const developerShellFrequency: Record<string, number> = {};
   let totalToolCalls = 0;
 
   for (const msg of conversation) {
@@ -113,6 +116,10 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
             if (tc.toolName === "bash") {
               const cmd = (tc.input as { command?: string })?.command?.trim().split(" ")[0];
               if (cmd) bashFrequency[cmd] = (bashFrequency[cmd] ?? 0) + 1;
+            }
+            if (tc.toolName === "developer__shell") {
+              const cmd = (tc.input as { command?: string })?.command?.trim().split(" ")[0];
+              if (cmd) developerShellFrequency[cmd] = (developerShellFrequency[cmd] ?? 0) + 1;
             }
           }
         }
@@ -135,6 +142,13 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
               // malformed arguments — skip silently
             }
           }
+          if (name === "developer__shell") {
+            try {
+              const args = JSON.parse(tc.function.arguments ?? "{}") as { command?: string };
+              const cmd = args.command?.trim().split(" ")[0];
+              if (cmd) developerShellFrequency[cmd] = (developerShellFrequency[cmd] ?? 0) + 1;
+            } catch { /* skip */ }
+          }
         }
       }
     }
@@ -148,6 +162,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       totalToolCalls,
       toolFrequency,
       bashFrequency,
+      developerShellFrequency,
     },
   };
 }
