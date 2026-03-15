@@ -181,348 +181,8 @@ describe("Features API - Integration Tests", () => {
       await expectError(response, "Invalid pagination parameters", 400);
     });
 
-    describe("createdById filter", () => {
-      test("filters features by creator", async () => {
-        // Setup
-        const creator1 = await createTestUser({ name: "Creator 1" });
-        const creator2 = await createTestUser({ name: "Creator 2" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator1.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Add creator2 as a member
-        await db.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: creator2.id,
-            role: "DEVELOPER",
-          },
-        });
-
-        // Create features by different creators
-        await db.feature.create({
-          data: {
-            title: "Feature by Creator 1",
-            workspaceId: workspace.id,
-            createdById: creator1.id,
-            updatedById: creator1.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "Another Feature by Creator 1",
-            workspaceId: workspace.id,
-            createdById: creator1.id,
-            updatedById: creator1.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "Feature by Creator 2",
-            workspaceId: workspace.id,
-            createdById: creator2.id,
-            updatedById: creator2.id,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${creator1.id}`,
-          creator1
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(2);
-        expect(data.pagination.totalCount).toBe(2);
-        data.data.forEach((feature: any) => {
-          expect(feature.createdBy.id).toBe(creator1.id);
-        });
-      });
-
-      test("returns empty list when no features match creator", async () => {
-        // Setup
-        const creator = await createTestUser({ name: "Creator" });
-        const otherUser = await createTestUser({ name: "Other User" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Create feature by creator
-        await db.feature.create({
-          data: {
-            title: "Feature by Creator",
-            workspaceId: workspace.id,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${otherUser.id}`,
-          creator
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(0);
-        expect(data.pagination.totalCount).toBe(0);
-      });
-
-      test("combines createdById with status filter", async () => {
-        // Setup
-        const creator = await createTestUser({ name: "Creator" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Create features with different statuses
-        await db.feature.create({
-          data: {
-            title: "Backlog Feature",
-            workspaceId: workspace.id,
-            status: FeatureStatus.BACKLOG,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "In Progress Feature",
-            workspaceId: workspace.id,
-            status: FeatureStatus.IN_PROGRESS,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "Completed Feature",
-            workspaceId: workspace.id,
-            status: FeatureStatus.COMPLETED,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${creator.id}&status=${FeatureStatus.IN_PROGRESS}`,
-          creator
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(1);
-        expect(data.data[0].title).toBe("In Progress Feature");
-        expect(data.data[0].status).toBe(FeatureStatus.IN_PROGRESS);
-      });
-
-      test("combines createdById with priority filter", async () => {
-        // Setup
-        const creator = await createTestUser({ name: "Creator" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Create features with different priorities
-        await db.feature.create({
-          data: {
-            title: "Low Priority Feature",
-            workspaceId: workspace.id,
-            priority: FeaturePriority.LOW,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "High Priority Feature",
-            workspaceId: workspace.id,
-            priority: FeaturePriority.HIGH,
-            createdById: creator.id,
-            updatedById: creator.id,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${creator.id}&priority=${FeaturePriority.HIGH}`,
-          creator
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(1);
-        expect(data.data[0].title).toBe("High Priority Feature");
-        expect(data.data[0].priority).toBe(FeaturePriority.HIGH);
-      });
-
-      test("combines createdById with assigneeId filter", async () => {
-        // Setup
-        const creator = await createTestUser({ name: "Creator" });
-        const assignee = await createTestUser({ name: "Assignee" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Create features with different assignees
-        await db.feature.create({
-          data: {
-            title: "Assigned Feature",
-            workspaceId: workspace.id,
-            createdById: creator.id,
-            updatedById: creator.id,
-            assigneeId: assignee.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "Unassigned Feature",
-            workspaceId: workspace.id,
-            createdById: creator.id,
-            updatedById: creator.id,
-            assigneeId: null,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${creator.id}&assigneeId=${assignee.id}`,
-          creator
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(1);
-        expect(data.data[0].title).toBe("Assigned Feature");
-        expect(data.data[0].assignee.id).toBe(assignee.id);
-      });
-
-      test("works with pagination", async () => {
-        // Setup
-        const creator = await createTestUser({ name: "Creator" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Create 15 features by creator
-        for (let i = 0; i < 15; i++) {
-          await db.feature.create({
-            data: {
-              title: `Feature ${i + 1}`,
-              workspaceId: workspace.id,
-              createdById: creator.id,
-              updatedById: creator.id,
-            },
-          });
-        }
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}&createdById=${creator.id}&page=2&limit=10`,
-          creator
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(5); // 5 remaining on page 2
-        expect(data.pagination).toMatchObject({
-          page: 2,
-          limit: 10,
-          totalCount: 15,
-          totalPages: 2,
-          hasMore: false,
-        });
-      });
-
-      test("returns all features when createdById not provided", async () => {
-        // Setup
-        const creator1 = await createTestUser({ name: "Creator 1" });
-        const creator2 = await createTestUser({ name: "Creator 2" });
-        const workspace = await createTestWorkspace({
-          ownerId: creator1.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
-        });
-
-        // Add creator2 as a member
-        await db.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: creator2.id,
-            role: "DEVELOPER",
-          },
-        });
-
-        // Create features by different creators
-        await db.feature.create({
-          data: {
-            title: "Feature by Creator 1",
-            workspaceId: workspace.id,
-            createdById: creator1.id,
-            updatedById: creator1.id,
-          },
-        });
-
-        await db.feature.create({
-          data: {
-            title: "Feature by Creator 2",
-            workspaceId: workspace.id,
-            createdById: creator2.id,
-            updatedById: creator2.id,
-          },
-        });
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
-          creator1
-        );
-
-        // Execute
-        const response = await GET(request);
-
-        // Assert
-        const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(2);
-        expect(data.pagination.totalCount).toBe(2);
-      });
-    });
-
-    describe("Owner (assigneeId) filter", () => {
-      test("filters features by assigneeId and returns only assigned features", async () => {
-        // Setup
+    describe("Owner (assigneeId) filter — OR logic", () => {
+      test("returns features where user is the explicit assignee", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
         const assignee = await createTestUser({ name: "Assigned User" });
         const workspace = await createTestWorkspace({
@@ -531,7 +191,7 @@ describe("Features API - Integration Tests", () => {
           slug: "test-workspace",
         });
 
-        // Feature assigned to assignee
+        // Feature explicitly assigned to assignee
         await db.feature.create({
           data: {
             title: "Assigned Feature",
@@ -542,10 +202,10 @@ describe("Features API - Integration Tests", () => {
           },
         });
 
-        // Feature with no assignee
+        // Feature with no assignee, different creator — should NOT appear
         await db.feature.create({
           data: {
-            title: "Unassigned Feature",
+            title: "Unassigned Feature by Owner",
             workspaceId: workspace.id,
             createdById: owner.id,
             updatedById: owner.id,
@@ -558,18 +218,144 @@ describe("Features API - Integration Tests", () => {
           owner
         );
 
-        // Execute
         const response = await GET(request);
-
-        // Assert
         const data = await expectSuccess(response, 200);
         expect(data.data).toHaveLength(1);
         expect(data.data[0].title).toBe("Assigned Feature");
         expect(data.data[0].assignee.id).toBe(assignee.id);
       });
 
+      test("returns features where user is creator and no assignee is set", async () => {
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const otherUser = await createTestUser({ name: "Other User" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+        await db.workspaceMember.create({
+          data: { workspaceId: workspace.id, userId: otherUser.id, role: "DEVELOPER" },
+        });
+
+        // Feature created by owner, no assignee — should appear when filtering by owner
+        await db.feature.create({
+          data: {
+            title: "Created by Owner, no Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+          },
+        });
+
+        // Feature created by otherUser, no assignee — should NOT appear
+        await db.feature.create({
+          data: {
+            title: "Created by Other, no Assignee",
+            workspaceId: workspace.id,
+            createdById: otherUser.id,
+            updatedById: otherUser.id,
+            assigneeId: null,
+          },
+        });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=${owner.id}`,
+          owner
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("Created by Owner, no Assignee");
+      });
+
+      test("returns both assignee features and creator-only features for the same user", async () => {
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        // Feature where owner is the explicit assignee
+        await db.feature.create({
+          data: {
+            title: "Owner is Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: owner.id,
+          },
+        });
+
+        // Feature where owner is creator with no assignee
+        await db.feature.create({
+          data: {
+            title: "Owner is Creator, no Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+          },
+        });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=${owner.id}`,
+          owner
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(2);
+        expect(data.pagination.totalCount).toBe(2);
+        const titles = data.data.map((f: any) => f.title);
+        expect(titles).toContain("Owner is Assignee");
+        expect(titles).toContain("Owner is Creator, no Assignee");
+      });
+
+      test("UNASSIGNED returns only features with no assignee (regardless of creator)", async () => {
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const assignee = await createTestUser({ name: "Assignee" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        await db.feature.create({
+          data: {
+            title: "Has Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: assignee.id,
+          },
+        });
+
+        await db.feature.create({
+          data: {
+            title: "No Assignee",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+          },
+        });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=UNASSIGNED`,
+          owner
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(1);
+        expect(data.data[0].title).toBe("No Assignee");
+        expect(data.data[0].assignee).toBeNull();
+      });
+
       test("returns all features when assigneeId is not provided", async () => {
-        // Setup
         const owner = await createTestUser({ name: "Workspace Owner" });
         const assignee = await createTestUser({ name: "Assigned User" });
         const workspace = await createTestWorkspace({
@@ -603,53 +389,102 @@ describe("Features API - Integration Tests", () => {
           owner
         );
 
-        // Execute
         const response = await GET(request);
-
-        // Assert
         const data = await expectSuccess(response, 200);
         expect(data.data).toHaveLength(2);
         expect(data.pagination.totalCount).toBe(2);
       });
 
-      test("does not filter by createdById when using Owner filter", async () => {
-        // The Owner column filter only passes assigneeId — createdById is not sent
+      test("owner filter combines correctly with status filter", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
-        const assignee = await createTestUser({ name: "Assigned User" });
         const workspace = await createTestWorkspace({
           ownerId: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
+        // Creator-only feature (BACKLOG)
         await db.feature.create({
           data: {
-            title: "Feature with Assignee",
+            title: "Creator Backlog Feature",
             workspaceId: workspace.id,
             createdById: owner.id,
             updatedById: owner.id,
-            assigneeId: assignee.id,
+            assigneeId: null,
+            status: FeatureStatus.BACKLOG,
           },
         });
 
-        // Build params as the new FeaturesList does — no createdById
-        const params = new URLSearchParams({
-          workspaceId: workspace.id,
-          assigneeId: assignee.id,
+        // Creator-only feature (IN_PROGRESS) — should appear
+        await db.feature.create({
+          data: {
+            title: "Creator In Progress Feature",
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            updatedById: owner.id,
+            assigneeId: null,
+            status: FeatureStatus.IN_PROGRESS,
+          },
         });
 
-        expect(params.has("createdById")).toBe(false);
-        expect(params.has("assigneeId")).toBe(true);
-
         const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/features?${params.toString()}`,
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=${owner.id}&status=${FeatureStatus.IN_PROGRESS}`,
           owner
         );
 
         const response = await GET(request);
         const data = await expectSuccess(response, 200);
         expect(data.data).toHaveLength(1);
-        expect(data.data[0].title).toBe("Feature with Assignee");
+        expect(data.data[0].title).toBe("Creator In Progress Feature");
+      });
+
+      test("pagination is correct with OR owner filter", async () => {
+        const owner = await createTestUser({ name: "Workspace Owner" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          name: "Test Workspace",
+          slug: "test-workspace",
+        });
+
+        // Create 12 features owned by owner (mix of assignee and creator-only)
+        for (let i = 0; i < 6; i++) {
+          await db.feature.create({
+            data: {
+              title: `Assigned Feature ${i + 1}`,
+              workspaceId: workspace.id,
+              createdById: owner.id,
+              updatedById: owner.id,
+              assigneeId: owner.id,
+            },
+          });
+        }
+        for (let i = 0; i < 6; i++) {
+          await db.feature.create({
+            data: {
+              title: `Creator Feature ${i + 1}`,
+              workspaceId: workspace.id,
+              createdById: owner.id,
+              updatedById: owner.id,
+              assigneeId: null,
+            },
+          });
+        }
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/features?workspaceId=${workspace.id}&assigneeId=${owner.id}&page=2&limit=10`,
+          owner
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+        expect(data.data).toHaveLength(2);
+        expect(data.pagination).toMatchObject({
+          page: 2,
+          limit: 10,
+          totalCount: 12,
+          totalPages: 2,
+          hasMore: false,
+        });
       });
     });
   });
