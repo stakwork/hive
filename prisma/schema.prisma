@@ -672,6 +672,7 @@ model Feature {
 
   @@index([workspaceId])
   @@index([assigneeId])
+  @@index([createdById])
   @@index([status])
   @@index([deleted])
   @@map("features")
