@@ -230,53 +230,22 @@ jobs:
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
-          
-          # Check if the migration is in a failed state
-          MIGRATION_STATUS=$(npx prisma migrate status 2>&1 || true)
-          
-          if echo "$MIGRATION_STATUS" | grep -q "20260301051356_add_voice_signature_to_user"; then
-            echo "Found voice_signature migration, checking if it needs resolution..."
-            
-            # If the column already exists, mark the migration as applied
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260301051356_add_voice_signature_to_user || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260301051356_add_voice_signature_to_user || echo "Could not mark as rolled back"
-            fi
+
+          # Query the _prisma_migrations table directly for any failed migrations
+          # (failed_at IS NOT NULL means the migration errored out)
+          FAILED_MIGRATIONS=$(psql "$DATABASE_URL" -tAc \
+            "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL AND started_at IS NOT NULL;" \
+            2>/dev/null || echo "")
+
+          if [ -z "$FAILED_MIGRATIONS" ]; then
+            echo "No failed migrations found, proceeding normally."
           else
-            echo "Migration not in failed state, proceeding normally"
-          fi
-
-          if echo "$MIGRATION_STATUS" | grep -q "20260220101159_add_repository_id_to_janitor_run"; then
-            echo "Found add_repository_id_to_janitor_run migration, checking if it needs resolution..."
-            
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_runs' AND column_name='repository_id';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260220101159_add_repository_id_to_janitor_run || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260220101159_add_repository_id_to_janitor_run || echo "Could not mark as rolled back"
-            fi
-          fi
-
-          if echo "$MIGRATION_STATUS" | grep -q "20260227180738_add_feature_id_to_screenshots"; then
-            echo "Found add_feature_id_to_screenshots migration, checking if it needs resolution..."
-            
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as rolled back"
-            fi
+            echo "Found failed migration(s): $FAILED_MIGRATIONS"
+            for MIGRATION_NAME in $FAILED_MIGRATIONS; do
+              echo "Resolving failed migration: $MIGRATION_NAME"
+              # Mark as rolled back so Prisma will retry it
+              npx prisma migrate resolve --rolled-back "$MIGRATION_NAME" || echo "Could not resolve $MIGRATION_NAME, continuing..."
+            done
           fi
 
       - name: Build
