@@ -100,7 +100,7 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     }
 
     fetchScreenshots();
-  }, [feature, workspaceId]);
+  }, [feature.id, workspaceId]);
 
   const handleScreenshotClick = (screenshot: Screenshot) => {
     setSelectedScreenshot(screenshot);
@@ -116,7 +116,7 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     setSelectedScreenshot(screenshot);
   };
 
-  if (loading) {
+  if (loading && groupedScreenshots.length === 0) {
     return (
       <div className="space-y-6">
         {[1, 2].map((i) => (
