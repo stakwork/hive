@@ -83,6 +83,34 @@ function getToolResultValue(output: ToolResultContent["output"]): string {
   }
 }
 
+function ToolCallItem({ tc }: { tc: { id?: string; name: string; args: string | null } }) {
+  const [open, setOpen] = useState(false);
+  const truncated =
+    tc.args && tc.args.length > 2000 ? tc.args.slice(0, 2000) + "\n... (truncated)" : tc.args;
+
+  return (
+    <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono break-words">
+      <button
+        onClick={() => truncated && setOpen((s) => !s)}
+        className={cn(
+          "text-left w-full",
+          truncated ? "hover:text-foreground transition-colors cursor-pointer" : "cursor-default",
+        )}
+      >
+        Called <span className="font-semibold">{tc.name}</span>
+        {truncated && (
+          <span className="ml-1 text-muted-foreground/70">{open ? "(hide)" : "(show)"}</span>
+        )}
+      </button>
+      {open && truncated && (
+        <pre className="mt-1 text-xs font-mono bg-muted/70 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+          {truncated}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ParsedMessage }) {
   const [showToolDetails, setShowToolDetails] = useState(false);
 
@@ -103,10 +131,18 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
 
   // All tool call names (Vercel AI SDK style + OpenAI style)
   const allToolCallNames = [
-    ...toolCalls.map((tc) => ({ id: tc.toolCallId, name: tc.toolName })),
+    ...toolCalls.map((tc) => ({
+      id: tc.toolCallId,
+      name: tc.toolName,
+      args: tc.input !== undefined ? JSON.stringify(tc.input, null, 2) : null,
+    })),
     ...openaiToolCalls
       .filter((tc) => tc && typeof tc === "object" && tc.function?.name)
-      .map((tc) => ({ id: tc.id, name: tc.function.name })),
+      .map((tc) => ({
+        id: tc.id,
+        name: tc.function.name,
+        args: tc.function.arguments ?? null,
+      })),
   ];
 
   // Tool-only messages (no text content)
@@ -118,12 +154,7 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
         </div>
         <div className="min-w-0 flex-1 space-y-1">
           {allToolCallNames.map((tc, i) => (
-            <div
-              key={tc.id || i}
-              className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono break-words"
-            >
-              Called <span className="font-semibold">{tc.name}</span>
-            </div>
+            <ToolCallItem key={tc.id || i} tc={tc} />
           ))}
         </div>
       </div>
@@ -225,12 +256,7 @@ function MessageBubble({ message }: { message: ParsedMessage }) {
         {isAssistant && allToolCallNames.length > 0 && (
           <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
             {allToolCallNames.map((tc, i) => (
-              <div
-                key={tc.id || i}
-                className="text-xs text-muted-foreground font-mono break-words"
-              >
-                Called <span className="font-semibold">{tc.name}</span>
-              </div>
+              <ToolCallItem key={tc.id || i} tc={tc} />
             ))}
           </div>
         )}
