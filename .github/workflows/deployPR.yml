@@ -143,11 +143,38 @@ jobs:
           ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
-            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoint" \
-              -X POST \
-              -H "Content-Type: application/json" \
-              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
-            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            # Try to create a new endpoint first
+            RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              -X POST -H "Content-Type: application/json" \
+              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+
+            if echo "$RESPONSE" | jq -e '.endpoint' > /dev/null 2>&1; then
+              ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            else
+              echo "⚠️  Endpoint creation failed (likely limit exceeded): $(echo "$RESPONSE" | jq -r '.message // .code // empty')"
+              echo "♻️  Looking for a stale endpoint to reassign..."
+
+              # Find an endpoint not belonging to preview-base or the current branch
+              STALE_ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r \
+                --arg bid "$BRANCH_ID" \
+                --arg pbid "$PARENT_BRANCH_ID" \
+                '.endpoints[] | select(.branch_id != $bid and .branch_id != $pbid and .type == "read_write") | .id' \
+                | head -1)
+
+              if [ -z "$STALE_ENDPOINT_ID" ] || [ "$STALE_ENDPOINT_ID" = "null" ]; then
+                echo "❌ No stale endpoint available to reassign"
+                exit 1
+              fi
+
+              echo "♻️  Reassigning endpoint $STALE_ENDPOINT_ID to branch $BRANCH_ID..."
+              RESPONSE=$(neon_curl \
+                "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$STALE_ENDPOINT_ID" "endpoint" \
+                -X PATCH \
+                -H "Content-Type: application/json" \
+                -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\"}}")
+              ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            fi
           fi
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)

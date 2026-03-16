@@ -115,7 +115,7 @@ function SectionContent({
 
   if (hasContent) {
     return (
-      <div className={`border-l-2 border-transparent pl-3 rounded-r ${highlight ? "plan-section-highlight" : ""}`}>
+      <div className={`border-l-2 border-transparent pl-3 rounded-r min-w-0 overflow-hidden ${highlight ? "plan-section-highlight" : ""}`}>
         <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
       </div>
     );
@@ -191,11 +191,11 @@ function EditableSection({
   return (
     <div className="group/section">
       {/* Section header */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2 min-w-0">
         {SectionIcon && (
           <SectionIcon className="h-3.5 w-3.5 text-emerald-500/80 shrink-0" />
         )}
-        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate min-w-0">
           {section.label}
         </h3>
         {highlight && (
