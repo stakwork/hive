@@ -130,7 +130,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
-            className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
+            className={`group px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-md"
                 : "bg-background text-foreground rounded-bl-md border"

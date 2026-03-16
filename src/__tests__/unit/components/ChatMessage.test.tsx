@@ -569,8 +569,8 @@ describe('ChatMessage', () => {
     });
   });
 
-  describe('Hover Interactions', () => {
-    it('renders WorkflowUrlLink with static CSS-only hover classes (no React state toggling)', () => {
+  describe('Hover Interactions (CSS group-hover)', () => {
+    it('renders WorkflowUrlLink with opacity-0 and group-hover:opacity-100 classes', () => {
       const message = createTestMessage({
         workflowUrl: 'https://example.com/workflow',
         message: 'Hoverable message',
@@ -584,15 +584,47 @@ describe('ChatMessage', () => {
       );
 
       const link = screen.getByTestId('workflow-url-link');
-      // Static className must include both opacity-0 and group-hover:opacity-100
       expect(link).toHaveClass('opacity-0');
       expect(link.className).toContain('group-hover:opacity-100');
     });
 
-    it('does not attach onMouseEnter or onMouseLeave to the message container', () => {
+    it('does not render WorkflowUrlLink when workflowUrl is absent', () => {
+      const message = createTestMessage({
+        workflowUrl: null,
+        message: 'Message without workflow',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByTestId('workflow-url-link')).not.toBeInTheDocument();
+    });
+
+    it('message bubble has group class for CSS hover targeting', () => {
       const message = createTestMessage({
         workflowUrl: 'https://example.com/workflow',
-        message: 'No hover handlers message',
+        message: 'Message with group class',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const bubble = screen.getByTestId('markdown-renderer').parentElement!;
+      expect(bubble).toHaveClass('group');
+    });
+
+    it('does not attach onMouseEnter or onMouseLeave handlers to the outer motion div', () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow',
+        message: 'No handler message',
       });
 
       const { container } = render(
@@ -602,8 +634,8 @@ describe('ChatMessage', () => {
         />
       );
 
-      // The outermost div (motion.div mock) should have no mouse event handlers
       const outerDiv = container.firstChild as HTMLElement;
+      // These event handlers should not be present (CSS handles hover now)
       expect(outerDiv.onmouseenter).toBeNull();
       expect(outerDiv.onmouseleave).toBeNull();
     });
