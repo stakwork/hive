@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
+import { getS3Service } from "@/services/s3";
 import {
   ChatRole,
   ChatStatus,
@@ -176,6 +177,7 @@ export async function sendFeatureChatMessage({
   replyId,
   history: bodyHistory,
   isPrototype,
+  attachments,
 }: {
   featureId: string;
   userId: string;
@@ -186,6 +188,7 @@ export async function sendFeatureChatMessage({
   replyId?: string;
   history?: Record<string, unknown>[];
   isPrototype?: boolean;
+  attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -215,6 +218,14 @@ export async function sendFeatureChatMessage({
       status: ChatStatus.SENT,
       sourceWebsocketID,
       replyId,
+      attachments: {
+        create: (attachments ?? []).map((a) => ({
+          path: a.path,
+          filename: a.filename,
+          mimeType: a.mimeType,
+          size: a.size,
+        })),
+      },
     },
     include: {
       artifacts: true,
@@ -305,6 +316,11 @@ export async function sendFeatureChatMessage({
 
     const extraSwarms = await resolveExtraSwarms(message, userId);
 
+    // Generate presigned download URLs for any attachments
+    const attachmentUrls = await Promise.all(
+      (attachments ?? []).map((a) => getS3Service().generatePresignedDownloadUrl(a.path)),
+    );
+
     stakworkData = await callStakworkAPI({
       taskId: featureId,
       message,
@@ -327,6 +343,7 @@ export async function sendFeatureChatMessage({
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,
+      attachments: attachmentUrls,
     });
 
     // Only update workflow status when Stakwork confirms a project was created
