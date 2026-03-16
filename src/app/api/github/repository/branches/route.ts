@@ -10,6 +10,11 @@ export async function GET(request: NextRequest) {
   const repoUrl = searchParams.get("repoUrl");
   const workspaceSlug = searchParams.get("workspaceSlug");
 
+  const parsedPage = parseInt(searchParams.get("page") ?? "", 10);
+  const parsedPerPage = parseInt(searchParams.get("per_page") ?? "", 10);
+  const resolvedPage = isNaN(parsedPage) ? 1 : parsedPage;
+  const resolvedPerPage = isNaN(parsedPerPage) ? 100 : parsedPerPage;
+
   if (!repoUrl) {
     return NextResponse.json({ error: "Repo URL is required" }, { status: 400 });
   }
@@ -34,7 +39,8 @@ export async function GET(request: NextRequest) {
         Accept: "application/vnd.github.v3+json",
       },
       params: {
-        per_page: 100,
+        per_page: resolvedPerPage,
+        page: resolvedPage,
       },
     });
 
@@ -46,6 +52,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       branches,
       total_count: branches.length,
+      current_page: resolvedPage,
+      per_page: resolvedPerPage,
     });
   } catch (error: unknown) {
     console.error("Error fetching branches:", error);
