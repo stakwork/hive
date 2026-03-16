@@ -458,14 +458,18 @@ async function runFlatLayout(
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
   const validConstraints = useLayerConstraints ? getValidLayerConstraints(diagram) : null;
 
+  // Determine layout direction for the layered algorithm
   const layeredDirection = algorithm === "layered"
     ? computeLayeredDirection(diagram)
     : "RIGHT";
   const outSide = layeredDirection === "DOWN" ? "SOUTH" : "EAST";
   const inSide  = layeredDirection === "DOWN" ? "NORTH" : "WEST";
 
-  const outPorts = new Map<string, number>();
-  const inPorts = new Map<string, number>();
+  // Build per-node port lists so multiple edges don't overlap.
+  // Each connection endpoint gets its own port on the node.
+  const outPorts = new Map<string, number>(); // nodeId → next outgoing port index
+  const inPorts = new Map<string, number>();  // nodeId → next incoming port index
+
 
   interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" | "SOUTH" | "NORTH" }
   const edgePorts: { sourcePort: PortInfo; targetPort: PortInfo }[] = [];
