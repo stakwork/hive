@@ -116,7 +116,7 @@ interface BuildTasksUrlParams {
   includeLatestMessage?: boolean;
   showArchived?: boolean;
   search?: string;
-  filters?: { sourceType?: string; status?: string; priority?: string; hasPod?: boolean };
+  filters?: { sourceType?: string; status?: string; priority?: string; hasPod?: boolean; createdById?: string };
   showAllStatuses?: boolean;
   sortBy?: string;
   sortOrder?: string;
@@ -132,10 +132,11 @@ function buildTasksUrl({ workspaceId, page, limit, queue, includeLatestMessage, 
   const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
   const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
   const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
+  const createdByIdParam = filters?.createdById ? `&createdById=${encodeURIComponent(filters.createdById)}` : '';
   const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
   const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
   const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
-  return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
+  return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${createdByIdParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
 }
 
 export function useWorkspaceTasks(
@@ -150,6 +151,7 @@ export function useWorkspaceTasks(
     status?: string;
     priority?: string;
     hasPod?: boolean;
+    createdById?: string;
   },
   showAllStatuses: boolean = false,
   sortBy?: string,
@@ -203,7 +205,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses, sortBy, sortOrder, queue]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, filters?.createdById, showAllStatuses, sortBy, sortOrder, queue]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {

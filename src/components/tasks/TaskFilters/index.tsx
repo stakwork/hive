@@ -4,18 +4,21 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { FilterDropdownHeader } from "@/components/features/TableColumnHeaders";
+import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 
 export interface TaskFiltersType {
   sourceType?: string;
   status?: string;
   priority?: string;
   hasPod?: boolean;
+  createdById?: string;
 }
 
 interface TaskFiltersProps {
   filters: TaskFiltersType;
   onFiltersChange: (filters: TaskFiltersType) => void;
   onClearFilters: () => void;
+  workspaceSlug: string;
 }
 
 const STATUS_OPTIONS = [
@@ -54,8 +57,19 @@ export function TaskFilters({
   filters,
   onFiltersChange,
   onClearFilters,
+  workspaceSlug,
 }: TaskFiltersProps) {
+  const { members } = useWorkspaceMembers(workspaceSlug, { includeSystemAssignees: false });
   const hasActiveFilters = Object.keys(filters).length > 0;
+
+  const creatorOptions = [
+    { value: "ALL", label: "All", image: null },
+    ...members.map((m) => ({
+      value: m.user.id,
+      label: m.user.name || m.user.email || "Unknown",
+      image: m.user.image,
+    })),
+  ];
 
   const handleStatusChange = (val: string) => {
     const newFilters = { ...filters };
@@ -93,6 +107,16 @@ export function TaskFilters({
       delete newFilters.hasPod;
     } else {
       newFilters.hasPod = val === "true";
+    }
+    onFiltersChange(newFilters);
+  };
+
+  const handleCreatedByChange = (val: string) => {
+    const newFilters = { ...filters };
+    if (val === "ALL") {
+      delete newFilters.createdById;
+    } else {
+      newFilters.createdById = val;
     }
     onFiltersChange(newFilters);
   };
@@ -137,6 +161,18 @@ export function TaskFilters({
           value={filters.hasPod !== undefined ? String(filters.hasPod) : "ALL"}
           onChange={(val) => handleHasPodChange(val as string)}
           multiSelect={false}
+        />
+      </div>
+
+      <div data-testid="task-filter-creator">
+        <FilterDropdownHeader
+          label="Creator"
+          options={creatorOptions}
+          value={filters.createdById ?? "ALL"}
+          onChange={(val) => handleCreatedByChange(val as string)}
+          multiSelect={false}
+          showSearch={true}
+          showAvatars={true}
         />
       </div>
 
