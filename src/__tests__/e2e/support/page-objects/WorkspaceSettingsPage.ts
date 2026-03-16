@@ -143,6 +143,10 @@ export class WorkspaceSettingsPage {
     await expect(row).toHaveCount(0, { timeout: 10000 });
   }
 
+  async navigateToDangerZone(): Promise<void> {
+    await this.page.getByTestId("settings-tab-danger-zone").click();
+  }
+
   async initiateDelete(): Promise<void> {
     await this.page.locator(selectors.workspaceDeletion.deleteButton).click();
     await expect(this.page.locator(selectors.workspaceDeletion.dialog)).toBeVisible({ timeout: 10000 });
@@ -162,6 +166,7 @@ export class WorkspaceSettingsPage {
   }
 
   async deleteWorkspace(workspaceName: string): Promise<void> {
+    await this.navigateToDangerZone();
     await this.initiateDelete();
     await this.confirmDelete(workspaceName);
     await this.waitForDeletion();
