@@ -11,7 +11,7 @@ import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { redirect, useRouter } from "next/navigation";
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 
 interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
@@ -298,6 +298,15 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         >
           Switch account
         </button>
+      </div>
+    )}
+
+    {/* Go to my workspace button */}
+    {session?.user && workspaces.length > 0 && (
+      <div className="text-center mt-4">
+        <Button variant="outline" onClick={() => router.push("/")}>
+          Go to my workspace
+        </Button>
       </div>
     )}
 
