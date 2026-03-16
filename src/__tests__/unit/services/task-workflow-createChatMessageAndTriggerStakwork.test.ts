@@ -142,7 +142,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       expect(result).toEqual({
         chatMessage: expect.any(Object),
         stakworkData: expect.objectContaining({
-          success: true,
+          projectId: 12345,
           data: expect.objectContaining({ project_id: 12345 }),
         }),
       });
@@ -404,7 +404,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       );
     });
 
-    it("should set workflowStatus to FAILED on API error", async () => {
+    it("should leave workflowStatus unchanged when Stakwork returns success: false (no project_id)", async () => {
       // Arrange
       const task = createMockTask();
 
@@ -428,22 +428,17 @@ describe("createChatMessageAndTriggerStakwork", () => {
         mode: "unit",
       });
 
-      // Assert
-      expect(mockDb.task.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: task.id },
-          data: { workflowStatus: WorkflowStatus.FAILED },
-        })
-      );
+      // Assert — no workflowStatus update should occur
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
-    it("should not change task status if already IN_PROGRESS", async () => {
-      // Arrange
+    it("should not set task status to IN_PROGRESS when task is already IN_PROGRESS", async () => {
+      // Arrange — Stakwork returns a project_id, but task is already IN_PROGRESS
       const task = createMockTask();
 
       mockDb.task.findUnique = vi.fn()
-        .mockResolvedValueOnce(task)
-        .mockResolvedValueOnce({ status: TaskStatus.IN_PROGRESS });
+        .mockResolvedValueOnce(task)                                       // first: fetch task
+        .mockResolvedValueOnce({ status: TaskStatus.IN_PROGRESS });        // second: status check
       mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
       mockDb.task.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
@@ -452,7 +447,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ success: true, data: {} }),
+        json: async () => ({ success: true, data: { project_id: 99999 } }),
       });
 
       // Act
@@ -463,14 +458,23 @@ describe("createChatMessageAndTriggerStakwork", () => {
         mode: "unit",
       });
 
-      // Assert
+      // Assert — workflowStatus updated (project_id present) but task.status not included
+      expect(mockDb.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: task.id },
+          data: expect.objectContaining({
+            workflowStatus: WorkflowStatus.IN_PROGRESS,
+            stakworkProjectId: 99999,
+          }),
+        })
+      );
       const updateCall = mockDb.task.update.mock.calls[0];
       expect(updateCall[0].data.status).toBeUndefined();
     });
   });
 
   describe("Error Handling", () => {
-    it("should handle network failures gracefully", async () => {
+    it("should handle network failures gracefully — leave workflowStatus unchanged", async () => {
       // Arrange
       const task = createMockTask();
 
@@ -491,21 +495,14 @@ describe("createChatMessageAndTriggerStakwork", () => {
         mode: "unit",
       });
 
-      // Assert
+      // Assert — stakworkData has error, no project_id, so no status update
       expect(result.stakworkData).toEqual({
-        success: false,
         error: "Error: Network error",
       });
-      
-      expect(mockDb.task.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: task.id },
-          data: { workflowStatus: WorkflowStatus.FAILED },
-        })
-      );
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
-    it("should handle Stakwork API HTTP errors", async () => {
+    it("should handle Stakwork API HTTP errors — leave workflowStatus unchanged", async () => {
       // Arrange
       const task = createMockTask();
 
@@ -529,11 +526,37 @@ describe("createChatMessageAndTriggerStakwork", () => {
         mode: "unit",
       });
 
-      // Assert
-      expect(result.stakworkData).toEqual({
-        success: false,
-        error: "Bad Request",
+      // Assert — non-2xx returns error with no projectId, so no status update
+      expect(result.stakworkData).toEqual({ error: "Bad Request" });
+      expect(mockDb.task.update).not.toHaveBeenCalled();
+    });
+
+    it("should leave workflowStatus unchanged when Stakwork returns success: true but no project_id", async () => {
+      // Arrange
+      const task = createMockTask();
+
+      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.task.update = vi.fn().mockResolvedValue({});
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        username: "testuser",
+        pat: "github_pat_test123",
       });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      });
+
+      // Act
+      await createChatMessageAndTriggerStakwork({
+        taskId: task.id,
+        userId: "user-123",
+        message: "Test",
+        mode: "unit",
+      });
+
+      // Assert — no project_id in response means no status update
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
   });
 
