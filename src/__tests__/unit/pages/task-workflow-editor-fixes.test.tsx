@@ -783,6 +783,10 @@ describe('Task Page - Workflow Editor fixes', () => {
             body: JSON.stringify({ retryWorkflow: true }),
           });
           if (!res.ok) throw new Error('Retry failed');
+          const result = await res.json();
+          if (result.task?.workflowStatus) {
+            setWorkflowStatus(result.task.workflowStatus);
+          }
         }
       } catch {
         toastError('Failed to retry task. Please try again.');
@@ -934,6 +938,157 @@ describe('Task Page - Workflow Editor fixes', () => {
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.workflowVersionId).toBe('v99');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // liveModeSendAllowed — terminal states must enable input
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('liveModeSendAllowed — terminal states allow send', () => {
+    /**
+     * Mirrors the liveModeSendAllowed expression from page.tsx so we can test
+     * it in isolation without rendering the full page.
+     */
+    function computeLiveModeSendAllowed(opts: {
+      started: boolean;
+      hasActiveChatForm: boolean;
+      workflowStatus: WorkflowStatus | null;
+    }): boolean {
+      const { started, hasActiveChatForm, workflowStatus } = opts;
+      return (
+        !started ||
+        hasActiveChatForm ||
+        workflowStatus === WorkflowStatus.COMPLETED ||
+        workflowStatus === WorkflowStatus.PENDING ||
+        workflowStatus === WorkflowStatus.FAILED ||
+        workflowStatus === WorkflowStatus.ERROR ||
+        workflowStatus === WorkflowStatus.HALTED
+      );
+    }
+
+    const base = { started: true, hasActiveChatForm: false };
+
+    it('is true when workflowStatus is FAILED', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.FAILED })).toBe(true);
+    });
+
+    it('is true when workflowStatus is ERROR', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.ERROR })).toBe(true);
+    });
+
+    it('is true when workflowStatus is HALTED', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.HALTED })).toBe(true);
+    });
+
+    it('is true when workflowStatus is COMPLETED', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.COMPLETED })).toBe(true);
+    });
+
+    it('is true when workflowStatus is PENDING', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.PENDING })).toBe(true);
+    });
+
+    it('is false when workflow is IN_PROGRESS (blocking state)', () => {
+      expect(computeLiveModeSendAllowed({ ...base, workflowStatus: WorkflowStatus.IN_PROGRESS })).toBe(false);
+    });
+
+    it('is true when not yet started (regardless of status)', () => {
+      expect(computeLiveModeSendAllowed({ started: false, hasActiveChatForm: false, workflowStatus: WorkflowStatus.IN_PROGRESS })).toBe(true);
+    });
+
+    it('is true when hasActiveChatForm (regardless of status)', () => {
+      expect(computeLiveModeSendAllowed({ started: true, hasActiveChatForm: true, workflowStatus: WorkflowStatus.IN_PROGRESS })).toBe(true);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleRetry live mode — syncs workflowStatus from PATCH response
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleRetry — live mode (non-workflow_editor) status sync', () => {
+    function makeSetters() {
+      return {
+        setIsRetrying: vi.fn(),
+        setWorkflowStatus: vi.fn(),
+        setIsChainVisible: vi.fn(),
+        setWorkflowEditorWebhook: vi.fn(),
+        setProjectId: vi.fn(),
+        toastError: vi.fn(),
+      };
+    }
+
+    async function runLiveRetry({
+      fetchMock,
+      setIsRetrying,
+      setWorkflowStatus,
+      toastError,
+    }: {
+      fetchMock: ReturnType<typeof vi.fn>;
+      setIsRetrying: ReturnType<typeof vi.fn>;
+      setWorkflowStatus: ReturnType<typeof vi.fn>;
+      toastError: ReturnType<typeof vi.fn>;
+    }) {
+      const currentTaskId = 'task-live-1';
+      setIsRetrying(true);
+      try {
+        const res = await fetchMock(`/api/tasks/${currentTaskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retryWorkflow: true }),
+        });
+        if (!res.ok) throw new Error('Retry failed');
+        const result = await res.json();
+        if (result.task?.workflowStatus) {
+          setWorkflowStatus(result.task.workflowStatus);
+        }
+      } catch {
+        toastError('Failed to retry task. Please try again.');
+      } finally {
+        setIsRetrying(false);
+      }
+    }
+
+    it('calls setWorkflowStatus with IN_PROGRESS when PATCH returns IN_PROGRESS', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ task: { workflowStatus: WorkflowStatus.IN_PROGRESS } }),
+      });
+      const setters = makeSetters();
+
+      await runLiveRetry({ fetchMock, ...setters });
+
+      expect(setters.setWorkflowStatus).toHaveBeenCalledWith(WorkflowStatus.IN_PROGRESS);
+      expect(setters.toastError).not.toHaveBeenCalled();
+    });
+
+    it('does not call setWorkflowStatus when PATCH response has no workflowStatus', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ task: {} }),
+      });
+      const setters = makeSetters();
+
+      await runLiveRetry({ fetchMock, ...setters });
+
+      expect(setters.setWorkflowStatus).not.toHaveBeenCalled();
+    });
+
+    it('shows error toast and does not call setWorkflowStatus when PATCH fails', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
+      const setters = makeSetters();
+
+      await runLiveRetry({ fetchMock, ...setters });
+
+      expect(setters.toastError).toHaveBeenCalledWith('Failed to retry task. Please try again.');
+      expect(setters.setWorkflowStatus).not.toHaveBeenCalled();
+    });
+
+    it('always resets isRetrying in finally', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
+      const setters = makeSetters();
+
+      await runLiveRetry({ fetchMock, ...setters });
+
+      expect(setters.setIsRetrying).toHaveBeenLastCalledWith(false);
     });
   });
 });
