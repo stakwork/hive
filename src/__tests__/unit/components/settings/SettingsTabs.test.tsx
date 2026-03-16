@@ -99,14 +99,12 @@ describe("SettingsTabs", () => {
     expect(screen.getByTestId("node-type-order-settings")).toBeInTheDocument();
   });
 
-  it("renders DeleteWorkspace in Danger Zone tab when isOwner=true", () => {
-    mockSearchParams = new URLSearchParams("tab=danger-zone");
+  it("renders DeleteWorkspace in General tab when isOwner=true", () => {
     render(<SettingsTabs {...defaultProps} isOwner={true} />);
     expect(screen.getByTestId("delete-workspace")).toBeInTheDocument();
   });
 
-  it("hides DeleteWorkspace in Danger Zone tab when isOwner=false", () => {
-    mockSearchParams = new URLSearchParams("tab=danger-zone");
+  it("hides DeleteWorkspace in General tab when isOwner=false", () => {
     render(<SettingsTabs {...defaultProps} isOwner={false} />);
     expect(screen.queryByTestId("delete-workspace")).not.toBeInTheDocument();
   });
@@ -126,16 +124,5 @@ describe("SettingsTabs", () => {
     expect(mockReplace).toHaveBeenCalledWith("?tab=infrastructure", { scroll: false });
   });
 
-  it("calls router.replace with ?tab=danger-zone when Danger Zone tab is clicked", async () => {
-    const user = userEvent.setup();
-    render(<SettingsTabs {...defaultProps} />);
 
-    await user.click(screen.getByTestId("settings-tab-danger-zone"));
-    expect(mockReplace).toHaveBeenCalledWith("?tab=danger-zone", { scroll: false });
-  });
-
-  it("Danger Zone tab trigger has data-testid='settings-tab-danger-zone'", () => {
-    render(<SettingsTabs {...defaultProps} />);
-    expect(screen.getByTestId("settings-tab-danger-zone")).toBeInTheDocument();
-  });
 });

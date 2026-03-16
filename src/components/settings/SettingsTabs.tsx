@@ -14,7 +14,7 @@ import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 
-const VALID_TABS = ["general", "infrastructure", "integrations", "developer", "danger-zone"] as const;
+const VALID_TABS = ["general", "infrastructure", "integrations", "developer"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 interface SettingsTabsProps {
@@ -42,15 +42,13 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
         <TabsTrigger value="infrastructure">Infrastructure</TabsTrigger>
         <TabsTrigger value="integrations">Integrations</TabsTrigger>
         <TabsTrigger value="developer">Developer</TabsTrigger>
-        <TabsTrigger value="danger-zone" data-testid="settings-tab-danger-zone">
-          Danger Zone
-        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="general">
         <div className="max-w-2xl space-y-6 mt-6">
           <WorkspaceSettings />
           <WorkspaceMembers canAdmin />
+          {isOwner && <DeleteWorkspace workspaceSlug={workspaceSlug} workspaceName={workspaceName} />}
         </div>
       </TabsContent>
 
@@ -76,11 +74,6 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
         </div>
       </TabsContent>
 
-      <TabsContent value="danger-zone">
-        <div className="max-w-2xl space-y-6 mt-6">
-          {isOwner && <DeleteWorkspace workspaceSlug={workspaceSlug} workspaceName={workspaceName} />}
-        </div>
-      </TabsContent>
     </Tabs>
   );
 }
