@@ -7,6 +7,13 @@ import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
+interface AttachmentRequest {
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 /**
  * GET /api/features/[featureId]/chat
  * Load existing chat messages for a feature
@@ -88,9 +95,9 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] as AttachmentRequest[] } = body;
 
-    if (!message) {
+    if (!message && attachments.length === 0) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
@@ -104,6 +111,7 @@ export async function POST(
       replyId,
       history: bodyHistory,
       isPrototype,
+      attachments,
     });
 
     const clientMessage = {
