@@ -142,6 +142,8 @@ describe("GitHub Repository Branches API Integration Tests", () => {
 
         expect(data.branches).toHaveLength(3);
         expect(data.total_count).toBe(3);
+        expect(data.current_page).toBe(1);
+        expect(data.per_page).toBe(100);
         expect(data.branches[0]).toMatchObject({
           name: "main",
           sha: "abc123",
@@ -161,6 +163,7 @@ describe("GitHub Repository Branches API Integration Tests", () => {
             },
             params: {
               per_page: 100,
+              page: 1,
             },
           }
         );
@@ -663,6 +666,7 @@ describe("GitHub Repository Branches API Integration Tests", () => {
           expect.objectContaining({
             params: {
               per_page: 100,
+              page: 1,
             },
           })
         );
@@ -693,6 +697,72 @@ describe("GitHub Repository Branches API Integration Tests", () => {
 
         expect(data.branches).toHaveLength(100);
         expect(data.total_count).toBe(100);
+      });
+
+      test("should forward explicit page and per_page params to GitHub API", async () => {
+        const { testUser } = await createTestUserWithGitHubCreds();
+
+        const mockBranches = Array.from({ length: 25 }, (_, i) => ({
+          name: `branch-${i + 1}`,
+          commit: { sha: `sha${i + 1}`, url: "https://..." },
+        }));
+
+        vi.mocked(axios.get).mockResolvedValue(
+          createMockAxiosResponse(mockBranches)
+        );
+
+        const request = createAuthenticatedGetRequest(
+          "http://localhost:3000/api/github/repository/branches",
+          testUser,
+          {
+            repoUrl: testRepositoryUrls.https,
+            page: "2",
+            per_page: "25",
+          }
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response);
+
+        expect(data.current_page).toBe(2);
+        expect(data.per_page).toBe(25);
+        expect(data.branches).toHaveLength(25);
+
+        expect(axios.get).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            params: { per_page: 25, page: 2 },
+          })
+        );
+      });
+
+      test("should fall back to defaults for invalid page and per_page params", async () => {
+        const { testUser } = await createTestUserWithGitHubCreds();
+
+        vi.mocked(axios.get).mockResolvedValue(createMockAxiosResponse([]));
+
+        const request = createAuthenticatedGetRequest(
+          "http://localhost:3000/api/github/repository/branches",
+          testUser,
+          {
+            repoUrl: testRepositoryUrls.https,
+            page: "abc",
+            per_page: "xyz",
+          }
+        );
+
+        const response = await GET(request);
+        const data = await expectSuccess(response);
+
+        expect(data.current_page).toBe(1);
+        expect(data.per_page).toBe(100);
+
+        expect(axios.get).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            params: { per_page: 100, page: 1 },
+          })
+        );
       });
     });
   });
