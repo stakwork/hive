@@ -379,6 +379,47 @@ async function getBoundTextElement(name: string) {
   return textEl;
 }
 
+describe("AI element tagging (customData.source === 'ai')", () => {
+  test("all elements from a single component carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "c1", name: "Service A", type: "service" }],
+      connections: [],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+
+  test("arrow and label elements from connections carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Client", type: "client" },
+        { id: "c2", name: "Service", type: "service" },
+      ],
+      connections: [{ from: "c1", to: "c2", label: "REST" }],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+
+  test("diamond shape component elements carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "d1", name: "Decision", type: "gateway", shape: "diamond" }],
+      connections: [],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+});
+
 describe("createComponentElement text height", () => {
   test("short label (API) produces text element with height === SINGLE_LINE_HEIGHT", async () => {
     const textEl = await getBoundTextElement("API");

@@ -94,6 +94,7 @@ interface ExcalidrawElement {
   startArrowhead?: string | null;
   endArrowhead?: string | null;
   elbowed?: boolean;
+  customData?: Record<string, unknown>;
 }
 
 interface LayoutedComponent extends ParsedComponent {
@@ -997,6 +998,7 @@ function createComponentElement(component: LayoutedComponent, frameId?: string |
     updated: timestamp,
     link: null,
     locked: false,
+    customData: { source: "ai" },
   };
 
   const text: ExcalidrawElement = {
@@ -1034,6 +1036,7 @@ function createComponentElement(component: LayoutedComponent, frameId?: string |
     originalText: component.name,
     autoResize: true,
     lineHeight: 1.25,
+    customData: { source: "ai" },
   };
 
   return [shapeElement, text];
@@ -1089,6 +1092,7 @@ function createConnectionElement(connection: LayoutedConnection, sharp = false):
     startArrowhead: null,
     endArrowhead: "arrow",
     elbowed: false,
+    customData: { source: "ai" },
   };
 
   const elements: ExcalidrawElement[] = [arrow];
@@ -1133,6 +1137,7 @@ function createConnectionElement(connection: LayoutedConnection, sharp = false):
       originalText: connection.label,
       autoResize: true,
       lineHeight: 1.25,
+      customData: { source: "ai" },
     };
 
     elements.push(label);
