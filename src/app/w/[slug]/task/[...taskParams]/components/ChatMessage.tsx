@@ -106,7 +106,6 @@ function AnsweredClarifyingQuestions({
 }
 
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -128,19 +127,15 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
-            className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
+            className={`group px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-md"
                 : "bg-background text-foreground rounded-bl-md border"
             }`}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
@@ -168,7 +163,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
 
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (
-              <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
+              <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
             )}
           </div>
         )}
