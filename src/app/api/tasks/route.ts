@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const hasPod = searchParams.get("hasPod") || undefined;
     const priority = searchParams.get("priority") || undefined;
+    const createdById = searchParams.get("createdById") || undefined;
     const showAllStatuses = searchParams.get("showAllStatuses") === "true";
     const sortBy = searchParams.get("sortBy") || "updatedAt";
     const sortOrder = searchParams.get("sortOrder") || "desc";
@@ -195,6 +196,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Add createdById filter if provided
+    if (createdById) {
+      whereClause.createdById = createdById;
+    }
+
     // Add search filter if provided
     if (search && search.trim()) {
       const existingOR = whereClause.OR;
@@ -258,6 +264,8 @@ export async function GET(request: NextRequest) {
           deploymentStatus: true,
           deployedToStagingAt: true,
           deployedToProductionAt: true,
+          createdById: true,
+          updatedById: true,
           createdAt: true,
           updatedAt: true,
           feature: {
