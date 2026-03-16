@@ -348,10 +348,10 @@ describe("POST /api/chat/message Integration Tests", () => {
   });
 
   describe("Error Handling Tests", () => {
-    test("should handle Stakwork service failure", async () => {
+    test("should handle Stakwork service failure — leave workflowStatus unchanged", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      // Mock failed Stakwork service call
+      // Mock failed Stakwork service call (non-2xx)
       mockFetch.mockResolvedValueOnce({
         ok: false,
         statusText: "Internal Server Error",
@@ -370,12 +370,12 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(response.status).toBe(201); // Still creates chat message
       expect(data.success).toBe(true);
 
-      // Verify task workflow status was set to FAILED
+      // Verify task workflow status was NOT changed (remains PENDING, the initial value)
       const updatedTask = await db.task.findUnique({
         where: { id: testTask.id },
       });
 
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.PENDING);
     });
 
     test("should handle mock service failure gracefully", async () => {
