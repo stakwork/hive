@@ -324,7 +324,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string) => {
+    async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -348,7 +348,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, sourceWebsocketID: getPusherClient().connection.socket_id }),
+          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id }),
         });
 
         if (res.ok) {

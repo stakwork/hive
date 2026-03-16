@@ -561,6 +561,24 @@ export async function createDiagramStakworkRun(input: {
 const MAX_DIAGRAM_VERSIONS = 3;
 
 /**
+ * Merge existing whiteboard elements with newly AI-generated ones.
+ * - Preserves all user-created elements (those WITHOUT customData.source === "ai")
+ * - Replaces all previously AI-generated elements (those WITH customData.source === "ai")
+ *   with the new aiGenerated set
+ */
+export function mergeWhiteboardElements(
+  existing: unknown[],
+  aiGenerated: unknown[]
+): unknown[] {
+  const userElements = existing.filter(
+    (el) =>
+      (el as Record<string, unknown> & { customData?: { source?: string } })
+        .customData?.source !== "ai"
+  );
+  return [...userElements, ...aiGenerated];
+}
+
+/**
  * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
  * Skipped when the whiteboard has no existing elements (first-time creation).
  * Prunes oldest versions so the total stays at MAX_DIAGRAM_VERSIONS.
@@ -861,19 +879,24 @@ export async function processStakworkRunWebhook(
           select: { title: true },
         });
 
-        // Snapshot existing whiteboard before AI overwrites it
+        // Snapshot existing whiteboard before AI overwrites it, and fetch existing elements for merge
         const existingByFeature = await db.whiteboard.findUnique({
           where: { featureId: feature_id },
-          select: { id: true },
+          select: { id: true, elements: true },
         });
         if (existingByFeature) {
           await snapshotWhiteboardBeforeAiUpdate(existingByFeature.id);
         }
 
+        const existingFeatureElements = (existingByFeature?.elements as unknown[]) ?? [];
+
         await db.whiteboard.upsert({
           where: { featureId: feature_id },
           update: {
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            elements: mergeWhiteboardElements(
+              existingFeatureElements,
+              layoutData.elements
+            ) as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
@@ -896,10 +919,19 @@ export async function processStakworkRunWebhook(
         // Standalone path: whiteboard already exists, just update elements
         await snapshotWhiteboardBeforeAiUpdate(whiteboard_id);
 
+        // Fetch existing elements before overwriting so we can preserve user content
+        const existingWhiteboard = await db.whiteboard.findUnique({
+          where: { id: whiteboard_id },
+          select: { elements: true },
+        });
+
         await db.whiteboard.update({
           where: { id: whiteboard_id },
           data: {
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            elements: mergeWhiteboardElements(
+              (existingWhiteboard?.elements as unknown[]) ?? [],
+              layoutData.elements
+            ) as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
