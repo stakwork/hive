@@ -866,4 +866,111 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
       }
     });
   });
+
+  describe("Creator Filter (createdById)", () => {
+    test("returns only tasks created by the specified user", async () => {
+      const ownerUser = await createTestUser({ name: "Owner User" });
+      const otherUser = await createTestUser({ name: "Other User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
+        title: "Owner Task",
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+      });
+      // Create a task owned by otherUser but in the same workspace
+      await db.task.create({
+        data: {
+          id: generateUniqueId("task"),
+          title: "Other User Task",
+          description: "Test",
+          workspaceId: testWorkspace.id,
+          createdById: otherUser.id,
+          updatedById: otherUser.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.PENDING,
+        },
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&createdById=${ownerUser.id}&limit=100`,
+          ownerUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data.length).toBeGreaterThanOrEqual(1);
+        for (const task of data.data) {
+          expect(task.createdById).toBe(ownerUser.id);
+        }
+        const titles = data.data.map((t: { title: string }) => t.title);
+        expect(titles).toContain("Owner Task");
+        expect(titles).not.toContain("Other User Task");
+      } finally {
+        await cleanup([testWorkspace.id], [ownerUser.id, otherUser.id]);
+      }
+    });
+
+    test("returns all tasks when createdById is omitted", async () => {
+      const ownerUser = await createTestUser({ name: "Owner User" });
+      const otherUser = await createTestUser({ name: "Other User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
+        title: "Owner Task",
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+      });
+      await db.task.create({
+        data: {
+          id: generateUniqueId("task"),
+          title: "Other User Task",
+          description: "Test",
+          workspaceId: testWorkspace.id,
+          createdById: otherUser.id,
+          updatedById: otherUser.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.PENDING,
+        },
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&limit=100`,
+          ownerUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        const titles = data.data.map((t: { title: string }) => t.title);
+        expect(titles).toContain("Owner Task");
+        expect(titles).toContain("Other User Task");
+      } finally {
+        await cleanup([testWorkspace.id], [ownerUser.id, otherUser.id]);
+      }
+    });
+
+    test("returns empty array when no tasks match the specified creator", async () => {
+      const ownerUser = await createTestUser({ name: "Owner User" });
+      const otherUser = await createTestUser({ name: "Other User" });
+      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+
+      await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
+        title: "Owner Task",
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+      });
+
+      try {
+        const request = createAuthenticatedGetRequest(
+          `/api/tasks?workspaceId=${testWorkspace.id}&createdById=${otherUser.id}&limit=100`,
+          ownerUser
+        );
+        const response = await GET(request);
+        const data = await expectSuccess(response, 200);
+
+        expect(data.data).toHaveLength(0);
+      } finally {
+        await cleanup([testWorkspace.id], [ownerUser.id, otherUser.id]);
+      }
+    });
+  });
 });
