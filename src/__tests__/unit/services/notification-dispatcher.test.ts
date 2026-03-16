@@ -32,6 +32,7 @@ let triggerUpdate: ReturnType<typeof vi.fn>;
 let taskFindUnique: ReturnType<typeof vi.fn>;
 let featureFindUnique: ReturnType<typeof vi.fn>;
 let queryRaw: ReturnType<typeof vi.fn>;
+let transaction: ReturnType<typeof vi.fn>;
 
 // Base record for an active task-linked TASK_ASSIGNED notification
 function makeRecord(overrides: Partial<Record<string, unknown>> = {}) {
@@ -62,7 +63,11 @@ describe("dispatchPendingNotifications", () => {
     featureFindUnique = vi.fn();
     queryRaw = vi.fn();
 
+    // No longer used — kept for type compatibility; code now calls db.$queryRaw directly
+    transaction = vi.fn();
+
     Object.assign(db, {
+      $transaction: transaction,
       $queryRaw: queryRaw,
       notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
       task: { findUnique: taskFindUnique },

@@ -393,47 +393,72 @@ describe("callStakworkAPI", () => {
   });
 
   describe("Response Parsing", () => {
-    test("returns raw JSON response on success", async () => {
-      const expectedResponse = {
-        success: true,
-        data: {
-          project_id: 54321,
-          status: "created",
-        },
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => expectedResponse,
-      } as any);
+    test("returns projectId when Stakwork responds HTTP 200 + success: true + project_id", async () => {
+      mockFetch.mockResolvedValueOnce(createSuccessResponse(54321) as any);
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual(expectedResponse);
+      expect(result).toHaveProperty("projectId", 54321);
+      expect(result).toHaveProperty("data");
+      expect(result).not.toHaveProperty("error");
     });
 
-    test("returns success object with project_id", async () => {
+    test("returns projectId from data.project_id", async () => {
       mockFetch.mockResolvedValueOnce(createSuccessResponse(99999) as any);
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toHaveProperty("success", true);
+      expect(result).toHaveProperty("projectId", 99999);
       expect(result).toHaveProperty("data.project_id", 99999);
+    });
+
+    test("returns no projectId when Stakwork responds HTTP 200 + success: true but no project_id", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as any);
+
+      const result = await callStakworkAPI(createTestParams());
+
+      expect(result.projectId).toBeUndefined();
+      expect(result).not.toHaveProperty("error");
+    });
+
+    test("returns no projectId when Stakwork responds HTTP 200 + success: false", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: false, data: null }),
+      } as any);
+
+      const result = await callStakworkAPI(createTestParams());
+
+      expect(result.projectId).toBeUndefined();
+    });
+
+    test("returns data alongside projectId", async () => {
+      const responseData = { project_id: 54321, status: "created" };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: responseData }),
+      } as any);
+
+      const result = await callStakworkAPI(createTestParams());
+
+      expect(result).toHaveProperty("projectId", 54321);
+      expect(result).toHaveProperty("data", responseData);
     });
   });
 
   describe("Error Handling", () => {
-    test("returns error object when response is not ok", async () => {
+    test("returns error (no projectId) when response is not ok", async () => {
       mockFetch.mockResolvedValueOnce(
         createErrorResponse("Bad Request") as any
       );
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Bad Request",
-      });
+      expect(result).toEqual({ error: "Bad Request" });
+      expect(result.projectId).toBeUndefined();
     });
 
     test("logs error message when API call fails", async () => {
@@ -452,42 +477,36 @@ describe("callStakworkAPI", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    test("handles 404 Not Found responses", async () => {
+    test("handles 404 Not Found responses — returns error, no projectId", async () => {
       mockFetch.mockResolvedValueOnce(createErrorResponse("Not Found") as any);
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Not Found",
-      });
+      expect(result).toEqual({ error: "Not Found" });
+      expect(result.projectId).toBeUndefined();
     });
 
-    test("handles 500 Internal Server Error responses", async () => {
+    test("handles 500 Internal Server Error responses — returns error, no projectId", async () => {
       mockFetch.mockResolvedValueOnce(
         createErrorResponse("Internal Server Error") as any
       );
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Internal Server Error",
-      });
+      expect(result).toEqual({ error: "Internal Server Error" });
+      expect(result.projectId).toBeUndefined();
     });
 
-    test("handles network errors gracefully", async () => {
+    test("handles network errors gracefully — returns error, no projectId", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Error: Network error",
-      });
+      expect(result).toEqual({ error: "Error: Network error" });
+      expect(result.projectId).toBeUndefined();
     });
 
-    test("handles JSON parsing errors", async () => {
+    test("handles JSON parsing errors — returns error, no projectId", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => {
@@ -497,21 +516,17 @@ describe("callStakworkAPI", () => {
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Error: Invalid JSON",
-      });
+      expect(result).toEqual({ error: "Error: Invalid JSON" });
+      expect(result.projectId).toBeUndefined();
     });
 
-    test("handles timeout errors", async () => {
+    test("handles timeout errors — returns error, no projectId", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Request timeout"));
 
       const result = await callStakworkAPI(createTestParams());
 
-      expect(result).toEqual({
-        success: false,
-        error: "Error: Request timeout",
-      });
+      expect(result).toEqual({ error: "Error: Request timeout" });
+      expect(result.projectId).toBeUndefined();
     });
   });
 

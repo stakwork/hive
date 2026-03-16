@@ -184,18 +184,27 @@ jobs:
           fi
 
           # Verify actual DB connectivity before proceeding
+          # Neon requires sslmode=require; append if not already present
+          PSQL_URI="$CONNECTION_URI"
+          if [[ "$PSQL_URI" != *"sslmode="* ]]; then
+            if [[ "$PSQL_URI" == *"?"* ]]; then
+              PSQL_URI="${PSQL_URI}&sslmode=require"
+            else
+              PSQL_URI="${PSQL_URI}?sslmode=require"
+            fi
+          fi
           echo "Verifying database connectivity..."
-          for i in {1..20}; do
-            if psql "$CONNECTION_URI" -c "SELECT 1;" > /dev/null 2>&1; then
+          for i in {1..30}; do
+            if psql "$PSQL_URI" -c "SELECT 1;" > /dev/null 2>&1; then
               echo "✅ Database connection verified"
               break
             fi
-            if [ $i -eq 20 ]; then
-              echo "❌ Database connection failed after 20 attempts"
+            if [ $i -eq 30 ]; then
+              echo "❌ Database connection failed after 30 attempts"
               exit 1
             fi
             echo "Waiting for database connectivity... ($i)"
-            sleep 5
+            sleep 10
           done
 
           # Pass URI to next steps (delimiter format for special chars in password)
@@ -230,79 +239,49 @@ jobs:
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
-          
-          # Check if the migration is in a failed state
-          MIGRATION_STATUS=$(npx prisma migrate status 2>&1 || true)
-          
-          if echo "$MIGRATION_STATUS" | grep -q "20260301051356_add_voice_signature_to_user"; then
-            echo "Found voice_signature migration, checking if it needs resolution..."
-            
-            # If the column already exists, mark the migration as applied
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260301051356_add_voice_signature_to_user || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260301051356_add_voice_signature_to_user || echo "Could not mark as rolled back"
-            fi
-          else
-            echo "Migration not in failed state, proceeding normally"
-          fi
 
-          if echo "$MIGRATION_STATUS" | grep -q "20260220101159_add_repository_id_to_janitor_run"; then
-            echo "Found add_repository_id_to_janitor_run migration, checking if it needs resolution..."
-            
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_runs' AND column_name='repository_id';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260220101159_add_repository_id_to_janitor_run || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260220101159_add_repository_id_to_janitor_run || echo "Could not mark as rolled back"
-            fi
-          fi
+          # Helper: resolve a migration based on whether its DDL column/table already exists
+          resolve_migration() {
+            local MIGRATION_NAME="$1"
+            local CHECK_QUERY="$2"
 
-          if echo "$MIGRATION_STATUS" | grep -q "20260227180738_add_feature_id_to_screenshots"; then
-            echo "Found add_feature_id_to_screenshots migration, checking if it needs resolution..."
-            
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as applied"
-            else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260227180738_add_feature_id_to_screenshots || echo "Could not mark as rolled back"
-            fi
-          fi
+            # Check if this migration is recorded as failed in _prisma_migrations
+            FAILED=$(psql "$DATABASE_URL" -tAc \
+              "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME}' AND finished_at IS NULL AND applied_steps_count > 0;" 2>/dev/null || echo "0")
+            FAILED=$(echo "$FAILED" | tr -d '[:space:]')
 
-          if echo "$MIGRATION_STATUS" | grep -q "20260310203318_add_ios_device_token"; then
-            echo "Found add_ios_device_token migration, checking if it needs resolution..."
-            
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='ios_device_token';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260310203318_add_ios_device_token || echo "Could not mark as applied"
+            if [ "$FAILED" = "1" ]; then
+              echo "Migration ${MIGRATION_NAME} is in failed state, resolving..."
+              OBJECT_EXISTS=$(psql "$DATABASE_URL" -tAc "${CHECK_QUERY}" 2>/dev/null | tr -d '[:space:]')
+              if [ "$OBJECT_EXISTS" = "1" ]; then
+                echo "  DDL already applied — marking as applied"
+                npx prisma migrate resolve --applied "${MIGRATION_NAME}" || echo "  Could not mark as applied"
+              else
+                echo "  DDL not applied — marking as rolled-back for retry"
+                npx prisma migrate resolve --rolled-back "${MIGRATION_NAME}" || echo "  Could not mark as rolled-back"
+              fi
             else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260310203318_add_ios_device_token || echo "Could not mark as rolled back"
+              echo "Migration ${MIGRATION_NAME} is not in a failed state, skipping"
             fi
-          fi
+          }
+
+          resolve_migration \
+            "20260301051356_add_voice_signature_to_user" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';"
+
+          resolve_migration \
+            "20260220101159_add_repository_id_to_janitor_run" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_runs' AND column_name='repository_id';"
+
+          resolve_migration \
+            "20260227180738_add_feature_id_to_screenshots" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';"
 
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
-          # Unconditionally resolve any known previously-failed migrations before deploying.
-          # This is safe: --applied is a no-op if already applied; --rolled-back allows a clean retry.
-          npx prisma migrate resolve --applied 20260310203318_add_ios_device_token 2>/dev/null || \
-            npx prisma migrate resolve --rolled-back 20260310203318_add_ios_device_token 2>/dev/null || \
-            echo "Migration 20260310203318_add_ios_device_token already resolved or not present"
           npx prisma migrate deploy
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
