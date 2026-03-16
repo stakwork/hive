@@ -148,6 +148,7 @@ export class WorkspaceSettingsPage {
   }
 
   async initiateDelete(): Promise<void> {
+    await this.navigateToDangerZone();
     await this.page.locator(selectors.workspaceDeletion.deleteButton).click();
     await expect(this.page.locator(selectors.workspaceDeletion.dialog)).toBeVisible({ timeout: 10000 });
   }
