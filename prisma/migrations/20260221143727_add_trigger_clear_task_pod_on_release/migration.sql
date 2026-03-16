@@ -13,6 +13,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_clear_task_pod_on_release ON pods;
+
 CREATE TRIGGER trg_clear_task_pod_on_release
   BEFORE UPDATE ON pods
   FOR EACH ROW
