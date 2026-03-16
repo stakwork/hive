@@ -47,7 +47,7 @@ vi.mock("@/services/excalidraw-layout", async () => {
   return {
     ...actual,
     relayoutDiagram: vi.fn().mockResolvedValue({
-      elements: [{ id: "layouted-el", type: "rectangle" }],
+      elements: [{ id: "layouted-el", type: "rectangle", customData: { source: "ai" } }],
       appState: { viewBackgroundColor: "#ffffff" },
     }),
     sanitiseDiagram: vi.fn((d: unknown) => d),
@@ -358,6 +358,74 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
       expect(versions).toHaveLength(3);
       expect(versions.map((v) => v.label)).not.toContain("v1");
       expect(versions.at(-1)!.label).toMatch(/^Before AI diagram/);
+    });
+
+    it("merges: preserves user elements, replaces old AI elements, adds new AI elements", async () => {
+      const mixedElements = [
+        { id: "user-el", type: "ellipse" },
+        { id: "old-ai-el", type: "rectangle", customData: { source: "ai" } },
+      ];
+      const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id, mixedElements);
+      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+
+      await processStakworkRunWebhook(makeWebhookPayload(projectId), {
+        type: "DIAGRAM_GENERATION",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+      });
+
+      const updated = await db.whiteboard.findUnique({
+        where: { id: whiteboard.id },
+        select: { elements: true },
+      });
+      const elements = updated!.elements as Array<Record<string, unknown>>;
+
+      const ids = elements.map((e) => e.id);
+      // User element must be preserved
+      expect(ids).toContain("user-el");
+      // Old AI element must be gone
+      expect(ids).not.toContain("old-ai-el");
+      // New AI element (from mock) must be present
+      expect(ids).toContain("layouted-el");
+      // New AI element must carry the tag
+      const layoutedEl = elements.find((e) => e.id === "layouted-el");
+      expect(layoutedEl?.customData).toEqual({ source: "ai" });
+    });
+  });
+
+  // ── Merge behaviour — standalone path ──────────────────────────────────────
+
+  describe("merge behaviour — standalone path (whiteboard_id)", () => {
+    it("merges: preserves user elements, replaces old AI elements, adds new AI elements", async () => {
+      const mixedElements = [
+        { id: "user-el", type: "ellipse" },
+        { id: "old-ai-el", type: "rectangle", customData: { source: "ai" } },
+      ];
+      const whiteboard = await createWhiteboardWithElements(workspace.id, mixedElements);
+      const { projectId } = await createDiagramRun(workspace.id, { whiteboardId: whiteboard.id });
+
+      await processStakworkRunWebhook(makeWebhookPayload(projectId), {
+        type: "DIAGRAM_GENERATION",
+        workspace_id: workspace.id,
+        whiteboard_id: whiteboard.id,
+      });
+
+      const updated = await db.whiteboard.findUnique({
+        where: { id: whiteboard.id },
+        select: { elements: true },
+      });
+      const elements = updated!.elements as Array<Record<string, unknown>>;
+
+      const ids = elements.map((e) => e.id);
+      // User element must be preserved
+      expect(ids).toContain("user-el");
+      // Old AI element must be gone
+      expect(ids).not.toContain("old-ai-el");
+      // New AI element (from mock) must be present
+      expect(ids).toContain("layouted-el");
+      // New AI element must carry the tag
+      const layoutedEl = elements.find((e) => e.id === "layouted-el");
+      expect(layoutedEl?.customData).toEqual({ source: "ai" });
     });
   });
 });
