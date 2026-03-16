@@ -6,6 +6,7 @@ import {
   computeWordWrapLineCount,
   computeLayeredDirection,
   relayoutDiagram,
+  extractParsedDiagram,
   FONT_SIZE,
   LINE_HEIGHT,
   MIN_WIDTH,
@@ -417,5 +418,254 @@ describe("createComponentElement text height", () => {
     expect(textEl).toBeDefined();
     expect(textEl!.height).toBeGreaterThan(SINGLE_LINE_HEIGHT);
     expect(textEl!.height).toBeGreaterThanOrEqual(Math.ceil(2 * FONT_SIZE * LINE_HEIGHT));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layer support tests
+// ---------------------------------------------------------------------------
+
+describe("sanitiseDiagram — layer support", () => {
+  test("passes layers through unchanged when all layerNames are declared", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+        { id: "c2", name: "API Server", type: "service", layerName: "Backend" },
+      ],
+      connections: [{ from: "c1", to: "c2", label: "REST" }],
+      layers: [
+        { id: "l1", name: "Frontend", order: 0 },
+        { id: "l2", name: "Backend", order: 1 },
+      ],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.layers).toHaveLength(2);
+    expect(result.layers![0].name).toBe("Frontend");
+    expect(result.layers![1].name).toBe("Backend");
+  });
+
+  test("auto-registers an undeclared layerName into layers[]", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+        { id: "c2", name: "Postgres", type: "database", layerName: "Data" }, // not in layers
+      ],
+      connections: [],
+      layers: [
+        { id: "l1", name: "Frontend", order: 0 },
+      ],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.layers).toBeDefined();
+    const names = result.layers!.map((l) => l.name);
+    expect(names).toContain("Frontend");
+    expect(names).toContain("Data");
+  });
+
+  test("builds layers[] from first-appearance order when diagram.layers is absent", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+        { id: "c2", name: "API Server", type: "service", layerName: "Backend" },
+        { id: "c3", name: "Postgres", type: "database", layerName: "Frontend" }, // duplicate layer
+      ],
+      connections: [],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.layers).toBeDefined();
+    // Only 2 distinct names, in first-appearance order
+    expect(result.layers!.map((l) => l.name)).toEqual(["Frontend", "Backend"]);
+  });
+
+  test("returns no layers when no component carries a layerName", () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Service A", type: "service" },
+        { id: "c2", name: "Service B", type: "service" },
+      ],
+      connections: [],
+    };
+
+    const result = sanitiseDiagram(diagram);
+
+    expect(result.layers).toBeUndefined();
+  });
+});
+
+describe("relayoutDiagram — layered (frame) mode", () => {
+  const twoLayerDiagram: ParsedDiagram = {
+    components: [
+      { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+      { id: "c2", name: "API Server", type: "service", layerName: "Backend" },
+      { id: "c3", name: "Worker", type: "worker", layerName: "Backend" },
+    ],
+    connections: [
+      { from: "c1", to: "c2", label: "REST" },
+      { from: "c2", to: "c3", label: "job" },
+    ],
+    layers: [
+      { id: "l1", name: "Frontend", order: 0 },
+      { id: "l2", name: "Backend", order: 1 },
+    ],
+  };
+
+  test("produces exactly 2 frame elements with correct names", async () => {
+    const result = await relayoutDiagram(twoLayerDiagram);
+    const frames = result.elements.filter((el) => (el as Record<string, unknown>).type === "frame");
+    expect(frames).toHaveLength(2);
+
+    const frameNames = frames.map((f) => (f as Record<string, unknown>).name as string);
+    expect(frameNames).toContain("Frontend");
+    expect(frameNames).toContain("Backend");
+  });
+
+  test("frame children (shape + text) appear before their frame element in the array", async () => {
+    const result = await relayoutDiagram(twoLayerDiagram);
+
+    for (const frame of result.elements.filter((el) => (el as Record<string, unknown>).type === "frame")) {
+      const frameId = (frame as Record<string, unknown>).id as string;
+      const frameIndex = result.elements.indexOf(frame);
+
+      // Every element that references this frameId must appear before it
+      const children = result.elements.filter(
+        (el) => (el as Record<string, unknown>).frameId === frameId
+      );
+      expect(children.length).toBeGreaterThan(0);
+      for (const child of children) {
+        const childIndex = result.elements.indexOf(child);
+        expect(childIndex).toBeLessThan(frameIndex);
+      }
+    }
+  });
+
+  test("shape and text elements within a layer carry the correct frameId", async () => {
+    const result = await relayoutDiagram(twoLayerDiagram);
+
+    const frames = result.elements.filter((el) => (el as Record<string, unknown>).type === "frame");
+    const frontendFrame = frames.find((f) => (f as Record<string, unknown>).name === "Frontend")!;
+    const backendFrame = frames.find((f) => (f as Record<string, unknown>).name === "Backend")!;
+
+    const frontendChildren = result.elements.filter(
+      (el) => (el as Record<string, unknown>).frameId === (frontendFrame as Record<string, unknown>).id
+    );
+    const backendChildren = result.elements.filter(
+      (el) => (el as Record<string, unknown>).frameId === (backendFrame as Record<string, unknown>).id
+    );
+
+    // Frontend has 1 component → 2 elements (shape + text)
+    expect(frontendChildren).toHaveLength(2);
+    // Backend has 2 components → 4 elements (2× shape + text)
+    expect(backendChildren).toHaveLength(4);
+  });
+
+  test("connection arrows are emitted last (after all frame/component elements)", async () => {
+    const result = await relayoutDiagram(twoLayerDiagram);
+
+    const lastFrameIndex = result.elements.reduce((max, el, i) =>
+      (el as Record<string, unknown>).type === "frame" ? i : max, -1
+    );
+    const firstArrowIndex = result.elements.findIndex(
+      (el) => (el as Record<string, unknown>).type === "arrow"
+    );
+
+    expect(firstArrowIndex).toBeGreaterThan(lastFrameIndex);
+  });
+
+  test("no-layer diagram → flat layout with no frame elements (regression)", async () => {
+    const flatDiagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Service A", type: "service" },
+        { id: "c2", name: "Service B", type: "service" },
+      ],
+      connections: [{ from: "c1", to: "c2", label: "HTTP" }],
+    };
+
+    const result = await relayoutDiagram(flatDiagram);
+
+    const frames = result.elements.filter((el) => (el as Record<string, unknown>).type === "frame");
+    expect(frames).toHaveLength(0);
+
+    // Should still have rectangle/text/arrow elements
+    const shapes = result.elements.filter((el) => (el as Record<string, unknown>).type === "rectangle");
+    expect(shapes).toHaveLength(2);
+  });
+});
+
+describe("extractParsedDiagram — layer round-trip", () => {
+  test("layerName round-trips correctly through relayoutDiagram → extractParsedDiagram", async () => {
+    const original: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+        { id: "c2", name: "API Server", type: "service", layerName: "Backend" },
+      ],
+      connections: [{ from: "c1", to: "c2", label: "REST" }],
+      layers: [
+        { id: "l1", name: "Frontend", order: 0 },
+        { id: "l2", name: "Backend", order: 1 },
+      ],
+    };
+
+    const layoutResult = await relayoutDiagram(original);
+    const extracted = extractParsedDiagram(
+      layoutResult.elements as unknown as Record<string, unknown>[]
+    );
+
+    expect(extracted).not.toBeNull();
+    expect(extracted!.components).toHaveLength(2);
+
+    const reactApp = extracted!.components.find((c) => c.name === "React App");
+    const apiServer = extracted!.components.find((c) => c.name === "API Server");
+
+    expect(reactApp?.layerName).toBe("Frontend");
+    expect(apiServer?.layerName).toBe("Backend");
+  });
+
+  test("layers[] is populated from first-appearance order in extracted diagram", async () => {
+    const original: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "React App", type: "client", layerName: "Frontend" },
+        { id: "c2", name: "API Server", type: "service", layerName: "Backend" },
+      ],
+      connections: [],
+      layers: [
+        { id: "l1", name: "Frontend", order: 0 },
+        { id: "l2", name: "Backend", order: 1 },
+      ],
+    };
+
+    const layoutResult = await relayoutDiagram(original);
+    const extracted = extractParsedDiagram(
+      layoutResult.elements as unknown as Record<string, unknown>[]
+    );
+
+    expect(extracted!.layers).toBeDefined();
+    expect(extracted!.layers!.length).toBe(2);
+    const names = extracted!.layers!.map((l) => l.name);
+    expect(names).toContain("Frontend");
+    expect(names).toContain("Backend");
+  });
+
+  test("no layers[] on extracted diagram when no frame elements present", async () => {
+    const flatDiagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Service A", type: "service" },
+      ],
+      connections: [],
+    };
+
+    const layoutResult = await relayoutDiagram(flatDiagram);
+    const extracted = extractParsedDiagram(
+      layoutResult.elements as unknown as Record<string, unknown>[]
+    );
+
+    expect(extracted).not.toBeNull();
+    expect(extracted!.layers).toBeUndefined();
+    expect(extracted!.components[0].layerName).toBeUndefined();
   });
 });

@@ -23,7 +23,8 @@ export interface ParsedComponent {
   name: string;
   type?: ComponentType | string | null;
   shape?: ComponentShape | null;
-  layer?: number | null;
+  layer?: number | null;        // existing — ELK priority hint
+  layerName?: string | null;    // NEW — visual frame grouping
   color?: string | null;
   backgroundColor?: string | null;
 }
@@ -38,6 +39,7 @@ export interface ParsedConnection {
 export interface ParsedDiagram {
   components: ParsedComponent[];
   connections: ParsedConnection[];
+  layers?: { id: string; name: string; order: number }[]; // NEW — explicit layer ordering
 }
 
 export interface ExcalidrawData {
@@ -53,6 +55,7 @@ export interface ExcalidrawData {
 interface ExcalidrawElement {
   id: string;
   type: string;
+  name?: string;                // used for frame elements
   x: number;
   y: number;
   width: number;
@@ -66,7 +69,7 @@ interface ExcalidrawElement {
   roughness: number;
   opacity: number;
   groupIds: string[];
-  frameId: null;
+  frameId: string | null;
   roundness: { type: number } | null;
   seed: number;
   version: number;
@@ -105,9 +108,20 @@ interface LayoutedConnection extends ParsedConnection {
   labelPosition: { x: number; y: number };
 }
 
+/** NEW — a positioned layer frame ready for Excalidraw output */
+interface LayoutedFrame {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface LayoutedDiagram {
   components: LayoutedComponent[];
   connections: LayoutedConnection[];
+  frames?: LayoutedFrame[];     // NEW — present when layerName grouping is used
 }
 
 interface Rect {
@@ -116,6 +130,12 @@ interface Rect {
   width: number;
   height: number;
 }
+
+// --- Frame layout constants ---
+
+const FRAME_PADDING = 40;
+const FRAME_LABEL_HEIGHT = 32;
+const FRAME_GAP = 80;
 
 // --- Helpers ---
 
@@ -267,6 +287,7 @@ const VALID_SHAPES: Set<ComponentShape> = new Set(["rounded-rect", "rect", "diam
  * - Removes components missing a required `id` or `name` field
  * - Coerces unrecognised `shape` values to `undefined` (defaults to rounded-rect)
  * - Removes connections whose `from` or `to` does not reference a valid component ID
+ * - Passes `layers` through, auto-registering any `layerName` values not yet declared
  */
 export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
   const cleanedComponents = diagram.components.filter((c) => {
@@ -293,7 +314,42 @@ export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
     return true;
   });
 
-  return { components: cleanedComponents, connections: cleanedConnections };
+  // --- Layer normalisation ---
+  // Collect all distinct layerName values from cleaned components (in first-appearance order)
+  const seenLayerNames = new Set<string>();
+  const layerNamesInOrder: string[] = [];
+  for (const c of cleanedComponents) {
+    if (c.layerName != null && !seenLayerNames.has(c.layerName)) {
+      seenLayerNames.add(c.layerName);
+      layerNamesInOrder.push(c.layerName);
+    }
+  }
+
+  let layers: { id: string; name: string; order: number }[] | undefined;
+
+  if (seenLayerNames.size > 0) {
+    // Start from the existing declared layers (if any), then auto-register missing names
+    const base: { id: string; name: string; order: number }[] = diagram.layers
+      ? diagram.layers.map((l) => ({ ...l }))
+      : [];
+
+    const declaredNames = new Set(base.map((l) => l.name));
+    let nextOrder = base.length > 0 ? Math.max(...base.map((l) => l.order)) + 1 : 0;
+
+    for (const name of layerNamesInOrder) {
+      if (!declaredNames.has(name)) {
+        base.push({ id: generateId(), name, order: nextOrder++ });
+        declaredNames.add(name);
+      }
+    }
+
+    layers = base;
+  } else if (diagram.layers && diagram.layers.length > 0) {
+    // No components use layerName, but pass through any declared layers anyway
+    layers = diagram.layers.map((l) => ({ ...l }));
+  }
+
+  return { components: cleanedComponents, connections: cleanedConnections, ...(layers ? { layers } : {}) };
 }
 
 // --- ELK layout ---
@@ -386,10 +442,14 @@ function getElkOptions(algorithm: LayoutAlgorithm, direction: "RIGHT" | "DOWN" =
   }
 }
 
-async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = "layered"): Promise<LayoutedDiagram> {
-  // Last-resort safety net: sanitise diagram for any caller that bypasses extractDiagramData
-  diagram = sanitiseDiagram(diagram);
-
+/**
+ * Run a single-pass ELK layout on a flat (sub-)diagram.
+ * Returns LayoutedComponent[] and LayoutedConnection[] with local coordinates.
+ */
+async function runFlatLayout(
+  diagram: ParsedDiagram,
+  algorithm: LayoutAlgorithm,
+): Promise<{ components: LayoutedComponent[]; connections: LayoutedConnection[] }> {
   const componentSizes = new Map<string, { width: number; height: number }>();
   for (const c of diagram.components) {
     componentSizes.set(c.id, computeComponentSize(c.name, c.shape));
@@ -398,17 +458,14 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
   const validConstraints = useLayerConstraints ? getValidLayerConstraints(diagram) : null;
 
-  // Determine layout direction for the layered algorithm
   const layeredDirection = algorithm === "layered"
     ? computeLayeredDirection(diagram)
     : "RIGHT";
   const outSide = layeredDirection === "DOWN" ? "SOUTH" : "EAST";
   const inSide  = layeredDirection === "DOWN" ? "NORTH" : "WEST";
 
-  // Build per-node port lists so multiple edges don't overlap.
-  // Each connection endpoint gets its own port on the node.
-  const outPorts = new Map<string, number>(); // nodeId → next outgoing port index
-  const inPorts = new Map<string, number>();  // nodeId → next incoming port index
+  const outPorts = new Map<string, number>();
+  const inPorts = new Map<string, number>();
 
   interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" | "SOUTH" | "NORTH" }
   const edgePorts: { sourcePort: PortInfo; targetPort: PortInfo }[] = [];
@@ -428,7 +485,6 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
     });
   }
 
-  // Collect all ports per node
   const nodePorts = new Map<string, { id: string; side: string }[]>();
   for (const ep of edgePorts) {
     if (!nodePorts.has(ep.sourcePort.nodeId)) nodePorts.set(ep.sourcePort.nodeId, []);
@@ -448,7 +504,6 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
       if (useLayerConstraints && validConstraints) {
         const constraint = validConstraints.get(c.id) || "";
-        // Use explicit layer (inverted: lower layer number = higher priority) or fall back to type-based priority
         const priority = c.layer != null
           ? Math.max(0, 100 - c.layer * 20)
           : (c.type && LAYER_PRIORITY[c.type]) ?? 50;
@@ -460,9 +515,7 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
       const ports = (nodePorts.get(c.id) || []).map((p) => ({
         id: p.id,
-        layoutOptions: {
-          "elk.port.side": p.side,
-        },
+        layoutOptions: { "elk.port.side": p.side },
       }));
 
       return {
@@ -522,11 +575,255 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
     return { ...conn, routePoints, labelPosition };
   });
 
-  // Add curve offsets for edges sharing a source or target node.
-  // Without this, multiple straight-line edges from the same node overlap.
-  separateOverlappingEdges(layoutedConnections);
-
   return { components: layoutedComponents, connections: layoutedConnections };
+}
+
+/**
+ * applyLayout — two-pass strategy when components carry `layerName`.
+ *
+ * Workflow JSON contract (layered mode):
+ * {
+ *   "components": [
+ *     { "id": "c1", "name": "React App",  "type": "client",   "layerName": "Frontend" },
+ *     { "id": "c2", "name": "API Server", "type": "service",  "layerName": "Backend"  },
+ *     { "id": "c3", "name": "Postgres",   "type": "database", "layerName": "Data"     }
+ *   ],
+ *   "connections": [
+ *     { "from": "c1", "to": "c2", "label": "REST" },
+ *     { "from": "c2", "to": "c3", "label": "SQL"  }
+ *   ],
+ *   "layers": [
+ *     { "id": "l1", "name": "Frontend", "order": 0 },
+ *     { "id": "l2", "name": "Backend",  "order": 1 },
+ *     { "id": "l3", "name": "Data",     "order": 2 }
+ *   ]
+ * }
+ * `layers[]` is optional — if omitted, order is inferred from first appearance in `components[]`.
+ */
+async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = "layered"): Promise<LayoutedDiagram> {
+  // Last-resort safety net: sanitise diagram for any caller that bypasses extractDiagramData
+  diagram = sanitiseDiagram(diagram);
+
+  const hasLayers = diagram.components.some((c) => c.layerName != null);
+
+  // ----------------------------------------------------------------
+  // Fast path — no layerName: run existing single-pass flat ELK layout
+  // ----------------------------------------------------------------
+  if (!hasLayers) {
+    const { components, connections } = await runFlatLayout(diagram, algorithm);
+    separateOverlappingEdges(connections);
+    return { components, connections };
+  }
+
+  // ----------------------------------------------------------------
+  // Two-pass layered layout
+  // ----------------------------------------------------------------
+
+  // Determine ordered list of layer names
+  const orderedLayers: { id: string; name: string; order: number }[] = diagram.layers
+    ? [...diagram.layers].sort((a, b) => a.order - b.order)
+    : [];
+
+  // Ensure every component's layerName is represented (in first-appearance order as fallback)
+  const seenNames = new Set(orderedLayers.map((l) => l.name));
+  for (const c of diagram.components) {
+    if (c.layerName != null && !seenNames.has(c.layerName)) {
+      orderedLayers.push({ id: generateId(), name: c.layerName, order: orderedLayers.length });
+      seenNames.add(c.layerName);
+    }
+  }
+
+  // Components without a layerName are treated as a virtual "unlayered" group
+  // (appended last so they don't disturb declared layer ordering)
+  const UNLAYERED_KEY = "__unlayered__";
+  const hasUnlayered = diagram.components.some((c) => c.layerName == null);
+  if (hasUnlayered) {
+    orderedLayers.push({ id: generateId(), name: UNLAYERED_KEY, order: orderedLayers.length });
+  }
+
+  // Group components by effective layer name
+  const componentsByLayer = new Map<string, ParsedComponent[]>();
+  for (const layer of orderedLayers) {
+    componentsByLayer.set(layer.name, []);
+  }
+  for (const c of diagram.components) {
+    const key = c.layerName ?? UNLAYERED_KEY;
+    componentsByLayer.get(key)?.push(c);
+  }
+
+  // Build a set for fast membership lookup: component id → its layerName
+  const compLayerMap = new Map<string, string>();
+  for (const c of diagram.components) {
+    compLayerMap.set(c.id, c.layerName ?? UNLAYERED_KEY);
+  }
+
+  // ----------------------------------------------------------------
+  // Pass 1 — per-layer sub-layout (local coordinates)
+  // ----------------------------------------------------------------
+  interface LayerLayout {
+    layerName: string;
+    layerId: string;
+    components: LayoutedComponent[];
+    connections: LayoutedConnection[];
+    minX: number; minY: number; maxX: number; maxY: number;
+  }
+
+  const layerLayouts: LayerLayout[] = [];
+
+  for (const layer of orderedLayers) {
+    const layerComponents = componentsByLayer.get(layer.name) ?? [];
+    if (layerComponents.length === 0) continue;
+
+    // Intra-layer connections only
+    const layerCompIds = new Set(layerComponents.map((c) => c.id));
+    const intraConnections = diagram.connections.filter(
+      (conn) => layerCompIds.has(conn.from) && layerCompIds.has(conn.to)
+    );
+
+    const subDiagram: ParsedDiagram = {
+      components: layerComponents,
+      connections: intraConnections,
+    };
+
+    const { components: lc, connections: lconn } = await runFlatLayout(subDiagram, algorithm);
+
+    // Compute bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of lc) {
+      if (c.x < minX) minX = c.x;
+      if (c.y < minY) minY = c.y;
+      if (c.x + c.width > maxX) maxX = c.x + c.width;
+      if (c.y + c.height > maxY) maxY = c.y + c.height;
+    }
+    // Fallback for single-node with zero-area bounding box
+    if (minX === Infinity) { minX = 0; minY = 0; maxX = 0; maxY = 0; }
+
+    layerLayouts.push({
+      layerName: layer.name,
+      layerId: layer.id,
+      components: lc,
+      connections: lconn,
+      minX, minY, maxX, maxY,
+    });
+  }
+
+  // ----------------------------------------------------------------
+  // Pass 2 — frame positioning
+  // ----------------------------------------------------------------
+  // Determine stacking direction from the cross-layer connection graph
+  // (treat each layer as a single node)
+  const layerNameToVirtualId = new Map(orderedLayers.map((l) => [l.name, l.id]));
+  const crossLayerConnections = diagram.connections.filter((conn) => {
+    const fromLayer = compLayerMap.get(conn.from);
+    const toLayer = compLayerMap.get(conn.to);
+    return fromLayer !== toLayer;
+  });
+
+  const virtualDiagram: ParsedDiagram = {
+    components: orderedLayers.map((l) => ({ id: l.id, name: l.name })),
+    connections: crossLayerConnections.map((conn) => ({
+      from: layerNameToVirtualId.get(compLayerMap.get(conn.from)!)!,
+      to: layerNameToVirtualId.get(compLayerMap.get(conn.to)!)!,
+      label: conn.label,
+    })),
+  };
+
+  const stackDirection = computeLayeredDirection(virtualDiagram);
+
+  // Position frames sequentially
+  const layoutedFrames: LayoutedFrame[] = [];
+  const frameByLayerName = new Map<string, LayoutedFrame>();
+  let cursor = 0;
+
+  for (const ll of layerLayouts) {
+    const contentWidth = ll.maxX - ll.minX;
+    const contentHeight = ll.maxY - ll.minY;
+    const frameWidth = contentWidth + FRAME_PADDING * 2;
+    const frameHeight = contentHeight + FRAME_PADDING * 2 + FRAME_LABEL_HEIGHT;
+
+    const frameX = stackDirection === "RIGHT" ? cursor : 0;
+    const frameY = stackDirection === "DOWN" ? cursor : 0;
+
+    const frame: LayoutedFrame = {
+      id: ll.layerId,
+      name: ll.layerName === UNLAYERED_KEY ? "Other" : ll.layerName,
+      x: frameX,
+      y: frameY,
+      width: frameWidth,
+      height: frameHeight,
+    };
+
+    layoutedFrames.push(frame);
+    frameByLayerName.set(ll.layerName, frame);
+
+    cursor += (stackDirection === "RIGHT" ? frameWidth : frameHeight) + FRAME_GAP;
+  }
+
+  // Translate each layer's component + intra-layer connection coordinates to absolute canvas position
+  const allComponents: LayoutedComponent[] = [];
+  const allConnections: LayoutedConnection[] = [];
+
+  for (const ll of layerLayouts) {
+    const frame = frameByLayerName.get(ll.layerName)!;
+    const offsetX = frame.x + FRAME_PADDING - ll.minX;
+    const offsetY = frame.y + FRAME_LABEL_HEIGHT + FRAME_PADDING - ll.minY;
+
+    for (const c of ll.components) {
+      allComponents.push({ ...c, x: c.x + offsetX, y: c.y + offsetY });
+    }
+
+    for (const conn of ll.connections) {
+      allConnections.push({
+        ...conn,
+        routePoints: conn.routePoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })),
+        labelPosition: {
+          x: conn.labelPosition.x + offsetX,
+          y: conn.labelPosition.y + offsetY,
+        },
+      });
+    }
+  }
+
+  // Build absolute component lookup for cross-layer routing
+  const absCompById = new Map<string, LayoutedComponent>();
+  for (const c of allComponents) {
+    absCompById.set(c.id, c);
+  }
+
+  // Route cross-layer connections as straight lines
+  const crossLayerLayouted: LayoutedConnection[] = crossLayerConnections.map((conn) => {
+    const fromComp = absCompById.get(conn.from);
+    const toComp = absCompById.get(conn.to);
+
+    if (!fromComp || !toComp) {
+      return { ...conn, routePoints: [], labelPosition: { x: 0, y: 0 } };
+    }
+
+    const fromCenterX = fromComp.x + fromComp.width / 2;
+    const fromCenterY = fromComp.y + fromComp.height / 2;
+    const toCenterX = toComp.x + toComp.width / 2;
+    const toCenterY = toComp.y + toComp.height / 2;
+
+    const routePoints: ElkPoint[] = [
+      { x: fromCenterX, y: fromCenterY },
+      { x: toCenterX, y: toCenterY },
+    ];
+    const labelPosition = {
+      x: (fromCenterX + toCenterX) / 2,
+      y: (fromCenterY + toCenterY) / 2,
+    };
+
+    return { ...conn, routePoints, labelPosition };
+  });
+
+  const combinedConnections = [...allConnections, ...crossLayerLayouted];
+  separateOverlappingEdges(combinedConnections);
+
+  return {
+    components: allComponents,
+    connections: combinedConnections,
+    frames: layoutedFrames,
+  };
 }
 
 /**
@@ -617,7 +914,38 @@ function getComponentColors(type: string): { backgroundColor: string; strokeColo
 
 // --- Element creation ---
 
-function createComponentElement(component: LayoutedComponent): ExcalidrawElement[] {
+function createFrameElement(frame: LayoutedFrame): ExcalidrawElement {
+  return {
+    id: frame.id,
+    type: "frame",
+    name: frame.name,
+    x: frame.x,
+    y: frame.y,
+    width: frame.width,
+    height: frame.height,
+    angle: 0,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 0,
+    opacity: 100,
+    groupIds: [],
+    frameId: null,
+    roundness: null,
+    seed: generateSeed(),
+    version: 1,
+    versionNonce: generateSeed(),
+    isDeleted: false,
+    boundElements: null,
+    updated: Date.now(),
+    link: null,
+    locked: false,
+  };
+}
+
+function createComponentElement(component: LayoutedComponent, frameId?: string | null): ExcalidrawElement[] {
   const elementId = generateId();
   const textId = generateId();
   const timestamp = Date.now();
@@ -655,7 +983,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     roughness: 0,
     opacity: 100,
     groupIds: [],
-    frameId: null,
+    frameId: frameId ?? null,
     roundness,
     seed: generateSeed(),
     version: 1,
@@ -683,7 +1011,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     roughness: 0,
     opacity: 100,
     groupIds: [],
-    frameId: null,
+    frameId: frameId ?? null,
     roundness: null,
     seed: generateSeed(),
     version: 1,
@@ -846,18 +1174,71 @@ function fixLabelCollisions(diagram: LayoutedDiagram): void {
 
 // --- Main conversion ---
 
+/**
+ * Convert a LayoutedDiagram to Excalidraw elements.
+ *
+ * When `diagram.frames` is present (layered mode):
+ * - For each frame: emit [...memberElements, frameElement] (children BEFORE frame per Excalidraw spec)
+ * - All connection elements are emitted last
+ */
 function convertToExcalidrawElements(diagram: LayoutedDiagram, sharp = false): ExcalidrawElement[] {
   const elements: ExcalidrawElement[] = [];
+  const connectionElements: ExcalidrawElement[] = [];
 
-  for (const component of diagram.components) {
-    elements.push(...createComponentElement(component));
+  if (diagram.frames && diagram.frames.length > 0) {
+    // Build component → frameId lookup via layerName → frame.id
+    // Components in a layer share the same layerName; we match by layerName on the component
+    const layerNameToFrameId = new Map<string, string>();
+    for (const frame of diagram.frames) {
+      layerNameToFrameId.set(frame.name, frame.id);
+    }
+
+    // Also handle the UNLAYERED_KEY sentinel (stored as "Other" in frame.name)
+    // Components without layerName get frameId = frame for "Other" if it exists
+    const otherFrameId = diagram.frames.find((f) => f.name === "Other")?.id ?? null;
+
+    // Group components by frame
+    const componentsByFrame = new Map<string | null, LayoutedComponent[]>();
+    for (const frame of diagram.frames) {
+      componentsByFrame.set(frame.id, []);
+    }
+    componentsByFrame.set(null, []); // unlayered components with no matching frame
+
+    for (const component of diagram.components) {
+      const frameId = component.layerName != null
+        ? (layerNameToFrameId.get(component.layerName) ?? null)
+        : otherFrameId;
+      const bucket = componentsByFrame.get(frameId) ?? componentsByFrame.get(null)!;
+      bucket.push(component);
+    }
+
+    // Emit per-frame: member elements first, then the frame element
+    for (const frame of diagram.frames) {
+      const members = componentsByFrame.get(frame.id) ?? [];
+      for (const component of members) {
+        elements.push(...createComponentElement(component, frame.id));
+      }
+      elements.push(createFrameElement(frame));
+    }
+
+    // Emit any components that didn't map to a frame
+    const unmapped = componentsByFrame.get(null) ?? [];
+    for (const component of unmapped) {
+      elements.push(...createComponentElement(component, null));
+    }
+  } else {
+    // Flat (no frames) — original behaviour
+    for (const component of diagram.components) {
+      elements.push(...createComponentElement(component));
+    }
   }
 
+  // Connections always last
   for (const connection of diagram.connections) {
-    elements.push(...createConnectionElement(connection, sharp));
+    connectionElements.push(...createConnectionElement(connection, sharp));
   }
 
-  return elements;
+  return [...elements, ...connectionElements];
 }
 
 // --- Reverse color → type mapping ---
@@ -876,8 +1257,17 @@ const BG_COLOR_TO_TYPE: Record<string, ComponentType> = {
 /**
  * Reconstruct a ParsedDiagram from existing Excalidraw elements.
  * Allows client-side re-layout without an API call.
+ * Detects frame elements and round-trips `layerName` via frameId → frame.name mapping.
  */
 export function extractParsedDiagram(elements: readonly Record<string, unknown>[]): ParsedDiagram | null {
+  // Build frameId → frameName map from frame elements
+  const frameIdToName = new Map<string, string>();
+  for (const el of elements) {
+    if (el.type === "frame" && !el.isDeleted) {
+      frameIdToName.set(el.id as string, el.name as string);
+    }
+  }
+
   // Collect rectangles and diamonds as component shapes
   const shapeElements = elements.filter(
     (e) => (e.type === "rectangle" || e.type === "diamond") && !e.isDeleted
@@ -893,6 +1283,10 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
 
   const components: ParsedComponent[] = [];
   const rectIdMap = new Map<string, string>(); // excalidraw id → component id
+
+  // Track first-appearance order of layerNames for layers[] reconstruction
+  const seenLayerNames = new Set<string>();
+  const layerNamesInOrder: string[] = [];
 
   for (const el of shapeElements) {
     const bound = (el.boundElements as { id: string; type: string }[] | null) ?? [];
@@ -916,7 +1310,16 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
       shape = "rect";
     }
 
-    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor });
+    // Resolve layerName from frameId
+    const elFrameId = el.frameId as string | null | undefined;
+    const layerName = elFrameId ? (frameIdToName.get(elFrameId) ?? undefined) : undefined;
+
+    if (layerName != null && !seenLayerNames.has(layerName)) {
+      seenLayerNames.add(layerName);
+      layerNamesInOrder.push(layerName);
+    }
+
+    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor, layerName });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -963,13 +1366,20 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
     connections.push({ from: fromId, to: toId, label });
   }
 
-  return { components, connections };
+  // Build layers[] from first-appearance order if any frame elements were found
+  const layers: { id: string; name: string; order: number }[] | undefined =
+    layerNamesInOrder.length > 0
+      ? layerNamesInOrder.map((name, order) => ({ id: generateId(), name, order }))
+      : undefined;
+
+  return { components, connections, ...(layers ? { layers } : {}) };
 }
 
 /**
  * Serialize current Excalidraw elements into a compact text summary
  * suitable for sending as LLM context. Uses extractParsedDiagram to
  * get structured components/connections, then formats as human-readable text.
+ * When components carry layerName, groups output by layer.
  *
  * Returns null if the diagram has no recognizable components.
  */
@@ -980,17 +1390,54 @@ export function serializeDiagramContext(
   if (!parsed || parsed.components.length === 0) return null;
 
   const lines: string[] = [];
+  const hasLayerNames = parsed.components.some((c) => c.layerName != null);
 
-  lines.push("Components:");
-  for (const c of parsed.components) {
-    const extras = [
-      c.shape && c.shape !== "rounded-rect" ? `shape: ${c.shape}` : "",
-      c.color ? `color: ${c.color}` : "",
-      c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
-    ].filter(Boolean).join(", ");
-    const extraInfo = extras ? `, ${extras}` : "";
-    const typeLabel = c.type || "component";
-    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})`);
+  if (hasLayerNames) {
+    // Group components by layerName, preserving layer order
+    const layerOrder: string[] = parsed.layers
+      ? [...parsed.layers].sort((a, b) => a.order - b.order).map((l) => l.name)
+      : [];
+
+    // Ensure all layerNames are represented (including any not in layers[])
+    for (const c of parsed.components) {
+      if (c.layerName != null && !layerOrder.includes(c.layerName)) {
+        layerOrder.push(c.layerName);
+      }
+    }
+
+    // Unlayered components go last
+    const unlayered = parsed.components.filter((c) => c.layerName == null);
+
+    for (const layerName of layerOrder) {
+      const members = parsed.components.filter((c) => c.layerName === layerName);
+      if (members.length === 0) continue;
+      lines.push(`Layer "${layerName}":`);
+      for (const c of members) {
+        const typeLabel = c.type || "component";
+        lines.push(`- "${c.name}" (${typeLabel})`);
+      }
+    }
+
+    if (unlayered.length > 0) {
+      lines.push("Unlayered:");
+      for (const c of unlayered) {
+        const typeLabel = c.type || "component";
+        lines.push(`- "${c.name}" (${typeLabel})`);
+      }
+    }
+  } else {
+    // Flat format — original behaviour
+    lines.push("Components:");
+    for (const c of parsed.components) {
+      const extras = [
+        c.shape && c.shape !== "rounded-rect" ? `shape: ${c.shape}` : "",
+        c.color ? `color: ${c.color}` : "",
+        c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
+      ].filter(Boolean).join(", ");
+      const extraInfo = extras ? `, ${extras}` : "";
+      const typeLabel = c.type || "component";
+      lines.push(`- "${c.name}" (${typeLabel}${extraInfo})`);
+    }
   }
 
   if (parsed.connections.length > 0) {
