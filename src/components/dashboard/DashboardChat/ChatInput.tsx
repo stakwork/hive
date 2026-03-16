@@ -295,7 +295,7 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             disabled={disabled}
             rows={rows}
-            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
+            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/90 border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
               }`}
           />
           <Button
