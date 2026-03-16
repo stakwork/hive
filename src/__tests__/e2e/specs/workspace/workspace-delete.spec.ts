@@ -56,8 +56,8 @@ test.describe('Workspace Deletion', () => {
     // Cancel the dialog
     await dialog.locator('[data-testid="delete-workspace-cancel-button"]').click();
 
-    // Assert - Should still be on the settings page (tab param is expected after navigating to danger zone)
-    await expect(page).toHaveURL(`http://localhost:3000/w/${workspaceSlug}/settings?tab=danger-zone`);
+    // Assert - Should still be on the settings page
+    await expect(page).toHaveURL(`http://localhost:3000/w/${workspaceSlug}/settings`);
   });
 
   test('should cancel workspace deletion', async ({ page }) => {
@@ -80,8 +80,8 @@ test.describe('Workspace Deletion', () => {
     
     await dialog.locator('[data-testid="delete-workspace-cancel-button"]').click();
 
-    // Assert - Dialog should be hidden and we should still be on settings page (tab param is expected after navigating to danger zone)
+    // Assert - Dialog should be hidden and we should still be on settings page
     await expect(dialog).toBeHidden();
-    await expect(page).toHaveURL(`http://localhost:3000/w/${workspaceSlug}/settings?tab=danger-zone`);
+    await expect(page).toHaveURL(`http://localhost:3000/w/${workspaceSlug}/settings`);
   });
 });
