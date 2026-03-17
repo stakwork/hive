@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -24,8 +24,15 @@ import type { LayoutAlgorithm, ParsedDiagram } from "@/services/excalidraw-layou
 import { extractParsedDiagram, relayoutDiagram, serializeDiagramContext } from "@/services/excalidraw-layout";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
-import { ChevronLeft, ChevronRight, Loader2, Mic, MicOff, Send } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { toast } from "sonner";
+import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
+import type { ClarifyingQuestion } from "@/types/stakwork";
+
+interface WhiteboardMessageMetadata {
+  tool_use?: string;
+  content?: ClarifyingQuestion[];
+}
 
 interface WhiteboardMessage {
   id: string;
@@ -33,6 +40,7 @@ interface WhiteboardMessage {
   content: string;
   createdAt: string;
   userId: string | null;
+  metadata?: WhiteboardMessageMetadata;
 }
 
 interface WhiteboardChatPanelProps {
@@ -40,6 +48,61 @@ interface WhiteboardChatPanelProps {
   featureId: string | null;
   excalidrawAPI: ExcalidrawImperativeAPI | null;
   onReloadWhiteboard: () => Promise<void>;
+}
+
+function parseQAPairs(text: string): { question: string; answer: string }[] {
+  return text
+    .split("\n\n")
+    .map((block) => {
+      const lines = block.split("\n");
+      const question = lines[0]?.replace(/^Q:\s*/, "") ?? "";
+      const answer = lines[1]?.replace(/^A:\s*/, "") ?? "";
+      return { question, answer };
+    })
+    .filter((pair) => pair.question.length > 0);
+}
+
+function AnsweredClarifyingQuestions({
+  questions,
+  replyContent,
+}: {
+  questions: ClarifyingQuestion[];
+  replyContent: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const pairs = parseQAPairs(replyContent);
+  const count = questions.length;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/50 p-3 text-sm">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+      >
+        {expanded ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        <HelpCircle className="h-3 w-3" />
+        <span>
+          {count} {count === 1 ? "question" : "questions"} answered
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-3">
+          {pairs.map((pair, i) => (
+            <div key={i}>
+              <p className="font-medium text-foreground text-sm">{pair.question}</p>
+              <p className="text-muted-foreground text-sm pl-2 border-l border-border ml-1 mt-0.5">
+                {pair.answer}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function WhiteboardChatPanel({
@@ -54,13 +117,18 @@ export function WhiteboardChatPanel({
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [layout, setLayout] = useState<LayoutAlgorithm>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`whiteboard-layout-${whiteboardId}`);
-      if (saved === 'layered' || saved === 'force' || saved === 'stress' || saved === 'mrtree') {
+      if (
+        saved === "layered" ||
+        saved === "force" ||
+        saved === "stress" ||
+        saved === "mrtree"
+      ) {
         return saved;
       }
     }
-    return 'layered';
+    return "layered";
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
@@ -69,6 +137,22 @@ export function WhiteboardChatPanel({
 
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
+
+  // Derived: find the last ASSISTANT message with pending clarifying questions
+  // (i.e., no USER message follows it)
+  const pendingClarificationMessage = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
+    if (lastAssistant?.metadata?.tool_use === "ask_clarifying_questions") {
+      const lastAssistantIdx = messages.lastIndexOf(lastAssistant);
+      const hasUserReplyAfter = messages
+        .slice(lastAssistantIdx + 1)
+        .some((m) => m.role === "USER");
+      return hasUserReplyAfter ? null : lastAssistant;
+    }
+    return null;
+  }, [messages]);
+
+  const hasPendingClarification = !!pendingClarificationMessage;
 
   // Sync speech transcript into textarea
   useEffect(() => {
@@ -125,7 +209,9 @@ export function WhiteboardChatPanel({
   // Pusher subscription for real-time ASSISTANT messages
   useEffect(() => {
     let pusher: ReturnType<typeof getPusherClient> | null = null;
-    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
+    let channel: ReturnType<
+      ReturnType<typeof getPusherClient>["subscribe"]
+    > | null = null;
 
     try {
       pusher = getPusherClient();
@@ -136,22 +222,27 @@ export function WhiteboardChatPanel({
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE,
         async (data: { message: WhiteboardMessage }) => {
-          // Append the assistant message
           setMessages((prev) => [...prev, data.message]);
           setGenerating(false);
 
-          // Reload whiteboard and scroll to fit
-          await onReloadWhiteboard();
-          if (excalidrawAPI) {
-            parsedDiagramRef.current = extractParsedDiagram(
-              excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
-            );
-            excalidrawAPI.scrollToContent(undefined, {
-              fitToViewport: true,
-              viewportZoomFactor: 0.9,
-              animate: true,
-              duration: 300,
-            });
+          // Only reload whiteboard/scroll for actual diagram messages (not clarifying questions)
+          const meta = data.message.metadata as WhiteboardMessageMetadata | undefined;
+          if (meta?.tool_use !== "ask_clarifying_questions") {
+            await onReloadWhiteboard();
+            if (excalidrawAPI) {
+              parsedDiagramRef.current = extractParsedDiagram(
+                excalidrawAPI.getSceneElements() as unknown as readonly Record<
+                  string,
+                  unknown
+                >[]
+              );
+              excalidrawAPI.scrollToContent(undefined, {
+                fitToViewport: true,
+                viewportZoomFactor: 0.9,
+                animate: true,
+                duration: 300,
+              });
+            }
           }
         }
       );
@@ -171,7 +262,7 @@ export function WhiteboardChatPanel({
 
   const handleSend = useCallback(async () => {
     const trimmedInput = input.trim();
-    if (!trimmedInput || generating) return;
+    if (!trimmedInput || generating || hasPendingClarification) return;
 
     // Optimistic USER message
     const optimisticMessage: WhiteboardMessage = {
@@ -193,7 +284,10 @@ export function WhiteboardChatPanel({
       // Extract compact diagram context from current canvas elements
       const diagramContext = excalidrawAPI
         ? serializeDiagramContext(
-            excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+            excalidrawAPI.getSceneElements() as unknown as readonly Record<
+              string,
+              unknown
+            >[]
           )
         : null;
 
@@ -204,7 +298,6 @@ export function WhiteboardChatPanel({
       });
 
       if (res.status === 409) {
-        // Remove optimistic message on conflict
         setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
         toast.error("Diagram generation already in progress");
         setGenerating(false);
@@ -230,7 +323,47 @@ export function WhiteboardChatPanel({
       toast.error("Failed to send message");
       setGenerating(false);
     }
-  }, [input, generating, whiteboardId, excalidrawAPI, isListening, stopListening, resetTranscript, layout]);
+  }, [
+    input,
+    generating,
+    hasPendingClarification,
+    whiteboardId,
+    excalidrawAPI,
+    isListening,
+    stopListening,
+    resetTranscript,
+    layout,
+  ]);
+
+  const handleClarifySubmit = useCallback(
+    async (formattedAnswers: string) => {
+      setGenerating(true);
+      try {
+        const res = await fetch(
+          `/api/whiteboards/${whiteboardId}/messages/clarify`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ answers: formattedAnswers, layout }),
+          }
+        );
+        if (!res.ok) {
+          setGenerating(false);
+          toast.error("Failed to submit answers");
+          return;
+        }
+        const data = await res.json();
+        if (data.success && data.data.message) {
+          setMessages((prev) => [...prev, data.data.message]);
+        }
+      } catch (error) {
+        console.error("Error submitting clarifying answers:", error);
+        setGenerating(false);
+        toast.error("Failed to submit answers");
+      }
+    },
+    [whiteboardId, layout]
+  );
 
   const handleLayoutChange = async (newLayout: LayoutAlgorithm) => {
     setLayout(newLayout);
@@ -239,7 +372,10 @@ export function WhiteboardChatPanel({
     // Lazily populate ref from live canvas if not yet set by Pusher handler
     if (!parsedDiagramRef.current && excalidrawAPI) {
       parsedDiagramRef.current = extractParsedDiagram(
-        excalidrawAPI.getSceneElements() as unknown as readonly Record<string, unknown>[]
+        excalidrawAPI.getSceneElements() as unknown as readonly Record<
+          string,
+          unknown
+        >[]
       );
     }
 
@@ -294,7 +430,10 @@ export function WhiteboardChatPanel({
       <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
         <h3 className="font-medium text-sm">Chat</h3>
         <div className="flex items-center gap-2">
-          <Select value={layout} onValueChange={(v) => handleLayoutChange(v as LayoutAlgorithm)}>
+          <Select
+            value={layout}
+            onValueChange={(v) => handleLayoutChange(v as LayoutAlgorithm)}
+          >
             <SelectTrigger className="w-[130px] h-6 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -327,80 +466,152 @@ export function WhiteboardChatPanel({
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}
-              >
+            {messages.map((message, idx) => {
+              const meta = message.metadata as WhiteboardMessageMetadata | undefined;
+              const isClarifyingMessage =
+                message.role === "ASSISTANT" &&
+                meta?.tool_use === "ask_clarifying_questions" &&
+                Array.isArray(meta.content) &&
+                meta.content.length > 0;
+
+              if (isClarifyingMessage) {
+                const isPending = message === pendingClarificationMessage;
+                const questions = meta!.content!;
+
+                if (isPending) {
+                  // Render inline in message list — the footer also shows the widget
+                  return (
+                    <div key={message.id} className="flex justify-start">
+                      <div className="max-w-[95%] w-full">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {message.content}
+                        </p>
+                        <ClarifyingQuestionsPreview
+                          questions={questions}
+                          onSubmit={handleClarifySubmit}
+                          isLoading={generating}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Answered state: find the next USER message after this one
+                const nextUserMessage = messages
+                  .slice(idx + 1)
+                  .find((m) => m.role === "USER");
+
+                return (
+                  <div key={message.id} className="flex justify-start">
+                    <div className="max-w-[95%] w-full">
+                      <AnsweredClarifyingQuestions
+                        questions={questions}
+                        replyContent={nextUserMessage?.content ?? ""}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
                 <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                    message.role === "USER"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                  key={message.id}
+                  className={`flex ${
+                    message.role === "USER" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  {message.content}
+                  <div
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                      message.role === "USER"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
+                    }`}
+                  >
+                    {message.content}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-sidebar-border space-y-2">
-        {generating && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Generating diagram...</span>
-          </div>
-        )}
-        <div className="relative">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Listening..." : "Ask to update the diagram..."}
-            disabled={generating}
-            className="min-h-[80px] max-h-[160px] resize-none overflow-y-auto pr-10"
-          />
-          {isSupported && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={toggleListening}
-                    disabled={generating}
-                    size="icon"
-                    variant="ghost"
-                    data-testid="mic-button"
-                    className={`absolute right-1.5 top-1.5 h-7 w-7 ${isListening ? "text-red-500 bg-red-500/10 hover:bg-red-500/20" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {isListening ? (
-                      <MicOff className="w-3.5 h-3.5" />
-                    ) : (
-                      <Mic className="w-3.5 h-3.5" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+      {hasPendingClarification ? (
+        <div className="p-3 border-t border-sidebar-border">
+          {generating && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Generating diagram...</span>
+            </div>
           )}
+          <ClarifyingQuestionsPreview
+            questions={pendingClarificationMessage!.metadata!.content!}
+            onSubmit={handleClarifySubmit}
+            isLoading={generating}
+          />
         </div>
-        <Button
-          onClick={handleSend}
-          disabled={!input.trim() || generating}
-          size="sm"
-          className="w-full"
-        >
-          <Send className="w-3.5 h-3.5 mr-2" />
-          Send
-        </Button>
-      </div>
+      ) : (
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          {generating && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Generating diagram...</span>
+            </div>
+          )}
+          <div className="relative">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isListening ? "Listening..." : "Ask to update the diagram..."}
+              disabled={generating || hasPendingClarification}
+              className="min-h-[80px] max-h-[160px] resize-none overflow-y-auto pr-10"
+            />
+            {isSupported && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={toggleListening}
+                      disabled={generating || hasPendingClarification}
+                      size="icon"
+                      variant="ghost"
+                      data-testid="mic-button"
+                      className={`absolute right-1.5 top-1.5 h-7 w-7 ${
+                        isListening
+                          ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {isListening ? (
+                        <MicOff className="w-3.5 h-3.5" />
+                      ) : (
+                        <Mic className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {isListening
+                      ? "Stop recording"
+                      : "Start voice input (or hold Ctrl)"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+          <Button
+            onClick={handleSend}
+            disabled={!input.trim() || generating || hasPendingClarification}
+            size="sm"
+            className="w-full"
+          >
+            <Send className="w-3.5 h-3.5 mr-2" />
+            Send
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
