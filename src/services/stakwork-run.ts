@@ -11,6 +11,7 @@ import {
   UpdateStakworkRunDecisionInput,
   StakworkRunQuery,
   DataType,
+  isClarifyingQuestions,
 } from "@/types/stakwork";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/config/env";
@@ -854,6 +855,32 @@ export async function processStakworkRunWebhook(
       }
       const parsedResult = JSON.parse(cleanedResult);
       logger.debug("[diagram] Parsed result", "stakwork-run", { type: typeof parsedResult, isArray: Array.isArray(parsedResult) });
+
+      // Early-exit: if the AI returned clarifying questions instead of a diagram, persist them and broadcast
+      if (isClarifyingQuestions(parsedResult)) {
+        logger.info("[diagram] Clarifying questions response detected — skipping diagram generation", "stakwork-run", { whiteboard_id, feature_id });
+        const targetWhiteboardId = whiteboard_id
+          ?? (feature_id
+            ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id
+            : null);
+        if (targetWhiteboardId) {
+          const assistantMessage = await db.whiteboardMessage.create({
+            data: {
+              whiteboardId: targetWhiteboardId,
+              role: "ASSISTANT",
+              content: "I have a few questions before generating the diagram.",
+              status: "SENT",
+              metadata: parsedResult as unknown as Prisma.InputJsonValue,
+            },
+          });
+          const clarifyChannel = getWhiteboardChannelName(targetWhiteboardId);
+          await pusherServer.trigger(clarifyChannel, PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE, {
+            message: assistantMessage,
+            timestamp: new Date(),
+          });
+        }
+        return { runId: run.id, status };
+      }
 
       const diagramData = extractDiagramData(parsedResult);
       logger.info("[diagram] Extracted diagram", "stakwork-run", {
