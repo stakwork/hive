@@ -942,12 +942,25 @@ export async function processStakworkRunWebhook(
           select: { elements: true },
         });
 
+        // Offset AI elements to avoid overlapping user-created content
+        const standaloneExistingElements = (existingWhiteboard?.elements as unknown[]) ?? [];
+        const standaloneUserBbox = computeUserElementsBoundingBox(standaloneExistingElements);
+        let standaloneAiElements = layoutData.elements as unknown[];
+        if (standaloneUserBbox) {
+          const aiMinX = Math.min(...standaloneAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
+          const aiMinY = Math.min(...standaloneAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
+          const aiMaxX = Math.max(...standaloneAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
+          const aiMaxY = Math.max(...standaloneAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
+          const { offsetX, offsetY } = computePlacementOffset(standaloneUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
+          standaloneAiElements = offsetExcalidrawElements(standaloneAiElements, offsetX - aiMinX, offsetY - aiMinY);
+        }
+
         await db.whiteboard.update({
           where: { id: whiteboard_id },
           data: {
             elements: mergeWhiteboardElements(
-              (existingWhiteboard?.elements as unknown[]) ?? [],
-              layoutData.elements
+              standaloneExistingElements,
+              standaloneAiElements as typeof layoutData.elements
             ) as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
             version: { increment: 1 },
