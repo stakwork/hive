@@ -817,6 +817,7 @@ model WhiteboardMessage {
   content      String
   status       ChatStatus @default(SENT)
   userId       String?    @map("user_id")
+  metadata     Json       @default("{}")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
   user         User?      @relation(fields: [userId], references: [id])
