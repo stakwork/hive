@@ -1014,6 +1014,113 @@ export function serializeDiagramContext(
 }
 
 /**
+ * Compute the bounding box of all non-AI elements in an existing whiteboard
+ * element list. Elements tagged with `customData.source === "ai"` are excluded
+ * because they will be replaced by the incoming AI diagram.
+ *
+ * Returns null when no valid user elements exist (empty canvas).
+ */
+export function computeUserElementsBoundingBox(
+  existing: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of existing) {
+    const e = el as Record<string, unknown>;
+    // Skip AI-generated elements — they are being replaced
+    if ((e.customData as Record<string, unknown> | undefined)?.source === "ai") continue;
+
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Compute the bounding box of any element array without filtering by customData.
+ * Used internally to get the extents of freshly laid-out AI elements.
+ */
+function computeRawBoundingBox(
+  elements: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of elements) {
+    const e = el as Record<string, unknown>;
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Decide where to place the AI diagram relative to existing user content.
+ *
+ * Strategy:
+ * - If the user's bounding box is taller than it is wide (portrait), place the
+ *   AI diagram to the **right** (more horizontal space available).
+ * - Otherwise (landscape or square), place the AI diagram **below**.
+ *
+ * A fixed `gap` (default 80px) is added between the existing content and the
+ * new diagram.
+ */
+export function computePlacementOffset(
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  _aiWidth: number,
+  _aiHeight: number,
+  gap = 80
+): { offsetX: number; offsetY: number } {
+  const bboxW = bbox.maxX - bbox.minX;
+  const bboxH = bbox.maxY - bbox.minY;
+
+  if (bboxH >= bboxW) {
+    // Taller canvas → place to the right
+    return { offsetX: bbox.maxX + gap, offsetY: bbox.minY };
+  } else {
+    // Wider canvas → place below
+    return { offsetX: bbox.minX, offsetY: bbox.maxY + gap };
+  }
+}
+
+/**
+ * Shift every element in the array by (offsetX, offsetY).
+ *
+ * Arrow `points` are stored relative to the arrow's own (x, y) origin, so
+ * they must NOT be translated — only the arrow's x/y moves.
+ *
+ * Returns a new array; the input is not mutated.
+ */
+export function offsetExcalidrawElements(
+  elements: unknown[],
+  offsetX: number,
+  offsetY: number
+): unknown[] {
+  return elements.map((el) => {
+    const e = el as Record<string, unknown>;
+    const x = typeof e.x === "number" ? e.x + offsetX : e.x;
+    const y = typeof e.y === "number" ? e.y + offsetY : e.y;
+    return { ...e, x, y };
+    // Note: arrow `points` are relative to (x,y) and are intentionally left unchanged.
+  });
+}
+
+/**
  * Re-layout a parsed diagram with a given algorithm.
  * Runs entirely client-side (ELK + element creation). No API call needed.
  */

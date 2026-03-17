@@ -35,6 +35,9 @@ vi.mock("@/services/excalidraw-layout", () => ({
     appState: { viewBackgroundColor: "#ffffff", gridSize: null },
   }),
   sanitiseDiagram: vi.fn((diagram: unknown) => diagram),
+  computeUserElementsBoundingBox: vi.fn().mockReturnValue(null),
+  computePlacementOffset: vi.fn().mockReturnValue({ offsetX: 0, offsetY: 0 }),
+  offsetExcalidrawElements: vi.fn((elements: unknown[]) => elements),
 }));
 vi.mock("@/lib/ai/utils", () => ({
   buildFeatureContext: vi.fn((feature: any) => {
