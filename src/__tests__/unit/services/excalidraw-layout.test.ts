@@ -6,6 +6,9 @@ import {
   computeWordWrapLineCount,
   computeLayeredDirection,
   relayoutDiagram,
+  computeUserElementsBoundingBox,
+  computePlacementOffset,
+  offsetExcalidrawElements,
   FONT_SIZE,
   LINE_HEIGHT,
   MIN_WIDTH,
@@ -458,5 +461,108 @@ describe("createComponentElement text height", () => {
     expect(textEl).toBeDefined();
     expect(textEl!.height).toBeGreaterThan(SINGLE_LINE_HEIGHT);
     expect(textEl!.height).toBeGreaterThanOrEqual(Math.ceil(2 * FONT_SIZE * LINE_HEIGHT));
+  });
+});
+
+describe("computeUserElementsBoundingBox", () => {
+  test("returns null for empty array", () => {
+    expect(computeUserElementsBoundingBox([])).toBeNull();
+  });
+
+  test("returns null when all elements are AI-tagged", () => {
+    const elements = [
+      { x: 0, y: 0, width: 100, height: 50, customData: { source: "ai" } },
+      { x: 200, y: 200, width: 80, height: 60, customData: { source: "ai" } },
+    ];
+    expect(computeUserElementsBoundingBox(elements)).toBeNull();
+  });
+
+  test("correctly computes bbox across multiple user elements", () => {
+    const elements = [
+      { x: 10, y: 20, width: 100, height: 50 },          // maxX=110, maxY=70
+      { x: 50, y: 5, width: 60, height: 30 },             // maxX=110, maxY=35
+      { x: 200, y: 100, width: 40, height: 40 },          // maxX=240, maxY=140
+      { x: 5, y: 200, width: 30, height: 20, customData: { source: "ai" } }, // excluded
+    ];
+    const bbox = computeUserElementsBoundingBox(elements);
+    expect(bbox).toEqual({ minX: 10, minY: 5, maxX: 240, maxY: 140 });
+  });
+
+  test("skips elements missing numeric x/y/width/height", () => {
+    const elements = [
+      { x: 10, y: 20, width: 100, height: 50 },
+      { x: "bad", y: 20, width: 100, height: 50 },        // invalid x
+      { x: 10, y: 20, width: undefined, height: 50 },     // missing width
+    ];
+    const bbox = computeUserElementsBoundingBox(elements);
+    // Only the first valid element contributes
+    expect(bbox).toEqual({ minX: 10, minY: 20, maxX: 110, maxY: 70 });
+  });
+});
+
+describe("computePlacementOffset", () => {
+  test("places below when bbox is wider than tall (bboxW > bboxH)", () => {
+    // wide bbox: 400 wide, 100 tall
+    const bbox = { minX: 0, minY: 0, maxX: 400, maxY: 100 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150);
+    expect(offsetX).toBe(0);          // bbox.minX
+    expect(offsetY).toBe(180);        // bbox.maxY + 80
+  });
+
+  test("places to the right when bbox is taller than wide (bboxH >= bboxW)", () => {
+    // tall bbox: 100 wide, 400 tall
+    const bbox = { minX: 50, minY: 10, maxX: 150, maxY: 410 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150);
+    expect(offsetX).toBe(230);        // bbox.maxX + 80
+    expect(offsetY).toBe(10);         // bbox.minY
+  });
+
+  test("places to the right for a square bbox (bboxH === bboxW)", () => {
+    const bbox = { minX: 0, minY: 0, maxX: 200, maxY: 200 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 100, 100);
+    expect(offsetX).toBe(280);        // bbox.maxX + 80
+    expect(offsetY).toBe(0);          // bbox.minY
+  });
+
+  test("respects custom gap value", () => {
+    const bbox = { minX: 0, minY: 0, maxX: 300, maxY: 100 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150, 40);
+    expect(offsetY).toBe(140);        // bbox.maxY + 40
+  });
+});
+
+describe("offsetExcalidrawElements", () => {
+  test("shifts x and y of shape and text elements", () => {
+    const elements = [
+      { id: "a", type: "rectangle", x: 10, y: 20, width: 100, height: 50 },
+      { id: "b", type: "text", x: 30, y: 40, width: 80, height: 20 },
+    ];
+    const shifted = offsetExcalidrawElements(elements, 50, 100);
+    expect(shifted[0]).toMatchObject({ x: 60, y: 120 });
+    expect(shifted[1]).toMatchObject({ x: 80, y: 140 });
+  });
+
+  test("does not modify points on arrow elements", () => {
+    const arrow = {
+      id: "arr",
+      type: "arrow",
+      x: 10,
+      y: 20,
+      points: [[0, 0], [50, 50]],
+    };
+    const shifted = offsetExcalidrawElements([arrow], 100, 200);
+    const result = shifted[0] as typeof arrow;
+    expect(result.x).toBe(110);
+    expect(result.y).toBe(220);
+    // points remain relative to (x, y) — unchanged
+    expect(result.points).toEqual([[0, 0], [50, 50]]);
+  });
+
+  test("does not mutate the input array", () => {
+    const elements = [{ id: "a", type: "rectangle", x: 0, y: 0, width: 50, height: 50 }];
+    const original = elements[0];
+    offsetExcalidrawElements(elements, 10, 10);
+    expect(elements[0]).toBe(original);
+    expect((elements[0] as any).x).toBe(0); // unchanged
   });
 });
