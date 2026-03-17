@@ -841,7 +841,12 @@ export async function processStakworkRunWebhook(
       logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id, whiteboard_id });
       logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
 
-      const { relayoutDiagram } = await import("@/services/excalidraw-layout");
+      const {
+        relayoutDiagram,
+        computeUserElementsBoundingBox,
+        computePlacementOffset,
+        offsetExcalidrawElements,
+      } = await import("@/services/excalidraw-layout");
       // Strip markdown code fences if LLM wrapped the JSON in ```json ... ```
       let cleanedResult = serializedResult.trim();
       if (cleanedResult.startsWith("```")) {
@@ -890,12 +895,24 @@ export async function processStakworkRunWebhook(
 
         const existingFeatureElements = (existingByFeature?.elements as unknown[]) ?? [];
 
+        // Offset AI elements to avoid overlapping user-created content
+        const featureUserBbox = computeUserElementsBoundingBox(existingFeatureElements);
+        let featureAiElements = layoutData.elements as unknown[];
+        if (featureUserBbox) {
+          const aiMinX = Math.min(...featureAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
+          const aiMinY = Math.min(...featureAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
+          const aiMaxX = Math.max(...featureAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
+          const aiMaxY = Math.max(...featureAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
+          const { offsetX, offsetY } = computePlacementOffset(featureUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
+          featureAiElements = offsetExcalidrawElements(featureAiElements, offsetX - aiMinX, offsetY - aiMinY);
+        }
+
         await db.whiteboard.upsert({
           where: { featureId: feature_id },
           update: {
             elements: mergeWhiteboardElements(
               existingFeatureElements,
-              layoutData.elements
+              featureAiElements as typeof layoutData.elements
             ) as unknown as Prisma.InputJsonValue,
             appState: layoutData.appState as Prisma.InputJsonValue,
             version: { increment: 1 },
