@@ -49,6 +49,7 @@ interface ChatInputProps {
   featureId?: string;
   onOpenBountyRequest?: () => void;
   stakworkProjectId?: string | null;
+  lastLogLine?: string;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
   isPlanChat?: boolean;
@@ -70,6 +71,7 @@ export function ChatInput({
   featureId,
   onOpenBountyRequest,
   stakworkProjectId,
+  lastLogLine,
   onRetry,
   isRetrying = false,
   isPlanChat = false,
@@ -479,7 +481,7 @@ export function ChatInput({
             <div className={cn("px-4 py-2 md:px-6")}>
               {isTerminalState && onRetry ? (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} />
                   <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
                     {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                     Retry
@@ -487,7 +489,7 @@ export function ChatInput({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} />
                 </div>
               )}
             </div>
