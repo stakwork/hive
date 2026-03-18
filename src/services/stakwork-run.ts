@@ -629,8 +629,15 @@ async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<v
 
 /**
  * Extract diagram data (components + connections) from a Stakwork webhook result.
- * Stakwork may nest the diagram under `request_params.result`, so we check
- * multiple levels before giving up.
+ * Checks the following paths in order (most specific → least specific):
+ *
+ * 1. Top-level `components` (backward compat)
+ * 2. `request_params.result.components`
+ * 3. `request_params.components`
+ * 4. `.result.components`
+ * 5. `.result` (parsed as JSON string) `.components`
+ * 6. `artifacts[].content.components` — new Stakwork format where diagram data
+ *    is delivered as `{ artifacts: [{ type: "DIAGRAM", content: { components, connections } }] }`
  */
 function extractDiagramData(parsed: unknown): ParsedDiagram {
   logger.info("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
@@ -690,6 +697,24 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
         }
       } catch {
         // Not valid JSON, ignore
+      }
+    }
+
+    // New Stakwork format: artifacts array with type === "DIAGRAM"
+    if (Array.isArray(obj.artifacts)) {
+      for (const artifact of obj.artifacts) {
+        if (
+          artifact &&
+          typeof artifact === "object" &&
+          (artifact as Record<string, unknown>).type === "DIAGRAM"
+        ) {
+          const content = (artifact as Record<string, unknown>).content;
+          if (content && typeof content === "object") {
+            logger.info("[diagram] Found components in artifacts[].content", "stakwork-run");
+            const extracted = tryExtract(content as Record<string, unknown>, "artifacts[].content");
+            if (extracted) return extracted;
+          }
+        }
       }
     }
 
