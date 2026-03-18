@@ -91,26 +91,24 @@ export function WorkflowStatusBadge({
       )}
       {displayLabel && (
         isInProgress ? (
-          <span className="overflow-hidden h-4 flex items-center">
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={displayLabel}
-                initial={{ y: 12, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -12, opacity: 0 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                className={cn(
-                  "text-xs leading-none text-muted-foreground truncate block",
-                  isClickable && "group-hover:text-foreground transition-colors"
-                )}
-              >
-                {displayLabel}
-              </motion.span>
-            </AnimatePresence>
-          </span>
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={displayLabel}
+              initial={{ y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -12, opacity: 0 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className={cn(
+                "text-xs text-muted-foreground truncate block",
+                isClickable && "group-hover:text-foreground transition-colors"
+              )}
+            >
+              {displayLabel}
+            </motion.span>
+          </AnimatePresence>
         ) : (
           <span className={cn(
-            "text-xs leading-none text-muted-foreground",
+            "text-xs text-muted-foreground",
             isClickable && "group-hover:text-foreground transition-colors"
           )}>
             {displayLabel}
