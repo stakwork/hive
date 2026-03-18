@@ -247,6 +247,88 @@ describe("WorkflowChangesPanel", () => {
     });
   });
 
+  describe("noise field filtering", () => {
+    it("shows 'no changes detected' when transitions differ only in noise fields", () => {
+      const orig = makeJson({
+        transitions: {
+          stepA: {
+            name: "A",
+            timeout: 10,
+            position: { x: 0, y: 0 },
+            unique_id: "uid-1",
+            subskill_id: "sub-1",
+            skill_icon: "icon-a",
+          },
+        },
+      });
+      const upd = makeJson({
+        transitions: {
+          stepA: {
+            name: "A",
+            timeout: 10,
+            position: { x: 100, y: 200 },
+            unique_id: "uid-2",
+            subskill_id: "sub-2",
+            skill_icon: "icon-b",
+          },
+        },
+      });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+      expect(screen.getByText(/no changes detected/i)).toBeInTheDocument();
+    });
+
+    it("surfaces real field changes but omits noise field lines", () => {
+      const orig = makeJson({
+        transitions: {
+          stepA: {
+            name: "A",
+            timeout: 10,
+            position: { x: 0, y: 0 },
+            unique_id: "uid-1",
+            subskill_id: "sub-1",
+            skill_icon: "icon-a",
+          },
+        },
+      });
+      const upd = makeJson({
+        transitions: {
+          stepA: {
+            name: "A",
+            timeout: 99, // real change
+            position: { x: 100, y: 200 }, // noise
+            unique_id: "uid-2", // noise
+            subskill_id: "sub-2", // noise
+            skill_icon: "icon-b", // noise
+          },
+        },
+      });
+
+      render(<WorkflowChangesPanel originalJson={orig} updatedJson={upd} />);
+
+      // Should have coloured diff rows (real change present)
+      const table = document.querySelector("table");
+      const allRows = table?.querySelectorAll("tr") ?? [];
+      const hasColoured = Array.from(allRows).some(
+        (row) => row.className.includes("bg-green") || row.className.includes("bg-red"),
+      );
+      expect(hasColoured).toBe(true);
+
+      // No diff row should contain any of the noise field names
+      const noiseFields = ["position", "unique_id", "subskill_id", "skill_icon"];
+      const allText = Array.from(allRows).map((row) => row.textContent ?? "");
+      const colouredRows = Array.from(allRows).filter(
+        (row) => row.className.includes("bg-green") || row.className.includes("bg-red"),
+      );
+      for (const field of noiseFields) {
+        const hasNoiseInColoured = colouredRows.some((row) => row.textContent?.includes(`"${field}"`));
+        expect(hasNoiseInColoured).toBe(false);
+      }
+      // Suppress unused variable warning
+      void allText;
+    });
+  });
+
   describe("stats display", () => {
     it("shows addition and deletion counts in the header", () => {
       render(<WorkflowChangesPanel originalJson={originalJson} updatedJson={updatedJson} />);
