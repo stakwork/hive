@@ -265,6 +265,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       const data = await expectSuccess(response, 200);
       expect(data.podId).toBe(pods[0].podId);
+      expect(data).toHaveProperty("pod_url");
       expect(data).toHaveProperty("frontend");
       expect(data).toHaveProperty("control");
       expect(data).toHaveProperty("ide");
