@@ -1,12 +1,16 @@
+"use client";
+
 import React from "react";
 import { WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AlertCircle, ExternalLink, Pause, XCircle } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface WorkflowStatusBadgeProps {
   status: WorkflowStatus | null | undefined;
   className?: string;
   stakworkProjectId?: string | null;
+  lastLogLine?: string;
 }
 
 const statusConfig: Record<string, {
@@ -48,6 +52,7 @@ export function WorkflowStatusBadge({
   status,
   className,
   stakworkProjectId,
+  lastLogLine,
 }: WorkflowStatusBadgeProps) {
   const effectiveStatus = status || WorkflowStatus.PENDING;
   const config = statusConfig[effectiveStatus];
@@ -60,12 +65,18 @@ export function WorkflowStatusBadge({
     effectiveStatus === WorkflowStatus.HALTED ||
     effectiveStatus === WorkflowStatus.FAILED;
 
+  const isInProgress = effectiveStatus === WorkflowStatus.IN_PROGRESS;
+
   const stakworkUrl = stakworkProjectId
     ? `https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`
     : null;
 
-  const isClickable = (isTerminal || effectiveStatus === WorkflowStatus.IN_PROGRESS) && !!stakworkUrl;
+  const isClickable = (isTerminal || isInProgress) && !!stakworkUrl;
   const Icon = config.icon;
+
+  const displayLabel = isInProgress
+    ? (lastLogLine || config.label)
+    : config.label;
 
   const content = (
     <>
@@ -78,13 +89,33 @@ export function WorkflowStatusBadge({
           )}
         </span>
       )}
-      {config.label && (
-        <span className={cn(
-          "text-xs leading-none text-muted-foreground",
-          isClickable && "group-hover:text-foreground transition-colors"
-        )}>
-          {config.label}
-        </span>
+      {displayLabel && (
+        isInProgress ? (
+          <span className="relative flex-1 h-4 overflow-hidden">
+            <AnimatePresence mode="popLayout">
+              <motion.span
+                key={displayLabel}
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -12, opacity: 0 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+                className={cn(
+                  "absolute inset-0 text-xs leading-none text-muted-foreground truncate flex items-center",
+                  isClickable && "group-hover:text-foreground transition-colors"
+                )}
+              >
+                {displayLabel}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+        ) : (
+          <span className={cn(
+            "text-xs leading-none text-muted-foreground",
+            isClickable && "group-hover:text-foreground transition-colors"
+          )}>
+            {displayLabel}
+          </span>
+        )
       )}
       {isClickable && (
         <ExternalLink className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground transition-all" />
@@ -99,7 +130,7 @@ export function WorkflowStatusBadge({
         target="_blank"
         rel="noopener noreferrer"
         className={cn("group flex items-center gap-1.5 cursor-pointer", className)}
-        aria-label={`${config.label} — view on Stakwork`}
+        aria-label={`${displayLabel} — view on Stakwork`}
       >
         {content}
       </a>
@@ -110,7 +141,7 @@ export function WorkflowStatusBadge({
     <div
       className={cn("flex items-center gap-1.5", className)}
       role="status"
-      aria-label={config.label || effectiveStatus.toLowerCase().replace("_", " ")}
+      aria-label={displayLabel || effectiveStatus.toLowerCase().replace("_", " ")}
     >
       {content}
     </div>
