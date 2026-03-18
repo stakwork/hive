@@ -91,7 +91,7 @@ export function WorkflowStatusBadge({
       )}
       {displayLabel && (
         isInProgress ? (
-          <span className="overflow-hidden h-4 flex items-center">
+          <span className="overflow-hidden h-5 flex items-center">
             <AnimatePresence mode="wait">
               <motion.span
                 key={displayLabel}
