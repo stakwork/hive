@@ -91,16 +91,16 @@ export function WorkflowStatusBadge({
       )}
       {displayLabel && (
         isInProgress ? (
-          <span className="relative flex-1 h-4 overflow-hidden">
-            <AnimatePresence mode="popLayout">
+          <span className="overflow-hidden h-4 flex items-center">
+            <AnimatePresence mode="wait">
               <motion.span
                 key={displayLabel}
                 initial={{ y: 12, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -12, opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
                 className={cn(
-                  "absolute inset-0 text-xs leading-none text-muted-foreground truncate flex items-center",
+                  "text-xs leading-none text-muted-foreground truncate block",
                   isClickable && "group-hover:text-foreground transition-colors"
                 )}
               >
