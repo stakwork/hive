@@ -1,31 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
     const { workspaceId } = await params;
 
     // Validate required fields
     if (!workspaceId) {
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
+    }
+
+    // Check for API token authentication (used by Stakwork/external services)
+    const isApiTokenAuth = validateApiToken(request);
+
+    let userId: string | undefined;
+
+    if (!isApiTokenAuth) {
+      // Authenticate via session cookie (web UI) or Bearer token (iOS app)
+      const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
+      if (userOrResponse instanceof NextResponse) {
+        return userOrResponse;
+      }
+      userId = userOrResponse.id;
     }
 
     // Check for "latest", "goose", and "taskId" query parameters
@@ -34,15 +36,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shouldIncludeGoose = searchParams.get("goose") === "true";
     const taskId = searchParams.get("taskId");
 
-    // Verify user has access to the workspace
+    // Fetch workspace (include members filter only when we have a userId for ownership check)
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
       include: {
         owner: true,
-        members: {
-          where: { userId },
-          select: { role: true },
-        },
+        members: userId
+          ? { where: { userId }, select: { role: true } }
+          : { select: { role: true }, take: 0 },
         swarm: true,
         repositories: true,
       },
@@ -104,11 +105,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       shouldIncludeGoose,
     );
 
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
+    // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
+    if (!isApiTokenAuth) {
+      const isOwner = workspace.ownerId === userId;
+      const isMember = workspace.members.length > 0;
 
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
     }
 
     // Check if workspace has a swarm
@@ -194,7 +198,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         frontend,
         control,
         ide,
-        // goose URL and password are NOT returned (stored in DB)
+        password: podWorkspace.password,
       },
       { status: 200 },
     );
