@@ -31,10 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userId = userOrResponse.id;
     }
 
-    // Check for "latest", "goose", and "taskId" query parameters
+    // Check for "latest" and "taskId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
-    const shouldIncludeGoose = searchParams.get("goose") === "true";
     const taskId = searchParams.get("taskId");
 
     // Fetch workspace (include members filter only when we have a userId for ownership check)
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const mockPodId = "local-dev";
 
       // Still save podId and agentUrl to task in dev mode
-      if (taskId && shouldIncludeGoose) {
+      if (taskId) {
         try {
           await db.task.update({
             where: { id: taskId },
@@ -102,8 +101,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workspaceId,
       "shouldUpdateToLatest:",
       shouldUpdateToLatest,
-      "shouldIncludeGoose:",
-      shouldIncludeGoose,
     );
 
     // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
@@ -135,7 +132,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | null
       | undefined;
 
-    const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
+    const userInfo = taskId || undefined;
 
     const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
       swarmId,
@@ -173,7 +170,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // If taskId is provided, store agent credentials and podId on the task
     // Use control URL (staklink on port 15552) for agentUrl since /session endpoint is there
-    if (taskId && shouldIncludeGoose && control) {
+    if (taskId && control) {
       try {
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
