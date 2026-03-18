@@ -151,16 +151,16 @@ describe("POST /api/whiteboards/[whiteboardId]/versions", () => {
     expect(body.data.whiteboardId).toBe(testWhiteboard.id);
   });
 
-  it("prunes to at most 3 versions when a 4th is created", async () => {
-    // Seed 3 versions with distinct timestamps
+  it("prunes to at most 10 versions when an 11th is created", async () => {
+    // Seed 10 versions with distinct timestamps
     const v1 = await createTestVersion(testWhiteboard.id, "Oldest");
-    await new Promise((r) => setTimeout(r, 10));
-    await createTestVersion(testWhiteboard.id, "Middle");
-    await new Promise((r) => setTimeout(r, 10));
-    await createTestVersion(testWhiteboard.id, "Recent");
+    for (let i = 2; i <= 10; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      await createTestVersion(testWhiteboard.id, `v${i}`);
+    }
     await new Promise((r) => setTimeout(r, 10));
 
-    // Create a 4th via the API
+    // Create an 11th via the API
     const req = createAuthenticatedPostRequest(
       `http://localhost/api/whiteboards/${testWhiteboard.id}/versions`,
       testUser,
@@ -174,7 +174,7 @@ describe("POST /api/whiteboards/[whiteboardId]/versions", () => {
       orderBy: { createdAt: "asc" },
     });
 
-    expect(remaining).toHaveLength(3);
+    expect(remaining).toHaveLength(10);
     // The oldest (v1) should have been deleted
     expect(remaining.find((v) => v.id === v1.id)).toBeUndefined();
     expect(remaining[remaining.length - 1].label).toBe("Newest");

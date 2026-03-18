@@ -304,6 +304,10 @@ jobs:
             "20260227180738_add_feature_id_to_screenshots" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';"
 
+          resolve_migration \
+            "20260313120000_fix_mocks_enabled_default" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='repositories' AND column_name='mocks_enabled' AND column_default='false';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"

@@ -80,14 +80,14 @@ export function WhiteboardVersionPanel({
       <SheetTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
           <Clock className="w-4 h-4" />
-          History
+          Versions
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-80">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Clock className="w-4 h-4" />
-            Version History
+            Versions
           </SheetTitle>
         </SheetHeader>
 
