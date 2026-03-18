@@ -2,7 +2,7 @@
  * Integration tests: DIAGRAM_GENERATION webhook → whiteboard version snapshots
  *
  * Verifies that `processStakworkRunWebhook` creates a `WhiteboardVersion`
- * snapshot before overwriting whiteboard elements, and that the MAX_VERSIONS=3
+ * snapshot before overwriting whiteboard elements, and that the MAX_VERSIONS=10
  * pruning logic is enforced. Tests cover both the standalone `whiteboard_id`
  * path and the feature-linked `feature_id` (upsert) path.
  */
@@ -233,13 +233,13 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
       expect(versions).toHaveLength(0);
     });
 
-    it("prunes to MAX_DIAGRAM_VERSIONS=3 when whiteboard already has 3 versions", async () => {
+    it("prunes to MAX_DIAGRAM_VERSIONS=10 when whiteboard already has 10 versions", async () => {
       const whiteboard = await createWhiteboardWithElements(workspace.id);
 
-      // Pre-populate 3 existing versions (at the cap)
-      await createVersion(whiteboard.id, "v1");
-      await createVersion(whiteboard.id, "v2");
-      await createVersion(whiteboard.id, "v3");
+      // Pre-populate 10 existing versions (at the cap)
+      for (let i = 1; i <= 10; i++) {
+        await createVersion(whiteboard.id, `v${i}`);
+      }
 
       const { projectId } = await createDiagramRun(workspace.id, { whiteboardId: whiteboard.id });
 
@@ -254,8 +254,8 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         orderBy: { createdAt: "asc" },
       });
 
-      // Should still be capped at 3
-      expect(versions).toHaveLength(3);
+      // Should still be capped at 10
+      expect(versions).toHaveLength(10);
 
       // The newest one should be the AI snapshot (v1 was oldest and got pruned)
       const labels = versions.map((v) => v.label);
@@ -351,12 +351,12 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
       expect(versions).toHaveLength(0);
     });
 
-    it("prunes to MAX_DIAGRAM_VERSIONS=3 for feature-linked whiteboard", async () => {
+    it("prunes to MAX_DIAGRAM_VERSIONS=10 for feature-linked whiteboard", async () => {
       const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id);
 
-      await createVersion(whiteboard.id, "v1");
-      await createVersion(whiteboard.id, "v2");
-      await createVersion(whiteboard.id, "v3");
+      for (let i = 1; i <= 10; i++) {
+        await createVersion(whiteboard.id, `v${i}`);
+      }
 
       const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
 
@@ -371,7 +371,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         orderBy: { createdAt: "asc" },
       });
 
-      expect(versions).toHaveLength(3);
+      expect(versions).toHaveLength(10);
       expect(versions.map((v) => v.label)).not.toContain("v1");
       expect(versions.at(-1)!.label).toMatch(/^Before AI diagram/);
     });
