@@ -63,7 +63,6 @@ async function callStakwork(
       testName,
       tokenReference: getStakworkTokenReference(),
       sourceHiveUrl: baseUrl,
-      apiToken: process.env.API_TOKEN,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
