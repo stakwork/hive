@@ -409,6 +409,7 @@ model Task {
   layerType              TaskLayerType?        @map("layer_type")
   manualLayerOverride    Boolean?              @map("manual_layer_override")
   model                  String?
+  haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
   autoMerge              Boolean               @default(false) @map("auto_merge")
   deployedToProductionAt DateTime?             @map("deployed_to_production_at")
   deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
