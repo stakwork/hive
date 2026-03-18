@@ -559,7 +559,7 @@ export async function createDiagramStakworkRun(input: {
   }
 }
 
-const MAX_DIAGRAM_VERSIONS = 3;
+const MAX_DIAGRAM_VERSIONS = 10;
 
 /**
  * Merge existing whiteboard elements with newly AI-generated ones.
