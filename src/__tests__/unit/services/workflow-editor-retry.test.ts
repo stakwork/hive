@@ -29,6 +29,10 @@ vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn().mockReturnValue("http://localhost:3000"),
 }));
 
+vi.mock("@/lib/helpers/chat-history", () => ({
+  fetchChatHistory: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
