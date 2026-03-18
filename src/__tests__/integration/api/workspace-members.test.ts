@@ -21,6 +21,12 @@ import {
   createDeleteRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
+import { getToken } from "next-auth/jwt";
+
+// Mock next-auth/jwt for Bearer token tests
+vi.mock("next-auth/jwt", () => ({
+  getToken: vi.fn(),
+}));
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
 vi.mock("@/services/github", () => ({
@@ -118,6 +124,31 @@ describe("Workspace Members API Integration Tests", () => {
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
       await expectNotFound(response, "Workspace not found or access denied");
+    });
+
+    test("should return members when authenticated via Bearer token", async () => {
+      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(null);
+      vi.mocked(getToken).mockResolvedValue({ id: ownerUser.id } as any);
+
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      expect(data.members).toBeDefined();
+    });
+
+    test("should return 401 when both session and Bearer token are absent", async () => {
+      const { workspace } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(null);
+      vi.mocked(getToken).mockResolvedValue(null);
+
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      await expectUnauthorized(response);
     });
 
     test("should not return duplicate owner when owner exists in WorkspaceMember table", async () => {
