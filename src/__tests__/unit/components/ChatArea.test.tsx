@@ -196,9 +196,7 @@ const TestDataFactories = {
     onArtifactAction: vi.fn().mockResolvedValue(undefined),
     inputDisabled: false,
     isLoading: false,
-    isChainVisible: false,
     lastLogLine: "",
-    logs: [],
     pendingDebugAttachment: null,
     onRemoveDebugAttachment: vi.fn(),
     workflowStatus: null,
@@ -429,28 +427,6 @@ describe("ChatArea", () => {
 
       expect(router.push).toHaveBeenCalledWith("/w/test-workspace/plan");
       expect(router.back).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("Workflow Status Display", () => {
-    test("displays loading state when chain is visible", () => {
-      const { props } = setupChatAreaTest({
-        isChainVisible: true,
-        lastLogLine: "Processing your request...",
-      });
-      render(<ChatArea {...props} />);
-
-      expect(screen.getByText("Processing your request...")).toBeInTheDocument();
-      expect(screen.getByText("Processing...")).toBeInTheDocument();
-    });
-
-    test("shows default message when chain is visible but no log line", () => {
-      const { props } = setupChatAreaTest({
-        isChainVisible: true,
-      });
-      render(<ChatArea {...props} />);
-
-      expect(screen.getByText("Communicating with workflow...")).toBeInTheDocument();
     });
   });
 
