@@ -62,6 +62,7 @@ async function callStakwork(
       baseBranch,
       testName,
       tokenReference: getStakworkTokenReference(),
+      sourceHiveUrl: baseUrl,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
