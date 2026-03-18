@@ -174,8 +174,8 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // Should return 500 when no pods are available
-      expect(response.status).toBe(500);
+      // Should return 503 when no pods are available
+      expect(response.status).toBe(503);
     });
   });
 
