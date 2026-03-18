@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { POD_BASE_DOMAIN } from "@/lib/pods/queries";
 import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -163,8 +164,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Extract control, IDE, and goose URLs
+    // Extract control and pod URLs
     const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
+    const pod_url = `https://${podWorkspace.id}.${POD_BASE_DOMAIN}`;
     const ide = podWorkspace.url || null;
 
     console.log(">>> control", control);
@@ -195,6 +197,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         success: true,
         message: "Pod claimed successfully",
         podId: podWorkspace.id,
+        pod_url,
         frontend,
         control,
         ide,
