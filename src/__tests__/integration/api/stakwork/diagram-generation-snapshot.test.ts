@@ -56,18 +56,34 @@ vi.mock("@/services/excalidraw-layout", async () => {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Minimal diagram payload that passes extractDiagramData */
+/** Minimal diagram payload that passes extractDiagramData (legacy top-level format) */
 const DIAGRAM_RESULT = {
   components: [{ id: "comp1", name: "Service A", type: "service" }],
   connections: [],
 };
 
+/** New Stakwork artifacts-array format */
+const DIAGRAM_RESULT_ARTIFACTS = {
+  featureId: null,
+  message: null,
+  artifacts: [
+    {
+      type: "DIAGRAM",
+      content: {
+        diagramType: "architecture",
+        components: [{ id: "comp1", name: "Service A", type: "service" }],
+        connections: [],
+      },
+    },
+  ],
+};
+
 /** Webhook payload for a completed DIAGRAM_GENERATION run */
-function makeWebhookPayload(projectId: number) {
+function makeWebhookPayload(projectId: number, result: unknown = DIAGRAM_RESULT) {
   return {
     project_id: projectId,
     project_status: "completed",
-    result: DIAGRAM_RESULT,
+    result,
   };
 }
 
@@ -426,6 +442,71 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
       // New AI element must carry the tag
       const layoutedEl = elements.find((e) => e.id === "layouted-el");
       expect(layoutedEl?.customData).toEqual({ source: "ai" });
+    });
+  });
+
+  // ── New artifacts[] payload format ─────────────────────────────────────────
+
+  describe("artifacts[] payload format (new Stakwork format)", () => {
+    it("processes artifacts format without throwing and updates the whiteboard", async () => {
+      const whiteboard = await createWhiteboardWithElements(workspace.id);
+      const { projectId } = await createDiagramRun(workspace.id, { whiteboardId: whiteboard.id });
+
+      await expect(
+        processStakworkRunWebhook(makeWebhookPayload(projectId, DIAGRAM_RESULT_ARTIFACTS), {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: workspace.id,
+          whiteboard_id: whiteboard.id,
+        })
+      ).resolves.not.toThrow();
+
+      const updated = await db.whiteboard.findUnique({
+        where: { id: whiteboard.id },
+        select: { elements: true },
+      });
+      // The mock relayoutDiagram returns { id: "layouted-el" } — confirm it was persisted
+      const elements = updated!.elements as Array<Record<string, unknown>>;
+      expect(elements.some((e) => e.id === "layouted-el")).toBe(true);
+    });
+
+    it("creates a snapshot before overwriting when artifacts format is used", async () => {
+      const whiteboard = await createWhiteboardWithElements(workspace.id, [{ id: "orig-el", type: "text" }]);
+      const { projectId } = await createDiagramRun(workspace.id, { whiteboardId: whiteboard.id });
+
+      await processStakworkRunWebhook(makeWebhookPayload(projectId, DIAGRAM_RESULT_ARTIFACTS), {
+        type: "DIAGRAM_GENERATION",
+        workspace_id: workspace.id,
+        whiteboard_id: whiteboard.id,
+      });
+
+      const versions = await db.whiteboardVersion.findMany({
+        where: { whiteboardId: whiteboard.id },
+      });
+
+      expect(versions).toHaveLength(1);
+      expect(versions[0].label).toMatch(/^Before AI diagram/);
+      // Snapshot captures the original elements
+      expect(versions[0].elements).toEqual([{ id: "orig-el", type: "text" }]);
+    });
+
+    it("works via feature-linked path with artifacts format", async () => {
+      const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id);
+      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+
+      await expect(
+        processStakworkRunWebhook(makeWebhookPayload(projectId, DIAGRAM_RESULT_ARTIFACTS), {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+        })
+      ).resolves.not.toThrow();
+
+      const updated = await db.whiteboard.findUnique({
+        where: { id: whiteboard.id },
+        select: { elements: true },
+      });
+      const elements = updated!.elements as Array<Record<string, unknown>>;
+      expect(elements.some((e) => e.id === "layouted-el")).toBe(true);
     });
   });
 });
