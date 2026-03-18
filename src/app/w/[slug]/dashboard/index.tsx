@@ -87,7 +87,7 @@ function DashboardInner() {
       </div>
 
       {/* Bottom-left widget */}
-      <div className="absolute bottom-4 left-4 z-10">
+      <div className="absolute bottom-4 left-4 z-10 pointer-events-auto">
         <WorkspaceMembersPreview workspaceSlug={slug} />
       </div>
 
