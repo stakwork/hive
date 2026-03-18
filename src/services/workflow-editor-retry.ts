@@ -7,6 +7,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getBaseUrl } from "@/lib/utils";
 import { WorkflowContent } from "@/lib/chat";
+import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
 interface WorkflowContext {
   workflowId: string | number;
@@ -105,6 +106,9 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     const webhookUrl = `${appBaseUrl}/api/chat/response`;
     const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
+    // Fetch full chat history (matches what the route sends, excluding the new user message)
+    const history = await fetchChatHistory(taskId);
+
     const vars = {
       taskId,
       message: lastUserMessage.message,
@@ -118,14 +122,14 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
         workflow_version_id: workflowContext.workflowVersionId,
       }),
 
-      // No step-specific context on retry — send empty values
+      // No step-specific context on retry — send empty values (same as retry button)
       workflow_step_name: "",
       step_unique_id: "",
       step_display_name: "",
       step_type: "",
       step_data: {},
 
-      history: [],
+      history,
 
       alias: userName,
       username: userName,
