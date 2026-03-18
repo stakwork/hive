@@ -2031,14 +2031,11 @@ Plan and implement the real feature from this branch.`;
                   />
                 ) : (
                   <ChatArea
-                    logs={logs}
                     messages={messages}
                     onSend={handleSend}
                     onArtifactAction={handleArtifactAction}
                     inputDisabled={inputDisabled}
                     isLoading={isLoading}
-                    hasNonFormArtifacts={hasNonFormArtifacts}
-                    isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
                     onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -2074,14 +2071,11 @@ Plan and implement the real feature from this branch.`;
                 <ResizablePanel defaultSize={40} minSize={25}>
                   <div className="h-full min-h-0 min-w-0">
                     <ChatArea
-                      logs={logs}
                       messages={messages}
                       onSend={handleSend}
                       onArtifactAction={handleArtifactAction}
                       inputDisabled={inputDisabled}
                       isLoading={isLoading}
-                      hasNonFormArtifacts={hasNonFormArtifacts}
-                      isChainVisible={isChainVisible}
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
                       onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -2134,10 +2128,7 @@ Plan and implement the real feature from this branch.`;
                 onArtifactAction={handleArtifactAction}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}
-                hasNonFormArtifacts={hasNonFormArtifacts}
-                isChainVisible={isChainVisible}
                 lastLogLine={lastLogLine}
-                logs={logs}
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 pendingStepAttachment={selectedStep}
