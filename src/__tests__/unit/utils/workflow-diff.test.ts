@@ -5,6 +5,10 @@ function makeJson(transitions: Record<string, unknown>, connections: unknown[] =
   return JSON.stringify({ transitions, connections });
 }
 
+function makeJsonWithArrayTransitions(transitions: unknown[], connections: unknown[] = []): string {
+  return JSON.stringify({ transitions, connections });
+}
+
 describe("computeWorkflowDiff", () => {
   describe("null / unparseable inputs", () => {
     it("returns empty sets when both inputs are null", () => {
@@ -83,6 +87,13 @@ describe("computeWorkflowDiff", () => {
       expect(changedStepIds.has("stepA")).toBe(true);
     });
 
+    it("does NOT flag a step when transitions is an array and only position has changed", () => {
+      const original = makeJsonWithArrayTransitions([{ id: "stepA", name: "A", position: { x: 0, y: 0 } }]);
+      const updated = makeJsonWithArrayTransitions([{ id: "stepA", name: "A", position: { x: 99, y: 99 } }]);
+      const { changedStepIds } = computeWorkflowDiff(original, updated);
+      expect(changedStepIds.size).toBe(0);
+    });
+
     it("includes step.id from value in changedStepIds when key differs from step.id", () => {
       const original = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 10 } });
       const updated = makeJson({ stepAlias: { id: "stepAliasId", name: "A", timeout: 20 } });
@@ -120,6 +131,13 @@ describe("computeWorkflowDiff", () => {
       const conn = { source: "stepA", target: "stepB" };
       const original = makeJson({}, [conn]);
       const updated = makeJson({}, [conn]);
+      const { changedConnectionIds } = computeWorkflowDiff(original, updated);
+      expect(changedConnectionIds.size).toBe(0);
+    });
+
+    it("does NOT flag a connection when only the id field differs", () => {
+      const original = makeJson({}, [{ id: "conn-1", source: "stepA", target: "stepB" }]);
+      const updated = makeJson({}, [{ id: "conn-2", source: "stepA", target: "stepB" }]);
       const { changedConnectionIds } = computeWorkflowDiff(original, updated);
       expect(changedConnectionIds.size).toBe(0);
     });
