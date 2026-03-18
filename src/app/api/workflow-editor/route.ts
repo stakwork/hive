@@ -238,10 +238,12 @@ export async function POST(request: NextRequest) {
       const updateData: {
         workflowStatus: WorkflowStatus;
         workflowStartedAt: Date;
+        haltRetryAttempted: boolean;
         stakworkProjectId?: number;
       } = {
         workflowStatus: WorkflowStatus.IN_PROGRESS,
         workflowStartedAt: new Date(),
+        haltRetryAttempted: false, // reset for new run
       };
 
       if (result.data?.project_id) {
