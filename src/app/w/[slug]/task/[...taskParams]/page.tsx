@@ -32,6 +32,8 @@ import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal, BountyRequestModal } from "./components";
 import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
+import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
+import { mapStakworkStatus } from "@/utils/conversions";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -141,11 +143,19 @@ export default function TaskChatPage() {
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
   const [isPrototypeTask, setIsPrototypeTask] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+
+  // Reconciliation polling: recover stuck IN_PROGRESS workflow status on page/tab load
+  const { workflowData: reconcilingWorkflowData } = useWorkflowPolling(
+    isReconciling && projectId ? projectId : null,
+    isReconciling,
+    5000,
+  );
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -187,6 +197,8 @@ export default function TaskChatPage() {
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
+    // Stop reconciliation polling when Pusher delivers the real status — prevents duplicate PATCH
+    setIsReconciling(false);
     // Hide processing indicator when workflow finishes
     if (update.workflowStatus === WorkflowStatus.COMPLETED) {
       setIsChainVisible(false);
@@ -195,6 +207,21 @@ export default function TaskChatPage() {
       }
     }
   }, [taskMode]);
+
+  // When reconciliation polling returns a terminal state, persist it to the DB and update UI
+  useEffect(() => {
+    if (!reconcilingWorkflowData || !currentTaskId || !isReconciling) return;
+    const mapped = mapStakworkStatus(reconcilingWorkflowData.status);
+    if (mapped && mapped !== WorkflowStatus.IN_PROGRESS) {
+      setWorkflowStatus(mapped);
+      setIsReconciling(false);
+      fetch(`/api/tasks/${currentTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowStatus: mapped }),
+      }).catch((err) => console.error("Failed to reconcile workflowStatus:", err));
+    }
+  }, [reconcilingWorkflowData, currentTaskId, isReconciling]);
 
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -322,6 +349,13 @@ export default function TaskChatPage() {
           console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
 
+          // Begin reconciliation polling if the task loaded with an IN_PROGRESS workflow status
+          if (result.data.task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+            setIsReconciling(true);
+          } else {
+            setIsReconciling(false);
+          }
+
           // Create ephemeral WORKFLOW artifact for existing tasks with workflows
           // This artifact is not stored in DB - it's always generated client-side
           const projectId = result.data.task.stakworkProjectId.toString();
@@ -344,6 +378,9 @@ export default function TaskChatPage() {
               ),
             );
           }
+        } else {
+          // No stakworkProjectId — reconciliation cannot run
+          setIsReconciling(false);
         }
 
         // Set task title and description from API response
