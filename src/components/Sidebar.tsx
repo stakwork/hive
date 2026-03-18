@@ -412,7 +412,6 @@ export function Sidebar({ user }: SidebarProps) {
       children: [
         { icon: FileText, label: "Prompts", href: "/prompts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
-        { icon: Workflow, label: "Projects", href: "/projects" },
       ],
     },
   ] : [];
