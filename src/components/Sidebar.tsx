@@ -21,6 +21,7 @@ import {
   Phone,
   Server,
   Settings,
+  Share2,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -133,6 +134,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: BookOpen, label: "Learn", href: "/learn" },
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
+      { icon: Share2, label: "Graph", href: "/context/graph" },
     ],
   },
 ];
@@ -426,9 +428,18 @@ export function Sidebar({ user }: SidebarProps) {
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 
-  const navigationItems = allNavigationItems.filter(
-    (item) => !excludeLabels.includes(item.label),
-  );
+  const navigationItems = allNavigationItems
+    .filter((item) => !excludeLabels.includes(item.label))
+    .map((item) => {
+      // Filter Graph child from Context for non-admins
+      if (item.label === "Context" && item.children && !canAdmin) {
+        return {
+          ...item,
+          children: item.children.filter((child) => child.label !== "Graph"),
+        };
+      }
+      return item;
+    });
 
   const [isOpen, setIsOpen] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
