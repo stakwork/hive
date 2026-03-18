@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { POD_BASE_DOMAIN } from "@/lib/pods/queries";
 import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Validate required fields
     if (!workspaceId) {
-      return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
     // Check for API token authentication (used by Stakwork/external services)
@@ -30,10 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userId = userOrResponse.id;
     }
 
-    // Check for "latest", "goose", and "taskId" query parameters
+    // Check for "latest" and "taskId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
-    const shouldIncludeGoose = searchParams.get("goose") === "true";
     const taskId = searchParams.get("taskId");
 
     // Fetch workspace (include members filter only when we have a userId for ownership check)
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const mockPodId = "local-dev";
 
       // Still save podId and agentUrl to task in dev mode
-      if (taskId && shouldIncludeGoose) {
+      if (taskId) {
         try {
           await db.task.update({
             where: { id: taskId },
@@ -101,8 +101,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workspaceId,
       "shouldUpdateToLatest:",
       shouldUpdateToLatest,
-      "shouldIncludeGoose:",
-      shouldIncludeGoose,
     );
 
     // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
@@ -111,13 +109,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const isMember = workspace.members.length > 0;
 
       if (!isOwner && !isMember) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+        return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
       }
     }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
-      return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "No swarm found for this workspace" }, { status: 404 });
     }
 
     // Check if swarm has pool configuration
@@ -125,7 +123,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const swarmId = workspace.swarm?.id;
 
     if (!swarmId) {
-      return NextResponse.json({ error: "Workspace has no swarm configured" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
     // Get services from swarm
@@ -134,7 +132,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | null
       | undefined;
 
-    const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
+    const userInfo = taskId || undefined;
 
     const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
       swarmId,
@@ -163,15 +161,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Extract control, IDE, and goose URLs
+    // Extract control and pod URLs
     const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
+    const pod_url = `https://${podWorkspace.id}.${POD_BASE_DOMAIN}`;
     const ide = podWorkspace.url || null;
 
     console.log(">>> control", control);
 
     // If taskId is provided, store agent credentials and podId on the task
     // Use control URL (staklink on port 15552) for agentUrl since /session endpoint is there
-    if (taskId && shouldIncludeGoose && control) {
+    if (taskId && control) {
       try {
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
@@ -195,6 +194,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         success: true,
         message: "Pod claimed successfully",
         podId: podWorkspace.id,
+        pod_url,
         frontend,
         control,
         ide,
@@ -205,11 +205,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     console.error("Error claiming pod:", error);
 
+    // No pods available — capacity issue, not a server error
+    if (error instanceof Error && error.message.includes("No available pods")) {
+      return NextResponse.json(
+        { success: false, error: "No available pods" },
+        { status: 503 },
+      );
+    }
+
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
       const apiError = error as ApiError;
       return NextResponse.json(
         {
+          success: false,
           error: apiError.message,
           service: apiError.service,
           details: apiError.details,
@@ -218,6 +227,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    return NextResponse.json({ error: "Failed to claim pod" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to claim pod" }, { status: 500 });
   }
 }
