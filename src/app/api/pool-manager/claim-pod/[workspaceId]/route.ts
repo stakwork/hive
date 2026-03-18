@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Validate required fields
     if (!workspaceId) {
-      return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
     // Check for API token authentication (used by Stakwork/external services)
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
@@ -109,13 +109,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const isMember = workspace.members.length > 0;
 
       if (!isOwner && !isMember) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+        return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
       }
     }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
-      return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "No swarm found for this workspace" }, { status: 404 });
     }
 
     // Check if swarm has pool configuration
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const swarmId = workspace.swarm?.id;
 
     if (!swarmId) {
-      return NextResponse.json({ error: "Workspace has no swarm configured" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
     // Get services from swarm
@@ -205,11 +205,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     console.error("Error claiming pod:", error);
 
+    // No pods available — capacity issue, not a server error
+    if (error instanceof Error && error.message.includes("No available pods")) {
+      return NextResponse.json(
+        { success: false, error: "No available pods" },
+        { status: 503 },
+      );
+    }
+
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
       const apiError = error as ApiError;
       return NextResponse.json(
         {
+          success: false,
           error: apiError.message,
           service: apiError.service,
           details: apiError.details,
@@ -218,6 +227,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    return NextResponse.json({ error: "Failed to claim pod" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to claim pod" }, { status: 500 });
   }
 }
