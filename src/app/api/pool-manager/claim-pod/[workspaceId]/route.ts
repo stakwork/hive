@@ -126,6 +126,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
+    // Guard: reject if the task already has a pod assigned
+    if (taskId) {
+      const existingTask = await db.task.findUnique({
+        where: { id: taskId },
+        select: { podId: true },
+      });
+
+      if (existingTask?.podId) {
+        return NextResponse.json(
+          { success: false, error: "Task already has a pod assigned" },
+          { status: 409 },
+        );
+      }
+    }
+
     // Get services from swarm
     const services = workspace.swarm.services as
       | Array<{ name: string; port: number; scripts?: Record<string, string> }>

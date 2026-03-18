@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "@/app/api/stakwork/webhook/route";
-import { WorkflowStatus, TaskStatus } from "@prisma/client";
+import { WorkflowStatus, TaskStatus, ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   createPostRequest,
@@ -25,13 +25,35 @@ vi.mock("@/lib/pusher", () => ({
     trigger: vi.fn().mockResolvedValue({}),
   },
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  getFeatureChannelName: vi.fn((id: string) => `feature-${id}`),
+  getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
   PUSHER_EVENTS: {
     WORKFLOW_STATUS_UPDATE: "workflow-status-update",
+    NEW_MESSAGE: "new-message",
+    STAKWORK_RUN_UPDATE: "stakwork-run-update",
   },
+}));
+
+vi.mock("@/lib/auth/nextauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/nextauth")>();
+  return {
+    ...actual,
+    getGithubUsernameAndPAT: vi.fn().mockResolvedValue({
+      username: "test-github-user",
+      token: "test-github-token",
+    }),
+  };
+});
+
+vi.mock("@/lib/vercel/stakwork-token", () => ({
+  getStakworkTokenReference: vi.fn().mockReturnValue("{{HIVE_STAGING}}"),
 }));
 
 const { pusherServer } = await import("@/lib/pusher");
 const mockedPusherServer = vi.mocked(pusherServer);
+
+// Save and restore global.fetch around tests that mock it
+let originalFetch: typeof global.fetch;
 
 describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/stakwork/webhook";
@@ -77,8 +99,101 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
   }
 
+  /**
+   * Creates a workflow_editor task with a WORKFLOW artifact in chat history
+   * so the auto-retry service can recover context.
+   */
+  async function createWorkflowEditorTask(
+    opts: {
+      workflowStatus?: WorkflowStatus;
+      haltRetryAttempted?: boolean;
+      withWorkflowArtifact?: boolean;
+    } = {},
+  ) {
+    const {
+      workflowStatus = WorkflowStatus.IN_PROGRESS,
+      haltRetryAttempted = false,
+      withWorkflowArtifact = true,
+    } = opts;
+
+    return await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
+          name: "Workflow User",
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `WE Workspace ${generateUniqueId()}`,
+          slug: generateUniqueSlug("we-workspace"),
+          ownerId: user.id,
+        },
+      });
+
+      const task = await tx.task.create({
+        data: {
+          title: "Workflow Editor Task",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus,
+          mode: "workflow_editor",
+          haltRetryAttempted,
+        },
+      });
+
+      if (withWorkflowArtifact) {
+        // Add a user message then an assistant WORKFLOW artifact
+        await tx.chatMessage.create({
+          data: {
+            taskId: task.id,
+            message: "Make the workflow faster",
+            role: ChatRole.USER,
+            status: ChatStatus.SENT,
+            contextTags: JSON.stringify([]),
+          },
+        });
+
+        await tx.chatMessage.create({
+          data: {
+            taskId: task.id,
+            message: "",
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            contextTags: JSON.stringify([]),
+            artifacts: {
+              create: [
+                {
+                  type: ArtifactType.WORKFLOW,
+                  content: {
+                    projectId: "proj-123",
+                    workflowId: 42,
+                    workflowName: "Test Workflow",
+                    workflowRefId: "ref-abc-xyz",
+                    workflowVersionId: "v1",
+                  },
+                },
+              ],
+            },
+          },
+        });
+      }
+
+      return { user, workspace, task };
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   describe("Security - No Signature Verification", () => {
@@ -603,6 +718,157 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(finalTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
       expect(finalTask?.workflowStartedAt).not.toBeNull();
       expect(finalTask?.workflowCompletedAt).not.toBeNull();
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Auto-retry for workflow_editor terminal states
+  // ────────────────────────────────────────────────────────────────────────────
+  describe("Auto-retry for workflow_editor terminal states", () => {
+    test("first terminal webhook on workflow_editor task triggers retry, task stays IN_PROGRESS", async () => {
+      const { task } = await createWorkflowEditorTask({
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        haltRetryAttempted: false,
+        withWorkflowArtifact: true,
+      });
+
+      // Mock Stakwork to return success so the retry fires
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: 9001 } }),
+      });
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "halted",
+      });
+
+      const response = await POST(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.action).toBe("retried");
+
+      // Task should be back to IN_PROGRESS, haltRetryAttempted reset to false
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+      expect(updatedTask?.haltRetryAttempted).toBe(false);
+
+      // WORKFLOW_STATUS_UPDATE Pusher event should NOT have been broadcast for terminal state
+      const pusherCalls = mockedPusherServer.trigger.mock.calls;
+      const statusUpdateCalls = pusherCalls.filter(
+        (c) => c[1] === "workflow-status-update",
+      );
+      expect(statusUpdateCalls).toHaveLength(0);
+    });
+
+    test("second terminal webhook (haltRetryAttempted=true) writes terminal status and broadcasts", async () => {
+      const { task } = await createWorkflowEditorTask({
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        haltRetryAttempted: true,
+        withWorkflowArtifact: true,
+      });
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "halted",
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Task should now be HALTED
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
+
+      // WORKFLOW_STATUS_UPDATE should have been broadcast
+      const pusherCalls = mockedPusherServer.trigger.mock.calls;
+      const statusUpdateCalls = pusherCalls.filter(
+        (c) => c[1] === "workflow-status-update",
+      );
+      expect(statusUpdateCalls.length).toBeGreaterThan(0);
+    });
+
+    test("non-workflow_editor task + terminal status proceeds normally (no retry)", async () => {
+      // Regular (live mode) task
+      const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "halted",
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
+
+      // Pusher broadcast should have fired for terminal state
+      const pusherCalls = mockedPusherServer.trigger.mock.calls;
+      const statusUpdateCalls = pusherCalls.filter(
+        (c) => c[1] === "workflow-status-update",
+      );
+      expect(statusUpdateCalls.length).toBeGreaterThan(0);
+    });
+
+    test("workflow_editor task with no WORKFLOW artifact in history — terminal status applied directly", async () => {
+      const { task } = await createWorkflowEditorTask({
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        haltRetryAttempted: false,
+        withWorkflowArtifact: false, // No WORKFLOW artifact
+      });
+
+      // Add only a user message (no WORKFLOW artifact)
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "some message",
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          contextTags: JSON.stringify([]),
+        },
+      });
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "halted",
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // No retry possible — task should be HALTED directly
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("FAILED terminal status also triggers retry for workflow_editor tasks", async () => {
+      const { task } = await createWorkflowEditorTask({
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        haltRetryAttempted: false,
+        withWorkflowArtifact: true,
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: 9002 } }),
+      });
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "failed",
+      });
+
+      const response = await POST(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.action).toBe("retried");
+
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+      expect(updatedTask?.haltRetryAttempted).toBe(false);
     });
   });
 });
