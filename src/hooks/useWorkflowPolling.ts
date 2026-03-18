@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { deepEqual } from '@/lib/utils/deepEqual';
 
+export const TERMINAL_STATUSES = ["completed", "failed", "error", "halted", "paused", "stopped"];
+
 export interface WorkflowData {
   workflowData: {
     transitions?: unknown[];
@@ -21,6 +23,8 @@ export const useWorkflowPolling = (
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const previousDataRef = useRef<WorkflowData | null>(null);
+  // Track terminal state via ref so the effect doesn't re-run on every status change
+  const isTerminalRef = useRef<boolean>(false);
 
   const fetchWorkflowData = useCallback(async () => {
     if (!projectId) return;
@@ -43,10 +47,13 @@ export const useWorkflowPolling = (
         setWorkflowData(data);
       }
 
-      // Stop polling if workflow is completed
-      if (data.status === "completed" && intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      // Stop polling if workflow has reached a terminal state
+      if (TERMINAL_STATUSES.includes(data.status)) {
+        isTerminalRef.current = true;
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       }
     } catch (err) {
       console.error("Error fetching workflow data:", err);
@@ -60,12 +67,15 @@ export const useWorkflowPolling = (
   const clearWorkflowData = useCallback(() => {
     setWorkflowData(null);
     setError(null);
+    isTerminalRef.current = false;
   }, []);
 
-  // Start/stop polling based on isActive, projectId, and workflow status
+  // Start/stop polling based on isActive and projectId only.
+  // Terminal-state management is handled inside fetchWorkflowData via isTerminalRef,
+  // so we intentionally omit workflowData?.status from deps to avoid re-triggering.
   useEffect(() => {
-    // Don't start polling if not active, no projectId, or workflow is already completed
-    if (!isActive || !projectId || workflowData?.status === "completed") {
+    // Don't start polling if not active, no projectId, or already reached a terminal state
+    if (!isActive || !projectId || isTerminalRef.current) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -86,7 +96,7 @@ export const useWorkflowPolling = (
         intervalRef.current = null;
       }
     };
-  }, [isActive, projectId, pollingInterval, fetchWorkflowData, workflowData?.status]);
+  }, [isActive, projectId, pollingInterval, fetchWorkflowData]);
 
   return {
     workflowData,
