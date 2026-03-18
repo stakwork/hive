@@ -6,6 +6,7 @@ import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
+import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
 
 export const fetchCache = "force-no-store";
 
@@ -148,6 +149,8 @@ export async function POST(request: NextRequest) {
         createdById: true,
         title: true,
         featureId: true,
+        mode: true,
+        haltRetryAttempted: true,
         workspace: { select: { slug: true } },
       },
     });
@@ -215,6 +218,19 @@ export async function POST(request: NextRequest) {
 
       console.error(`Task not found: ${finalTaskId}`);
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    // Auto-retry once for workflow_editor tasks on terminal status before surfacing failure
+    const isTerminal =
+      workflowStatus === WorkflowStatus.HALTED ||
+      workflowStatus === WorkflowStatus.FAILED ||
+      workflowStatus === WorkflowStatus.ERROR;
+
+    if (isTerminal) {
+      const retried = await retryWorkflowEditorTask(task.id);
+      if (retried) {
+        return NextResponse.json({ success: true, action: "retried" }, { status: 200 });
+      }
     }
 
     const updatedTask = await db.task.update({
