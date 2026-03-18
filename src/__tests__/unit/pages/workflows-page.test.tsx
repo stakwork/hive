@@ -29,6 +29,10 @@ vi.mock("@/hooks/useWorkflowVersions", () => ({
   useWorkflowVersions: () => ({ versions: [], isLoading: false }),
 }));
 
+vi.mock("@/hooks/useRecentWorkflows", () => ({
+  useRecentWorkflows: () => ({ workflows: [], isLoading: false, error: null }),
+}));
+
 // Mock UI components
 vi.mock("@/components/ui/page-header", () => ({
   PageHeader: ({ title }: any) => <div data-testid="page-header"><h1>{title}</h1></div>,
@@ -75,7 +79,7 @@ describe("WorkflowsPage", () => {
 
       render(<WorkflowsPage />);
 
-      const input = screen.getByPlaceholderText("Enter workflow ID...");
+      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
       expect(input).toHaveValue("12345");
     });
 
@@ -83,7 +87,7 @@ describe("WorkflowsPage", () => {
       // mockSearchParams is empty from beforeEach
       render(<WorkflowsPage />);
 
-      const input = screen.getByPlaceholderText("Enter workflow ID...");
+      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
       expect(input).toHaveValue("");
     });
   });
