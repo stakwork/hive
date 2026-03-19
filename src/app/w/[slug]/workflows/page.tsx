@@ -248,6 +248,9 @@ export default function WorkflowsPage() {
   const isWorkflow = versions.length > 0;
   const isLoading = isResolvingRun || isLoadingVersions;
 
+  const neitherFound = !isLoading && parsedWorkflowId !== null && !isRun && !isWorkflow;
+  const bothFound    = !isLoading && parsedWorkflowId !== null && isRun && isWorkflow;
+
   const showEmptyState = !isLoadingRecent && (recentError !== null || recentWorkflows.length === 0);
 
   return (
@@ -301,8 +304,52 @@ export default function WorkflowsPage() {
                 </div>
               )}
 
-              {/* Action buttons — shown once resolution is complete */}
-              {!isLoading && (isRun || (isWorkflow && selectedVersionId)) && (
+              {/* State: Neither found */}
+              {neitherFound && (
+                <p className="text-sm text-muted-foreground py-2">
+                  No project or workflow has been found.
+                </p>
+              )}
+
+              {/* State: Both found — disambiguation prompt + two outline buttons */}
+              {bothFound && (
+                <div className="space-y-3 mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    We&apos;ve found both a Run and a Workflow with that ID — what would you like to do?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleDebugRun}
+                      disabled={isDebugging || isSubmitting}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      {isDebugging ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Bug className="w-4 h-4 mr-2" />
+                      )}
+                      Debug this run
+                    </Button>
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || isDebugging || !selectedVersionId}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <ArrowUp className="w-4 h-4 mr-2" />
+                      )}
+                      Load Workflow
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* State: Only one found — single default button, no disambiguation */}
+              {!isLoading && !bothFound && (isRun || (isWorkflow && selectedVersionId)) && (
                 <div className="flex gap-2 mt-4">
                   {isRun && (
                     <Button
@@ -323,7 +370,7 @@ export default function WorkflowsPage() {
                     <Button
                       onClick={handleSubmit}
                       disabled={isSubmitting || isDebugging}
-                      variant={isRun ? "outline" : "default"}
+                      variant="default"
                       className="flex-1"
                     >
                       {isSubmitting ? (
