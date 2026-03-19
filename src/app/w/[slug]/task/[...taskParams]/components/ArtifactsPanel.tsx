@@ -41,6 +41,7 @@ interface ArtifactsPanelProps {
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
   browserRefreshTrigger?: number;
+  isSuperAdmin?: boolean;
 }
 
 export function ArtifactsPanel({
@@ -61,6 +62,7 @@ export function ArtifactsPanel({
   onControlledTabChange,
   sectionHighlights,
   browserRefreshTrigger,
+  isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -467,6 +469,7 @@ export function ArtifactsPanel({
                 isActive={activeTab === "WORKFLOW"}
                 onStepSelect={onStepSelect}
                 onVersionChange={onVersionChange}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           )}

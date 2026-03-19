@@ -18,9 +18,9 @@ const STAKWORK_URL = "https://jobs.stakwork.com/admin/projects/99999";
 
 describe("WorkflowStatusBadge", () => {
   describe("IN_PROGRESS state", () => {
-    test("renders an <a> tag linking to Stakwork when stakworkProjectId is present", () => {
+    test("renders an <a> tag linking to Stakwork when stakworkProjectId is present and isSuperAdmin=true", () => {
       render(
-        <WorkflowStatusBadge status={WorkflowStatus.IN_PROGRESS} stakworkProjectId="99999" />
+        <WorkflowStatusBadge status={WorkflowStatus.IN_PROGRESS} stakworkProjectId="99999" isSuperAdmin={true} />
       );
       const link = screen.getByRole("link");
       expect(link).toBeInTheDocument();
@@ -52,27 +52,27 @@ describe("WorkflowStatusBadge", () => {
   });
 
   describe("Terminal states (regression)", () => {
-    test("ERROR + stakworkProjectId → renders an <a> tag", () => {
+    test("ERROR + stakworkProjectId + isSuperAdmin=true → renders an <a> tag", () => {
       render(
-        <WorkflowStatusBadge status={WorkflowStatus.ERROR} stakworkProjectId="99999" />
+        <WorkflowStatusBadge status={WorkflowStatus.ERROR} stakworkProjectId="99999" isSuperAdmin={true} />
       );
       const link = screen.getByRole("link");
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", STAKWORK_URL);
     });
 
-    test("HALTED + stakworkProjectId → renders an <a> tag", () => {
+    test("HALTED + stakworkProjectId + isSuperAdmin=true → renders an <a> tag", () => {
       render(
-        <WorkflowStatusBadge status={WorkflowStatus.HALTED} stakworkProjectId="99999" />
+        <WorkflowStatusBadge status={WorkflowStatus.HALTED} stakworkProjectId="99999" isSuperAdmin={true} />
       );
       const link = screen.getByRole("link");
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", STAKWORK_URL);
     });
 
-    test("FAILED + stakworkProjectId → renders an <a> tag", () => {
+    test("FAILED + stakworkProjectId + isSuperAdmin=true → renders an <a> tag", () => {
       render(
-        <WorkflowStatusBadge status={WorkflowStatus.FAILED} stakworkProjectId="99999" />
+        <WorkflowStatusBadge status={WorkflowStatus.FAILED} stakworkProjectId="99999" isSuperAdmin={true} />
       );
       const link = screen.getByRole("link");
       expect(link).toBeInTheDocument();
@@ -179,6 +179,80 @@ describe("WorkflowStatusBadge", () => {
         />
       );
       expect(screen.queryByText("some text")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("isSuperAdmin gating", () => {
+    test("IN_PROGRESS + stakworkProjectId + isSuperAdmin=false → renders a <div>, no ExternalLink", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="99999"
+          isSuperAdmin={false}
+        />
+      );
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("status").tagName).toBe("DIV");
+    });
+
+    test("ERROR + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.ERROR}
+          stakworkProjectId="99999"
+          isSuperAdmin={false}
+        />
+      );
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("status").tagName).toBe("DIV");
+    });
+
+    test("HALTED + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.HALTED}
+          stakworkProjectId="99999"
+          isSuperAdmin={false}
+        />
+      );
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("status").tagName).toBe("DIV");
+    });
+
+    test("FAILED + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.FAILED}
+          stakworkProjectId="99999"
+          isSuperAdmin={false}
+        />
+      );
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("status").tagName).toBe("DIV");
+    });
+
+    test("IN_PROGRESS + stakworkProjectId + isSuperAdmin=true → renders an <a> tag (unchanged behaviour)", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="99999"
+          isSuperAdmin={true}
+        />
+      );
+      const link = screen.getByRole("link");
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute("href", STAKWORK_URL);
+    });
+
+    test("ERROR + stakworkProjectId + isSuperAdmin=true → renders an <a> tag (unchanged behaviour)", () => {
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.ERROR}
+          stakworkProjectId="99999"
+          isSuperAdmin={true}
+        />
+      );
+      expect(screen.getByRole("link")).toBeInTheDocument();
     });
   });
 });

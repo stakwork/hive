@@ -56,6 +56,7 @@ interface ChatAreaProps {
   isSavingPlan?: boolean;
   onSaveAndPlan?: () => void;
   streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatArea({
@@ -95,6 +96,7 @@ export function ChatArea({
   isSavingPlan = false,
   onSaveAndPlan,
   streamContext = null,
+  isSuperAdmin = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -388,6 +390,7 @@ export function ChatArea({
         isPlanChat={isPlanChat}
         currentWorkspaceSlug={workspaceSlug}
         streamContext={streamContext}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {onReleasePod && (
