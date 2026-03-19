@@ -286,15 +286,17 @@ export default function WorkflowsPage() {
                 </p>
               )}
 
-              <WorkflowVersionSelector
-                workflowName={
-                  matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`
-                }
-                versions={versions}
-                selectedVersionId={selectedVersionId}
-                onVersionSelect={handleVersionSelect}
-                isLoading={isLoadingVersions}
-              />
+              {(isLoadingVersions || isWorkflow) && (
+                <WorkflowVersionSelector
+                  workflowName={
+                    matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`
+                  }
+                  versions={versions}
+                  selectedVersionId={selectedVersionId}
+                  onVersionSelect={handleVersionSelect}
+                  isLoading={isLoadingVersions}
+                />
+              )}
 
               {/* Loading indicator while resolving run or versions */}
               {isLoading && (
