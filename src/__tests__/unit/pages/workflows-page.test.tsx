@@ -144,6 +144,8 @@ describe("WorkflowsPage", () => {
       expect(screen.getByRole("button", { name: /debug this run/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /load workflow/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/no project or workflow/i)).not.toBeInTheDocument();
+      // Version selector must not render for a run-only ID
+      expect(screen.queryByTestId("version-selector")).not.toBeInTheDocument();
     });
 
     it("only workflow found — shows 'Load Workflow' button only after version selected, no not-found text", async () => {
@@ -160,6 +162,8 @@ describe("WorkflowsPage", () => {
       expect(screen.queryByText(/no project or workflow/i)).not.toBeInTheDocument();
       // "Load Workflow" button only appears after a version is selected; without selection it's absent
       expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
+      // Version selector should be visible when versions exist
+      expect(screen.getByTestId("version-selector")).toBeInTheDocument();
     });
 
     it("both found — shows disambiguation message and two outline buttons", async () => {
