@@ -114,13 +114,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          success: true,
-          data: {
-            results: [{ id: 100, name: "Owner Workflow" }],
-            period_days: 30,
-            limit: 25,
-            type: "all",
-          },
+          data: [{ id: 100, name: "Owner Workflow", updated_at: "2024-03-18T14:32:10.000Z", last_modified_by: "alice@stakwork.com" }],
         }),
       } as Response);
 
@@ -148,8 +142,7 @@ describe("GET /api/workflow/recent Integration Tests", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          success: true,
-          data: { results: [{ id: 200, name: "Member Workflow" }], period_days: 30, limit: 25, type: "all" },
+          data: [{ id: 200, name: "Member Workflow", updated_at: "2024-03-15T11:00:00.000Z", last_modified_by: "bob@stakwork.com" }],
         }),
       } as Response);
 
@@ -175,12 +168,14 @@ describe("GET /api/workflow/recent Integration Tests", () => {
       expect(data.data.workflows.length).toBeGreaterThanOrEqual(3);
       expect(data.data.workflows[0]).toHaveProperty("id");
       expect(data.data.workflows[0]).toHaveProperty("name");
+      expect(data.data.workflows[0]).toHaveProperty("updated_at");
+      expect(data.data.workflows[0]).toHaveProperty("last_modified_by");
 
       // Should NOT have called the real Stakwork API
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    test("dev mode mock workflows have id and name fields", async () => {
+    test("dev mode mock workflows have all four required fields", async () => {
       mockIsDevelopmentMode.mockReturnValue(true);
 
       mockGetServerSession.mockResolvedValueOnce({
@@ -193,28 +188,27 @@ describe("GET /api/workflow/recent Integration Tests", () => {
       for (const workflow of data.data.workflows) {
         expect(typeof workflow.id).toBe("number");
         expect(typeof workflow.name).toBe("string");
+        expect("updated_at" in workflow).toBe(true);
+        expect("last_modified_by" in workflow).toBe(true);
       }
     });
   });
 
   describe("Stakwork API Proxy Tests", () => {
-    test("fetches recent workflows from Stakwork API in prod mode", async () => {
+    test("fetches recently modified workflows from Stakwork API in prod mode", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
 
-      const stakworkResults = [
-        { id: 501, name: "Prod Workflow 1", run_count: 42 },
-        { id: 502, name: "Prod Workflow 2", run_count: 7 },
+      const stakworkData = [
+        { id: 501, name: "Prod Workflow 1", customer_id: 4555, updated_at: "2024-03-18T14:32:10.000Z", last_modified_by: "alice@stakwork.com" },
+        { id: 502, name: "Prod Workflow 2", customer_id: 789, updated_at: "2024-03-15T11:00:00.000Z", last_modified_by: null },
       ];
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({
-          success: true,
-          data: { results: stakworkResults, period_days: 30, limit: 25, type: "all" },
-        }),
+        json: async () => ({ data: stakworkData }),
       } as Response);
 
       const response = await GET();
@@ -222,13 +216,13 @@ describe("GET /api/workflow/recent Integration Tests", () => {
 
       expect(data.success).toBe(true);
       expect(data.data.workflows).toEqual([
-        { id: 501, name: "Prod Workflow 1" },
-        { id: 502, name: "Prod Workflow 2" },
+        { id: 501, name: "Prod Workflow 1", updated_at: "2024-03-18T14:32:10.000Z", last_modified_by: "alice@stakwork.com" },
+        { id: 502, name: "Prod Workflow 2", updated_at: "2024-03-15T11:00:00.000Z", last_modified_by: null },
       ]);
-      // Ensure run_count and other extra fields are stripped
+      // Ensure customer_id and other extra fields are stripped
       for (const workflow of data.data.workflows) {
-        expect(workflow).not.toHaveProperty("run_count");
-        expect(Object.keys(workflow)).toEqual(["id", "name"]);
+        expect(workflow).not.toHaveProperty("customer_id");
+        expect(Object.keys(workflow)).toEqual(["id", "name", "updated_at", "last_modified_by"]);
       }
     });
 
@@ -240,22 +234,19 @@ describe("GET /api/workflow/recent Integration Tests", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({
-          success: true,
-          data: { results: [], period_days: 30, limit: 25, type: "all" },
-        }),
+        json: async () => ({ data: [] }),
       } as Response);
 
       await GET();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.stakwork.test/workflows/recent",
+        "https://api.stakwork.test/workflows/recently_modified",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
             Authorization: "Token token=test-stakwork-key-123",
           }),
-        })
+        }),
       );
     });
 
@@ -272,21 +263,6 @@ describe("GET /api/workflow/recent Integration Tests", () => {
 
       const response = await GET();
       await expectError(response, "Failed to fetch recent workflows", 503);
-    });
-
-    test("returns 400 when Stakwork API returns success: false", async () => {
-      mockGetServerSession.mockResolvedValueOnce({
-        user: { id: testUser.id, email: testUser.email },
-      } as any);
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: false }),
-      } as Response);
-
-      const response = await GET();
-      await expectError(response, "Failed to fetch recent workflows from Stakwork", 400);
     });
 
     test("returns 500 on network error", async () => {
@@ -313,6 +289,63 @@ describe("GET /api/workflow/recent Integration Tests", () => {
 
       const response = await GET();
       await expectError(response, "Failed to fetch recent workflows", 403);
+    });
+
+    test("passes through null last_modified_by correctly", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 601, name: "No Modifier Workflow", updated_at: "2024-03-10T08:00:00.000Z", last_modified_by: null }],
+        }),
+      } as Response);
+
+      const response = await GET();
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data.workflows[0].last_modified_by).toBeNull();
+      expect("last_modified_by" in data.data.workflows[0]).toBe(true);
+    });
+
+    test("passes through null updated_at correctly", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 602, name: "No Date Workflow", updated_at: null, last_modified_by: "dave@stakwork.com" }],
+        }),
+      } as Response);
+
+      const response = await GET();
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data.workflows[0].updated_at).toBeNull();
+      expect("updated_at" in data.data.workflows[0]).toBe(true);
+    });
+
+    test("returns empty workflows array when data is empty", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [] }),
+      } as Response);
+
+      const response = await GET();
+      const data = await expectSuccess(response, 200);
+
+      expect(data.data.workflows).toEqual([]);
     });
   });
 });
