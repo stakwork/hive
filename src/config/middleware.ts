@@ -48,6 +48,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
   { path: "/api/webhook/pool-manager", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
+  { path: "/api/workspaces/*/members", strategy: "pattern", access: "webhook" },
+  { path: "/api/workspaces/*/members/*", strategy: "pattern", access: "webhook" },
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/agent-logs/*/content", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
