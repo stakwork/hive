@@ -139,6 +139,11 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         insertMention(filteredWorkspaces[mentionIndex].slug);
         return;
       }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         setMentionQuery(null);
