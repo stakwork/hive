@@ -587,7 +587,6 @@ model swarms {
   pool_name                  String?
   swarm_api_key              String?
   swarm_secret_alias         String?
-  environment_variables      Json                    @default("[]")
   services                   Json                    @default("[]")
   ingest_ref_id              String?
   container_files            Json?
