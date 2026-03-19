@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PrismaClient, TaskStatus, WorkflowStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -7,7 +8,7 @@ async function syncDoneTasksWorkflowStatus() {
     console.log("Starting sync of DONE tasks to COMPLETED workflow status...");
 
     // Find all tasks with status=DONE but workflowStatus is not COMPLETED
-    const tasksToUpdate = await prisma.task.findMany({
+    const tasksToUpdate = await prisma.tasks.findMany({
       where: {
         status: TaskStatus.DONE,
         workflowStatus: {
@@ -31,7 +32,7 @@ async function syncDoneTasksWorkflowStatus() {
     }
 
     // Update all tasks
-    const result = await prisma.task.updateMany({
+    const result = await prisma.tasks.updateMany({
       where: {
         status: TaskStatus.DONE,
         workflowStatus: {

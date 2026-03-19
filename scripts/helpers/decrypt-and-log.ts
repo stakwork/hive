@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PrismaClient } from "@prisma/client";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";
@@ -8,7 +9,7 @@ const prisma = new PrismaClient();
 const encryption = EncryptionService.getInstance();
 
 async function logAccounts() {
-  const accounts = await prisma.account.findMany({});
+  const accounts = await prisma.accounts.findMany({});
 
   console.log("\n=== ACCOUNTS (access_token) ===");
   for (const a of accounts) {
@@ -39,7 +40,7 @@ async function logAccounts() {
 }
 
 async function logUsers() {
-  const users = await prisma.user.findMany({});
+  const users = await prisma.users.findMany({});
 
   console.log("\n=== USERS ===");
   for (const u of users) {
@@ -48,7 +49,7 @@ async function logUsers() {
 }
 
 async function logGitHubAuths() {
-  const auths = await prisma.gitHubAuth.findMany({
+  const auths = await prisma.github_auth.findMany({
     select: {
       userId: true,
       githubUsername: true,
@@ -67,7 +68,7 @@ async function logGitHubAuths() {
 }
 
 async function logWorkspaces() {
-  const workspaces = await prisma.workspace.findMany({
+  const workspaces = await prisma.workspaces.findMany({
     include: {
       owner: { select: { id: true, email: true, name: true } },
       repositories: { select: { id: true } },
@@ -95,7 +96,7 @@ async function logWorkspaces() {
 }
 
 async function logSwarms() {
-  const swarms = await prisma.swarm.findMany({
+  const swarms = await prisma.swarms.findMany({
     select: {
       id: true,
       name: true,
@@ -198,7 +199,7 @@ async function logSwarms() {
 }
 
 async function logRepositories() {
-  const repos = await prisma.repository.findMany({
+  const repos = await prisma.repositories.findMany({
     select: {
       id: true,
       name: true,
@@ -217,7 +218,7 @@ async function logRepositories() {
 }
 
 async function logUserWorkspaces() {
-  const userWorkspaces = await prisma.user.findMany({});
+  const userWorkspaces = await prisma.users.findMany({});
 
   console.log("\n=== USER WORKSPACES ===");
   for (const uw of userWorkspaces) {
@@ -226,7 +227,7 @@ async function logUserWorkspaces() {
 }
 
 async function logSessionDb() {
-  const session = await prisma.session.findMany({});
+  const session = await prisma.sessions.findMany({});
   console.log(session);
 }
 

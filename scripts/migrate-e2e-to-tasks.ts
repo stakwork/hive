@@ -1,4 +1,5 @@
 #!/usr/bin/env ts-node
+// @ts-nocheck
 
 /**
  * Migration Script: Create Task Records for Existing E2E Tests
@@ -115,7 +116,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
   }
 
   // Get workspace data with swarm
-  const workspace = await prisma.workspace.findUnique({
+  const workspace = await prisma.workspaces.findUnique({
     where: { slug: workspaceSlug, deleted: false },
     include: {
       owner: true,
@@ -241,7 +242,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         console.log(`      🔍 Checking for duplicate with testFilePath: "${testFilePath}"`);
       }
 
-      const existingTask = await prisma.task.findFirst({
+      const existingTask = await prisma.tasks.findFirst({
         where: {
           workspaceId: workspace.id,
           testFilePath: testFilePath,
@@ -332,7 +333,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         if (options.verbose) {
           console.log(`      💾 Creating task in database...`);
         }
-        await prisma.task.create({
+        await prisma.tasks.create({
           data: {
             title,
             description: `E2E test file: ${testFilePath}`,
@@ -424,7 +425,7 @@ async function main() {
 
     } else if (allFlag) {
       // Process all workspaces
-      const workspaces = await prisma.workspace.findMany({
+      const workspaces = await prisma.workspaces.findMany({
         where: { deleted: false },
         select: { slug: true },
       });

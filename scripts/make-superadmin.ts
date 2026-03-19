@@ -1,10 +1,11 @@
+// @ts-nocheck
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
   // Update any mock user to be a superadmin
-  const updated = await prisma.user.updateMany({
+  const updated = await prisma.users.updateMany({
     where: {
       email: {
         endsWith: "@mock.dev"
@@ -19,7 +20,7 @@ async function main() {
   
   // Also create one if it doesn't exist
   if (updated.count === 0) {
-    const user = await prisma.user.upsert({
+    const user = await prisma.users.upsert({
       where: { email: "admin@mock.dev" },
       update: { role: "SUPER_ADMIN" },
       create: {

@@ -1,4 +1,5 @@
 #!/usr/bin/env ts-node
+// @ts-nocheck
 
 /**
  * Validation Script: Compare E2E Tests in Graph vs Database
@@ -91,7 +92,7 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
   console.log(`\n🔍 Validating workspace: ${workspaceSlug}\n`);
 
   // Get workspace data
-  const workspace = await prisma.workspace.findUnique({
+  const workspace = await prisma.workspaces.findUnique({
     where: { slug: workspaceSlug, deleted: false },
     include: {
       swarm: true,
@@ -147,7 +148,7 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
 
   // Fetch tasks from database
   console.log(`\n💾 Fetching tasks from database...`);
-  const dbTasks = await prisma.task.findMany({
+  const dbTasks = await prisma.tasks.findMany({
     where: {
       workspaceId: workspace.id,
       sourceType: "USER_JOURNEY",

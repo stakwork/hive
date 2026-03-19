@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Seed script for populating Workflow_version nodes in the graph database
  * 

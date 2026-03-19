@@ -16,7 +16,51 @@ import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/cl
 import { isClarifyingQuestions } from "@/types/stakwork";
 import { config } from "@/config/env";
 
-vi.mock("@/lib/db");
+vi.mock("@/lib/db", () => ({
+  db: {
+    workspace: {
+      findUnique: vi.fn(),
+    },
+    user: {
+      findUnique: vi.fn(),
+    },
+    feature: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    stakworkRun: {
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      count: vi.fn(),
+    },
+    task: {
+      create: vi.fn(),
+    },
+    repository: {
+      findMany: vi.fn(),
+    },
+    whiteboard: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      upsert: vi.fn(),
+    },
+    whiteboardMessage: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    whiteboardVersion: {
+      count: vi.fn(),
+      create: vi.fn(),
+      findFirst: vi.fn(),
+    },
+  },
+}));
 vi.mock("@/lib/service-factory");
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {

@@ -2,7 +2,17 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/db");
+vi.mock("@/lib/db", () => ({
+  db: {
+    task: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
+    chatMessage: {
+      create: vi.fn(),
+    },
+  },
+}));
 
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn().mockResolvedValue({}) },

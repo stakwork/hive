@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
+import { randomUUID } from "crypto";
 import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 import {
   generateUniqueId,
@@ -15,7 +16,7 @@ vi.mock("@/lib/ai/askTools", () => ({
 
 // ── Mock fetch for outbound webhook calls ────────────────────────────────────
 global.fetch = vi.fn();
-const mockFetch = global.fetch as vi.MockedFunction<typeof fetch>;
+const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
 
 // Import route AFTER mocks are declared
 import { POST } from "@/app/api/mock/stakwork/run/route";
@@ -52,28 +53,31 @@ describe("POST /api/mock/stakwork/run", () => {
     vi.clearAllMocks();
 
     // Ensure the fallback workspace exists so FK constraint passes
-    const existing = await db.workspace.findUnique({ where: { id: FALLBACK_WORKSPACE_ID } });
+    const existing = await db.workspaces.findUnique({ where: { id: FALLBACK_WORKSPACE_ID } });
     if (!existing) {
-      const user = await db.user.create({
+      const now = new Date();
+      const user = await db.users.create({
         data: {
           id: generateUniqueId("user"),
           email: `mock-owner-${generateUniqueId()}@example.com`,
           name: "Mock Owner",
+          updated_at: now,
         },
       });
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: FALLBACK_WORKSPACE_ID,
           name: "Mock Workspace",
           slug: generateUniqueSlug("mock-ws"),
-          ownerId: user.id,
+          owner_id: user.id,
+          updated_at: now,
         },
       });
     }
   });
 
   afterEach(async () => {
-    await db.stakworkRun.deleteMany({ where: { workspaceId: FALLBACK_WORKSPACE_ID } });
+    await db.stakwork_runs.deleteMany({ where: { workspace_id: FALLBACK_WORKSPACE_ID } });
   });
 
   // ─── Validation ─────────────────────────────────────────────────────────────
@@ -125,12 +129,12 @@ describe("POST /api/mock/stakwork/run", () => {
       expect(body.success).toBe(true);
       expect(body.run_id).toBeDefined();
 
-      const run = await db.stakworkRun.findUnique({ where: { id: body.run_id } });
+      const run = await db.stakwork_runs.findUnique({ where: { id: body.run_id } });
       expect(run).not.toBeNull();
       expect(run!.type).toBe(StakworkRunType.REPO_AGENT);
       expect(run!.status).toBe(WorkflowStatus.COMPLETED);
       expect(run!.result).not.toBeNull();
-      expect(run!.workspaceId).toBe(FALLBACK_WORKSPACE_ID);
+      expect(run!.workspace_id).toBe(FALLBACK_WORKSPACE_ID);
     });
 
     test("POSTs to webhookUrl with project_status: 'complete' and correct run_id", async () => {
@@ -153,18 +157,22 @@ describe("POST /api/mock/stakwork/run", () => {
     });
 
     test("uses caller-supplied workspaceId when provided", async () => {
-      const user2 = await db.user.create({
+      const now = new Date();
+      const user2 = await db.users.create({
         data: {
           id: generateUniqueId("user"),
           email: `ws2-owner-${generateUniqueId()}@example.com`,
           name: "WS2 Owner",
+          updated_at: now,
         },
       });
-      const ws2 = await db.workspace.create({
+      const ws2 = await db.workspaces.create({
         data: {
+          id: randomUUID(),
           name: "WS2",
           slug: generateUniqueSlug("ws2"),
-          ownerId: user2.id,
+          owner_id: user2.id,
+          updated_at: now,
         },
       });
 
@@ -177,12 +185,12 @@ describe("POST /api/mock/stakwork/run", () => {
         const body = await response.json();
         expect(response.status).toBe(200);
 
-        const run = await db.stakworkRun.findUnique({ where: { id: body.run_id } });
-        expect(run!.workspaceId).toBe(ws2.id);
+        const run = await db.stakwork_runs.findUnique({ where: { id: body.run_id } });
+        expect(run!.workspace_id).toBe(ws2.id);
       } finally {
-        await db.stakworkRun.deleteMany({ where: { workspaceId: ws2.id } });
-        await db.workspace.delete({ where: { id: ws2.id } });
-        await db.user.delete({ where: { id: user2.id } });
+        await db.stakwork_runs.deleteMany({ where: { workspace_id: ws2.id } });
+        await db.workspaces.delete({ where: { id: ws2.id } });
+        await db.users.delete({ where: { id: user2.id } });
       }
     });
   });
@@ -230,9 +238,9 @@ describe("POST /api/mock/stakwork/run", () => {
       expect(body.error).toContain("repo agent failed");
 
       // Confirm run is persisted as FAILED
-      const runs = await db.stakworkRun.findMany({
-        where: { workspaceId: FALLBACK_WORKSPACE_ID, status: WorkflowStatus.FAILED },
-        orderBy: { createdAt: "desc" },
+      const runs = await db.stakwork_runs.findMany({
+        where: { workspace_id: FALLBACK_WORKSPACE_ID, status: WorkflowStatus.FAILED },
+        orderBy: { created_at: "desc" },
         take: 1,
       });
       expect(runs).toHaveLength(1);
