@@ -948,7 +948,7 @@ describe("WorkflowsPage", () => {
   describe("Recent Workflows", () => {
     it("renders the Recent Workflows section heading", () => {
       render(<WorkflowsPage />);
-      expect(screen.getByText("Recent Workflows")).toBeInTheDocument();
+      expect(screen.getByText("Recently Modified")).toBeInTheDocument();
     });
 
     it("renders skeleton rows when isLoading is true", () => {
