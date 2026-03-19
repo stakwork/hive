@@ -64,7 +64,7 @@ export function WorkflowVersionSelector({
   const selectedVersion = versions.find((v) => v.workflow_version_id === selectedVersionId) || versions[0];
 
   return (
-    <div className="mt-4 space-y-2">
+    <div data-testid="version-selector" className="mt-4 space-y-2">
       <label className="text-sm font-medium text-foreground">Select Version</label>
       <Select value={selectedVersionId || versions[0]?.workflow_version_id} onValueChange={onVersionSelect}>
         <SelectTrigger className="w-full h-10 text-sm">
