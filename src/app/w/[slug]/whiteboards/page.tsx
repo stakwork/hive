@@ -24,6 +24,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { FilterDropdownHeader } from "@/components/features/TableColumnHeaders";
+
+const STORAGE_KEY = "whiteboards-filters-preference";
 
 interface WhiteboardItem {
   id: string;
@@ -32,22 +36,85 @@ interface WhiteboardItem {
   feature: { id: string; title: string } | null;
   createdAt: string;
   updatedAt: string;
+  createdBy: { id: string; name: string | null; image: string | null } | null;
+}
+
+interface CreatorOption {
+  value: string;
+  label: string;
+  image: string | null;
 }
 
 export default function WhiteboardsPage() {
   const router = useRouter();
   const { id: workspaceId, slug } = useWorkspace();
   const [whiteboards, setWhiteboards] = useState<WhiteboardItem[]>([]);
+  const [creatorOptions, setCreatorOptions] = useState<CreatorOption[]>([
+    { value: "ALL", label: "All Creators", image: null },
+  ]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadWhiteboards = useCallback(async () => {
-    if (!workspaceId) return;
+  const [creatorFilter, setCreatorFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.creatorFilter || "ALL";
+        } catch {
+          return "ALL";
+        }
+      }
+    }
+    return "ALL";
+  });
 
+  // Persist filter to localStorage
+  const handleCreatorFilterChange = useCallback((value: string | string[]) => {
+    const next = Array.isArray(value) ? value[0] : value;
+    setCreatorFilter(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ creatorFilter: next }));
+    }
+  }, []);
+
+  // Initial load: fetch all (unfiltered) to build creator options list
+  const loadCreatorOptions = useCallback(async () => {
+    if (!workspaceId) return;
     try {
       const res = await fetch(`/api/whiteboards?workspaceId=${workspaceId}`);
+      const data = await res.json();
+      if (data.success) {
+        const seen = new Set<string>();
+        const options: CreatorOption[] = [{ value: "ALL", label: "All Creators", image: null }];
+        for (const wb of data.data as WhiteboardItem[]) {
+          if (wb.createdBy && !seen.has(wb.createdBy.id)) {
+            seen.add(wb.createdBy.id);
+            options.push({
+              value: wb.createdBy.id,
+              label: wb.createdBy.name ?? "Unknown",
+              image: wb.createdBy.image,
+            });
+          }
+        }
+        setCreatorOptions(options);
+      }
+    } catch (error) {
+      console.error("Error loading creator options:", error);
+    }
+  }, [workspaceId]);
+
+  const loadWhiteboards = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const params = new URLSearchParams({ workspaceId });
+      if (creatorFilter !== "ALL") {
+        params.set("createdById", creatorFilter);
+      }
+      const res = await fetch(`/api/whiteboards?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setWhiteboards(data.data);
@@ -57,8 +124,14 @@ export default function WhiteboardsPage() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, creatorFilter]);
 
+  // Load creator options once on mount
+  useEffect(() => {
+    loadCreatorOptions();
+  }, [loadCreatorOptions]);
+
+  // Reload list whenever filter changes
   useEffect(() => {
     loadWhiteboards();
   }, [loadWhiteboards]);
@@ -143,6 +216,18 @@ export default function WhiteboardsPage() {
         }
       />
 
+      {/* Filter bar */}
+      <div className="flex items-center gap-2">
+        <FilterDropdownHeader
+          label="Creator"
+          options={creatorOptions}
+          value={creatorFilter}
+          onChange={handleCreatorFilterChange}
+          showSearch={true}
+          showAvatars={true}
+        />
+      </div>
+
       {whiteboards.length === 0 ? (
         <Card className="border-dashed">
           <CardHeader className="text-center py-12">
@@ -151,7 +236,9 @@ export default function WhiteboardsPage() {
             </div>
             <CardTitle className="text-lg">No whiteboards yet</CardTitle>
             <CardDescription>
-              Create your first whiteboard to start collaborating
+              {creatorFilter !== "ALL"
+                ? "No whiteboards found for the selected creator"
+                : "Create your first whiteboard to start collaborating"}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -165,11 +252,29 @@ export default function WhiteboardsPage() {
             >
               <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0">
                     <CardTitle className="text-base">{wb.name}</CardTitle>
                     <CardDescription className="text-xs">
                       Updated {formatDate(wb.updatedAt)}
                     </CardDescription>
+                    {/* Creator display */}
+                    <div className="flex items-center gap-1.5 pt-1">
+                      {wb.createdBy ? (
+                        <>
+                          <Avatar className="h-4 w-4">
+                            <AvatarImage src={wb.createdBy.image ?? undefined} />
+                            <AvatarFallback className="text-[8px]">
+                              {(wb.createdBy.name ?? "?").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {wb.createdBy.name ?? "Unknown"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
                     {wb.feature && (
                       <Link
                         href={`/w/${slug}/plan/${wb.feature.id}?tab=architecture`}
@@ -189,7 +294,7 @@ export default function WhiteboardsPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
