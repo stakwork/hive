@@ -165,6 +165,22 @@ describe("PlanStartInput", () => {
       expect(textarea.value).toContain("@test-ws");
     });
 
+    test("pressing Tab auto-completes the highlighted mention", async () => {
+      mockUseWorkspace.mockReturnValue({
+        workspace: { repositories: [], slug: "current-ws" },
+        workspaces: mentionWorkspaces,
+      });
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "@test");
+
+      fireEvent.keyDown(textarea, { key: "Tab" });
+
+      expect(textarea.value).toContain("@test-ws");
+      expect(screen.queryByTestId("mention-item-test-ws")).not.toBeInTheDocument();
+    });
+
     test("mention dropdown does not appear when isLoading is true", async () => {
       mockUseWorkspace.mockReturnValue({
         workspace: { repositories: [], slug: "current-ws" },
