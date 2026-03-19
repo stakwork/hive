@@ -421,6 +421,21 @@ export default function WhiteboardDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI]);
 
+  // Auto-fit all content into view on initial load
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const timer = setTimeout(() => {
+      excalidrawAPI.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: false,
+        duration: 0,
+      });
+    }, 100);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
+
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
     if (whiteboard && excalidrawAPI && programmaticUpdateCountRef.current === 0) {
