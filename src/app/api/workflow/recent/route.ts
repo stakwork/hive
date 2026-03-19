@@ -9,11 +9,11 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 const MOCK_WORKFLOWS = [
-  { id: 1001, name: "Mock Workflow A" },
-  { id: 1002, name: "Mock Workflow B" },
-  { id: 1003, name: "Mock Workflow C" },
-  { id: 1004, name: "Mock Workflow D" },
-  { id: 1005, name: "Mock Workflow E" },
+  { id: 1001, name: "Mock Workflow A", updated_at: "2024-03-18T14:32:10.000Z", last_modified_by: "alice@stakwork.com" },
+  { id: 1002, name: "Mock Workflow B", updated_at: "2024-03-15T11:00:00.000Z", last_modified_by: null },
+  { id: 1003, name: "Mock Workflow C", updated_at: "2024-03-12T09:15:00.000Z", last_modified_by: "bob@stakwork.com" },
+  { id: 1004, name: "Mock Workflow D", updated_at: null, last_modified_by: "carol@stakwork.com" },
+  { id: 1005, name: "Mock Workflow E", updated_at: "2024-03-10T08:00:00.000Z", last_modified_by: null },
 ];
 
 export async function GET() {
@@ -54,7 +54,7 @@ export async function GET() {
     }
 
     // Proxy to Stakwork API
-    const recentUrl = `${config.STAKWORK_BASE_URL}/workflows/recent`;
+    const recentUrl = `${config.STAKWORK_BASE_URL}/workflows/recently_modified`;
 
     const response = await fetch(recentUrl, {
       method: "GET",
@@ -75,16 +75,24 @@ export async function GET() {
 
     const result = await response.json();
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Failed to fetch recent workflows from Stakwork" },
-        { status: 400 },
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      data: { workflows: result.data.results?.map(({ id, name }: { id: number; name: string }) => ({ id, name })) ?? [] },
+      data: {
+        workflows:
+          result.data?.map(
+            ({
+              id,
+              name,
+              updated_at,
+              last_modified_by,
+            }: {
+              id: number;
+              name: string;
+              updated_at: string | null;
+              last_modified_by: string | null;
+            }) => ({ id, name, updated_at, last_modified_by }),
+          ) ?? [],
+      },
     });
   } catch (error) {
     console.error("Error fetching recent workflows:", error);
