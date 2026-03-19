@@ -202,7 +202,7 @@ describe("InvitePopover", () => {
     });
   });
 
-  test("button label shows 'Send 2 Invites' for 2 selected", async () => {
+  test("button label shows 'Send Invite' for 2 selected", async () => {
     const user = userEvent.setup();
     mockFetchMembers(
       makeMember("user-1", "Alice Smith", "alice"),
@@ -216,7 +216,7 @@ describe("InvitePopover", () => {
     await user.click(screen.getByText("Bob Jones").closest('[role="option"]')!);
 
     await waitFor(() => {
-      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send 2 Invites");
+      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send Invite");
     });
   });
 
@@ -236,16 +236,16 @@ describe("InvitePopover", () => {
     await user.click(screen.getByText("Bob Jones").closest('[role="option"]')!);
     await user.click(screen.getByText("Carol White").closest('[role="option"]')!);
 
-    // 3 selected — button should say "Send 3 Invites"
+    // 3 selected — button should say "Send Invite"
     await waitFor(() => {
-      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send 3 Invites");
+      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send Invite");
     });
 
-    // Click 4th — should stay at 3
+    // Click 4th — should stay at 3 (button label still "Send Invite")
     await user.click(screen.getByText("Dave Brown").closest('[role="option"]')!);
 
     await waitFor(() => {
-      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send 3 Invites");
+      expect(screen.getByTestId("send-invite-button")).toHaveTextContent("Send Invite");
     });
   });
 

@@ -106,19 +106,18 @@ export async function POST(
     const planUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/plan/${featureId}`;
     const inviterName = session.user.name || "A team member";
 
-    let sent = 0;
-    let failed = 0;
+    // Build alias prefix: "@Alice", "@Alice & @Bob", or "@Alice, @Bob & @Charlie"
+    const aliases = invitees.map((u) => `@${u.sphinxAlias}`);
+    const aliasPrefix =
+      aliases.length === 1
+        ? aliases[0]
+        : aliases.slice(0, -1).join(", ") + " & " + aliases[aliases.length - 1];
 
-    for (const invitee of invitees) {
-      const message = `@${invitee.sphinxAlias} — ${inviterName} has invited you to collaborate on '${feature.title}': ${planUrl}`;
-      const result = await sendToSphinx(sphinxConfig, message);
+    const message = `${aliasPrefix} — ${inviterName} has invited you to collaborate on '${feature.title}': ${planUrl}`;
+    const result = await sendToSphinx(sphinxConfig, message);
 
-      if (result.success) {
-        sent++;
-      } else {
-        failed++;
-      }
-    }
+    const sent = result.success ? invitees.length : 0;
+    const failed = result.success ? 0 : invitees.length;
 
     if (sent === 0) {
       return NextResponse.json(
