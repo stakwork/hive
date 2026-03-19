@@ -409,11 +409,11 @@ model Task {
   layerType              TaskLayerType?        @map("layer_type")
   manualLayerOverride    Boolean?              @map("manual_layer_override")
   model                  String?
-  haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
   autoMerge              Boolean               @default(false) @map("auto_merge")
   deployedToProductionAt DateTime?             @map("deployed_to_production_at")
   deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
   deploymentStatus       String?               @map("deployment_status")
+  haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]
@@ -818,9 +818,9 @@ model WhiteboardMessage {
   content      String
   status       ChatStatus @default(SENT)
   userId       String?    @map("user_id")
-  metadata     Json       @default("{}")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
+  metadata     Json       @default("{}")
   user         User?      @relation(fields: [userId], references: [id])
   whiteboard   Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
 

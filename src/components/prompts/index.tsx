@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
@@ -112,6 +112,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   // Version history state
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishingVersionId, setPublishingVersionId] = useState<number | null>(null);
   const [selectedVersionAId, setSelectedVersionAId] = useState<number | null>(null);
   const [selectedVersionBId, setSelectedVersionBId] = useState<number | null>(null);
   const [versionAContent, setVersionAContent] = useState<string | null>(null);
@@ -506,6 +508,29 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setSelectedVersionBId(null);
     setVersionAContent(null);
     setVersionBContent(null);
+  };
+
+  const handlePublishVersion = async (versionId: number) => {
+    if (!selectedPrompt) return;
+    setIsPublishing(true);
+    setPublishingVersionId(versionId);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/workflow/prompts/${selectedPrompt.id}/versions/${versionId}/publish`,
+        { method: "POST" }
+      );
+      if (!response.ok) throw new Error("Failed to publish version");
+      const data = await response.json();
+      if (!data.success) throw new Error("Failed to publish version");
+      await fetchPromptDetail(selectedPrompt.id);
+      setViewMode("detail");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to publish version");
+    } finally {
+      setIsPublishing(false);
+      setPublishingVersionId(null);
+    }
   };
 
   const handleVersionClick = (versionId: number) => {
@@ -984,30 +1009,66 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     const isSelectedA = selectedVersionAId === version.id;
                     const isSelectedB = selectedVersionBId === version.id;
                     const isSelected = isSelectedA || isSelectedB;
+                    const isLive = version.id === selectedPrompt.current_version_id;
 
                     return (
-                      <button
-                        key={version.id}
-                        onClick={() => handleVersionClick(version.id)}
-                        className={cn(
-                          "w-full text-left px-3 py-2 rounded transition-colors text-sm",
-                          "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                          isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                          isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
-                          !isSelected && "bg-muted/50"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium">v{version.version_number}</span>
-                            {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                            {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                      <div key={version.id} className="relative group flex items-center gap-2">
+                        <button
+                          onClick={() => handleVersionClick(version.id)}
+                          className={cn(
+                            "flex-1 text-left px-3 py-2 rounded transition-colors text-sm",
+                            "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
+                            isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
+                            isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                            !isSelected && "bg-muted/50"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-medium">v{version.version_number}</span>
+                              {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
+                              {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {formatTimestamp(version.created_at)}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTimestamp(version.created_at)}
-                          </span>
-                        </div>
-                      </button>
+                        </button>
+
+                        {!isLive && (
+                          publishingVersionId === version.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                                  disabled={isPublishing}
+                                  title={`Publish v${version.version_number}`}
+                                >
+                                  <Upload className="h-3 w-3" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Publish Version v{version.version_number}?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will make v{version.version_number} the live prompt used by all workflows. This cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handlePublishVersion(version.id)}>
+                                    Publish
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )
+                        )}
+                      </div>
                     );
                   })
                 ) : (
