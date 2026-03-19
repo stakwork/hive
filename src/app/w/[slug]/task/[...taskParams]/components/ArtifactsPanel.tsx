@@ -72,10 +72,13 @@ export function ArtifactsPanel({
   // Tracks whether the user has manually clicked a tab — suppresses priority auto-switch after that.
   const hasUserSelectedTabRef = useRef(false);
 
+  const [hasAttachments, setHasAttachments] = useState(false);
+
   const handleUserTabSelect = useCallback((tab: ArtifactType) => {
+    if (!hasAttachments && tab === "VERIFY") return;
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
-  }, [setActiveTab]);
+  }, [setActiveTab, hasAttachments]);
 
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
@@ -151,6 +154,15 @@ export function ArtifactsPanel({
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
+
+  // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
+  useEffect(() => {
+    if (!hasTasks || !featureId) return;
+    fetch(`/api/features/${featureId}/attachments/count`)
+      .then((r) => r.json())
+      .then((data) => { if (data.count > 0) setHasAttachments(true); })
+      .catch(() => {});
+  }, [hasTasks, featureId]);
 
   const { latestRun, refetch: refetchRun, isStale } = useStakworkGeneration({
     featureId: featureId || "",
@@ -369,6 +381,7 @@ export function ArtifactsPanel({
             activeArtifact={activeTab}
             onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
+            disabledTabs={hasAttachments ? [] : ["VERIFY"]}
           />
         </motion.div>
 

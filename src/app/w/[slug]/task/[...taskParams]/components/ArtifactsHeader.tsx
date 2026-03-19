@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ArtifactType } from "@/lib/chat";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -35,16 +36,42 @@ interface ArtifactsHeaderProps {
   activeArtifact: ArtifactType | null;
   onArtifactChange: (type: ArtifactType) => void;
   headerAction?: React.ReactNode;
+  disabledTabs?: ArtifactType[];
 }
 
-export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange, headerAction }: ArtifactsHeaderProps) {
+export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange, headerAction, disabledTabs }: ArtifactsHeaderProps) {
   const renderButton = ({ type, icon: Icon, label }: ArtifactButton) => {
     if (!availableArtifacts.includes(type)) return null;
 
     const isActive = activeArtifact === type;
     const showLabel = LABELED_TABS.has(type);
+    const isDisabled = disabledTabs?.includes(type) ?? false;
 
     if (showLabel) {
+      if (isDisabled) {
+        return (
+          <TooltipProvider key={type}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  disabled
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors",
+                    "opacity-40 cursor-not-allowed"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{label}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>No screenshots yet — run a task to generate them</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
+
       return (
         <button
           key={type}
