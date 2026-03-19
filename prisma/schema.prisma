@@ -80,6 +80,7 @@ model User {
   createdUserStories       UserStory[]             @relation("UserStoryCreator")
   updatedUserStories       UserStory[]             @relation("UserStoryUpdater")
   whiteboardMessages       WhiteboardMessage[]
+  createdWhiteboards       Whiteboard[]            @relation("WhiteboardCreator")
   createdApiKeys           WorkspaceApiKey[]       @relation("ApiKeyCreator")
   revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
   workspaceMembers         WorkspaceMember[]
@@ -786,14 +787,17 @@ model Whiteboard {
   createdAt   DateTime            @default(now()) @map("created_at")
   updatedAt   DateTime            @updatedAt @map("updated_at")
   featureId   String?             @unique @map("feature_id")
+  createdById String?             @map("created_by_id")
   version     Int                 @default(0)
   messages    WhiteboardMessage[]
   versions    WhiteboardVersion[]
+  createdBy   User?               @relation("WhiteboardCreator", fields: [createdById], references: [id])
   feature     Feature?            @relation(fields: [featureId], references: [id])
   workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([createdAt])
+  @@index([createdById])
   @@map("whiteboards")
 }
 
