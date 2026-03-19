@@ -78,11 +78,14 @@ export async function POST(
       );
     }
 
-    // Fetch all invitees in one query
-    const invitees = await db.user.findMany({
+    // Fetch all invitees in one query, then restore the caller's order
+    const inviteesRaw = await db.user.findMany({
       where: { id: { in: ids } },
       select: { id: true, sphinxAlias: true },
     });
+    const invitees = ids
+      .map((id) => inviteesRaw.find((u) => u.id === id))
+      .filter((u): u is NonNullable<typeof u> => u !== undefined);
 
     // Validate that every requested invitee exists and has a Sphinx alias
     const missingAlias = invitees.find((u) => !u.sphinxAlias);
