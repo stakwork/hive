@@ -63,7 +63,7 @@ export async function POST(
     // Read-only guard — block write keywords
     if (WRITE_KEYWORDS_RE.test(query)) {
       return NextResponse.json(
-        { success: false, error: "Write operations are not permitted" },
+        { success: false, message: "Write operations are not permitted" },
         { status: 403 },
       );
     }
