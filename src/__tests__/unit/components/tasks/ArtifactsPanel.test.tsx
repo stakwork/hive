@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useState, useEffect, useRef } from "react";
 
@@ -705,5 +705,134 @@ describe("ArtifactsPanel - Tab Reset Guard Logic", () => {
   test("controlled mode: BROWSER tab not in VALID_PLAN_TABS → reset occurs", () => {
     const shouldReset = shouldResetTab(["PLAN"], "BROWSER", true, false);
     expect(shouldReset).toBe(true);
+  });
+});
+
+/**
+ * Unit tests for ArtifactsPanel handleGenerateTasks error handling.
+ *
+ * These tests verify that:
+ * - catch path: toast.error is called and hasInitiatedGeneration resets to false
+ * - 409 path: isApiCalling resets to false after refetch (no frozen "Generating..." state)
+ */
+describe("ArtifactsPanel - handleGenerateTasks Error Handling", () => {
+  const mockToastError = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Simulates handleGenerateTasks logic with injectable fetch + toast.
+   */
+  function useHandleGenerateTasksLogic(
+    fetchImpl: () => Promise<{ status: number; ok: boolean }>,
+    refetchRunImpl: () => Promise<void> = async () => {}
+  ) {
+    const [isApiCalling, setIsApiCalling] = useState(false);
+    const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
+
+    const handleGenerateTasks = async () => {
+      setIsApiCalling(true);
+      setHasInitiatedGeneration(true);
+      try {
+        const response = await fetchImpl();
+
+        if (response.status === 409) {
+          await refetchRunImpl();
+          setIsApiCalling(false);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to generate tasks");
+        }
+
+        await refetchRunImpl();
+      } catch (error) {
+        console.error("Failed to generate tasks:", error);
+        setIsApiCalling(false);
+        setHasInitiatedGeneration(false);
+        mockToastError("Failed to generate tasks", {
+          description: "Something went wrong. Please try again.",
+        });
+      }
+    };
+
+    return { isApiCalling, hasInitiatedGeneration, handleGenerateTasks };
+  }
+
+  test("catch path: toast.error is called and hasInitiatedGeneration resets to false on API error", async () => {
+    const fetchImpl = async () => { throw new Error("Network error"); };
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl as unknown as () => Promise<{ status: number; ok: boolean }>)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(result.current.isApiCalling).toBe(false);
+    expect(result.current.hasInitiatedGeneration).toBe(false);
+    expect(mockToastError).toHaveBeenCalledWith(
+      "Failed to generate tasks",
+      { description: "Something went wrong. Please try again." }
+    );
+  });
+
+  test("catch path: toast.error is called on non-ok response (5xx)", async () => {
+    const fetchImpl = async () => ({ status: 500, ok: false });
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(result.current.isApiCalling).toBe(false);
+    expect(result.current.hasInitiatedGeneration).toBe(false);
+    expect(mockToastError).toHaveBeenCalledOnce();
+  });
+
+  test("409 path: isApiCalling resets to false after refetch (stale run — decision already set)", async () => {
+    const fetchImpl = async () => ({ status: 409, ok: false });
+    const refetchRunImpl = vi.fn(async () => {});
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl, refetchRunImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(refetchRunImpl).toHaveBeenCalledOnce();
+    expect(result.current.isApiCalling).toBe(false);
+    // hasInitiatedGeneration stays true (we treat 409 as soft success)
+    expect(result.current.hasInitiatedGeneration).toBe(true);
+    // No toast error for 409
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  test("happy path: refetch called, no toast, hasInitiatedGeneration stays true", async () => {
+    const fetchImpl = async () => ({ status: 200, ok: true });
+    const refetchRunImpl = vi.fn(async () => {});
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl, refetchRunImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(refetchRunImpl).toHaveBeenCalledOnce();
+    // On success, isApiCalling stays true — the run entering IN_PROGRESS takes over
+    expect(result.current.isApiCalling).toBe(true);
+    expect(result.current.hasInitiatedGeneration).toBe(true);
+    expect(mockToastError).not.toHaveBeenCalled();
   });
 });
