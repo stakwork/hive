@@ -9,12 +9,6 @@ import { toast } from 'sonner';
 // Mock the hooks and modules
 vi.mock('@/hooks/useWorkspace');
 vi.mock('sonner');
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({
-    data: { user: { id: 'user-123', name: 'Test User', email: 'test@example.com' } },
-    status: 'authenticated',
-  }),
-}));
 
 // Mock next/navigation
 const mockRouterPush = vi.fn();
@@ -112,7 +106,7 @@ describe('BugReportSlideout', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       expect(screen.getByText('Report a Bug')).toBeInTheDocument();
-      expect(screen.getByText('Help us improve by reporting issues you encounter')).toBeInTheDocument();
+      expect(screen.getByText('Describe a bug in your codebase')).toBeInTheDocument();
       expect(screen.getByTestId('bug-description-textarea')).toBeInTheDocument();
       expect(screen.getByTestId('bug-screenshot-input')).toBeInTheDocument();
       expect(screen.getByTestId('submit-bug-report-button')).toBeInTheDocument();
@@ -129,6 +123,13 @@ describe('BugReportSlideout', () => {
 
       const submitButton = screen.getByTestId('submit-bug-report-button');
       expect(submitButton).toBeDisabled();
+    });
+
+    it('should not render Fast Track toggle', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      expect(screen.queryByTestId('fast-track-toggle')).not.toBeInTheDocument();
+      expect(screen.queryByText('Fast Track')).not.toBeInTheDocument();
     });
   });
 
@@ -298,14 +299,21 @@ describe('BugReportSlideout', () => {
   });
 
   describe('Successful Submission', () => {
-    it('should submit bug report without screenshot', async () => {
+    it('should submit bug report without screenshot and navigate to Plan Mode', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        // Feature creation
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        // Chat message
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
 
@@ -316,7 +324,8 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/features', {
+        // Feature creation — no brief or isFastTrack
+        expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/features', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -324,24 +333,37 @@ describe('BugReportSlideout', () => {
             workspaceId: 'workspace-123',
             status: 'BACKLOG',
             priority: 'HIGH',
-            brief: '**Reported from:** https://example.com/w/test-workspace/plan\n\nThis is a bug report description',
-            isFastTrack: false,
           }),
         });
+
+        // Chat message sent to Plan Mode
+        expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/features/feature-123/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'This is a bug report description', attachments: [] }),
+        });
+
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      expect(toast.success).toHaveBeenCalledWith('Bug report submitted. Thank you for helping us improve!');
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No success toast in new flow
+      expect(toast.success).not.toHaveBeenCalled();
     });
 
     it('should truncate long descriptions in title', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
 
@@ -353,33 +375,25 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/features', expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }));
+        const callArgs = (global.fetch as any).mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        expect(body.title).toBe('Bug Report: This is a very long bug report description that ex...');
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
-
-      // Check the body separately
-      const callArgs = (global.fetch as any).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.title).toBe('Bug Report: This is a very long bug report description that ex...');
-      expect(toast.success).toHaveBeenCalled();
-      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
-    it('should submit bug report with screenshot', async () => {
+    it('should submit bug report with screenshot and send attachment in chat message', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      // Mock fetch for all three API calls
-      global.fetch = vi
-        .fn()
-        // First call: Create feature
+      global.fetch = vi.fn()
+        // Feature creation
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
-        // Second call: Get presigned URL
+        // Get presigned URL
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
@@ -388,14 +402,14 @@ describe('BugReportSlideout', () => {
             s3Path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
           }),
         })
-        // Third call: Upload to S3
+        // S3 upload
         .mockResolvedValueOnce({
           ok: true,
         })
-        // Fourth call: Update feature with image
+        // Chat message
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+          json: async () => ({ success: true }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -438,26 +452,44 @@ describe('BugReportSlideout', () => {
         headers: { 'Content-Type': 'image/png' },
       });
 
-      // Verify feature update with image uses persistent S3 path (not expiring publicUrl)
-      expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/features/feature-123', {
-        method: 'PATCH',
+      // Verify chat message includes attachment (no PATCH call)
+      expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/features/feature-123/chat', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brief: `![Bug Screenshot](/api/features/feature-123/image?path=${encodeURIComponent('features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png')})\n\n**Reported from:** https://example.com/w/test-workspace/plan\n\nBug with screenshot`,
+          message: 'Bug with screenshot',
+          attachments: [
+            {
+              path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
+              filename: 'screenshot.png',
+              mimeType: 'image/png',
+              size: file.size,
+            },
+          ],
         }),
       });
 
-      expect(toast.success).toHaveBeenCalledWith('Bug report submitted. Thank you for helping us improve!');
+      expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
       expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No PATCH call to /api/features/feature-123
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        '/api/features/feature-123',
+        expect.objectContaining({ method: 'PATCH' })
+      );
     });
 
     it('should reset form after successful submission', async () => {
       const user = userEvent.setup();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
@@ -468,7 +500,7 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalled();
+        expect(mockRouterPush).toHaveBeenCalled();
       });
 
       // Form should be reset
@@ -502,19 +534,25 @@ describe('BugReportSlideout', () => {
       expect(onOpenChange).not.toHaveBeenCalled();
     });
 
-    it('should show error toast when image upload fails', async () => {
+    it('should fall through to send chat message without attachments when screenshot upload fails', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi
-        .fn()
+      global.fetch = vi.fn()
+        // Feature creation succeeds
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
+        // Upload presigned URL fails
         .mockResolvedValueOnce({
           ok: false,
           json: async () => ({ message: 'Upload service unavailable' }),
+        })
+        // Chat message still sent (without attachments)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -532,11 +570,20 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Upload service unavailable');
+        // Chat message sent without attachments (graceful degradation)
+        expect(global.fetch).toHaveBeenCalledWith('/api/features/feature-123/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Bug with screenshot', attachments: [] }),
+        });
+
+        // Navigation still happens
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      // Slideout should close even though upload failed, because the feature was created
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No success toast, no error toast (silent degradation)
+      expect(toast.error).not.toHaveBeenCalled();
     });
 
     it('should handle network errors gracefully', async () => {
@@ -884,408 +931,6 @@ describe('BugReportSlideout', () => {
       const textarea = screen.getByTestId('bug-description-textarea');
       
       expect(textarea).toHaveAttribute('rows', '6');
-    });
-  });
-
-  describe('Fast Track Toggle', () => {
-    it('should render Fast Track toggle above Submit button', () => {
-      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
-
-      const toggle = screen.getByTestId('fast-track-toggle');
-      const label = screen.getByText('Fast Track');
-      const description = screen.getByText('Automatically generate and apply a fix without manual approval.');
-
-      expect(toggle).toBeInTheDocument();
-      expect(label).toBeInTheDocument();
-      expect(description).toBeInTheDocument();
-    });
-
-    it('should toggle Fast Track state when clicked', async () => {
-      const user = userEvent.setup();
-      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
-
-      const toggle = screen.getByTestId('fast-track-toggle');
-      
-      // Initially unchecked
-      expect(toggle).toHaveAttribute('data-state', 'unchecked');
-
-      // Click to enable
-      await user.click(toggle);
-      expect(toggle).toHaveAttribute('data-state', 'checked');
-
-      // Click to disable
-      await user.click(toggle);
-      expect(toggle).toHaveAttribute('data-state', 'unchecked');
-    });
-
-    it('should include isFastTrack in feature creation request body', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      // Fill in description
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      // Enable Fast Track
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-      
-      // Wait for state to update
-      await waitFor(() => {
-        expect(toggle).toHaveAttribute('data-state', 'checked');
-      });
-
-      // Submit form
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          '/api/features',
-          expect.objectContaining({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: expect.stringContaining('"isFastTrack":true'),
-          })
-        );
-      });
-    });
-
-    it('should set isFastTrack to false when toggle is off', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      // Fill in description
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      // Leave Fast Track disabled (default state)
-
-      // Submit form
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          '/api/features',
-          expect.objectContaining({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: expect.stringContaining('"isFastTrack":false'),
-          })
-        );
-      });
-    });
-
-    it('should reset isFastTrack to false when form is reset', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        });
-
-      const { rerender } = render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      // Enable Fast Track
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-      expect(toggle).toHaveAttribute('data-state', 'checked');
-
-      // Fill in description and submit
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      // Wait for form to reset
-      await waitFor(() => {
-        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
-      });
-
-      // Re-open the slideout by changing the open prop
-      mockOnOpenChange.mockClear();
-      rerender(<BugReportSlideout open={false} onOpenChange={mockOnOpenChange} />);
-      rerender(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      // Fast Track should be reset to unchecked
-      const toggleAfterReset = screen.getByTestId('fast-track-toggle');
-      expect(toggleAfterReset).toHaveAttribute('data-state', 'unchecked');
-    });
-  });
-
-  describe('Fast Track Workflow', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      mockRouterPush.mockClear();
-      vi.mocked(toast.success).mockImplementation(() => '');
-      vi.mocked(toast.error).mockImplementation(() => '');
-    });
-
-    it('should trigger REQUIREMENTS generation and navigate when Fast Track is enabled', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      // Mock feature creation
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        })
-        // Mock generate API call
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      // Fill in description
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      // Enable Fast Track
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-
-      // Wait for toggle state to update
-      await waitFor(() => {
-        const updatedToggle = screen.getByTestId('fast-track-toggle');
-        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
-      });
-
-      // Add a small delay to ensure component state has fully updated
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Submit form
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        // Verify feature creation was called first
-        expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/features', expect.any(Object));
-      });
-
-      await waitFor(() => {
-        // Verify generate API was called with correct params
-        expect(global.fetch).toHaveBeenNthCalledWith(
-          2,
-          '/api/stakwork/ai/generate',
-          expect.objectContaining({
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'REQUIREMENTS',
-              featureId: 'feature-123',
-              workspaceId: 'workspace-123',
-              autoAccept: true,
-              params: { skipClarifyingQuestions: true },
-            }),
-          })
-        );
-
-        // Verify navigation to feature page
-        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
-
-        // Verify slideout was closed
-        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
-      });
-    });
-
-    it('should NOT show success toast when Fast Track is enabled', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-      
-      // Wait for toggle state to update
-      await waitFor(() => {
-        const updatedToggle = screen.getByTestId('fast-track-toggle');
-        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
-      });
-
-      // Add a small delay to ensure component state has fully updated
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
-      });
-
-      // Success toast should NOT be called when Fast Track is enabled
-      expect(toast.success).not.toHaveBeenCalled();
-    });
-
-    it('should show success toast when Fast Track is disabled', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      // Leave Fast Track disabled
-
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(toast.success).toHaveBeenCalledWith(
-          'Bug report submitted. Thank you for helping us improve!'
-        );
-      });
-
-      // Should NOT navigate
-      expect(mockRouterPush).not.toHaveBeenCalled();
-
-      // Should NOT call generate API
-      expect(global.fetch).toHaveBeenCalledTimes(1); // Only feature creation
-    });
-
-    it('should still navigate if generate API fails', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        })
-        // Generate API fails
-        .mockRejectedValueOnce(new Error('Generate API error'));
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-
-      // Wait for toggle state to update
-      await waitFor(() => {
-        const updatedToggle = screen.getByTestId('fast-track-toggle');
-        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
-      });
-
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        // Should still navigate even if generate fails
-        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
-        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
-      });
-    });
-
-    it('should handle Fast Track with screenshot upload', async () => {
-      const user = userEvent.setup();
-      const mockOnOpenChange = vi.fn();
-      
-      global.fetch = vi.fn()
-        // Feature creation
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        })
-        // Upload URL request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            presignedUrl: 'https://s3.example.com/upload',
-            publicUrl: 'https://s3.example.com/image.png',
-            s3Path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
-          }),
-        })
-        // S3 upload
-        .mockResolvedValueOnce({
-          ok: true,
-        })
-        // Feature update with image
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: 'feature-123' } }),
-        })
-        // Generate API
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true }),
-        });
-
-      render(<BugReportSlideout open={true} onOpenChange={mockOnOpenChange} />);
-
-      const textarea = screen.getByTestId('bug-description-textarea');
-      await user.type(textarea, 'This is a valid bug description');
-
-      // Upload screenshot
-      const fileInput = screen.getByTestId('bug-screenshot-input');
-      const file = createFile('screenshot.png', 'image/png', 1000);
-      await user.upload(fileInput, file);
-
-      // Enable Fast Track
-      const toggle = screen.getByTestId('fast-track-toggle');
-      await user.click(toggle);
-
-      // Wait for toggle state to update
-      await waitFor(() => {
-        const updatedToggle = screen.getByTestId('fast-track-toggle');
-        expect(updatedToggle).toHaveAttribute('data-state', 'checked');
-      });
-
-      const submitButton = screen.getByTestId('submit-bug-report-button');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        // All API calls should be made
-        expect(global.fetch).toHaveBeenCalledTimes(5);
-        
-        // Should navigate
-        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
-      });
     });
   });
 });
