@@ -1,10 +1,19 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import {
   mapWorkspaceMember,
   mapWorkspaceMembers,
   WORKSPACE_MEMBER_INCLUDE,
   type PrismaWorkspaceMemberWithUser,
 } from "@/lib/mappers/workspace-member";
+
+const mockDecryptField = vi.fn((field: string, value: string) => `decrypted:${value}`);
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: {
+    getInstance: vi.fn(() => ({
+      decryptField: mockDecryptField,
+    })),
+  },
+}));
 
 describe("Workspace Member Mappers - Unit Tests", () => {
   const mockPrismaWorkspaceMember: PrismaWorkspaceMemberWithUser = {
@@ -75,6 +84,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           name: "John Doe",
           email: "john@example.com",
           image: "https://github.com/john.png",
+          decryptedLightningPubkey: null,
           github: {
             username: "johndoe",
             name: "John Doe",
@@ -99,6 +109,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           name: "Jane Smith",
           email: "jane@example.com",
           image: null,
+          decryptedLightningPubkey: null,
           github: null,
         },
       });
@@ -137,6 +148,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           name: null,
           email: null,
           image: null,
+          decryptedLightningPubkey: null,
           github: {
             username: "user3",
             name: null,
@@ -146,6 +158,43 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           },
         },
       });
+    });
+
+    test("should decrypt lightningPubkey and include decryptedLightningPubkey", () => {
+      const encryptedPubkey = JSON.stringify({ data: "abc", iv: "def", tag: "ghi", version: "1", encryptedAt: "2024-01-01" });
+      mockDecryptField.mockReturnValueOnce("plaintext_pubkey_123");
+
+      const memberWithPubkey: PrismaWorkspaceMemberWithUser = {
+        ...mockPrismaWorkspaceMember,
+        user: {
+          ...mockPrismaWorkspaceMember.user,
+          lightningPubkey: encryptedPubkey,
+        },
+      };
+
+      const result = mapWorkspaceMember(memberWithPubkey);
+
+      expect(result.user.lightningPubkey).toBe(encryptedPubkey);
+      expect(result.user.decryptedLightningPubkey).toBe("plaintext_pubkey_123");
+      expect(mockDecryptField).toHaveBeenCalledWith("lightningPubkey", encryptedPubkey);
+    });
+
+    test("should set decryptedLightningPubkey to null when decryption fails", () => {
+      const encryptedPubkey = JSON.stringify({ data: "corrupt", iv: "bad", tag: "data", version: "1", encryptedAt: "2024-01-01" });
+      mockDecryptField.mockImplementationOnce(() => { throw new Error("Decryption failed"); });
+
+      const memberWithBadPubkey: PrismaWorkspaceMemberWithUser = {
+        ...mockPrismaWorkspaceMember,
+        user: {
+          ...mockPrismaWorkspaceMember.user,
+          lightningPubkey: encryptedPubkey,
+        },
+      };
+
+      const result = mapWorkspaceMember(memberWithBadPubkey);
+
+      expect(result.user.lightningPubkey).toBe(encryptedPubkey);
+      expect(result.user.decryptedLightningPubkey).toBeNull();
     });
 
     test("should handle different role types", () => {
@@ -192,6 +241,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           name: "John Doe",
           email: "john@example.com",
           image: "https://github.com/john.png",
+          decryptedLightningPubkey: null,
           github: {
             username: "johndoe",
             name: "John Doe",
@@ -211,6 +261,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
           name: "Jane Smith",
           email: "jane@example.com",
           image: null,
+          decryptedLightningPubkey: null,
           github: null,
         },
       });
