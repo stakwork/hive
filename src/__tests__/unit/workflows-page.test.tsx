@@ -255,7 +255,7 @@ describe("WorkflowsPage", () => {
       });
     });
 
-    it("should show version selector for unknown workflow ID without workflow name", async () => {
+    it("should not show version selector for unknown workflow ID with no versions", async () => {
       const user = userEvent.setup();
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
@@ -275,8 +275,8 @@ describe("WorkflowsPage", () => {
       await user.type(input, "999");
 
       await waitFor(() => {
-        // Should show version selector even for unknown IDs
-        expect(screen.getByTestId("workflow-version-selector")).toBeInTheDocument();
+        // Version selector must not render when there are no versions and nothing is loading
+        expect(screen.queryByTestId("workflow-version-selector")).not.toBeInTheDocument();
         // Should not show a workflow name match
         expect(screen.queryByText("Workflow:")).not.toBeInTheDocument();
       });
