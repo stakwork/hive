@@ -41,6 +41,17 @@ vi.mock("@/lib/mappers/workspace-member", () => ({
   WORKSPACE_MEMBER_INCLUDE: {},
 }));
 
+const { mockDecryptField } = vi.hoisted(() => ({
+  mockDecryptField: vi.fn((field: string, value: string) => `decrypted:${value}`),
+}));
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: {
+    getInstance: vi.fn(() => ({
+      decryptField: mockDecryptField,
+    })),
+  },
+}));
+
 const mockedFindUserByGitHubUsername = vi.mocked(findUserByGitHubUsername);
 const mockedFindActiveMember = vi.mocked(findActiveMember);
 const mockedFindPreviousMember = vi.mocked(findPreviousMember);
@@ -121,6 +132,9 @@ describe("Workspace Member Management", () => {
             name: "Workspace Owner",
             email: "owner@example.com",
             image: "https://github.com/workspaceowner.png",
+            lightningPubkey: undefined,
+            decryptedLightningPubkey: null,
+            sphinxAlias: undefined,
             github: {
               username: "workspaceowner",
               name: "Workspace Owner",
@@ -180,6 +194,9 @@ describe("Workspace Member Management", () => {
             name: "Workspace Owner",
             email: "owner@example.com",
             image: null,
+            lightningPubkey: undefined,
+            decryptedLightningPubkey: null,
+            sphinxAlias: undefined,
             github: null,
           },
         },
@@ -251,6 +268,92 @@ describe("Workspace Member Management", () => {
       // Verify owner is not in members array
       const ownerInMembers = result.members.find(m => m.userId === "owner1");
       expect(ownerInMembers).toBeUndefined();
+    });
+
+    test("should include decryptedLightningPubkey on owner when lightningPubkey is set", async () => {
+      const encryptedPubkey = JSON.stringify({ data: "abc", iv: "def", tag: "ghi", version: "1", encryptedAt: "2024-01-01" });
+
+      const mockWorkspace = {
+        id: "workspace1",
+        ownerId: "owner1",
+        createdAt: TEST_DATE,
+        owner: {
+          id: "owner1",
+          name: "Owner With Pubkey",
+          email: "owner@example.com",
+          image: null,
+          lightningPubkey: encryptedPubkey,
+          sphinxAlias: "owner-alias",
+          githubAuth: null,
+        },
+      };
+
+      mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
+      mockedMapWorkspaceMembers.mockReturnValue([]);
+      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockDecryptField.mockReturnValueOnce("plaintext_pubkey_123");
+
+      const result = await getWorkspaceMembers("workspace1");
+
+      expect(result.owner.user.lightningPubkey).toBe(encryptedPubkey);
+      expect(result.owner.user.decryptedLightningPubkey).toBe("plaintext_pubkey_123");
+      expect(mockDecryptField).toHaveBeenCalledWith("lightningPubkey", encryptedPubkey);
+    });
+
+    test("should set decryptedLightningPubkey to null on owner when lightningPubkey is absent", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        ownerId: "owner1",
+        createdAt: TEST_DATE,
+        owner: {
+          id: "owner1",
+          name: "Owner No Pubkey",
+          email: "owner@example.com",
+          image: null,
+          lightningPubkey: null,
+          sphinxAlias: null,
+          githubAuth: null,
+        },
+      };
+
+      mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
+      mockedMapWorkspaceMembers.mockReturnValue([]);
+      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+
+      const result = await getWorkspaceMembers("workspace1");
+
+      expect(result.owner.user.lightningPubkey).toBeUndefined();
+      expect(result.owner.user.decryptedLightningPubkey).toBeNull();
+      expect(mockDecryptField).not.toHaveBeenCalled();
+    });
+
+    test("should set decryptedLightningPubkey to null on owner when decryption fails", async () => {
+      const encryptedPubkey = JSON.stringify({ data: "corrupt", iv: "bad", tag: "data", version: "1", encryptedAt: "2024-01-01" });
+
+      const mockWorkspace = {
+        id: "workspace1",
+        ownerId: "owner1",
+        createdAt: TEST_DATE,
+        owner: {
+          id: "owner1",
+          name: "Owner Bad Pubkey",
+          email: "owner@example.com",
+          image: null,
+          lightningPubkey: encryptedPubkey,
+          sphinxAlias: null,
+          githubAuth: null,
+        },
+      };
+
+      mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
+      mockedMapWorkspaceMembers.mockReturnValue([]);
+      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockDecryptField.mockImplementationOnce(() => { throw new Error("Decryption failed"); });
+
+      const result = await getWorkspaceMembers("workspace1");
+
+      expect(result.owner.user.lightningPubkey).toBe(encryptedPubkey);
+      expect(result.owner.user.decryptedLightningPubkey).toBeNull();
     });
   });
 
