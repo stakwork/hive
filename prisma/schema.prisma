@@ -8,946 +8,891 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Account {
-  id                String  @id @default(cuid())
-  userId            String  @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-  app_access_token  String? @map("app_access_token")
-  app_expires_at    Int?    @map("app_expires_at")
-  app_refresh_token String? @map("app_refresh_token")
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+model accounts {
+  id                  String  @id
+  user_id             String
+  type                String
+  provider            String
+  provider_account_id String
+  refresh_token       String?
+  access_token        String?
+  expires_at          Int?
+  token_type          String?
+  scope               String?
+  id_token            String?
+  session_state       String?
+  app_access_token    String?
+  app_expires_at      Int?
+  app_refresh_token   String?
+  users               users   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
+  @@unique([provider, provider_account_id])
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
-  githubState  String?  @map("github_state")
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model agent_logs {
+  id              String         @id
+  blob_url        String
+  agent           String
+  stakwork_run_id String?
+  task_id         String?
+  workspace_id    String
+  created_at      DateTime       @default(now())
+  feature_id      String?
+  features        features?      @relation(fields: [feature_id], references: [id])
+  stakwork_runs   stakwork_runs? @relation(fields: [stakwork_run_id], references: [id])
+  tasks           tasks?         @relation(fields: [task_id], references: [id])
+  workspaces      workspaces     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@map("sessions")
+  @@index([created_at])
+  @@index([feature_id])
+  @@index([stakwork_run_id])
+  @@index([task_id])
+  @@index([workspace_id])
 }
 
-model User {
-  id                       String                  @id @default(cuid())
-  name                     String?
-  email                    String?                 @unique
-  emailVerified            DateTime?               @map("email_verified")
-  image                    String?
-  role                     UserRole                @default(USER)
-  timezone                 String?                 @default("UTC")
-  locale                   String?                 @default("en")
-  createdAt                DateTime                @default(now()) @map("created_at")
-  updatedAt                DateTime                @updatedAt @map("updated_at")
-  deleted                  Boolean                 @default(false)
-  deletedAt                DateTime?               @map("deleted_at")
-  lastLoginAt              DateTime?               @map("last_login_at")
-  poolApiKey               String?                 @map("pool_api_key")
-  lightningPubkey          String?                 @unique @map("lightning_pubkey")
-  sphinxAlias              String?                 @map("sphinx_alias")
-  voiceSignatureKey        String?                 @map("voice_signature_key")
-  sphinxRouteHint          String?                 @map("sphinx_route_hint")
-  iosDeviceToken           String?                 @map("ios_device_token")
-  accounts                 Account[]
-  chatMessages             ChatMessage[]           @relation("ChatMessageSender")
-  assignedFeatures         Feature[]               @relation("FeatureAssignee")
-  createdFeatures          Feature[]               @relation("FeatureCreator")
-  updatedFeatures          Feature[]               @relation("FeatureUpdater")
-  githubAuth               GitHubAuth?
-  acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
-  dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
-  originatedNotifications  NotificationTrigger[]   @relation("NotificationOrigin")
-  receivedNotifications    NotificationTrigger[]   @relation("NotificationTarget")
-  sessions                 Session[]
-  sharedConversations      SharedConversation[]
-  sourceControlTokens      SourceControlToken[]
-  assignedTasks            Task[]                  @relation("TaskAssignee")
-  createdTasks             Task[]                  @relation("TaskCreator")
-  updatedTasks             Task[]                  @relation("TaskUpdater")
-  createdUserStories       UserStory[]             @relation("UserStoryCreator")
-  updatedUserStories       UserStory[]             @relation("UserStoryUpdater")
-  whiteboardMessages       WhiteboardMessage[]
-  createdApiKeys           WorkspaceApiKey[]       @relation("ApiKeyCreator")
-  revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
-  workspaceMembers         WorkspaceMember[]
-  ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
+model artifacts {
+  id            String        @id
+  message_id    String
+  type          ArtifactType
+  content       Json?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime
+  icon          String?
+  chat_messages chat_messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
 
-  @@index([createdAt])
-  @@index([deleted])
-  @@index([email])
-  @@map("users")
-}
-
-model GitHubAuth {
-  id                String    @id @default(cuid())
-  userId            String    @unique @map("user_id")
-  githubUserId      String    @map("github_user_id")
-  githubUsername    String    @map("github_username")
-  githubNodeId      String?   @map("github_node_id")
-  name              String?
-  bio               String?
-  company           String?
-  location          String?
-  blog              String?
-  twitterUsername   String?   @map("twitter_username")
-  publicRepos       Int?      @map("public_repos")
-  publicGists       Int?      @map("public_gists")
-  followers         Int?
-  following         Int?
-  githubCreatedAt   DateTime? @map("github_created_at")
-  githubUpdatedAt   DateTime? @map("github_updated_at")
-  accountType       String?   @map("account_type")
-  scopes            String[]  @default([])
-  organizationsHash String?   @map("organizations_hash")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([githubUserId])
-  @@index([githubUsername])
-  @@map("github_auth")
-}
-
-model SphinxChallenge {
-  id        String   @id @default(cuid())
-  k1        String   @unique
-  pubkey    String?
-  used      Boolean  @default(false)
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  alias     String?
-  routeHint String?  @map("route_hint")
-
-  @@index([k1])
-  @@index([expiresAt])
-  @@map("sphinx_challenges")
-}
-
-model SourceControlOrg {
-  id                   String               @id @default(cuid())
-  type                 SourceControlOrgType @default(ORG)
-  githubLogin          String               @unique
-  githubInstallationId Int                  @unique @map("github_installation_id")
-  name                 String?
-  avatarUrl            String?              @map("avatar_url")
-  description          String?
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
-  tokens               SourceControlToken[]
-  workspaces           Workspace[]
-
-  @@index([githubLogin])
-  @@index([githubInstallationId])
-  @@map("source_control_orgs")
-}
-
-model SourceControlToken {
-  id                 String           @id @default(cuid())
-  userId             String           @map("user_id")
-  sourceControlOrgId String           @map("source_control_org_id")
-  token              String
-  refreshToken       String?          @map("refresh_token")
-  expiresAt          DateTime?        @map("expires_at")
-  scopes             String[]         @default([])
-  createdAt          DateTime         @default(now()) @map("created_at")
-  updatedAt          DateTime         @updatedAt @map("updated_at")
-  sourceControlOrg   SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
-  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, sourceControlOrgId])
-  @@index([userId])
-  @@index([sourceControlOrgId])
-  @@map("source_control_tokens")
-}
-
-model Workspace {
-  id                     String                  @id @default(cuid())
-  name                   String
-  description            String?
-  slug                   String                  @unique
-  deleted                Boolean                 @default(false)
-  deletedAt              DateTime?               @map("deleted_at")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  ownerId                String                  @map("owner_id")
-  stakworkApiKey         String?                 @map("stakwork_api_key")
-  originalSlug           String?                 @map("original_slug")
-  sourceControlOrgId     String?                 @map("source_control_org_id")
-  mission                String?
-  repositoryDraft        String?                 @map("repository_draft")
-  logoKey                String?                 @map("logo_key")
-  logoUrl                String?                 @map("logo_url")
-  nodeTypeOrder          Json                    @default("[{\"type\": \"Function\", \"value\": 20}, {\"type\": \"Feature\", \"value\": 20}, {\"type\": \"File\", \"value\": 20}, {\"type\": \"Endpoint\", \"value\": 20}, {\"type\": \"Person\", \"value\": 20}, {\"type\": \"Episode\", \"value\": 20}, {\"type\": \"Call\", \"value\": 20}, {\"type\": \"Message\", \"value\": 20}]") @map("node_type_order")
-  vercelApiToken         String?                 @map("vercel_api_token")
-  vercelTeamId           String?                 @map("vercel_team_id")
-  vercelProjectId        String?                 @map("vercel_project_id")
-  vercelWebhookSecret    String?                 @map("vercel_webhook_secret")
-  sphinxBotId            String?                 @map("sphinx_bot_id")
-  sphinxBotSecret        String?                 @map("sphinx_bot_secret")
-  sphinxChatPubkey       String?                 @map("sphinx_chat_pubkey")
-  sphinxEnabled          Boolean                 @default(false) @map("sphinx_enabled")
-  agentLogs              AgentLog[]
-  diagrams               DiagramWorkspace[]
-  features               Feature[]
-  janitorConfig          JanitorConfig?
-  janitorRecommendations JanitorRecommendation[]
-  repositories           Repository[]
-  screenshots            Screenshot[]
-  sharedConversations    SharedConversation[]
-  stakworkRuns           StakworkRun[]
-  swarm                  Swarm?
-  tasks                  Task[]
-  whiteboards            Whiteboard[]
-  apiKeys                WorkspaceApiKey[]
-  members                WorkspaceMember[]
-  owner                  User                    @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  sourceControlOrg       SourceControlOrg?       @relation(fields: [sourceControlOrgId], references: [id])
-
-  @@index([ownerId])
-  @@index([deleted])
-  @@index([sourceControlOrgId])
-  @@map("workspaces")
-}
-
-model WorkspaceMember {
-  id             String        @id @default(cuid())
-  workspaceId    String        @map("workspace_id")
-  userId         String        @map("user_id")
-  role           WorkspaceRole @default(VIEWER)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  leftAt         DateTime?     @map("left_at")
-  lastAccessedAt DateTime?     @map("last_accessed_at")
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@unique([workspaceId, userId])
-  @@index([workspaceId])
-  @@index([userId])
-  @@map("workspace_members")
-}
-
-model WorkspaceApiKey {
-  id          String    @id @default(cuid())
-  workspaceId String    @map("workspace_id")
-  name        String
-  keyPrefix   String    @map("key_prefix")
-  keyHash     String    @unique @map("key_hash")
-  createdById String    @map("created_by_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  lastUsedAt  DateTime? @map("last_used_at")
-  expiresAt   DateTime? @map("expires_at")
-  revokedAt   DateTime? @map("revoked_at")
-  revokedById String?   @map("revoked_by_id")
-  createdBy   User      @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  revokedBy   User?     @relation("ApiKeyRevoker", fields: [revokedById], references: [id])
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([keyHash])
-  @@index([createdById])
-  @@map("workspace_api_keys")
-}
-
-model Swarm {
-  id                      String                @id @default(cuid())
-  name                    String                @unique
-  swarmId                 String?               @map("swarm_id")
-  swarmUrl                String?               @map("swarm_url")
-  status                  SwarmStatus           @default(PENDING)
-  instanceType            String                @default("XL") @map("instance_type")
-  createdAt               DateTime              @default(now()) @map("created_at")
-  updatedAt               DateTime              @updatedAt @map("updated_at")
-  poolName                String?               @map("pool_name")
-  swarmApiKey             String?               @map("swarm_api_key")
-  swarmSecretAlias        String?               @map("swarm_secret_alias")
-  environmentVariables    Json                  @default("[]") @map("environment_variables")
-  services                Json                  @default("[]")
-  ingestRefId             String?               @map("ingest_ref_id")
-  containerFiles          Json?                 @map("container_files")
-  workspaceId             String                @unique @map("workspace_id")
-  poolApiKey              String?               @map("pool_api_key")
-  swarmPassword           String?               @map("swarm_password")
-  poolCpu                 String?               @map("pool_cpu")
-  poolMemory              String?               @map("pool_memory")
-  poolState               PoolState             @default(NOT_STARTED) @map("pool_state")
-  ec2Id                   String?               @map("ec2_id")
-  containerFilesSetUp     Boolean               @default(false) @map("container_files_set_up")
-  agentRequestId          String?               @map("agent_request_id")
-  agentStatus             String?               @map("agent_status")
-  ingestRequestInProgress Boolean               @default(false) @map("ingest_request_in_progress")
-  podState                PodState              @default(NOT_STARTED) @map("pod_state")
-  autoLearnEnabled        Boolean               @default(false) @map("auto_learn_enabled")
-  minimumVms              Int                   @default(2) @map("minimum_vms")
-  webhookUrl              String?               @map("webhook_url")
-  pendingRepairTrigger    Json?                 @map("pending_repair_trigger")
-  podCompletedAt          DateTime?             @map("pod_completed_at")
-  description             String?
-  environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
-  pods                    Pod[]
-  workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([swarmId])
-  @@map("swarms")
-}
-
-model Pod {
-  id                   String         @id @default(cuid())
-  podId                String         @unique @map("pod_id")
-  swarmId              String         @map("swarm_id")
-  password             String?
-  portMappings         Json?          @map("port_mappings")
-  status               PodStatus      @default(PENDING)
-  usageStatus          PodUsageStatus @default(UNUSED) @map("usage_status")
-  usageStatusMarkedAt  DateTime?      @map("usage_status_marked_at")
-  usageStatusMarkedBy  String?        @map("usage_status_marked_by")
-  usageStatusReason    String?        @map("usage_status_reason")
-  lastHealthCheck      DateTime?      @map("last_health_check")
-  flaggedForRecreation Boolean        @default(false) @map("flagged_for_recreation")
-  flaggedAt            DateTime?      @map("flagged_at")
-  flaggedReason        PodFlagReason? @map("flagged_reason")
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
-  deletedAt            DateTime?      @map("deleted_at")
-  swarm                Swarm          @relation(fields: [swarmId], references: [id], onDelete: Cascade)
-
-  @@index([swarmId])
-  @@index([status])
-  @@index([usageStatus])
-  @@index([deletedAt])
-  @@map("pods")
-}
-
-model Repository {
-  id                    String                  @id @default(cuid())
-  name                  String
-  repositoryUrl         String                  @map("repository_url")
-  branch                String                  @default("main")
-  status                RepositoryStatus        @default(PENDING)
-  createdAt             DateTime                @default(now()) @map("created_at")
-  updatedAt             DateTime                @updatedAt @map("updated_at")
-  workspaceId           String                  @map("workspace_id")
-  githubWebhookId       String?                 @map("github_webhook_id")
-  githubWebhookSecret   String?                 @map("github_webhook_secret")
-  playwrightSetup       Boolean                 @default(false) @map("playwright_setup")
-  testingFrameworkSetup Boolean                 @default(false) @map("testing_framework_setup")
-  ignoreDirs            String?                 @default("") @map("ignore_dirs")
-  description           String?
-  e2eGlob               String?                 @default("") @map("e2e_glob")
-  integrationGlob       String?                 @default("") @map("integration_glob")
-  unitGlob              String?                 @default("") @map("unit_glob")
-  codeIngestionEnabled  Boolean                 @default(true) @map("code_ingestion_enabled")
-  docsEnabled           Boolean                 @default(true) @map("docs_enabled")
-  mocksEnabled          Boolean                 @default(false) @map("mocks_enabled")
-  embeddingsEnabled     Boolean                 @default(true) @map("embeddings_enabled")
-  triggerPodRepair      Boolean                 @default(false) @map("trigger_pod_repair")
-  deployments           Deployment[]
-  recommendations       JanitorRecommendation[]
-  janitorRuns           JanitorRun[]
-  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tasks                 Task[]
-
-  @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
-  @@index([workspaceId])
-  @@map("repositories")
-}
-
-model Task {
-  id                     String                @id @default(cuid())
-  title                  String
-  description            String?
-  workspaceId            String                @map("workspace_id")
-  assigneeId             String?               @map("assignee_id")
-  repositoryId           String?               @map("repository_id")
-  status                 TaskStatus            @default(TODO)
-  priority               Priority              @default(MEDIUM)
-  estimatedHours         Int?                  @map("estimated_hours")
-  actualHours            Int?                  @map("actual_hours")
-  createdById            String                @map("created_by_id")
-  updatedById            String                @map("updated_by_id")
-  deleted                Boolean               @default(false)
-  deletedAt              DateTime?             @map("deleted_at")
-  createdAt              DateTime              @default(now()) @map("created_at")
-  updatedAt              DateTime              @updatedAt @map("updated_at")
-  workflowCompletedAt    DateTime?             @map("workflow_completed_at")
-  workflowStartedAt      DateTime?             @map("workflow_started_at")
-  workflowStatus         WorkflowStatus?       @default(PENDING) @map("workflow_status")
-  stakworkProjectId      Int?                  @map("stakwork_project_id")
-  sourceType             TaskSourceType        @default(USER) @map("source_type")
-  mode                   String                @default("live")
-  dependsOnTaskIds       String[]              @default([]) @map("depends_on_task_ids")
-  featureId              String?               @map("feature_id")
-  order                  Int                   @default(0)
-  phaseId                String?               @map("phase_id")
-  systemAssigneeType     SystemAssigneeType?   @map("system_assignee_type")
-  bountyCode             String?               @unique @map("bounty_code")
-  testFilePath           String?               @map("test_file_path")
-  testFileUrl            String?               @map("test_file_url")
-  agentPassword          String?               @map("agent_password")
-  agentUrl               String?               @map("agent_url")
-  archived               Boolean               @default(false)
-  archivedAt             DateTime?             @map("archived_at")
-  runBuild               Boolean               @default(true) @map("run_build")
-  runTestSuite           Boolean               @default(true) @map("run_test_suite")
-  janitorType            JanitorType?          @map("janitor_type")
-  podId                  String?               @map("pod_id")
-  agentWebhookSecret     String?               @map("agent_webhook_secret")
-  branch                 String?
-  summary                String?               @map("summary")
-  layerType              TaskLayerType?        @map("layer_type")
-  manualLayerOverride    Boolean?              @map("manual_layer_override")
-  model                  String?
-  autoMerge              Boolean               @default(false) @map("auto_merge")
-  deployedToProductionAt DateTime?             @map("deployed_to_production_at")
-  deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
-  deploymentStatus       String?               @map("deployment_status")
-  haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
-  agentLogs              AgentLog[]
-  chatMessages           ChatMessage[]
-  deployments            Deployment[]
-  notifications          NotificationTrigger[]
-  screenshots            Screenshot[]
-  assignee               User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  createdBy              User                  @relation("TaskCreator", fields: [createdById], references: [id])
-  feature                Feature?              @relation(fields: [featureId], references: [id])
-  phase                  Phase?                @relation(fields: [phaseId], references: [id])
-  repository             Repository?           @relation(fields: [repositoryId], references: [id])
-  updatedBy              User                  @relation("TaskUpdater", fields: [updatedById], references: [id])
-  workspace              Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([janitorType])
-  @@index([assigneeId])
-  @@index([status])
-  @@index([deleted])
-  @@index([archived])
-  @@index([featureId])
-  @@index([phaseId])
-  @@index([systemAssigneeType])
-  @@index([bountyCode])
-  @@index([layerType])
-  @@index([deploymentStatus])
-  @@map("tasks")
-}
-
-model SharedConversation {
-  id                String    @id @default(cuid())
-  workspaceId       String    @map("workspace_id")
-  userId            String    @map("user_id")
-  title             String?
-  messages          Json
-  provenanceData    Json?     @map("provenance_data")
-  followUpQuestions Json      @map("follow_up_questions")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  isShared          Boolean   @default(false) @map("is_shared")
-  lastMessageAt     DateTime? @map("last_message_at")
-  source            String?
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([userId])
-  @@index([userId, workspaceId, lastMessageAt])
-  @@map("shared_conversations")
-}
-
-model ChatMessage {
-  id                String       @id @default(cuid())
-  taskId            String?      @map("task_id")
-  message           String
-  role              ChatRole
-  timestamp         DateTime     @default(now())
-  contextTags       Json         @default("[]") @map("context_tags")
-  status            ChatStatus   @default(SENDING)
-  sourceWebsocketID String?      @map("source_websocket_id")
-  replyId           String?      @map("reply_id")
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
-  workflowUrl       String?      @map("workflow_url")
-  userId            String?      @map("user_id")
-  featureId         String?      @map("feature_id")
-  artifacts         Artifact[]
-  attachments       Attachment[]
-  feature           Feature?     @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  task              Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  createdBy         User?        @relation("ChatMessageSender", fields: [userId], references: [id])
-
-  @@index([taskId])
-  @@index([featureId])
-  @@index([timestamp])
-  @@index([userId])
-  @@map("chat_messages")
-}
-
-model Artifact {
-  id        String       @id @default(cuid())
-  messageId String       @map("message_id")
-  type      ArtifactType
-  content   Json?
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  icon      String?
-  message   ChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
+  @@index([message_id])
   @@index([type])
-  @@map("artifacts")
 }
 
-model Attachment {
-  id        String      @id @default(cuid())
-  messageId String      @map("message_id")
-  path      String
-  filename  String
-  mimeType  String      @map("mime_type")
-  size      Int
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+model attachments {
+  id            String        @id
+  message_id    String
+  path          String
+  filename      String
+  mime_type     String
+  size          Int
+  created_at    DateTime      @default(now())
+  updated_at    DateTime
+  chat_messages chat_messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
 
-  @@index([messageId])
-  @@map("attachments")
+  @@index([message_id])
 }
 
-model JanitorConfig {
-  id                         String       @id @default(cuid())
-  workspaceId                String       @unique @map("workspace_id")
-  unitTestsEnabled           Boolean      @default(false) @map("unit_tests_enabled")
-  integrationTestsEnabled    Boolean      @default(false) @map("integration_tests_enabled")
-  createdAt                  DateTime     @default(now()) @map("created_at")
-  updatedAt                  DateTime     @updatedAt @map("updated_at")
-  e2eTestsEnabled            Boolean      @default(false) @map("e2e_tests_enabled")
-  securityReviewEnabled      Boolean      @default(false) @map("security_review_enabled")
-  taskCoordinatorEnabled     Boolean      @default(false) @map("task_coordinator_enabled")
-  recommendationSweepEnabled Boolean      @default(false) @map("recommendation_sweep_enabled")
-  ticketSweepEnabled         Boolean      @default(true) @map("ticket_sweep_enabled")
-  mockGenerationEnabled      Boolean      @default(false) @map("mock_generation_enabled")
-  generalRefactoringEnabled  Boolean      @default(false) @map("general_refactoring_enabled")
-  prCiFailureFixEnabled      Boolean      @default(false) @map("pr_ci_failure_fix_enabled")
-  prConflictFixEnabled       Boolean      @default(false) @map("pr_conflict_fix_enabled")
-  prMonitorEnabled           Boolean      @default(false) @map("pr_monitor_enabled")
-  prOutOfDateFixEnabled      Boolean      @default(false) @map("pr_out_of_date_fix_enabled")
-  prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
-  prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
-  workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  janitorRuns                JanitorRun[]
+model chat_messages {
+  id                  String        @id
+  task_id             String?
+  message             String
+  role                ChatRole
+  timestamp           DateTime      @default(now())
+  context_tags        Json          @default("[]")
+  status              ChatStatus    @default(SENDING)
+  source_websocket_id String?
+  reply_id            String?
+  created_at          DateTime      @default(now())
+  updated_at          DateTime
+  workflow_url        String?
+  user_id             String?
+  feature_id          String?
+  artifacts           artifacts[]
+  attachments         attachments[]
+  features            features?     @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  tasks               tasks?        @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  users               users?        @relation(fields: [user_id], references: [id])
 
-  @@index([workspaceId])
-  @@map("janitor_configs")
+  @@index([feature_id])
+  @@index([task_id])
+  @@index([timestamp])
+  @@index([user_id])
 }
 
-model JanitorRun {
-  id                String                  @id @default(cuid())
-  janitorConfigId   String                  @map("janitor_config_id")
-  janitorType       JanitorType             @map("janitor_type")
-  status            JanitorStatus           @default(PENDING)
-  triggeredBy       JanitorTrigger          @default(SCHEDULED) @map("triggered_by")
-  stakworkProjectId Int?                    @map("stakwork_project_id")
-  startedAt         DateTime?               @map("started_at")
-  completedAt       DateTime?               @map("completed_at")
-  error             String?
-  metadata          Json                    @default("{}")
-  createdAt         DateTime                @default(now()) @map("created_at")
-  updatedAt         DateTime                @updatedAt @map("updated_at")
-  repositoryId      String?                 @map("repository_id")
-  recommendations   JanitorRecommendation[]
-  janitorConfig     JanitorConfig           @relation(fields: [janitorConfigId], references: [id], onDelete: Cascade)
-  repository        Repository?             @relation(fields: [repositoryId], references: [id])
+model deployments {
+  id                   String                @id
+  task_id              String
+  repository_id        String?
+  commit_sha           String
+  pr_url               String?
+  environment          DeploymentEnvironment
+  status               DeploymentStatus
+  deployment_url       String?
+  github_deployment_id String?
+  started_at           DateTime
+  completed_at         DateTime?
+  created_at           DateTime              @default(now())
+  updated_at           DateTime
+  repositories         repositories?         @relation(fields: [repository_id], references: [id])
+  tasks                tasks                 @relation(fields: [task_id], references: [id], onDelete: Cascade)
 
-  @@index([janitorConfigId])
-  @@index([janitorType])
-  @@index([status])
-  @@index([createdAt])
-  @@index([repositoryId])
-  @@index([janitorConfigId, janitorType, repositoryId])
-  @@map("janitor_runs")
+  @@index([commit_sha])
+  @@index([github_deployment_id])
+  @@index([repository_id, environment])
+  @@index([task_id])
 }
 
-model JanitorRecommendation {
-  id            String               @id @default(cuid())
-  janitorRunId  String?              @map("janitor_run_id")
-  title         String
-  description   String
-  priority      Priority             @default(MEDIUM)
-  impact        String?
-  status        RecommendationStatus @default(PENDING)
-  acceptedAt    DateTime?            @map("accepted_at")
-  dismissedAt   DateTime?            @map("dismissed_at")
-  acceptedById  String?              @map("accepted_by_id")
-  dismissedById String?              @map("dismissed_by_id")
-  metadata      Json                 @default("{}")
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
-  workspaceId   String               @map("workspace_id")
-  repositoryId  String?              @map("repository_id")
-  acceptedBy    User?                @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
-  dismissedBy   User?                @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
-  janitorRun    JanitorRun?          @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  repository    Repository?          @relation(fields: [repositoryId], references: [id])
-  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+model diagram_workspaces {
+  id           String     @id
+  diagram_id   String
+  workspace_id String
+  diagrams     diagrams   @relation(fields: [diagram_id], references: [id], onDelete: Cascade)
+  workspaces   workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@index([janitorRunId])
-  @@index([workspaceId])
-  @@index([repositoryId])
-  @@index([status])
-  @@index([priority])
-  @@index([createdAt])
-  @@map("janitor_recommendations")
+  @@unique([diagram_id, workspace_id])
+  @@index([workspace_id])
 }
 
-model Deployment {
-  id                 String                @id @default(cuid())
-  taskId             String                @map("task_id")
-  repositoryId       String?               @map("repository_id")
-  commitSha          String                @map("commit_sha")
-  prUrl              String?               @map("pr_url")
-  environment        DeploymentEnvironment
-  status             DeploymentStatus
-  deploymentUrl      String?               @map("deployment_url")
-  githubDeploymentId String?               @map("github_deployment_id")
-  startedAt          DateTime              @map("started_at")
-  completedAt        DateTime?             @map("completed_at")
-  createdAt          DateTime              @default(now()) @map("created_at")
-  updatedAt          DateTime              @updatedAt @map("updated_at")
-  repository         Repository?           @relation(fields: [repositoryId], references: [id])
-  task               Task                  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+model diagrams {
+  id                 String               @id
+  name               String
+  body               String
+  description        String?
+  created_by         String
+  created_at         DateTime             @default(now())
+  group_id           String               @default("")
+  diagram_workspaces diagram_workspaces[]
 
-  @@index([taskId])
-  @@index([commitSha])
-  @@index([repositoryId, environment])
-  @@index([githubDeploymentId])
-  @@map("deployments")
+  @@index([group_id])
 }
 
-model Feature {
-  id                  String                @id @default(cuid())
-  title               String
-  workspaceId         String                @map("workspace_id")
-  assigneeId          String?               @map("assignee_id")
-  status              FeatureStatus         @default(BACKLOG)
-  createdById         String                @map("created_by_id")
-  updatedById         String                @map("updated_by_id")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  architecture        String?
-  brief               String?
-  requirements        String?
-  deleted             Boolean               @default(false)
-  deletedAt           DateTime?             @map("deleted_at")
-  personas            String[]              @default([])
-  priority            FeaturePriority       @default(LOW)
-  diagramS3Key        String?               @map("diagram_s3_key")
-  diagramUrl          String?               @map("diagram_url")
-  stakworkProjectId   Int?                  @map("stakwork_project_id")
-  workflowCompletedAt DateTime?             @map("workflow_completed_at")
-  workflowStartedAt   DateTime?             @map("workflow_started_at")
-  workflowStatus      WorkflowStatus?       @default(PENDING) @map("workflow_status")
-  isFastTrack         Boolean               @default(false) @map("is_fast_track")
-  planUpdatedAt       DateTime?             @map("plan_updated_at")
-  agentLogs           AgentLog[]
-  chatMessages        ChatMessage[]
-  assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
-  createdBy           User                  @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedBy           User                  @relation("FeatureUpdater", fields: [updatedById], references: [id])
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  notifications       NotificationTrigger[]
-  phases              Phase[]
-  screenshots         Screenshot[]
-  stakworkRuns        StakworkRun[]
-  tasks               Task[]
-  userStories         UserStory[]
-  whiteboard          Whiteboard?
+model ec2_alerts {
+  id           String   @id
+  instance_id  String   @unique
+  alarm_name   String
+  alarm_state  String
+  alarm_type   String
+  state_reason String
+  triggered_at DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+}
 
-  @@index([workspaceId])
-  @@index([assigneeId])
-  @@index([createdById])
-  @@index([status])
+model environment_variables {
+  id           String   @id
+  swarm_id     String
+  service_name String?
+  name         String
+  value        String
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+  swarms       swarms   @relation(fields: [swarm_id], references: [id], onDelete: Cascade)
+
+  @@unique([swarm_id, service_name, name])
+  @@index([swarm_id])
+}
+
+model features {
+  id                                  String                  @id
+  title                               String
+  workspace_id                        String
+  assignee_id                         String?
+  status                              FeatureStatus           @default(BACKLOG)
+  created_by_id                       String
+  updated_by_id                       String
+  created_at                          DateTime                @default(now())
+  updated_at                          DateTime
+  architecture                        String?
+  brief                               String?
+  requirements                        String?
+  deleted                             Boolean                 @default(false)
+  deleted_at                          DateTime?
+  personas                            String[]                @default([])
+  priority                            FeaturePriority         @default(LOW)
+  diagram_s3_key                      String?
+  diagram_url                         String?
+  stakwork_project_id                 Int?
+  workflow_completed_at               DateTime?
+  workflow_started_at                 DateTime?
+  workflow_status                     WorkflowStatus?         @default(PENDING)
+  is_fast_track                       Boolean                 @default(false)
+  plan_updated_at                     DateTime?
+  agent_logs                          agent_logs[]
+  chat_messages                       chat_messages[]
+  users_features_assignee_idTousers   users?                  @relation("features_assignee_idTousers", fields: [assignee_id], references: [id])
+  users_features_created_by_idTousers users                   @relation("features_created_by_idTousers", fields: [created_by_id], references: [id])
+  users_features_updated_by_idTousers users                   @relation("features_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  workspaces                          workspaces              @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  notification_triggers               notification_triggers[]
+  phases                              phases[]
+  screenshots                         screenshots[]
+  stakwork_runs                       stakwork_runs[]
+  tasks                               tasks[]
+  user_stories                        user_stories[]
+  whiteboards                         whiteboards?
+
+  @@index([assignee_id])
+  @@index([created_by_id])
   @@index([deleted])
-  @@map("features")
+  @@index([status])
+  @@index([workspace_id])
 }
 
-model UserStory {
-  id          String   @id @default(cuid())
-  featureId   String   @map("feature_id")
-  title       String
-  order       Int      @default(0)
-  completed   Boolean  @default(false)
-  createdById String   @map("created_by_id")
-  updatedById String   @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdBy   User     @relation("UserStoryCreator", fields: [createdById], references: [id])
-  feature     Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  updatedBy   User     @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+model github_auth {
+  id                 String    @id
+  user_id            String    @unique
+  github_user_id     String
+  github_username    String
+  github_node_id     String?
+  name               String?
+  bio                String?
+  company            String?
+  location           String?
+  blog               String?
+  twitter_username   String?
+  public_repos       Int?
+  public_gists       Int?
+  followers          Int?
+  following          Int?
+  github_created_at  DateTime?
+  github_updated_at  DateTime?
+  account_type       String?
+  scopes             String[]  @default([])
+  organizations_hash String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime
+  users              users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@index([featureId])
-  @@index([order])
-  @@map("user_stories")
+  @@index([github_user_id])
+  @@index([github_username])
 }
 
-model Phase {
-  id          String      @id @default(cuid())
-  featureId   String      @map("feature_id")
+model janitor_configs {
+  id                           String         @id
+  workspace_id                 String         @unique
+  unit_tests_enabled           Boolean        @default(false)
+  integration_tests_enabled    Boolean        @default(false)
+  created_at                   DateTime       @default(now())
+  updated_at                   DateTime
+  e2e_tests_enabled            Boolean        @default(false)
+  security_review_enabled      Boolean        @default(false)
+  task_coordinator_enabled     Boolean        @default(false)
+  recommendation_sweep_enabled Boolean        @default(false)
+  ticket_sweep_enabled         Boolean        @default(true)
+  mock_generation_enabled      Boolean        @default(false)
+  general_refactoring_enabled  Boolean        @default(false)
+  pr_ci_failure_fix_enabled    Boolean        @default(false)
+  pr_conflict_fix_enabled      Boolean        @default(false)
+  pr_monitor_enabled           Boolean        @default(false)
+  pr_out_of_date_fix_enabled   Boolean        @default(false)
+  pr_use_rebase_for_updates    Boolean        @default(false)
+  pr_use_merge_for_updates     Boolean        @default(true)
+  workspaces                   workspaces     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  janitor_runs                 janitor_runs[]
+
+  @@index([workspace_id])
+}
+
+model janitor_recommendations {
+  id                                                   String               @id
+  janitor_run_id                                       String?
+  title                                                String
+  description                                          String
+  priority                                             Priority             @default(MEDIUM)
+  impact                                               String?
+  status                                               RecommendationStatus @default(PENDING)
+  accepted_at                                          DateTime?
+  dismissed_at                                         DateTime?
+  accepted_by_id                                       String?
+  dismissed_by_id                                      String?
+  metadata                                             Json                 @default("{}")
+  created_at                                           DateTime             @default(now())
+  updated_at                                           DateTime
+  workspace_id                                         String
+  repository_id                                        String?
+  users_janitor_recommendations_accepted_by_idTousers  users?               @relation("janitor_recommendations_accepted_by_idTousers", fields: [accepted_by_id], references: [id])
+  users_janitor_recommendations_dismissed_by_idTousers users?               @relation("janitor_recommendations_dismissed_by_idTousers", fields: [dismissed_by_id], references: [id])
+  janitor_runs                                         janitor_runs?        @relation(fields: [janitor_run_id], references: [id], onDelete: Cascade)
+  repositories                                         repositories?        @relation(fields: [repository_id], references: [id])
+  workspaces                                           workspaces           @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([janitor_run_id])
+  @@index([priority])
+  @@index([repository_id])
+  @@index([status])
+  @@index([workspace_id])
+}
+
+model janitor_runs {
+  id                      String                    @id
+  janitor_config_id       String
+  janitor_type            JanitorType
+  status                  JanitorStatus             @default(PENDING)
+  triggered_by            JanitorTrigger            @default(SCHEDULED)
+  stakwork_project_id     Int?
+  started_at              DateTime?
+  completed_at            DateTime?
+  error                   String?
+  metadata                Json                      @default("{}")
+  created_at              DateTime                  @default(now())
+  updated_at              DateTime
+  repository_id           String?
+  janitor_recommendations janitor_recommendations[]
+  janitor_configs         janitor_configs           @relation(fields: [janitor_config_id], references: [id], onDelete: Cascade)
+  repositories            repositories?             @relation(fields: [repository_id], references: [id])
+
+  @@index([created_at])
+  @@index([janitor_config_id])
+  @@index([janitor_config_id, janitor_type, repository_id])
+  @@index([janitor_type])
+  @@index([repository_id])
+  @@index([status])
+}
+
+model notification_triggers {
+  id                                                     String                    @id
+  target_user_id                                         String
+  originating_user_id                                    String?
+  task_id                                                String?
+  feature_id                                             String?
+  notification_type                                      NotificationTriggerType
+  status                                                 NotificationTriggerStatus @default(PENDING)
+  notification_method                                    NotificationMethod
+  notification_timestamps                                DateTime[]                @default([])
+  created_at                                             DateTime                  @default(now())
+  updated_at                                             DateTime
+  send_after                                             DateTime?
+  message                                                String?
+  features                                               features?                 @relation(fields: [feature_id], references: [id])
+  users_notification_triggers_originating_user_idTousers users?                    @relation("notification_triggers_originating_user_idTousers", fields: [originating_user_id], references: [id])
+  users_notification_triggers_target_user_idTousers      users                     @relation("notification_triggers_target_user_idTousers", fields: [target_user_id], references: [id], onDelete: Cascade)
+  tasks                                                  tasks?                    @relation(fields: [task_id], references: [id])
+
+  @@index([notification_type])
+  @@index([send_after, status])
+  @@index([status])
+  @@index([target_user_id])
+  @@index([target_user_id, notification_type, status])
+}
+
+model phases {
+  id          String      @id
+  feature_id  String
   name        String
   description String?
   status      PhaseStatus @default(NOT_STARTED)
   order       Int         @default(0)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  created_at  DateTime    @default(now())
+  updated_at  DateTime
   deleted     Boolean     @default(false)
-  deletedAt   DateTime?   @map("deleted_at")
-  feature     Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  tasks       Task[]
+  deleted_at  DateTime?
+  features    features    @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  tasks       tasks[]
 
-  @@index([featureId])
-  @@index([status])
-  @@index([order])
   @@index([deleted])
-  @@map("phases")
-}
-
-model StakworkRun {
-  id          String               @id @default(cuid())
-  webhookUrl  String               @map("webhook_url")
-  projectId   Int?                 @map("project_id")
-  type        StakworkRunType
-  featureId   String?              @map("feature_id")
-  workspaceId String               @map("workspace_id")
-  status      WorkflowStatus       @default(PENDING)
-  result      String?
-  dataType    String               @default("string") @map("data_type")
-  feedback    String?
-  decision    StakworkRunDecision?
-  createdAt   DateTime             @default(now()) @map("created_at")
-  updatedAt   DateTime             @updatedAt @map("updated_at")
-  autoAccept  Boolean              @default(false) @map("auto_accept")
-  agentLogs   AgentLog[]
-  feature     Feature?             @relation(fields: [featureId], references: [id])
-  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([featureId])
-  @@index([type])
+  @@index([feature_id])
+  @@index([order])
   @@index([status])
-  @@index([projectId])
-  @@index([createdAt])
-  @@map("stakwork_runs")
 }
 
-model Screenshot {
-  id           String    @id @default(cuid())
-  workspaceId  String    @map("workspace_id")
-  taskId       String?   @map("task_id")
-  s3Key        String    @unique @map("s3_key")
-  s3Url        String?   @map("s3_url")
-  urlExpiresAt DateTime? @map("url_expires_at")
-  actionIndex  Int       @map("action_index")
-  pageUrl      String    @map("page_url")
-  timestamp    BigInt
-  hash         String    @unique
-  width        Int?
-  height       Int?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  featureId    String?   @map("feature_id")
-  feature      Feature?  @relation(fields: [featureId], references: [id])
-  task         Task?     @relation(fields: [taskId], references: [id])
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+model pods {
+  id                     String         @id
+  pod_id                 String         @unique
+  swarm_id               String
+  password               String?
+  port_mappings          Json?
+  status                 PodStatus      @default(PENDING)
+  usage_status           PodUsageStatus @default(UNUSED)
+  usage_status_marked_at DateTime?
+  usage_status_marked_by String?
+  usage_status_reason    String?
+  last_health_check      DateTime?
+  flagged_for_recreation Boolean        @default(false)
+  flagged_at             DateTime?
+  flagged_reason         PodFlagReason?
+  created_at             DateTime       @default(now())
+  updated_at             DateTime
+  deleted_at             DateTime?
+  swarms                 swarms         @relation(fields: [swarm_id], references: [id], onDelete: Cascade)
 
-  @@index([workspaceId])
-  @@index([taskId])
-  @@index([featureId])
+  @@index([deleted_at])
+  @@index([status])
+  @@index([swarm_id])
+  @@index([usage_status])
+}
+
+model repositories {
+  id                      String                    @id
+  name                    String
+  repository_url          String
+  branch                  String                    @default("main")
+  status                  RepositoryStatus          @default(PENDING)
+  created_at              DateTime                  @default(now())
+  updated_at              DateTime
+  workspace_id            String
+  github_webhook_id       String?
+  github_webhook_secret   String?
+  playwright_setup        Boolean                   @default(false)
+  testing_framework_setup Boolean                   @default(false)
+  ignore_dirs             String?                   @default("")
+  description             String?
+  e2e_glob                String?                   @default("")
+  integration_glob        String?                   @default("")
+  unit_glob               String?                   @default("")
+  code_ingestion_enabled  Boolean                   @default(true)
+  docs_enabled            Boolean                   @default(true)
+  mocks_enabled           Boolean                   @default(false)
+  embeddings_enabled      Boolean                   @default(true)
+  trigger_pod_repair      Boolean                   @default(false)
+  deployments             deployments[]
+  janitor_recommendations janitor_recommendations[]
+  janitor_runs            janitor_runs[]
+  workspaces              workspaces                @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  tasks                   tasks[]
+
+  @@unique([repository_url, workspace_id])
+  @@index([workspace_id])
+}
+
+model screenshots {
+  id             String     @id
+  workspace_id   String
+  task_id        String?
+  s3_key         String     @unique
+  s3_url         String?
+  url_expires_at DateTime?
+  action_index   Int
+  page_url       String
+  timestamp      BigInt
+  hash           String     @unique
+  width          Int?
+  height         Int?
+  created_at     DateTime   @default(now())
+  updated_at     DateTime
+  feature_id     String?
+  features       features?  @relation(fields: [feature_id], references: [id])
+  tasks          tasks?     @relation(fields: [task_id], references: [id])
+  workspaces     workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([feature_id])
   @@index([hash])
-  @@index([pageUrl])
-  @@index([createdAt])
-  @@map("screenshots")
+  @@index([page_url])
+  @@index([task_id])
+  @@index([workspace_id])
 }
 
-model Whiteboard {
-  id          String              @id @default(cuid())
-  name        String
-  workspaceId String              @map("workspace_id")
-  elements    Json                @default("[]")
-  appState    Json                @default("{}") @map("app_state")
-  files       Json                @default("{}")
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  featureId   String?             @unique @map("feature_id")
-  version     Int                 @default(0)
-  messages    WhiteboardMessage[]
-  versions    WhiteboardVersion[]
-  feature     Feature?            @relation(fields: [featureId], references: [id])
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([createdAt])
-  @@map("whiteboards")
+model sessions {
+  id            String   @id
+  session_token String   @unique
+  user_id       String
+  expires       DateTime
+  github_state  String?
+  users         users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
-model WhiteboardVersion {
-  id           String     @id @default(cuid())
-  whiteboardId String     @map("whiteboard_id")
-  elements     Json       @default("[]")
-  appState     Json       @default("{}") @map("app_state")
-  files        Json       @default("{}")
-  label        String
-  createdAt    DateTime   @default(now()) @map("created_at")
-  whiteboard   Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+model shared_conversations {
+  id                  String     @id
+  workspace_id        String
+  user_id             String
+  title               String?
+  messages            Json
+  provenance_data     Json?
+  follow_up_questions Json
+  created_at          DateTime   @default(now())
+  updated_at          DateTime
+  is_shared           Boolean    @default(false)
+  last_message_at     DateTime?
+  source              String?
+  users               users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspaces          workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@index([whiteboardId, createdAt])
-  @@map("whiteboard_versions")
+  @@index([user_id])
+  @@index([user_id, workspace_id, last_message_at])
+  @@index([workspace_id])
 }
 
-model WhiteboardMessage {
-  id           String     @id @default(cuid())
-  whiteboardId String     @map("whiteboard_id")
-  role         ChatRole
-  content      String
-  status       ChatStatus @default(SENT)
-  userId       String?    @map("user_id")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  metadata     Json       @default("{}")
-  user         User?      @relation(fields: [userId], references: [id])
-  whiteboard   Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+model source_control_orgs {
+  id                     String                  @id
+  type                   SourceControlOrgType    @default(ORG)
+  githubLogin            String                  @unique
+  github_installation_id Int                     @unique
+  name                   String?
+  avatar_url             String?
+  description            String?
+  created_at             DateTime                @default(now())
+  updated_at             DateTime
+  source_control_tokens  source_control_tokens[]
+  workspaces             workspaces[]
 
-  @@index([whiteboardId])
-  @@index([createdAt])
-  @@map("whiteboard_messages")
+  @@index([githubLogin])
+  @@index([github_installation_id])
 }
 
-model EnvironmentVariable {
-  id          String   @id @default(cuid())
-  swarmId     String   @map("swarm_id")
-  serviceName String?  @map("service_name")
-  name        String
-  value       String
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  swarm       Swarm    @relation("SwarmEnvironmentVariables", fields: [swarmId], references: [id], onDelete: Cascade)
+model source_control_tokens {
+  id                    String              @id
+  user_id               String
+  source_control_org_id String
+  token                 String
+  refresh_token         String?
+  expires_at            DateTime?
+  scopes                String[]            @default([])
+  created_at            DateTime            @default(now())
+  updated_at            DateTime
+  source_control_orgs   source_control_orgs @relation(fields: [source_control_org_id], references: [id], onDelete: Cascade)
+  users                 users               @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@unique([swarmId, serviceName, name])
-  @@index([swarmId])
-  @@map("environment_variables")
+  @@unique([user_id, source_control_org_id])
+  @@index([source_control_org_id])
+  @@index([user_id])
 }
 
-model Ec2Alert {
-  id          String   @id @default(cuid())
-  instanceId  String   @unique @map("instance_id")
-  alarmName   String   @map("alarm_name")
-  alarmState  String   @map("alarm_state")
-  alarmType   String   @map("alarm_type")
-  stateReason String   @map("state_reason")
-  triggeredAt DateTime @map("triggered_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+model sphinx_challenges {
+  id         String   @id
+  k1         String   @unique
+  pubkey     String?
+  used       Boolean  @default(false)
+  expires_at DateTime
+  created_at DateTime @default(now())
+  alias      String?
+  route_hint String?
 
-  @@map("ec2_alerts")
+  @@index([expires_at])
+  @@index([k1])
 }
 
-model AgentLog {
-  id            String       @id @default(cuid())
-  blobUrl       String       @map("blob_url")
-  agent         String
-  stakworkRunId String?      @map("stakwork_run_id")
-  taskId        String?      @map("task_id")
-  workspaceId   String       @map("workspace_id")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  featureId     String?      @map("feature_id")
-  feature       Feature?     @relation(fields: [featureId], references: [id])
-  stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id])
-  task          Task?        @relation(fields: [taskId], references: [id])
-  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+model stakwork_runs {
+  id           String               @id
+  webhook_url  String
+  project_id   Int?
+  type         StakworkRunType
+  feature_id   String?
+  workspace_id String
+  status       WorkflowStatus       @default(PENDING)
+  result       String?
+  data_type    String               @default("string")
+  feedback     String?
+  decision     StakworkRunDecision?
+  created_at   DateTime             @default(now())
+  updated_at   DateTime
+  auto_accept  Boolean              @default(false)
+  agent_logs   agent_logs[]
+  features     features?            @relation(fields: [feature_id], references: [id])
+  workspaces   workspaces           @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@index([stakworkRunId])
-  @@index([taskId])
-  @@index([featureId])
-  @@index([workspaceId])
-  @@index([createdAt])
-  @@map("agent_logs")
-}
-
-model NotificationTrigger {
-  id                     String                    @id @default(cuid())
-  targetUserId           String                    @map("target_user_id")
-  originatingUserId      String?                   @map("originating_user_id")
-  taskId                 String?                   @map("task_id")
-  featureId              String?                   @map("feature_id")
-  notificationType       NotificationTriggerType   @map("notification_type")
-  status                 NotificationTriggerStatus @default(PENDING) @map("status")
-  notificationMethod     NotificationMethod        @map("notification_method")
-  notificationTimestamps DateTime[]                @default([]) @map("notification_timestamps")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  sendAfter              DateTime?                 @map("send_after")
-  message                String?
-  feature                Feature?                  @relation(fields: [featureId], references: [id])
-  originatingUser        User?                     @relation("NotificationOrigin", fields: [originatingUserId], references: [id])
-  targetUser             User                      @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
-  task                   Task?                     @relation(fields: [taskId], references: [id])
-
-  @@index([targetUserId])
+  @@index([created_at])
+  @@index([feature_id])
+  @@index([project_id])
   @@index([status])
-  @@index([notificationType])
-  @@index([targetUserId, notificationType, status])
-  @@index([sendAfter, status])
-  @@map("notification_triggers")
+  @@index([type])
+  @@index([workspace_id])
 }
 
-model Diagram {
-  id          String             @id @default(cuid())
-  name        String
-  body        String
-  description String?
-  createdBy   String             @map("created_by")
-  createdAt   DateTime           @default(now()) @map("created_at")
-  groupId     String             @default("") @map("group_id")
-  workspaces  DiagramWorkspace[]
+model swarms {
+  id                         String                  @id
+  name                       String                  @unique
+  swarm_id                   String?
+  swarm_url                  String?
+  status                     SwarmStatus             @default(PENDING)
+  instance_type              String                  @default("XL")
+  created_at                 DateTime                @default(now())
+  updated_at                 DateTime
+  pool_name                  String?
+  swarm_api_key              String?
+  swarm_secret_alias         String?
+  environment_variables      Json                    @default("[]")
+  services                   Json                    @default("[]")
+  ingest_ref_id              String?
+  container_files            Json?
+  workspace_id               String                  @unique
+  pool_api_key               String?
+  swarm_password             String?
+  pool_cpu                   String?
+  pool_memory                String?
+  pool_state                 PoolState               @default(NOT_STARTED)
+  ec2_id                     String?
+  container_files_set_up     Boolean                 @default(false)
+  agent_request_id           String?
+  agent_status               String?
+  ingest_request_in_progress Boolean                 @default(false)
+  pod_state                  PodState                @default(NOT_STARTED)
+  auto_learn_enabled         Boolean                 @default(false)
+  minimum_vms                Int                     @default(2)
+  webhook_url                String?
+  pending_repair_trigger     Json?
+  pod_completed_at           DateTime?
+  description                String?
+  environment_variables      environment_variables[]
+  pods                       pods[]
+  workspaces                 workspaces              @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@index([groupId])
-  @@map("diagrams")
+  @@index([swarm_id])
 }
 
-model DiagramWorkspace {
-  id          String    @id @default(cuid())
-  diagramId   String    @map("diagram_id")
-  workspaceId String    @map("workspace_id")
-  diagram     Diagram   @relation(fields: [diagramId], references: [id], onDelete: Cascade)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+model tasks {
+  id                               String                  @id
+  title                            String
+  description                      String?
+  workspace_id                     String
+  assignee_id                      String?
+  repository_id                    String?
+  status                           TaskStatus              @default(TODO)
+  priority                         Priority                @default(MEDIUM)
+  estimated_hours                  Int?
+  actual_hours                     Int?
+  created_by_id                    String
+  updated_by_id                    String
+  deleted                          Boolean                 @default(false)
+  deleted_at                       DateTime?
+  created_at                       DateTime                @default(now())
+  updated_at                       DateTime
+  workflow_completed_at            DateTime?
+  workflow_started_at              DateTime?
+  workflow_status                  WorkflowStatus?         @default(PENDING)
+  stakwork_project_id              Int?
+  source_type                      TaskSourceType          @default(USER)
+  mode                             String                  @default("live")
+  depends_on_task_ids              String[]                @default([])
+  feature_id                       String?
+  order                            Int                     @default(0)
+  phase_id                         String?
+  system_assignee_type             SystemAssigneeType?
+  bounty_code                      String?                 @unique
+  test_file_path                   String?
+  test_file_url                    String?
+  agent_password                   String?
+  agent_url                        String?
+  archived                         Boolean                 @default(false)
+  archived_at                      DateTime?
+  run_build                        Boolean                 @default(true)
+  run_test_suite                   Boolean                 @default(true)
+  janitor_type                     JanitorType?
+  pod_id                           String?
+  agent_webhook_secret             String?
+  branch                           String?
+  summary                          String?
+  layer_type                       TaskLayerType?
+  manual_layer_override            Boolean?
+  model                            String?
+  auto_merge                       Boolean                 @default(false)
+  deployed_to_production_at        DateTime?
+  deployed_to_staging_at           DateTime?
+  deployment_status                String?
+  halt_retry_attempted             Boolean                 @default(false)
+  agent_logs                       agent_logs[]
+  chat_messages                    chat_messages[]
+  deployments                      deployments[]
+  notification_triggers            notification_triggers[]
+  screenshots                      screenshots[]
+  users_tasks_assignee_idTousers   users?                  @relation("tasks_assignee_idTousers", fields: [assignee_id], references: [id])
+  users_tasks_created_by_idTousers users                   @relation("tasks_created_by_idTousers", fields: [created_by_id], references: [id])
+  features                         features?               @relation(fields: [feature_id], references: [id])
+  phases                           phases?                 @relation(fields: [phase_id], references: [id])
+  repositories                     repositories?           @relation(fields: [repository_id], references: [id])
+  users_tasks_updated_by_idTousers users                   @relation("tasks_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  workspaces                       workspaces              @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@unique([diagramId, workspaceId])
-  @@index([workspaceId])
-  @@map("diagram_workspaces")
+  @@index([archived])
+  @@index([assignee_id])
+  @@index([bounty_code])
+  @@index([deleted])
+  @@index([deployment_status])
+  @@index([feature_id])
+  @@index([janitor_type])
+  @@index([layer_type])
+  @@index([phase_id])
+  @@index([status])
+  @@index([system_assignee_type])
+  @@index([workspace_id])
 }
 
-enum ChatRole {
-  USER
-  ASSISTANT
+model user_stories {
+  id                                      String   @id
+  feature_id                              String
+  title                                   String
+  order                                   Int      @default(0)
+  completed                               Boolean  @default(false)
+  created_by_id                           String
+  updated_by_id                           String
+  created_at                              DateTime @default(now())
+  updated_at                              DateTime
+  users_user_stories_created_by_idTousers users    @relation("user_stories_created_by_idTousers", fields: [created_by_id], references: [id])
+  features                                features @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  users_user_stories_updated_by_idTousers users    @relation("user_stories_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@index([feature_id])
+  @@index([order])
 }
 
-enum ChatStatus {
-  SENDING
-  SENT
-  ERROR
+model users {
+  id                                                                     String                    @id
+  name                                                                   String?
+  email                                                                  String?                   @unique
+  email_verified                                                         DateTime?
+  image                                                                  String?
+  role                                                                   UserRole                  @default(USER)
+  timezone                                                               String?                   @default("UTC")
+  locale                                                                 String?                   @default("en")
+  created_at                                                             DateTime                  @default(now())
+  updated_at                                                             DateTime
+  deleted                                                                Boolean                   @default(false)
+  deleted_at                                                             DateTime?
+  last_login_at                                                          DateTime?
+  pool_api_key                                                           String?
+  lightning_pubkey                                                       String?                   @unique
+  sphinx_alias                                                           String?
+  voice_signature_key                                                    String?
+  sphinx_route_hint                                                      String?
+  ios_device_token                                                       String?
+  accounts                                                               accounts[]
+  chat_messages                                                          chat_messages[]
+  features_features_assignee_idTousers                                   features[]                @relation("features_assignee_idTousers")
+  features_features_created_by_idTousers                                 features[]                @relation("features_created_by_idTousers")
+  features_features_updated_by_idTousers                                 features[]                @relation("features_updated_by_idTousers")
+  github_auth                                                            github_auth?
+  janitor_recommendations_janitor_recommendations_accepted_by_idTousers  janitor_recommendations[] @relation("janitor_recommendations_accepted_by_idTousers")
+  janitor_recommendations_janitor_recommendations_dismissed_by_idTousers janitor_recommendations[] @relation("janitor_recommendations_dismissed_by_idTousers")
+  notification_triggers_notification_triggers_originating_user_idTousers notification_triggers[]   @relation("notification_triggers_originating_user_idTousers")
+  notification_triggers_notification_triggers_target_user_idTousers      notification_triggers[]   @relation("notification_triggers_target_user_idTousers")
+  sessions                                                               sessions[]
+  shared_conversations                                                   shared_conversations[]
+  source_control_tokens                                                  source_control_tokens[]
+  tasks_tasks_assignee_idTousers                                         tasks[]                   @relation("tasks_assignee_idTousers")
+  tasks_tasks_created_by_idTousers                                       tasks[]                   @relation("tasks_created_by_idTousers")
+  tasks_tasks_updated_by_idTousers                                       tasks[]                   @relation("tasks_updated_by_idTousers")
+  user_stories_user_stories_created_by_idTousers                         user_stories[]            @relation("user_stories_created_by_idTousers")
+  user_stories_user_stories_updated_by_idTousers                         user_stories[]            @relation("user_stories_updated_by_idTousers")
+  whiteboard_messages                                                    whiteboard_messages[]
+  workspace_api_keys_workspace_api_keys_created_by_idTousers             workspace_api_keys[]      @relation("workspace_api_keys_created_by_idTousers")
+  workspace_api_keys_workspace_api_keys_revoked_by_idTousers             workspace_api_keys[]      @relation("workspace_api_keys_revoked_by_idTousers")
+  workspace_members                                                      workspace_members[]
+  workspaces                                                             workspaces[]
+
+  @@index([created_at])
+  @@index([deleted])
+  @@index([email])
 }
 
-enum ContextTagType {
-  PRODUCT_BRIEF
-  FEATURE_BRIEF
-  SCHEMATIC
+model whiteboard_messages {
+  id            String      @id
+  whiteboard_id String
+  role          ChatRole
+  content       String
+  status        ChatStatus  @default(SENT)
+  user_id       String?
+  created_at    DateTime    @default(now())
+  updated_at    DateTime
+  metadata      Json        @default("{}")
+  users         users?      @relation(fields: [user_id], references: [id])
+  whiteboards   whiteboards @relation(fields: [whiteboard_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([whiteboard_id])
+}
+
+model whiteboard_versions {
+  id            String      @id
+  whiteboard_id String
+  elements      Json        @default("[]")
+  app_state     Json        @default("{}")
+  files         Json        @default("{}")
+  label         String
+  created_at    DateTime    @default(now())
+  whiteboards   whiteboards @relation(fields: [whiteboard_id], references: [id], onDelete: Cascade)
+
+  @@index([whiteboard_id, created_at])
+}
+
+model whiteboards {
+  id                  String                @id
+  name                String
+  workspace_id        String
+  elements            Json                  @default("[]")
+  app_state           Json                  @default("{}")
+  files               Json                  @default("{}")
+  created_at          DateTime              @default(now())
+  updated_at          DateTime
+  feature_id          String?               @unique
+  version             Int                   @default(0)
+  whiteboard_messages whiteboard_messages[]
+  whiteboard_versions whiteboard_versions[]
+  features            features?             @relation(fields: [feature_id], references: [id])
+  workspaces          workspaces            @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([workspace_id])
+}
+
+model workspace_api_keys {
+  id                                            String     @id
+  workspace_id                                  String
+  name                                          String
+  key_prefix                                    String
+  key_hash                                      String     @unique
+  created_by_id                                 String
+  created_at                                    DateTime   @default(now())
+  last_used_at                                  DateTime?
+  expires_at                                    DateTime?
+  revoked_at                                    DateTime?
+  revoked_by_id                                 String?
+  users_workspace_api_keys_created_by_idTousers users      @relation("workspace_api_keys_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: Cascade)
+  users_workspace_api_keys_revoked_by_idTousers users?     @relation("workspace_api_keys_revoked_by_idTousers", fields: [revoked_by_id], references: [id])
+  workspaces                                    workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([created_by_id])
+  @@index([key_hash])
+  @@index([workspace_id])
+}
+
+model workspace_members {
+  id               String        @id
+  workspace_id     String
+  user_id          String
+  role             WorkspaceRole @default(VIEWER)
+  joined_at        DateTime      @default(now())
+  left_at          DateTime?
+  last_accessed_at DateTime?
+  users            users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspaces       workspaces    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+  @@index([user_id])
+  @@index([workspace_id])
+}
+
+model workspaces {
+  id                      String                    @id
+  name                    String
+  description             String?
+  slug                    String                    @unique
+  deleted                 Boolean                   @default(false)
+  deleted_at              DateTime?
+  created_at              DateTime                  @default(now())
+  updated_at              DateTime
+  owner_id                String
+  stakwork_api_key        String?
+  original_slug           String?
+  source_control_org_id   String?
+  mission                 String?
+  repository_draft        String?
+  logo_key                String?
+  logo_url                String?
+  node_type_order         Json                      @default("[{\"type\": \"Function\", \"value\": 20}, {\"type\": \"Feature\", \"value\": 20}, {\"type\": \"File\", \"value\": 20}, {\"type\": \"Endpoint\", \"value\": 20}, {\"type\": \"Person\", \"value\": 20}, {\"type\": \"Episode\", \"value\": 20}, {\"type\": \"Call\", \"value\": 20}, {\"type\": \"Message\", \"value\": 20}]")
+  vercel_api_token        String?
+  vercel_team_id          String?
+  vercel_project_id       String?
+  vercel_webhook_secret   String?
+  sphinx_bot_id           String?
+  sphinx_bot_secret       String?
+  sphinx_chat_pubkey      String?
+  sphinx_enabled          Boolean                   @default(false)
+  agent_logs              agent_logs[]
+  diagram_workspaces      diagram_workspaces[]
+  features                features[]
+  janitor_configs         janitor_configs?
+  janitor_recommendations janitor_recommendations[]
+  repositories            repositories[]
+  screenshots             screenshots[]
+  shared_conversations    shared_conversations[]
+  stakwork_runs           stakwork_runs[]
+  swarms                  swarms?
+  tasks                   tasks[]
+  whiteboards             whiteboards[]
+  workspace_api_keys      workspace_api_keys[]
+  workspace_members       workspace_members[]
+  users                   users                     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  source_control_orgs     source_control_orgs?      @relation(fields: [source_control_org_id], references: [id])
+
+  @@index([deleted])
+  @@index([owner_id])
+  @@index([source_control_org_id])
 }
 
 enum ArtifactType {
@@ -970,40 +915,112 @@ enum ArtifactType {
   VERIFY
 }
 
-enum UserRole {
+enum ChatRole {
   USER
-  ADMIN
-  MODERATOR
-  SUPER_ADMIN
+  ASSISTANT
 }
 
-enum WorkspaceRole {
-  OWNER
-  ADMIN
-  PM
-  DEVELOPER
-  STAKEHOLDER
-  VIEWER
+enum ChatStatus {
+  SENDING
+  SENT
+  ERROR
 }
 
-enum SwarmStatus {
+enum ContextTagType {
+  PRODUCT_BRIEF
+  FEATURE_BRIEF
+  SCHEMATIC
+}
+
+enum DeploymentEnvironment {
+  STAGING
+  PRODUCTION
+}
+
+enum DeploymentStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAILURE
+  ERROR
+}
+
+enum FeaturePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FeatureStatus {
+  BACKLOG
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  ERROR
+  BLOCKED
+}
+
+enum JanitorStatus {
   PENDING
-  ACTIVE
+  RUNNING
+  COMPLETED
   FAILED
-  DELETED
+  CANCELLED
 }
 
-enum RepositoryStatus {
+enum JanitorTrigger {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+  ON_COMMIT
+}
+
+enum JanitorType {
+  UNIT_TESTS
+  INTEGRATION_TESTS
+  E2E_TESTS
+  SECURITY_REVIEW
+  MOCK_GENERATION
+  GENERAL_REFACTORING
+}
+
+enum NotificationMethod {
+  SPHINX
+}
+
+enum NotificationTriggerStatus {
   PENDING
-  SYNCED
+  SENT
   FAILED
+  SKIPPED
+  CANCELLED
 }
 
-enum PoolState {
+enum NotificationTriggerType {
+  PLAN_AWAITING_CLARIFICATION
+  PLAN_AWAITING_APPROVAL
+  PLAN_TASKS_GENERATED
+  GRAPH_CHAT_RESPONSE
+  TASK_PR_MERGED
+  FEATURE_ASSIGNED
+  TASK_ASSIGNED
+  FEATURE_COMPLETED
+  FEATURE_DEPLOYED_PRODUCTION
+  WORKFLOW_HALTED
+}
+
+enum PhaseStatus {
   NOT_STARTED
-  STARTED
-  FAILED
-  COMPLETE
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum PodFlagReason {
+  POOL_CONFIG_CHANGED
+  HEALTH_CHECK_FAILED
+  MANUAL
 }
 
 enum PodState {
@@ -1031,34 +1048,11 @@ enum PodUsageStatus {
   USED
 }
 
-enum PodFlagReason {
-  POOL_CONFIG_CHANGED
-  HEALTH_CHECK_FAILED
-  MANUAL
-}
-
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
-  CANCELLED
-  BLOCKED
-}
-
-enum PhaseStatus {
+enum PoolState {
   NOT_STARTED
-  IN_PROGRESS
-  DONE
-  BLOCKED
-}
-
-enum WorkflowStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  ERROR
-  HALTED
+  STARTED
   FAILED
+  COMPLETE
 }
 
 enum Priority {
@@ -1066,6 +1060,58 @@ enum Priority {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  DISMISSED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum RepositoryStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+enum SourceControlOrgType {
+  ORG
+  USER
+}
+
+enum StakworkRunDecision {
+  ACCEPTED
+  REJECTED
+  FEEDBACK
+}
+
+enum StakworkRunType {
+  ARCHITECTURE
+  TASK_GENERATION
+  USER_STORIES
+  REQUIREMENTS
+  POD_REPAIR
+  POD_LAUNCH_FAILURE
+  DIAGRAM_GENERATION
+  LEARNING
+  REPO_AGENT
+}
+
+enum StepStatus {
+  PENDING
+  STARTED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SwarmStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  DELETED
 }
 
 enum SwarmWizardStep {
@@ -1079,60 +1125,6 @@ enum SwarmWizardStep {
   REVIEW_POOL_ENVIRONMENT
   STAKWORK_SETUP
   COMPLETION
-}
-
-enum StepStatus {
-  PENDING
-  STARTED
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
-enum JanitorType {
-  UNIT_TESTS
-  INTEGRATION_TESTS
-  E2E_TESTS
-  SECURITY_REVIEW
-  MOCK_GENERATION
-  GENERAL_REFACTORING
-}
-
-enum JanitorStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum JanitorTrigger {
-  MANUAL
-  SCHEDULED
-  WEBHOOK
-  ON_COMMIT
-}
-
-enum RecommendationStatus {
-  PENDING
-  ACCEPTED
-  DISMISSED
-  IN_PROGRESS
-  COMPLETED
-}
-
-enum TaskSourceType {
-  USER
-  JANITOR
-  SYSTEM
-  TASK_COORDINATOR
-  USER_JOURNEY
-  PROTOTYPE
-}
-
-enum SourceControlOrgType {
-  ORG
-  USER
 }
 
 enum SystemAssigneeType {
@@ -1151,74 +1143,44 @@ enum TaskLayerType {
   DOCUMENTATION
 }
 
-enum DeploymentEnvironment {
-  STAGING
-  PRODUCTION
+enum TaskSourceType {
+  USER
+  JANITOR
+  SYSTEM
+  TASK_COORDINATOR
+  USER_JOURNEY
+  PROTOTYPE
 }
 
-enum DeploymentStatus {
+enum TaskStatus {
+  TODO
   IN_PROGRESS
-  SUCCESS
-  FAILURE
-  ERROR
-}
-
-enum FeatureStatus {
-  BACKLOG
-  PLANNED
-  IN_PROGRESS
-  COMPLETED
+  DONE
   CANCELLED
-  ERROR
   BLOCKED
 }
 
-enum FeaturePriority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+  SUPER_ADMIN
 }
 
-enum StakworkRunType {
-  ARCHITECTURE
-  TASK_GENERATION
-  USER_STORIES
-  REQUIREMENTS
-  POD_REPAIR
-  POD_LAUNCH_FAILURE
-  DIAGRAM_GENERATION
-  LEARNING
-  REPO_AGENT
-}
-
-enum StakworkRunDecision {
-  ACCEPTED
-  REJECTED
-  FEEDBACK
-}
-
-enum NotificationTriggerType {
-  PLAN_AWAITING_CLARIFICATION
-  PLAN_AWAITING_APPROVAL
-  PLAN_TASKS_GENERATED
-  GRAPH_CHAT_RESPONSE
-  TASK_PR_MERGED
-  FEATURE_ASSIGNED
-  TASK_ASSIGNED
-  FEATURE_COMPLETED
-  FEATURE_DEPLOYED_PRODUCTION
-  WORKFLOW_HALTED
-}
-
-enum NotificationTriggerStatus {
+enum WorkflowStatus {
   PENDING
-  SENT
+  IN_PROGRESS
+  COMPLETED
+  ERROR
+  HALTED
   FAILED
-  SKIPPED
-  CANCELLED
 }
 
-enum NotificationMethod {
-  SPHINX
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  PM
+  DEVELOPER
+  STAKEHOLDER
+  VIEWER
 }
