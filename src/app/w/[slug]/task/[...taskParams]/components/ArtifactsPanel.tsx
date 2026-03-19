@@ -152,14 +152,14 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  const { latestRun, refetch: refetchRun } = useStakworkGeneration({
+  const { latestRun, refetch: refetchRun, isStale } = useStakworkGeneration({
     featureId: featureId || "",
     type: "TASK_GENERATION",
     enabled: hasFeature,
   });
 
   const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
-  const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
+  const isRunFailed = isStale || latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
   const showVerifyTab = hasTasks;
@@ -221,6 +221,7 @@ export function ArtifactsPanel({
       if (response.status === 409) {
         // Another run is already active — sync state and treat as success
         await refetchRun();
+        setIsApiCalling(false);
         return;
       }
 
@@ -232,6 +233,10 @@ export function ArtifactsPanel({
     } catch (error) {
       console.error("Failed to generate tasks:", error);
       setIsApiCalling(false);
+      setHasInitiatedGeneration(false);
+      toast.error("Failed to generate tasks", {
+        description: "Something went wrong. Please try again.",
+      });
     }
   }, [featureId, workspaceId, refetchRun, isGenerating, isControlled, onControlledTabChange]);
 
