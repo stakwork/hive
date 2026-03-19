@@ -190,6 +190,56 @@ describe("Workspace Members API Integration Tests", () => {
       });
       expect(membersInDb).toHaveLength(2);
     });
+
+    test("should include decryptedLightningPubkey on members with encrypted lightningPubkey", async () => {
+      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
+
+      // Create a member user with an encrypted lightningPubkey
+      const { EncryptionService } = await import("@/lib/encryption");
+      const encryptionService = EncryptionService.getInstance();
+      const plainPubkey = "02abc123def456lightningpubkey";
+      const encryptedPubkey = JSON.stringify(encryptionService.encryptField("lightningPubkey", plainPubkey));
+
+      const memberWithPubkey = await createTestUser({
+        name: "Pubkey Member",
+        lightningPubkey: encryptedPubkey,
+      });
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: memberWithPubkey.id,
+          role: "DEVELOPER",
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+
+      const pubkeyMember = data.members.find((m: any) => m.userId === memberWithPubkey.id);
+      expect(pubkeyMember).toBeDefined();
+      expect(pubkeyMember.user.lightningPubkey).toBe(encryptedPubkey);
+      expect(pubkeyMember.user.decryptedLightningPubkey).toBe(plainPubkey);
+    });
+
+    test("should have null decryptedLightningPubkey on members without lightningPubkey", async () => {
+      const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+
+      // The member seeded in createTestWorkspaceWithUsers has no lightningPubkey
+      const member = data.members.find((m: any) => m.userId === memberUser.id);
+      expect(member).toBeDefined();
+      expect(member.user.decryptedLightningPubkey).toBeNull();
+    });
   });
 
   describe("POST /api/workspaces/[slug]/members", () => {

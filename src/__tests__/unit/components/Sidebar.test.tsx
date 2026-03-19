@@ -203,6 +203,147 @@ describe('Sidebar - Navigation Links', () => {
   });
 });
 
+describe('Sidebar - Graph Explorer Context item', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  const mockWorkspace = {
+    id: 'workspace-1',
+    name: 'Test Workspace',
+    slug: 'test-workspace',
+    poolState: 'COMPLETE',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+  });
+
+  // Helper: find the Context child "Graph" link (href = /context/graph)
+  // Note: there are 2 sidebars rendered (mobile + desktop) so use getAllBy
+  function findContextGraphLinks() {
+    return screen.queryAllByRole('link', { name: /^Graph$/i }).filter(
+      (el) => el.getAttribute('href') === '/w/test-workspace/context/graph',
+    );
+  }
+
+  it('shows Graph item under Context when canAdmin is true', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Expand Context section (first sidebar instance = desktop)
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(findContextGraphLinks().length).toBeGreaterThan(0);
+    });
+  });
+
+  it('Graph item href points to /context/graph', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      const links = findContextGraphLinks();
+      expect(links.length).toBeGreaterThan(0);
+      expect(links[0]).toHaveAttribute('href', '/w/test-workspace/context/graph');
+    });
+  });
+
+  it('hides Graph item under Context when canAdmin is false', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'DEVELOPER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    // Wait for other context children to appear
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-learn').length).toBeGreaterThan(0);
+    });
+
+    // Context/graph link must NOT be present
+    expect(findContextGraphLinks()).toHaveLength(0);
+  });
+
+  it('still shows Learn, Calls, Agent Logs for non-admin users', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'VIEWER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-learn').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-calls').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-agent-logs').length).toBeGreaterThan(0);
+    });
+  });
+});
+
 describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component rendering)', () => {
   const mockUser = {
     name: 'Test User',
@@ -846,5 +987,123 @@ describe.skip('Sidebar - Stak Toolkit Section (DISABLED - complex component rend
       expect(screen.getByTestId('workspace-switcher')).toBeInTheDocument();
       expect(screen.getByTestId('nav-user')).toBeInTheDocument();
     });
+  });
+});
+
+describe('Sidebar - Graph Explorer Nav Item', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  const mockWorkspace = {
+    id: 'workspace-1',
+    name: 'Test Workspace',
+    slug: 'test-workspace',
+    poolState: 'COMPLETE',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+  });
+
+  // Context child "Graph" is an <a> with href containing /context/graph
+  function contextGraphLinks() {
+    return screen.queryAllByRole('link').filter(
+      (el) => el.getAttribute('href') === '/w/test-workspace/context/graph',
+    );
+  }
+
+  it('should show Graph item under Context when user is admin', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true, canWrite: true, canAdmin: true, isOwner: false, hasAccess: true, role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Both mobile + desktop sidebars render; click the first Context button
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(contextGraphLinks().length).toBeGreaterThan(0);
+    });
+  });
+
+  it('should NOT show Graph item under Context when user is not admin', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true, canWrite: true, canAdmin: false, isOwner: false, hasAccess: true, role: 'DEVELOPER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    // Wait for other children to render
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-learn').length).toBeGreaterThan(0);
+    });
+
+    expect(contextGraphLinks()).toHaveLength(0);
+  });
+
+  it('should show Graph item for OWNER role', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true, canWrite: true, canAdmin: true, isOwner: true, hasAccess: true, role: 'OWNER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(contextGraphLinks().length).toBeGreaterThan(0);
+    });
+  });
+
+  it('should NOT show Graph item for VIEWER role', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true, canWrite: false, canAdmin: false, isOwner: false, hasAccess: true, role: 'VIEWER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-learn').length).toBeGreaterThan(0);
+    });
+
+    expect(contextGraphLinks()).toHaveLength(0);
   });
 });

@@ -1,4 +1,5 @@
 import type { WorkspaceMember } from "@/types/workspace";
+import { EncryptionService } from "@/lib/encryption";
 
 // Shared Prisma include clause for consistent data fetching
 export const WORKSPACE_MEMBER_INCLUDE = {
@@ -67,6 +68,17 @@ export type PrismaWorkspaceMemberWithUser = {
  * Maps a Prisma workspace member with user data to the API response format
  */
 export function mapWorkspaceMember(member: PrismaWorkspaceMemberWithUser): WorkspaceMember {
+  const lightningPubkey = member.user.lightningPubkey ?? undefined;
+
+  let decryptedLightningPubkey: string | null = null;
+  if (lightningPubkey) {
+    try {
+      decryptedLightningPubkey = EncryptionService.getInstance().decryptField("lightningPubkey", lightningPubkey);
+    } catch {
+      decryptedLightningPubkey = null;
+    }
+  }
+
   return {
     id: member.id,
     userId: member.user.id,
@@ -77,7 +89,8 @@ export function mapWorkspaceMember(member: PrismaWorkspaceMemberWithUser): Works
       name: member.user.name,
       email: member.user.email,
       image: member.user.image,
-      lightningPubkey: member.user.lightningPubkey ?? undefined,
+      lightningPubkey,
+      decryptedLightningPubkey,
       sphinxAlias: member.user.sphinxAlias ?? undefined,
       github: member.user.githubAuth
         ? {
