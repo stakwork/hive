@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Hoist mocks so they are available before module resolution
@@ -33,6 +33,13 @@ vi.mock("@/hooks/useControlKeyHold", () => ({
   useControlKeyHold: mockUseControlKeyHold,
 }));
 
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
 // Module-level mock with a mutable return value
 const mockUseWorkspace = vi.fn(() => ({
   workspace: { repositories: [], slug: "current-ws" },
@@ -62,11 +69,18 @@ if (typeof window !== "undefined") {
 }
 
 import { PlanStartInput } from "@/app/w/[slug]/plan/new/components/PlanStartInput";
+import { toast } from "sonner";
 
 const mentionWorkspaces = [
   { slug: "test-ws", name: "Test WS" },
   { slug: "other-ws", name: "Other WS" },
 ];
+
+const makeImageFile = (name = "photo.png", type = "image/png", size = 1024) => {
+  const file = new File(["x".repeat(size)], name, { type });
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+};
 
 describe("PlanStartInput", () => {
   const onSubmit = vi.fn();
@@ -82,6 +96,9 @@ describe("PlanStartInput", () => {
       workspace: { repositories: [], slug: "current-ws" },
       workspaces: [],
     });
+    // Mock URL APIs
+    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    global.URL.revokeObjectURL = vi.fn();
   });
 
   test("send button is not inside an absolutely-positioned container", () => {
@@ -192,6 +209,164 @@ describe("PlanStartInput", () => {
       await userEvent.type(textarea, "@test");
 
       expect(screen.queryByTestId("mention-item-test-ws")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("image attachment", () => {
+    test("dropping a valid image file stages a thumbnail in the UI", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const card = screen.getByTestId("plan-start-input").closest(".rounded-3xl")!;
+
+      const file = makeImageFile("test.png", "image/png");
+      const dataTransfer = { files: [file] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.dragOver(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-images-grid")).toBeInTheDocument();
+      });
+      expect(screen.getAllByRole("img").length).toBeGreaterThan(0);
+    });
+
+    test("pasting an image stages a thumbnail", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input");
+
+      const file = makeImageFile("pasted.png", "image/png");
+      const clipboardData = {
+        items: [
+          {
+            type: "image/png",
+            getAsFile: () => file,
+          },
+        ],
+        getData: () => "",
+      };
+
+      fireEvent.paste(textarea, { clipboardData });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-images-grid")).toBeInTheDocument();
+      });
+    });
+
+    test("clicking the remove button on a thumbnail removes it from the grid", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const card = screen.getByTestId("plan-start-input").closest(".rounded-3xl")!;
+
+      const file = makeImageFile("remove-me.png", "image/png");
+      const dataTransfer = { files: [file] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-images-grid")).toBeInTheDocument();
+      });
+
+      // Find and click the remove button
+      const removeButtons = screen.getAllByLabelText(/Remove/);
+      expect(removeButtons.length).toBe(1);
+      fireEvent.click(removeButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("pending-images-grid")).not.toBeInTheDocument();
+      });
+      expect(global.URL.revokeObjectURL).toHaveBeenCalled();
+    });
+
+    test("submitting calls onSubmit with the correct pendingFiles array", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input");
+      const card = textarea.closest(".rounded-3xl")!;
+
+      const file = makeImageFile("attach.png", "image/png", 2048);
+      const dataTransfer = { files: [file] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-images-grid")).toBeInTheDocument();
+      });
+
+      // Type some text so submit is enabled
+      await userEvent.type(textarea, "Build a feature");
+
+      fireEvent.click(screen.getByTestId("plan-start-submit"));
+
+      expect(onSubmit).toHaveBeenCalledOnce();
+      const [msg, , pendingFiles] = onSubmit.mock.calls[0];
+      expect(msg).toBe("Build a feature");
+      expect(pendingFiles).toHaveLength(1);
+      expect(pendingFiles[0]).toMatchObject({
+        filename: "attach.png",
+        mimeType: "image/png",
+        size: 2048,
+      });
+    });
+
+    test("dropping a non-image file shows a toast error and does not stage it", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const card = screen.getByTestId("plan-start-input").closest(".rounded-3xl")!;
+
+      const file = new File(["content"], "document.pdf", { type: "application/pdf" });
+      const dataTransfer = { files: [file] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("pending-images-grid")).not.toBeInTheDocument();
+    });
+
+    test("dropping a file larger than 10MB shows a toast error and does not stage it", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const card = screen.getByTestId("plan-start-input").closest(".rounded-3xl")!;
+
+      const oversizedFile = makeImageFile("huge.png", "image/png", 11 * 1024 * 1024);
+      const dataTransfer = { files: [oversizedFile] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("pending-images-grid")).not.toBeInTheDocument();
+    });
+
+    test("submit button remains disabled when only images are staged (no text)", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const card = screen.getByTestId("plan-start-input").closest(".rounded-3xl")!;
+
+      const file = makeImageFile("img.png", "image/png");
+      const dataTransfer = { files: [file] };
+
+      fireEvent.dragEnter(card, { dataTransfer });
+      fireEvent.drop(card, { dataTransfer });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-images-grid")).toBeInTheDocument();
+      });
+
+      const submitBtn = screen.getByTestId("plan-start-submit");
+      expect(submitBtn).toBeDisabled();
+    });
+
+    test("image upload button triggers file input click", () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+      const clickSpy = vi.spyOn(fileInput, "click");
+
+      fireEvent.click(screen.getByTestId("image-upload-button"));
+
+      expect(clickSpy).toHaveBeenCalled();
     });
   });
 });

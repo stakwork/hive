@@ -10,21 +10,41 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, FolderOpen } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, FolderOpen, Image as ImageIcon, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+interface PendingImage {
+  id: string;
+  file: File;
+  preview: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
 
 interface PlanStartInputProps {
-  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null }) => void;
+  onSubmit: (
+    message: string,
+    options?: { isPrototype: boolean; selectedRepoId: string | null },
+    pendingFiles?: Array<{ file: File; filename: string; mimeType: string; size: number }>,
+  ) => void;
   isLoading?: boolean;
 }
+
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
@@ -68,6 +88,14 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
     }
   }, [transcript]);
 
+  // Revoke object URLs on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingImages]);
+
   const toggleListening = useCallback(() => {
     if (isListening) {
       stopListening();
@@ -109,6 +137,111 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
     [value],
   );
 
+  const validateFile = (file: File): string | null => {
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return `${file.name} is not a supported image type. Allowed: JPEG, PNG, GIF, WebP`;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return `${file.name} is too large. Maximum size is 10MB`;
+    }
+    return null;
+  };
+
+  const handleFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const newImages: PendingImage[] = [];
+
+    for (const file of fileArray) {
+      const error = validateFile(file);
+      if (error) {
+        toast.error(error);
+        continue;
+      }
+
+      const id = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const preview = URL.createObjectURL(file);
+
+      newImages.push({
+        id,
+        file,
+        preview,
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+      });
+    }
+
+    if (newImages.length > 0) {
+      setPendingImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
+  const removeImage = (id: string) => {
+    setPendingImages((prev) => {
+      const image = prev.find((img) => img.id === id);
+      if (image) {
+        URL.revokeObjectURL(image.preview);
+      }
+      return prev.filter((img) => img.id !== id);
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
   const hasText = value.trim().length > 0;
 
   const handleSubmit = () => {
@@ -117,7 +250,16 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         stopListening();
       }
       resetTranscript();
-      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
+      const filesToSend = pendingImages.map((img) => ({
+        file: img.file,
+        filename: img.filename,
+        mimeType: img.mimeType,
+        size: img.size,
+      }));
+      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId }, filesToSend);
+      // Revoke URLs and clear pending images
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      setPendingImages([]);
       setValue("");
     }
   };
@@ -175,7 +317,26 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         </AnimatePresence>
       </h1>
       <div className="w-full max-w-2xl">
-        <Card className="relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group">
+        <Card
+          className={cn(
+            "relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group",
+            isDragging && "ring-2 ring-primary ring-offset-2",
+          )}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragging && (
+            <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-3xl flex items-center justify-center z-10 pointer-events-none">
+              <div className="text-center">
+                <ImageIcon className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <p className="text-sm font-medium text-primary">Drop images here</p>
+              </div>
+            </div>
+          )}
+
           <motion.div
             key="plan"
             initial={{ opacity: 0 }}
@@ -225,6 +386,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                   }
                 }}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
                 autoFocus
                 data-testid="plan-start-input"
@@ -232,7 +394,32 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             </div>
           </motion.div>
 
-          {/* Prototype toggle row */}
+          {/* Pending image thumbnails */}
+          {pendingImages.length > 0 && (
+            <div className="px-8 pb-2 flex flex-wrap gap-2" data-testid="pending-images-grid">
+              {pendingImages.map((image) => (
+                <div key={image.id} className="relative group/thumb w-16 h-16 rounded-lg overflow-hidden border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.preview}
+                    alt={image.filename}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(image.id)}
+                    className="absolute top-0.5 right-0.5 bg-background/80 rounded-full p-0.5 opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                    data-testid={`remove-image-${image.id}`}
+                    aria-label={`Remove ${image.filename}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom row */}
           <div className="px-8 pb-6 flex items-center gap-4 flex-wrap" data-testid="bottom-row">
             <div className="flex items-center gap-2">
               <Switch
@@ -274,6 +461,29 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             )}
 
             <div className="ml-auto flex gap-2">
+              {/* Image upload button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+                      style={{ width: 32, height: 32 }}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading}
+                      data-testid="image-upload-button"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Attach image</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
               {isSupported && (
                 <TooltipProvider>
                   <Tooltip>
@@ -319,6 +529,17 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               </Button>
             </div>
           </div>
+
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            multiple
+            className="hidden"
+            onChange={handleFileInputChange}
+            data-testid="file-input"
+          />
         </Card>
       </div>
     </div>
