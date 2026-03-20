@@ -32,9 +32,9 @@ describe("useStreamContext", () => {
         {
           type: "STREAM",
           content: {
-            request_id: "req-123",
-            events_token: "tok-abc",
-            base_url: "https://agent.example.com",
+            requestId: "req-123",
+            eventsToken: "tok-abc",
+            baseUrl: "https://agent.example.com",
           },
         },
       ] as ChatMessage["artifacts"],
@@ -93,9 +93,9 @@ describe("useStreamContext", () => {
         {
           type: "STREAM",
           content: {
-            request_id: "req-1",
-            events_token: "tok-1",
-            base_url: "https://example.com",
+            requestId: "req-1",
+            eventsToken: "tok-1",
+            baseUrl: "https://example.com",
           },
         },
       ] as ChatMessage["artifacts"],
@@ -123,9 +123,9 @@ describe("useStreamContext", () => {
         {
           type: "STREAM",
           content: {
-            request_id: "req-1",
-            events_token: "tok-1",
-            base_url: "https://example.com",
+            requestId: "req-1",
+            eventsToken: "tok-1",
+            baseUrl: "https://example.com",
           },
         },
       ] as ChatMessage["artifacts"],
