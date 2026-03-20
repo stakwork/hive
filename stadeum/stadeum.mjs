@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { createMCPClient } from '@ai-sdk/mcp';
 
-const MCP_URL = process.env.MCP_URL;
+const MCP_URL = process.env.MCP_URL
+  || (process.env.API_KEY && `https://hive.sphinx.chat/mcp?apiKey=${process.env.API_KEY}`);
 
 if (!MCP_URL) {
-  process.stderr.write('MCP_URL is required\n');
+  process.stderr.write('MCP_URL or API_KEY is required\n');
   process.exit(1);
 }
 
