@@ -47,6 +47,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
+  const wasLoadingRef = useRef(false);
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -97,10 +98,16 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingImages]);
 
-  // Reset isExiting when loading finishes (error recovery)
+  // Reset isExiting when loading finishes (error recovery).
+  // Gate on wasLoadingRef so the reset only fires after a real loading cycle
+  // (true → false), not immediately when isExiting flips true with isLoading still false.
   useEffect(() => {
-    if (!isLoading && isExiting) {
+    if (isLoading) {
+      wasLoadingRef.current = true;
+    }
+    if (!isLoading && isExiting && wasLoadingRef.current) {
       setIsExiting(false);
+      wasLoadingRef.current = false;
     }
   }, [isLoading, isExiting]);
 
@@ -132,13 +139,13 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setValue(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },

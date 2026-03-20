@@ -50,15 +50,50 @@ model agent_logs {
   @@index([workspace_id])
 }
 
-model artifacts {
-  id            String        @id
-  message_id    String
-  type          ArtifactType
-  content       Json?
-  created_at    DateTime      @default(now())
-  updated_at    DateTime
-  icon          String?
-  chat_messages chat_messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
+model User {
+  id                       String                  @id @default(cuid())
+  name                     String?
+  email                    String?                 @unique
+  emailVerified            DateTime?               @map("email_verified")
+  image                    String?
+  role                     UserRole                @default(USER)
+  timezone                 String?                 @default("UTC")
+  locale                   String?                 @default("en")
+  createdAt                DateTime                @default(now()) @map("created_at")
+  updatedAt                DateTime                @updatedAt @map("updated_at")
+  deleted                  Boolean                 @default(false)
+  deletedAt                DateTime?               @map("deleted_at")
+  lastLoginAt              DateTime?               @map("last_login_at")
+  poolApiKey               String?                 @map("pool_api_key")
+  lightningPubkey          String?                 @unique @map("lightning_pubkey")
+  sphinxAlias              String?                 @map("sphinx_alias")
+  voiceSignatureKey        String?                 @map("voice_signature_key")
+  sphinxRouteHint          String?                 @map("sphinx_route_hint")
+  iosDeviceToken           String?                 @map("ios_device_token")
+  accounts                 Account[]
+  chatMessages             ChatMessage[]           @relation("ChatMessageSender")
+  assignedFeatures         Feature[]               @relation("FeatureAssignee")
+  createdFeatures          Feature[]               @relation("FeatureCreator")
+  updatedFeatures          Feature[]               @relation("FeatureUpdater")
+  githubAuth               GitHubAuth?
+  acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
+  dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
+  originatedNotifications  NotificationTrigger[]   @relation("NotificationOrigin")
+  receivedNotifications    NotificationTrigger[]   @relation("NotificationTarget")
+  sessions                 Session[]
+  sharedConversations      SharedConversation[]
+  sourceControlTokens      SourceControlToken[]
+  assignedTasks            Task[]                  @relation("TaskAssignee")
+  createdTasks             Task[]                  @relation("TaskCreator")
+  updatedTasks             Task[]                  @relation("TaskUpdater")
+  createdUserStories       UserStory[]             @relation("UserStoryCreator")
+  updatedUserStories       UserStory[]             @relation("UserStoryUpdater")
+  whiteboardMessages       WhiteboardMessage[]
+  createdWhiteboards       Whiteboard[]            @relation("WhiteboardCreator")
+  createdApiKeys           WorkspaceApiKey[]       @relation("ApiKeyCreator")
+  revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
+  workspaceMembers         WorkspaceMember[]
+  ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
 
   @@index([message_id])
   @@index([type])
@@ -469,13 +504,28 @@ model screenshots {
   @@index([workspace_id])
 }
 
-model sessions {
-  id            String   @id
-  session_token String   @unique
-  user_id       String
-  expires       DateTime
-  github_state  String?
-  users         users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+model Whiteboard {
+  id          String              @id @default(cuid())
+  name        String
+  workspaceId String              @map("workspace_id")
+  elements    Json                @default("[]")
+  appState    Json                @default("{}") @map("app_state")
+  files       Json                @default("{}")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  featureId   String?             @unique @map("feature_id")
+  createdById String?             @map("created_by_id")
+  version     Int                 @default(0)
+  messages    WhiteboardMessage[]
+  versions    WhiteboardVersion[]
+  createdBy   User?               @relation("WhiteboardCreator", fields: [createdById], references: [id])
+  feature     Feature?            @relation(fields: [featureId], references: [id])
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@index([createdById])
+  @@map("whiteboards")
 }
 
 model shared_conversations {
