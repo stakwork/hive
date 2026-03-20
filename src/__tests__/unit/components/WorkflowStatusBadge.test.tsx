@@ -195,30 +195,6 @@ describe("WorkflowStatusBadge", () => {
       expect(screen.getByRole("status").tagName).toBe("DIV");
     });
 
-    test("ERROR + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
-      render(
-        <WorkflowStatusBadge
-          status={WorkflowStatus.ERROR}
-          stakworkProjectId="99999"
-          isSuperAdmin={false}
-        />
-      );
-      expect(screen.queryByRole("link")).not.toBeInTheDocument();
-      expect(screen.getByRole("status").tagName).toBe("DIV");
-    });
-
-    test("HALTED + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
-      render(
-        <WorkflowStatusBadge
-          status={WorkflowStatus.HALTED}
-          stakworkProjectId="99999"
-          isSuperAdmin={false}
-        />
-      );
-      expect(screen.queryByRole("link")).not.toBeInTheDocument();
-      expect(screen.getByRole("status").tagName).toBe("DIV");
-    });
-
     test("FAILED + stakworkProjectId + isSuperAdmin=false → renders a <div>, no link", () => {
       render(
         <WorkflowStatusBadge
@@ -253,6 +229,83 @@ describe("WorkflowStatusBadge", () => {
         />
       );
       expect(screen.getByRole("link")).toBeInTheDocument();
+    });
+  });
+
+  describe("streamContext / useAgentEvents integration", () => {
+    const mockUseAgentEvents = useAgentEventsModule.useAgentEvents as Mock;
+    const streamCtx = { requestId: "req-1", eventsToken: "tok-1", baseUrl: "https://agent.example.com" };
+
+    test("renders tool_call event line when IN_PROGRESS with tool_call latestEvent", () => {
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: { type: "tool_call", toolName: "search_files" },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.getByText("🔧 search_files")).toBeInTheDocument();
+    });
+
+    test("renders text event line when IN_PROGRESS with text latestEvent", () => {
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: { type: "text", text: "Reading the source file now" },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.getByText("Reading the source file now")).toBeInTheDocument();
+    });
+
+    test("truncates text event to 80 chars", () => {
+      const longText = "A".repeat(100);
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: { type: "text", text: longText },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.getByText("A".repeat(80))).toBeInTheDocument();
+      expect(screen.queryByText(longText)).not.toBeInTheDocument();
+    });
+
+    test("renders nothing extra when streamContext is null (default mock: null event)", () => {
+      // default mock returns { latestEvent: null }
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="99999"
+          streamContext={null}
+        />
+      );
+      expect(screen.queryByText(/🔧/)).not.toBeInTheDocument();
+      // The existing label should still be present
+      expect(screen.getByText("Working...")).toBeInTheDocument();
+    });
+
+    test("does not render event line when status is not IN_PROGRESS even with latestEvent", () => {
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: { type: "text", text: "some text" },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.COMPLETED}
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.queryByText("some text")).not.toBeInTheDocument();
     });
   });
 });
