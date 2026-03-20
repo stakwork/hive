@@ -5,6 +5,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
@@ -88,6 +89,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const { isSuperAdmin } = useWorkspace();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
@@ -523,6 +525,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     onRetry: handleRetry,
     isRetrying,
     streamContext,
+    isSuperAdmin,
   };
 
   const artifactsPanelProps = {
