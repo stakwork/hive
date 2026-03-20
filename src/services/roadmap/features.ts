@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { releaseTaskPod } from "@/lib/pods/utils";
 import { FeatureStatus, FeaturePriority, NotificationTriggerType, Prisma } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
@@ -588,6 +589,26 @@ export async function deleteFeature(
   userId: string
 ): Promise<void> {
   await validateFeatureAccess(featureId, userId);
+
+  const tasksWithPods = await db.task.findMany({
+    where: { featureId, deleted: false, podId: { not: null } },
+    select: { id: true, podId: true, workspaceId: true },
+  });
+
+  await Promise.allSettled(
+    tasksWithPods.map((task) =>
+      releaseTaskPod({
+        taskId: task.id,
+        podId: task.podId!,
+        workspaceId: task.workspaceId,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      }).catch((err) =>
+        console.error(`[deleteFeature] Failed to release pod for task ${task.id}:`, err)
+      )
+    )
+  );
 
   await db.feature.update({
     where: { id: featureId },

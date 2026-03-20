@@ -1,10 +1,14 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { GET, PATCH } from "@/app/api/features/[featureId]/route";
+import { GET, PATCH, DELETE } from "@/app/api/features/[featureId]/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
+  createTestFeature,
+  createTestSwarm,
+  createTestPod,
+  resetDatabase,
 } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
@@ -14,11 +18,19 @@ import {
   createPatchRequest,
   createAuthenticatedGetRequest,
   createAuthenticatedPatchRequest,
+  createAuthenticatedDeleteRequest,
 } from "@/__tests__/support/helpers";
+import { releaseTaskPod } from "@/lib/pods/utils";
+
+vi.mock("@/lib/pods/utils", async () => {
+  const actual = await vi.importActual("@/lib/pods/utils");
+  return { ...actual, releaseTaskPod: vi.fn() };
+});
 
 describe("Single Feature API - Integration Tests", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    await resetDatabase();
   });
 
   describe("GET /api/features/[featureId]", () => {
@@ -617,6 +629,134 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Assert
       await expectError(response, "Assignee not found", 400);
+    });
+  });
+
+  describe("DELETE /api/features/[featureId]", () => {
+    test("releases pods for tasks that have one before soft-deleting the feature", async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+      releaseTaskPodMock.mockResolvedValue(undefined as any);
+
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const swarm = await createTestSwarm({ workspaceId: workspace.id });
+      const pod = await createTestPod({ swarmId: swarm.id });
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+      });
+
+      // Task with a pod assigned
+      const taskWithPod = await db.task.create({
+        data: {
+          title: "Task with pod",
+          description: "Has pod",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+          featureId: feature.id,
+          podId: pod.podId,
+        },
+      });
+
+      // Task without a pod
+      await db.task.create({
+        data: {
+          title: "Task without pod",
+          description: "No pod",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+          featureId: feature.id,
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        user
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(releaseTaskPodMock).toHaveBeenCalledTimes(1);
+      expect(releaseTaskPodMock).toHaveBeenCalledWith({
+        taskId: taskWithPod.id,
+        podId: pod.podId,
+        workspaceId: workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    });
+
+    test("pod release failure does not block feature soft-delete", async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+      releaseTaskPodMock.mockRejectedValue(new Error("release failed"));
+
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const swarm = await createTestSwarm({ workspaceId: workspace.id });
+      const pod = await createTestPod({ swarmId: swarm.id });
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+      });
+
+      await db.task.create({
+        data: {
+          title: "Task with pod",
+          description: "Has pod",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+          featureId: feature.id,
+          podId: pod.podId,
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        user
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const deleted = await db.feature.findUnique({ where: { id: feature.id } });
+      expect(deleted?.deleted).toBe(true);
+    });
+
+    test("feature with no pod tasks deletes cleanly without calling releaseTaskPod", async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        user
+      );
+
+      const response = await DELETE(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(releaseTaskPodMock).not.toHaveBeenCalled();
+      const deleted = await db.feature.findUnique({ where: { id: feature.id } });
+      expect(deleted?.deleted).toBe(true);
     });
   });
 });
