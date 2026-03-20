@@ -15,6 +15,16 @@ import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import { ArtifactType } from "@prisma/client";
 
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return dateString;
+  }
+};
+
 export default function WorkflowsPage() {
   const { slug } = useWorkspace();
   const searchParams = useSearchParams();
@@ -390,9 +400,9 @@ export default function WorkflowsPage() {
         </div>
       </Card>
 
-      {/* Recent Workflows Section */}
+      {/* Recently Modified Section */}
       <div className="max-w-2xl space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Recent Workflows</h2>
+        <h2 className="text-sm font-semibold text-foreground">Recently Modified</h2>
 
         {isLoadingRecent && (
           <div className="space-y-2">
@@ -417,7 +427,16 @@ export default function WorkflowsPage() {
                 <span className="text-xs font-mono text-muted-foreground w-16 shrink-0">
                   #{workflow.id}
                 </span>
-                <span className="text-sm text-foreground truncate">{workflow.name}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm text-foreground truncate">{workflow.name}</span>
+                  {(workflow.updated_at || workflow.last_modified_by) && (
+                    <span className="text-xs text-muted-foreground truncate">
+                      {workflow.updated_at && formatDate(workflow.updated_at)}
+                      {workflow.updated_at && workflow.last_modified_by && " · "}
+                      {workflow.last_modified_by}
+                    </span>
+                  )}
+                </div>
               </button>
             ))}
           </div>
