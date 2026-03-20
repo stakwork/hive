@@ -19,6 +19,7 @@ interface WorkflowStatusBadgeProps {
   stakworkProjectId?: string | null;
   lastLogLine?: string;
   streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 const statusConfig: Record<string, {
@@ -62,6 +63,7 @@ export function WorkflowStatusBadge({
   stakworkProjectId,
   lastLogLine,
   streamContext = null,
+  isSuperAdmin = false,
 }: WorkflowStatusBadgeProps) {
   const { latestEvent } = useAgentEvents(
     streamContext?.requestId ?? null,
@@ -86,7 +88,7 @@ export function WorkflowStatusBadge({
     ? `https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`
     : null;
 
-  const isClickable = (isTerminal || isInProgress) && !!stakworkUrl;
+  const isClickable = (isTerminal || isInProgress) && !!stakworkUrl && !!isSuperAdmin;
   const Icon = config.icon;
 
   const displayLabel = isInProgress
