@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkflowStatusBadge — Tool Call Input Demo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #09090b;
+    color: #fafafa;
+    padding: 40px 24px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: #a1a1aa; }
+  h2 { font-size: 13px; font-weight: 500; color: #71717a; margin-bottom: 24px; }
+  .section { margin-bottom: 40px; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #52525b; margin-bottom: 12px; }
+  .badge-container {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 14px;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+  }
+  .label-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #3b82f6;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .dot.pulse::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #3b82f6;
+    animation: ping 1.5s ease-out infinite;
+    opacity: 0.75;
+  }
+  @keyframes ping {
+    0% { transform: scale(1); opacity: 0.75; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+  .dot-success { background: #10b981; }
+  .label-text {
+    font-size: 12px;
+    color: #a1a1aa;
+    font-weight: 500;
+  }
+  .event-row {
+    font-size: 11px;
+    color: rgba(161,161,170,0.7);
+    max-width: 280px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 14px;
+  }
+  .highlight { color: #60a5fa; }
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  .tag-new { background: #1e3a5f; color: #60a5fa; border: 1px solid #1d4ed8; }
+  .tag-existing { background: #1c1c1e; color: #71717a; border: 1px solid #3f3f46; }
+  .desc { font-size: 12px; color: #52525b; margin-top: 6px; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .item { display: flex; flex-direction: column; gap: 6px; }
+  code {
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    background: #1c1c1e;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #27272a;
+    color: #a3e635;
+    display: block;
+    white-space: pre;
+  }
+  .arrow { color: #52525b; font-size: 11px; margin: 2px 0; }
+</style>
+</head>
+<body>
+<h1>WorkflowStatusBadge</h1>
+<h2>Tool call input display — feature visual demo</h2>
+
+<div class="section">
+  <div class="section-title">New Behavior — tool_call with input args</div>
+  <div class="row">
+    <div class="item">
+      <span class="tag tag-new">✨ NEW</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot pulse"></span>
+          <span class="label-text">Working...</span>
+        </div>
+        <div class="event-row">🔧 developer__shell <span class="highlight">— command: ls -la /workspaces</span></div>
+      </div>
+      <div class="desc">tool_call with <code style="display:inline;padding:2px 6px;font-size:10px">input: { command: "ls -la /workspaces" }</code></div>
+    </div>
+
+    <div class="item">
+      <span class="tag tag-new">✨ NEW</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot pulse"></span>
+          <span class="label-text">Working...</span>
+        </div>
+        <div class="event-row">🔧 read_file <span class="highlight">— path: /workspaces/hive/src/index.ts</span></div>
+      </div>
+      <div class="desc">tool_call with <code style="display:inline;padding:2px 6px;font-size:10px">input: { path: "/workspaces/hive/src/index.ts" }</code></div>
+    </div>
+
+    <div class="item">
+      <span class="tag tag-new">✨ NEW</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot pulse"></span>
+          <span class="label-text">Working...</span>
+        </div>
+        <div class="event-row">🔧 web_search <span class="highlight">— query: React 19 concurrent features</span></div>
+      </div>
+      <div class="desc">tool_call with <code style="display:inline;padding:2px 6px;font-size:10px">input: { query: "React 19 concurrent features" }</code></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Unchanged Behavior — no regression</div>
+  <div class="row">
+    <div class="item">
+      <span class="tag tag-existing">unchanged</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot pulse"></span>
+          <span class="label-text">Working...</span>
+        </div>
+        <div class="event-row">🔧 search_files</div>
+      </div>
+      <div class="desc">tool_call with <code style="display:inline;padding:2px 6px;font-size:10px">input: null</code> — no suffix</div>
+    </div>
+
+    <div class="item">
+      <span class="tag tag-existing">unchanged</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot pulse"></span>
+          <span class="label-text">Working...</span>
+        </div>
+        <div class="event-row">Analyzing repository structure and depen</div>
+      </div>
+      <div class="desc">text event — shows first 80 chars as before</div>
+    </div>
+
+    <div class="item">
+      <span class="tag tag-existing">unchanged</span>
+      <div class="badge-container">
+        <div class="label-row">
+          <span class="dot dot-success"></span>
+          <span class="label-text">Completed</span>
+        </div>
+      </div>
+      <div class="desc">COMPLETED status — no event row shown</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Logic</div>
+  <code>// useAgentEvents.ts — AgentToolCallEvent
+{ type: "tool_call", toolName: string, input?: Record&lt;string, unknown&gt; | null }
+
+// WorkflowStatusBadge.tsx — eventText derivation
+const inputStr = (() => {
+  const inp = latestEvent.input;
+  if (!inp) return "";
+  const [key, val] = Object.entries(inp)[0] ?? [];
+  return key !== undefined ? ` — ${key}: ${String(val)}` : "";
+})();
+const eventText = `🔧 ${latestEvent.toolName}${inputStr}`;</code>
+</div>
+</body>
+</html>
