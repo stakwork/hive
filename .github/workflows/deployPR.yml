@@ -293,6 +293,10 @@ jobs:
           }
 
           resolve_migration \
+            "20260218154809_add_swarm_description" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='swarms' AND column_name='description';"
+
+          resolve_migration \
             "20260301051356_add_voice_signature_to_user" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';"
 
