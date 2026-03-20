@@ -15,6 +15,7 @@ import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, U
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
+import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
@@ -54,6 +55,7 @@ interface ChatAreaProps {
   isPrototypeTask?: boolean;
   isSavingPlan?: boolean;
   onSaveAndPlan?: () => void;
+  streamContext?: StreamContext | null;
 }
 
 export function ChatArea({
@@ -92,6 +94,7 @@ export function ChatArea({
   isPrototypeTask = false,
   isSavingPlan = false,
   onSaveAndPlan,
+  streamContext = null,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -384,6 +387,7 @@ export function ChatArea({
         isRetrying={isRetrying}
         isPlanChat={isPlanChat}
         currentWorkspaceSlug={workspaceSlug}
+        streamContext={streamContext}
       />
 
       {onReleasePod && (
