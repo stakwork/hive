@@ -32,6 +32,7 @@ export async function GET(
           workflow_state: project.workflow_state,
           name: project.name,
           workflow_id: project.workflow_id,
+          created_at: project.createdAt.toISOString(),
         },
       },
     });

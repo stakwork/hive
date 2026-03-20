@@ -42,7 +42,7 @@ export default function WorkflowsPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Run detection state
-  const [runData, setRunData] = useState<{ id: number; name: string; workflow_id: number } | null>(null);
+  const [runData, setRunData] = useState<{ id: number; name: string; workflow_id: number; created_at: string } | null>(null);
   const [isResolvingRun, setIsResolvingRun] = useState(false);
   const [isDebugging, setIsDebugging] = useState(false);
 
@@ -255,11 +255,13 @@ export default function WorkflowsPage() {
   };
 
   const isRun = runData !== null;
+  const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+  const isRecentRun = isRun && (Date.now() - new Date(runData!.created_at).getTime()) < ONE_YEAR_MS;
   const isWorkflow = versions.length > 0;
   const isLoading = isResolvingRun || isLoadingVersions;
 
   const neitherFound = !isLoading && parsedWorkflowId !== null && !isRun && !isWorkflow;
-  const bothFound    = !isLoading && parsedWorkflowId !== null && isRun && isWorkflow;
+  const bothFound    = !isLoading && parsedWorkflowId !== null && isRecentRun && isWorkflow;
 
   const showEmptyState = !isLoadingRecent && (recentError !== null || recentWorkflows.length === 0);
 
@@ -361,9 +363,9 @@ export default function WorkflowsPage() {
               )}
 
               {/* State: Only one found — single default button, no disambiguation */}
-              {!isLoading && !bothFound && (isRun || (isWorkflow && selectedVersionId)) && (
+              {!isLoading && !bothFound && (isRecentRun || (isWorkflow && selectedVersionId)) && (
                 <div className="flex gap-2 mt-4">
-                  {isRun && (
+                  {isRecentRun && (
                     <Button
                       onClick={handleDebugRun}
                       disabled={isDebugging || isSubmitting}
