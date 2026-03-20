@@ -11,7 +11,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
-import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { WorkflowStatusBadge, type StreamContext } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -54,6 +54,7 @@ interface ChatInputProps {
   isRetrying?: boolean;
   isPlanChat?: boolean;
   currentWorkspaceSlug?: string;
+  streamContext?: StreamContext | null;
 }
 
 export function ChatInput({
@@ -76,6 +77,7 @@ export function ChatInput({
   isRetrying = false,
   isPlanChat = false,
   currentWorkspaceSlug,
+  streamContext = null,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -481,7 +483,7 @@ export function ChatInput({
             <div className={cn("px-4 py-2 md:px-6")}>
               {isTerminalState && onRetry ? (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} />
                   <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
                     {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                     Retry
@@ -489,7 +491,7 @@ export function ChatInput({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} />
                 </div>
               )}
             </div>
