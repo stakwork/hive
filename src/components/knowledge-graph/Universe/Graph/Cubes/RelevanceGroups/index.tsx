@@ -117,7 +117,7 @@ export const RelevanceGroups = memo(() => {
                     const id = selectedNode.properties?.taskId || selectedNode.ref_id;
                     url = `/w/${slug}/task/${id}`;
                   } else {
-                    url = `/w/${slug}/calls/${selectedNode.ref_id}`;
+                    url = `/w/${slug}/context/calls/${selectedNode.ref_id}`;
                   }
                   window.open(url, '_blank');
                 }}

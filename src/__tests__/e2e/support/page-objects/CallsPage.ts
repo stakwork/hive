@@ -12,7 +12,7 @@ export class CallsPage {
    * Navigate to calls page for a specific workspace
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/calls`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/context/calls`);
     await this.waitForLoad();
   }
 
@@ -56,19 +56,14 @@ export class CallsPage {
    * Navigate to calls page via sidebar
    */
   async navigateViaNavigation(): Promise<void> {
-    // First, expand Context section if it's not already expanded
-    const contextButton = this.page.locator(selectors.navigation.contextButton);
-    const callsLink = this.page.locator(selectors.navigation.callsLink);
+    // Click the single Context link in the sidebar — it redirects to /context/learn,
+    // then navigate directly to /context/calls via the tab bar
+    const contextLink = this.page.locator(selectors.navigation.contextButton);
+    await contextLink.click();
+    await this.page.waitForURL(/\/w\/.*\/context\/learn/, { timeout: 10000 });
 
-    // Check if calls link is visible, if not, click context to expand
-    const isCallsVisible = await callsLink.isVisible().catch(() => false);
-    if (!isCallsVisible) {
-      await contextButton.click();
-      // Wait for calls link to become visible after expanding
-      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
-    }
-
-    await callsLink.click();
-    await this.page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });
+    // Click the Calls tab
+    await this.page.locator('a[href*="/context/calls"]').first().click();
+    await this.page.waitForURL(/\/w\/.*\/context\/calls/, { timeout: 10000 });
   }
 }

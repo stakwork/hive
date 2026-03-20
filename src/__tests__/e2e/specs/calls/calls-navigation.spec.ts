@@ -31,25 +31,20 @@ test.describe('Calls Navigation', () => {
   });
 
   test('should navigate to calls page via sidebar', async ({ page }) => {
-    // Expand Context section first if needed
+    // Click the single Context sidebar link
     const contextButton = page.locator('[data-testid="nav-context"]');
-    const callsLink = page.locator(selectors.navigation.callsLink);
+    await contextButton.click();
+    await page.waitForURL(/\/w\/.*\/context\/learn/, { timeout: 10000 });
 
-    const isCallsVisible = await callsLink.isVisible().catch(() => false);
-    if (!isCallsVisible) {
-      await contextButton.click();
-      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
-    }
-
-    // Click the calls navigation link
-    await callsLink.click();
+    // Click the Calls tab
+    await page.locator('a[href*="/context/calls"]').first().click();
 
     // Wait for URL to change to calls page
-    await page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });
+    await page.waitForURL(/\/w\/.*\/context\/calls/, { timeout: 10000 });
 
     // Verify we're on the calls page
     await expect(page.locator(selectors.pageTitle.calls)).toBeVisible();
-    expect(page.url()).toContain('/calls');
+    expect(page.url()).toContain('/context/calls');
   });
 
   test('should display calls page title', async ({ page }) => {
