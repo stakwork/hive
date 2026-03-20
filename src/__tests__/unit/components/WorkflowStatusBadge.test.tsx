@@ -139,7 +139,7 @@ describe("WorkflowStatusBadge", () => {
           streamContext={streamCtx}
         />
       );
-      expect(screen.getByText("🔧 developer__shell — command: ls -la /workspaces")).toBeInTheDocument();
+      expect(screen.getByText("🔧 developer__shell — ls -la /workspaces")).toBeInTheDocument();
     });
 
     test("renders tool_call event without suffix when input is null", () => {

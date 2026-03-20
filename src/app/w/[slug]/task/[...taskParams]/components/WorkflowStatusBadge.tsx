@@ -102,8 +102,8 @@ export function WorkflowStatusBadge({
           const inp = latestEvent.input;
           const inputStr = (() => {
             if (!inp) return "";
-            const [key, val] = Object.entries(inp)[0] ?? [];
-            return key !== undefined ? ` — ${key}: ${String(val)}` : "";
+            const [, val] = Object.entries(inp)[0] ?? [];
+            return val !== undefined ? ` — ${String(val)}` : "";
           })();
           return `🔧 ${latestEvent.toolName}${inputStr}`;
         })()
