@@ -91,7 +91,7 @@ async function renderWithId(
   return utils!;
 }
 
-const FAKE_RUN = { id: 99, name: "Test Run", workflow_id: 42 };
+const FAKE_RUN = { id: 99, name: "Test Run", workflow_id: 42, created_at: new Date().toISOString() };
 const FAKE_VERSIONS = [
   { workflow_version_id: 1, workflow_name: "Test Workflow", ref_id: "ref-abc", workflow_json: {} },
 ];
