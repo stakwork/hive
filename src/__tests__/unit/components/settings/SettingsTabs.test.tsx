@@ -13,6 +13,38 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
+// --- useWorkspace mock ---
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    id: "ws-123",
+    slug: "my-workspace",
+    refreshCurrentWorkspace: vi.fn(),
+  }),
+}));
+
+// --- useStakgraphStore mock ---
+const mockLoadSettings = vi.fn();
+vi.mock("@/stores/useStakgraphStore", () => ({
+  useStakgraphStore: () => ({
+    formData: { webhookEnsured: false, repositories: [], services: [], containerFiles: {} },
+    errors: {},
+    loading: false,
+    initialLoading: false,
+    saved: false,
+    repoValidationErrors: {},
+    loadSettings: mockLoadSettings,
+    saveSettings: vi.fn(),
+    setRepoValidationErrors: vi.fn(),
+    handleProjectInfoChange: vi.fn(),
+    handleRepositoryChange: vi.fn(),
+    handleSwarmChange: vi.fn(),
+    handleEnvironmentChange: vi.fn(),
+    handleEnvVarsChange: vi.fn(),
+    handleServicesChange: vi.fn(),
+    handleFileChange: vi.fn(),
+  }),
+}));
+
 // --- Component mocks (lightweight stubs) ---
 vi.mock("@/components/WorkspaceSettings", () => ({
   WorkspaceSettings: () => <div data-testid="workspace-settings">WorkspaceSettings</div>,
@@ -50,6 +82,19 @@ vi.mock("@/components/settings/NodeTypeOrderSettings", () => ({
 vi.mock("@/components/DeleteWorkspace", () => ({
   DeleteWorkspace: () => <div data-testid="delete-workspace">DeleteWorkspace</div>,
 }));
+vi.mock("@/components/stakgraph", () => ({
+  ProjectInfoForm: () => <div data-testid="project-info-form">ProjectInfoForm</div>,
+  RepositoryForm: () => <div data-testid="repository-form">RepositoryForm</div>,
+  SwarmForm: () => <div data-testid="swarm-form">SwarmForm</div>,
+  EnvironmentForm: () => <div data-testid="environment-form">EnvironmentForm</div>,
+  ServicesForm: () => <div data-testid="services-form">ServicesForm</div>,
+}));
+vi.mock("@/components/stakgraph/forms/EditFilesForm", () => ({
+  FileTabs: () => <div data-testid="file-tabs">FileTabs</div>,
+}));
+vi.mock("@/components/pod-repair", () => ({
+  PodRepairSection: () => <div data-testid="pod-repair-section">PodRepairSection</div>,
+}));
 
 const defaultProps = {
   workspaceId: "ws-123",
@@ -62,6 +107,7 @@ describe("SettingsTabs", () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams();
     mockReplace.mockClear();
+    mockLoadSettings.mockClear();
   });
 
   it("defaults to the General tab when no ?tab param is present", () => {
@@ -77,12 +123,38 @@ describe("SettingsTabs", () => {
     expect(screen.getByTestId("workspace-members")).toBeInTheDocument();
   });
 
-  it("renders Infrastructure tab content when ?tab=infrastructure", () => {
-    mockSearchParams = new URLSearchParams("tab=infrastructure");
+  it("renders Pool tab content when ?tab=pool", () => {
+    mockSearchParams = new URLSearchParams("tab=pool");
     render(<SettingsTabs {...defaultProps} />);
     expect(screen.getByTestId("vm-config-section")).toBeInTheDocument();
+    expect(screen.getByTestId("project-info-form")).toBeInTheDocument();
+    expect(screen.getByTestId("repository-form")).toBeInTheDocument();
+    expect(screen.getByTestId("swarm-form")).toBeInTheDocument();
+    expect(screen.getByTestId("environment-form")).toBeInTheDocument();
+    expect(screen.getByTestId("services-form")).toBeInTheDocument();
+    expect(screen.getByTestId("file-tabs")).toBeInTheDocument();
     expect(screen.getByTestId("rerun-ingest")).toBeInTheDocument();
+    expect(screen.getByTestId("pod-repair-section")).toBeInTheDocument();
+  });
+
+  it("calls loadSettings with the workspace slug when Pool tab is active", () => {
+    mockSearchParams = new URLSearchParams("tab=pool");
+    render(<SettingsTabs {...defaultProps} />);
+    expect(mockLoadSettings).toHaveBeenCalledWith("my-workspace");
+  });
+
+  it("does not call loadSettings when General tab is active", () => {
+    mockSearchParams = new URLSearchParams("tab=general");
+    render(<SettingsTabs {...defaultProps} />);
+    expect(mockLoadSettings).not.toHaveBeenCalled();
+  });
+
+  it("renders Infrastructure tab content (Neo4j only) when ?tab=infrastructure", () => {
+    mockSearchParams = new URLSearchParams("tab=infrastructure");
+    render(<SettingsTabs {...defaultProps} />);
     expect(screen.getByTestId("neo4j-config-settings")).toBeInTheDocument();
+    expect(screen.queryByTestId("vm-config-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rerun-ingest")).not.toBeInTheDocument();
   });
 
   it("renders Integrations tab content when ?tab=integrations", () => {
@@ -124,5 +196,11 @@ describe("SettingsTabs", () => {
     expect(mockReplace).toHaveBeenCalledWith("?tab=infrastructure", { scroll: false });
   });
 
+  it("calls router.replace with ?tab=pool when Pool tab is clicked", async () => {
+    const user = userEvent.setup();
+    render(<SettingsTabs {...defaultProps} />);
 
+    await user.click(screen.getByRole("tab", { name: "Pool" }));
+    expect(mockReplace).toHaveBeenCalledWith("?tab=pool", { scroll: false });
+  });
 });

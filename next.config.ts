@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  async redirects() {
+    return [
+      {
+        source: "/w/:slug/stakgraph",
+        destination: "/w/:slug/settings?tab=pool",
+        permanent: false,
+      },
+    ];
+  },
   distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   output: "standalone",
   eslint: {
