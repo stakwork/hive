@@ -20,7 +20,7 @@ export async function POST(
     const layout = (body.layout as LayoutAlgorithm) || "layered";
 
     // Fetch the feature with workspace ID
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: {
         id: featureId,
       },
@@ -65,13 +65,13 @@ export async function POST(
     }
 
     // Find or create the whiteboard linked to this feature
-    let whiteboard = await db.whiteboard.findUnique({
+    let whiteboard = await db.whiteboards.findUnique({
       where: { featureId: feature.id },
       select: { id: true },
     });
 
     if (!whiteboard) {
-      whiteboard = await db.whiteboard.create({
+      whiteboard = await db.whiteboards.create({
         data: {
           name: `${feature.title} - Whiteboard`,
           workspaceId: feature.workspaceId,

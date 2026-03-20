@@ -72,37 +72,25 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Stakwork Workspace",
-          slug: "stakwork",
-          ownerId: user.id,
+          slug: "stakwork",owner_id: user.id,
         },
       });
 
       // Create swarm with encrypted API key
       const swarm = await tx.swarm.create({
         data: {
-          name: `test-swarm-${Date.now()}`,
-          swarmId: `swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-          poolName: "test-pool",
-          swarmUrl: "https://test-swarm.sphinx.chat/api",
-          swarmApiKey: JSON.stringify({ data: "encrypted-key", iv: "test-iv" }),
-          swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
+          name: `test-swarm-${Date.now()}`,swarm_id: `swarm-${Date.now()}`,
+          status: "ACTIVE",instance_type: "XL",workspace_id: workspace.id,pool_state: "COMPLETE",pool_name: "test-pool",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({ data: "encrypted-key", iv: "test-iv" }),swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",
         },
       });
 
       // Create test task
       const task = await tx.task.create({
-        data: {
-          workspaceId: workspace.id,
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -137,8 +125,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
     test("returns 401 when user not authenticated", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: "test-task-id",
         message: "Test message",
         workflowId: 100,
       });
@@ -152,8 +139,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         user: { email: "test@example.com", name: "Test User" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: "test-task-id",
         message: "Test message",
         workflowId: 100,
       });
@@ -183,8 +169,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         workflowId: 100,
       });
 
@@ -196,8 +181,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
       });
 
@@ -209,8 +193,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test workflow message",
         workflowId: 100,
         workflowName: "Test Workflow",
@@ -236,8 +219,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: "non-existent-task-id",
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: "non-existent-task-id",
         message: "Test message",
         workflowId: 100,
       });
@@ -250,15 +232,14 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
 
       // Mark task as deleted
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { deleted: true },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -273,8 +254,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message from owner",
         workflowId: 100,
       });
@@ -290,18 +270,15 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const memberUser = await createTestUser({ name: "Member User" });
 
       // Add user as workspace member
-      await db.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(memberUser));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message from member",
         workflowId: 100,
       });
@@ -318,8 +295,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -334,30 +310,25 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const user = await createTestUser();
       
       // Create non-stakwork workspace
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Other Workspace",
-          slug: "other-workspace",
-          ownerId: user.id,
+          slug: "other-workspace",owner_id: user.id,
         },
       });
 
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -374,8 +345,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -396,8 +366,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const originalConfig = config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
       config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID = undefined;
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -420,8 +389,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         token: "ghp_github_token_123",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -440,8 +408,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const body = JSON.parse(fetchCall![1]!.body as string);
       expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
         alias: "github-user",
-        username: "github-user",
-        accessToken: "ghp_github_token_123",
+        username: "github-user",access_token: "ghp_github_token_123",
       });
     });
 
@@ -451,8 +418,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
 
       mockGetGithubUsernameAndPAT.mockResolvedValue(null);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -479,8 +445,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Implement feature X",
         workflowId: 100,
         workflowName: "Test Workflow",
@@ -512,8 +477,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       expect(body.name).toBe("workflow_editor");
       expect(body.workflow_id).toBe(123);
       expect(body.webhook_url).toContain("/api/stakwork/webhook");
-      expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
-        taskId: task.id,
+      expect(body.workflow_params.set_var.attributes.vars).toMatchObject({task_id: task.id,
         message: "Implement feature X",
         workflow_id: 100,
         workflow_name: "Test Workflow",
@@ -536,8 +500,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         statusText: "OK",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -558,8 +521,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         statusText: "Internal Server Error",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -568,7 +530,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       await expectError(response, "Stakwork call failed: Internal Server Error", 500);
 
       // Verify task workflow status updated to FAILED
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
     });
 
@@ -578,8 +540,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
 
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -596,8 +557,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
 
       const testMessage = "Test workflow message";
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: testMessage,
         workflowId: 100,
       });
@@ -612,9 +572,9 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       expect(data.message.status).toBe(ChatStatus.SENT);
 
       // Verify ChatMessages in database (1 USER + 1 ASSISTANT with WORKFLOW artifact)
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
-        orderBy: { createdAt: "asc" },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
+        orderBy: {created_at: "asc" },
       });
 
       expect(messages).toHaveLength(2);
@@ -637,8 +597,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         statusText: "OK",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -646,7 +605,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       await POST(request);
 
       // Verify task workflow status and stakworkProjectId updated
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.stakworkProjectId).toBe(99999);
       expect(updatedTask?.workflowStartedAt).toBeDefined();
@@ -661,8 +620,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         statusText: "Bad Request",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -670,7 +628,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       await POST(request);
 
       // Verify task workflow status updated to FAILED
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
     });
 
@@ -684,8 +642,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         statusText: "OK",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Test message",
         workflowId: 100,
       });
@@ -693,7 +650,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       await POST(request);
 
       // Verify task workflow status updated but stakworkProjectId unchanged
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.stakworkProjectId).toBeNull();
     });
@@ -708,14 +665,13 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock database error
-      const originalCreate = db.chatMessage.create;
+      const originalCreate = db.chat_messages.create;
       const spy = vi.spyOn(db.chatMessage, "create").mockRejectedValue(
         new Error("Database connection failed")
       );
 
       try {
-        const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-          taskId: task.id,
+        const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
           message: "Test message",
           workflowId: 100,
         });
@@ -725,7 +681,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       } finally {
         // Restore the original implementation
         spy.mockRestore();
-        db.chatMessage.create = originalCreate;
+        db.chat_messages.create = originalCreate;
       }
     });
 
@@ -751,8 +707,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Complete workflow request",
         workflowId: 200,
         workflowName: "Complete Workflow",
@@ -812,8 +767,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         token: "ghp_workflow_token",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {task_id: task.id,
         message: "Execute full workflow",
         workflowId: 300,
         workflowName: "Full Lifecycle Workflow",
@@ -831,8 +785,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       // Verify response structure
       expect(data).toMatchObject({
         success: true,
-        message: expect.objectContaining({
-          taskId: task.id,
+        message: expect.objectContaining({task_id: task.id,
           message: "Execute full workflow",
           role: ChatRole.USER,
           status: ChatStatus.SENT,
@@ -858,15 +811,13 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       );
 
       // Verify database state (1 USER + 1 ASSISTANT with WORKFLOW artifact)
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
       expect(messages).toHaveLength(2);
 
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
-      expect(updatedTask).toMatchObject({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        stakworkProjectId: stakworkProjectId,
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
+      expect(updatedTask).toMatchObject({workflow_status: WorkflowStatus.IN_PROGRESS,stakwork_project_id: stakworkProjectId,
       });
       expect(updatedTask?.workflowStartedAt).toBeDefined();
     });

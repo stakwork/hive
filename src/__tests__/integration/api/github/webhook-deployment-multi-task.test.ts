@@ -83,7 +83,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     await resetDatabase();
     
     // Explicitly clean up deployment records for test isolation
-    await db.deployment.deleteMany({});
+    await db.deployments.deleteMany({});
     
     // Add small delay to ensure database operations are fully committed
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -101,8 +101,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     });
 
     mockGetUserAppTokens.mockClear();
-    mockGetUserAppTokens.mockResolvedValue({
-      accessToken: "test-token",
+    mockGetUserAppTokens.mockResolvedValue({access_token: "test-token",
     });
 
     mockGetGithubUsernameAndPAT.mockClear();
@@ -115,10 +114,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     testSetup = await createWebhookTestScenario();
 
     // Create workspace member - this is critical for the webhook handler to find workspace users
-    await db.workspaceMember.create({
-      data: {
-        userId: testSetup.user.id,
-        workspaceId: testSetup.workspace.id,
+    await db.workspace_members.create({
+      data: {user_id: testSetup.user.id,workspace_id: testSetup.workspace.id,
         role: "OWNER",
       },
     });
@@ -127,29 +124,20 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     // so we don't need to create actual source control tokens in the database
 
     // Create three tasks with PR artifacts (different commit SHAs)
-    task1 = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id,
+    task1 = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id,
       status: "DONE",
     });
 
-    task2 = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id,
+    task2 = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id,
       status: "DONE",
     });
 
-    task3 = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id,
+    task3 = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id,
       status: "DONE",
     });
 
     // Create chat messages and PR artifacts for each task
-    const message1 = await createTestChatMessage({ taskId: task1.id, message: "PR created" });
+    const message1 = await createTestChatMessage({task_id: task1.id, message: "PR created" });
     await createTestArtifact({
       messageId: message1.id,
       type: "PULL_REQUEST",
@@ -160,7 +148,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       },
     });
 
-    const message2 = await createTestChatMessage({ taskId: task2.id, message: "PR created" });
+    const message2 = await createTestChatMessage({task_id: task2.id, message: "PR created" });
     await createTestArtifact({
       messageId: message2.id,
       type: "PULL_REQUEST",
@@ -171,7 +159,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       },
     });
 
-    const message3 = await createTestChatMessage({ taskId: task3.id, message: "PR created" });
+    const message3 = await createTestChatMessage({task_id: task3.id, message: "PR created" });
     await createTestArtifact({
       messageId: message3.id,
       type: "PULL_REQUEST",
@@ -215,10 +203,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
   it("should deploy multiple tasks to staging when commit range includes all", async () => {
     // Create a previous deployment to establish baseline for comparison
-    await db.deployment.create({
-      data: {
-        taskId: task1.id,
-        repositoryId: testSetup.repository.id,
+    await db.deployments.create({
+      data: {task_id: task1.id,repository_id: testSetup.repository.id,
         commitSha: "commit0sha", // Older commit before our 3 tasks
         environment: "STAGING",
         status: "SUCCESS",
@@ -241,13 +227,13 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Verify all 3 tasks updated to staging
-    const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
-    const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
-    const updatedTask3 = await db.task.findUnique({ where: { id: task3.id } });
+    const updatedTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+    const updatedTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
+    const updatedTask3 = await db.tasks.findUnique({ where: { id: task3.id } });
 
     expect(updatedTask1?.deploymentStatus).toBe("staging");
     expect(updatedTask2?.deploymentStatus).toBe("staging");
@@ -258,9 +244,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     expect(updatedTask3?.deployedToStagingAt).toBeTruthy();
 
     // Verify deployment records created (should have 4 total: 1 previous + 3 new)
-    const deployments = await db.deployment.findMany({
-      where: { 
-        repositoryId: testSetup.repository.id,
+    const deployments = await db.deployments.findMany({
+      where: {repository_id: testSetup.repository.id,
         commitSha: { in: ["commit1sha", "commit2sha", "commit3sha"] },
       },
     });
@@ -271,10 +256,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
   it("should upgrade multiple tasks from staging to production", async () => {
     // Create previous staging deployment for baseline
-    await db.deployment.create({
-      data: {
-        taskId: task1.id,
-        repositoryId: testSetup.repository.id,
+    await db.deployments.create({
+      data: {task_id: task1.id,repository_id: testSetup.repository.id,
         commitSha: "commit0sha",
         environment: "STAGING",
         status: "SUCCESS",
@@ -284,27 +267,21 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     });
 
     // First deploy to staging
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task1.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-01"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-01"),
       },
     });
 
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task2.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-01"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-01"),
       },
     });
 
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task3.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-01"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-01"),
       },
     });
 
@@ -331,24 +308,24 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Wait for webhook processing to complete
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Query tasks - they should be updated to production
-    const updatedTask1 = await db.task.findUnique({
+    const updatedTask1 = await db.tasks.findUnique({
       where: { id: task1.id },
-      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+      select: {deployment_status: true,deployed_to_production_at: true,deployed_to_staging_at: true },
     });
-    const updatedTask2 = await db.task.findUnique({
+    const updatedTask2 = await db.tasks.findUnique({
       where: { id: task2.id },
-      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+      select: {deployment_status: true,deployed_to_production_at: true,deployed_to_staging_at: true },
     });
-    const updatedTask3 = await db.task.findUnique({
+    const updatedTask3 = await db.tasks.findUnique({
       where: { id: task3.id },
-      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+      select: {deployment_status: true,deployed_to_production_at: true,deployed_to_staging_at: true },
     });
 
     expect(updatedTask1?.deploymentStatus).toBe("production");
@@ -367,19 +344,15 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
   it("should NOT downgrade production tasks to staging", async () => {
     // Set task1 and task2 to production, task3 stays at null
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task1.id },
-      data: {
-        deploymentStatus: "production",
-        deployedToProductionAt: new Date(),
+      data: {deployment_status: "production",deployed_to_production_at: new Date(),
       },
     });
 
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task2.id },
-      data: {
-        deploymentStatus: "production",
-        deployedToProductionAt: new Date(),
+      data: {deployment_status: "production",deployed_to_production_at: new Date(),
       },
     });
 
@@ -398,13 +371,13 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Verify task1 and task2 still in production
-    const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
-    const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
-    const updatedTask3 = await db.task.findUnique({ where: { id: task3.id } });
+    const updatedTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+    const updatedTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
+    const updatedTask3 = await db.tasks.findUnique({ where: { id: task3.id } });
 
     expect(updatedTask1?.deploymentStatus).toBe("production");
     expect(updatedTask2?.deploymentStatus).toBe("production");
@@ -413,10 +386,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
   it("should handle task with staging status being upgraded to production", async () => {
     // Create baseline staging deployment at commit0
-    await db.deployment.create({
-      data: {
-        taskId: task1.id,
-        repositoryId: testSetup.repository.id,
+    await db.deployments.create({
+      data: {task_id: task1.id,repository_id: testSetup.repository.id,
         commitSha: "commit0sha",
         environment: "STAGING",
         status: "SUCCESS",
@@ -426,11 +397,9 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     });
 
     // Set task1 to staging
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task1.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-01"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-01"),
       },
     });
 
@@ -459,7 +428,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Add delay to ensure webhook processing completes
@@ -472,13 +441,10 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     
     while (attempts < maxAttempts) {
       // Use findUnique to let Prisma handle caching properly
-      updatedTask1 = await db.task.findUnique({
+      updatedTask1 = await db.tasks.findUnique({
         where: { id: task1.id },
         select: {
-          id: true,
-          deploymentStatus: true,
-          deployedToProductionAt: true,
-          deployedToStagingAt: true,
+          id: true,deployment_status: true,deployed_to_production_at: true,deployed_to_staging_at: true,
         },
       });
       
@@ -513,19 +479,19 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Deployment records should be created even for failures
-    const deployments = await db.deployment.findMany({
-      where: { repositoryId: testSetup.repository.id },
+    const deployments = await db.deployments.findMany({
+      where: {repository_id: testSetup.repository.id },
     });
     expect(deployments.length).toBeGreaterThan(0);
     expect(deployments.every((d) => d.status === "FAILURE")).toBe(true);
 
     // Tasks should NOT be updated (only on success)
-    const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
-    const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+    const updatedTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+    const updatedTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
 
     expect(updatedTask1?.deploymentStatus).toBeNull();
     expect(updatedTask2?.deploymentStatus).toBeNull();
@@ -537,27 +503,21 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     // Now: ALL staging tasks are individually verified against production deployment
     
     // Set all tasks to staging (simulating previous staging deployments)
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task1.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-01"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-01"),
       },
     });
     
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task2.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-02"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-02"),
       },
     });
     
-    await db.task.update({
+    await db.tasks.update({
       where: { id: task3.id },
-      data: {
-        deploymentStatus: "staging",
-        deployedToStagingAt: new Date("2024-01-03"),
+      data: {deployment_status: "staging",deployed_to_staging_at: new Date("2024-01-03"),
       },
     });
     
@@ -612,7 +572,7 @@ describe("Deployment Webhook - Multiple Tasks", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
     // Add delay to ensure webhook processing completes
@@ -647,9 +607,9 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     let attempts = 0;
     
     while (attempts < maxAttempts && !allUpdated) {
-      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
-      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
-      const updatedTask3 = await db.task.findUnique({ where: { id: task3.id } });
+      const updatedTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+      const updatedTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
+      const updatedTask3 = await db.tasks.findUnique({ where: { id: task3.id } });
       
       if (
         updatedTask1?.deploymentStatus === "production" &&
@@ -666,9 +626,9 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     }
 
     // Verify ALL staging tasks were upgraded to production
-    const finalTask1 = await db.task.findUnique({ where: { id: task1.id } });
-    const finalTask2 = await db.task.findUnique({ where: { id: task2.id } });
-    const finalTask3 = await db.task.findUnique({ where: { id: task3.id } });
+    const finalTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+    const finalTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
+    const finalTask3 = await db.tasks.findUnique({ where: { id: task3.id } });
     
     expect(finalTask1?.deploymentStatus).toBe("production");
     expect(finalTask2?.deploymentStatus).toBe("production");
@@ -679,9 +639,8 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     expect(finalTask3?.deployedToProductionAt).toBeTruthy();
     
     // Verify deployment records were created for all tasks
-    const deployments = await db.deployment.findMany({
-      where: {
-        repositoryId: testSetup.repository.id,
+    const deployments = await db.deployments.findMany({
+      where: {repository_id: testSetup.repository.id,
         environment: "PRODUCTION",
         status: "SUCCESS",
       },

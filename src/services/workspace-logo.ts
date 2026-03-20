@@ -138,7 +138,7 @@ export class WorkspaceLogoService {
       }
     }
 
-    await db.workspace.update({
+    await db.workspaces.update({
       where: { id: workspace.id },
       data: {
         logoKey: s3Path,
@@ -185,7 +185,7 @@ export class WorkspaceLogoService {
       console.warn('Failed to delete logo from S3:', error)
     }
 
-    await db.workspace.update({
+    await db.workspaces.update({
       where: { id: workspace.id },
       data: {
         logoKey: null,

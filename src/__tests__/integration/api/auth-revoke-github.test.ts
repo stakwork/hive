@@ -21,8 +21,7 @@ global.fetch = mockFetch;
 describe("POST /api/auth/revoke-github Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
 
-  async function createTestUserWithGitHubAccount(options?: {
-    accessToken?: string;
+  async function createTestUserWithGitHubAccount(options?: {access_token?: string;
     includeGitHubAuth?: boolean;
     includeSessions?: boolean;
   }) {
@@ -47,26 +46,19 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       const encryptedToken = encryptionService.encryptField("access_token", accessToken);
       const testAccount = await tx.account.create({
         data: {
-          id: generateUniqueId("test-account"),
-          userId: testUser.id,
+          id: generateUniqueId("test-account"),user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId(),
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user,repo",
+          provider: "github",provider_account_id: generateUniqueId(),
+          access_token: JSON.stringify(encryptedToken),scope: "read:user,repo",
         },
       });
 
       let testGitHubAuth = null;
       if (includeGitHubAuth) {
         testGitHubAuth = await tx.gitHubAuth.create({
-          data: {
-            userId: testUser.id,
-            githubUserId: "123456",
-            githubUsername: "testuser",
+          data: {user_id: testUser.id,github_user_id: "123456",github_username: "testuser",
             githubNodeId: "U_test123",
-            name: "Test User",
-            publicRepos: 5,
+            name: "Test User",public_repos: 5,
             followers: 10,
             following: 5,
             accountType: "User",
@@ -79,8 +71,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         const session1 = await tx.session.create({
           data: {
             id: generateUniqueId("session-1"),
-            sessionToken: `session_token_1_${generateUniqueId()}`,
-            userId: testUser.id,
+            sessionToken: `session_token_1_${generateUniqueId()}`,user_id: testUser.id,
             expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30), // 30 days
           },
         });
@@ -88,8 +79,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         const session2 = await tx.session.create({
           data: {
             id: generateUniqueId("session-2"),
-            sessionToken: `session_token_2_${generateUniqueId()}`,
-            userId: testUser.id,
+            sessionToken: `session_token_2_${generateUniqueId()}`,user_id: testUser.id,
             expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30), // 30 days
           },
         });
@@ -125,7 +115,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify database cleanup still occurred despite GitHub API failure
-      const deletedAccount = await db.account.findUnique({
+      const deletedAccount = await db.accounts.findUnique({
         where: { id: testAccount.id },
       });
       expect(deletedAccount).toBeNull();
@@ -135,13 +125,11 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       // Create account without access token
       const testUser = await createTestUser({ name: "Test User No Token" });
 
-      const testAccount = await db.account.create({
+      const testAccount = await db.accounts.create({
         data: {
-          id: generateUniqueId("test-account-no-token"),
-          userId: testUser.id,
+          id: generateUniqueId("test-account-no-token"),user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId(),
+          provider: "github",provider_account_id: generateUniqueId(),
           // No access_token field
         },
       });
@@ -157,7 +145,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(mockFetch).not.toHaveBeenCalled();
 
       // Verify account was still deleted
-      const deletedAccount = await db.account.findUnique({
+      const deletedAccount = await db.accounts.findUnique({
         where: { id: testAccount.id },
       });
       expect(deletedAccount).toBeNull();
@@ -205,8 +193,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
   describe("Encryption and token handling", () => {
     test("should properly decrypt encrypted access tokens", async () => {
       const originalToken = "github_pat_special_test_token_456";
-      const { testUser } = await createTestUserWithGitHubAccount({
-        accessToken: originalToken,
+      const { testUser } = await createTestUserWithGitHubAccount({access_token: originalToken,
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -238,18 +225,16 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
       // Delete the original account first
-      await db.account.deleteMany({
-        where: { userId: testUser.id },
+      await db.accounts.deleteMany({
+        where: {user_id: testUser.id },
       });
 
       // Create account with malformed encrypted token
-      const malformedAccount = await db.account.create({
+      const malformedAccount = await db.accounts.create({
         data: {
-          id: `test-account-malformed-${Date.now()}`,
-          userId: testUser.id,
+          id: `test-account-malformed-${Date.now()}`,user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: `malformed-${Date.now()}`,
+          provider: "github",provider_account_id: `malformed-${Date.now()}`,
           access_token: "invalid-encrypted-data", // Malformed encryption
         },
       });
@@ -262,7 +247,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify account was deleted despite decryption error
-      const deletedAccount = await db.account.findUnique({
+      const deletedAccount = await db.accounts.findUnique({
         where: { id: malformedAccount.id },
       });
       expect(deletedAccount).toBeNull();
@@ -284,7 +269,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify database cleanup still occurred
-      const deletedAccount = await db.account.findUnique({
+      const deletedAccount = await db.accounts.findUnique({
         where: { id: testAccount.id },
       });
       expect(deletedAccount).toBeNull();
@@ -317,7 +302,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         expect(data).toEqual({ success: true });
 
         // Verify account was deleted despite GitHub API error
-        const deletedAccount = await db.account.findUnique({
+        const deletedAccount = await db.accounts.findUnique({
           where: { id: testAccount.id },
         });
         expect(deletedAccount).toBeNull();
@@ -340,8 +325,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       });
 
       // Verify sessions exist before revocation
-      const sessionsBefore = await db.session.findMany({
-        where: { userId: testUser.id },
+      const sessionsBefore = await db.sessions.findMany({
+        where: {user_id: testUser.id },
       });
       expect(sessionsBefore.length).toBeGreaterThan(0);
 
@@ -351,8 +336,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify all sessions were deleted
-      const sessionsAfter = await db.session.findMany({
-        where: { userId: testUser.id },
+      const sessionsAfter = await db.sessions.findMany({
+        where: {user_id: testUser.id },
       });
       expect(sessionsAfter).toHaveLength(0);
     });

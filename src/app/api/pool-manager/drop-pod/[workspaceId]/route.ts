@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const userId = userOrResponse.id;
 
       // Verify user has access to the workspace
-      const workspaceAccess = await db.workspace.findFirst({
+      const workspaceAccess = await db.workspaces.findFirst({
         where: { id: workspaceId },
         include: {
           members: {
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Fetch workspace with swarm and repositories
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { id: workspaceId },
       include: {
         swarm: true,

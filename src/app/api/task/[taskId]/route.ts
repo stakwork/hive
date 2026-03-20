@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch the task with all related data
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: {
         id: taskId,
         deleted: false,

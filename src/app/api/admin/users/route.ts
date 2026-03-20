@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const users = await db.user.findMany({
+    const users = await db.users.findMany({
       where: { role: "SUPER_ADMIN" },
       select: {
         id: true,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: whereClause,
       select: { id: true, role: true },
     });
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await db.user.update({
+    await db.users.update({
       where: { id: user.id },
       data: { role: "SUPER_ADMIN" },
     });
@@ -108,7 +108,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { id: userId },
       select: { id: true, role: true },
     });
@@ -124,7 +124,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await db.user.update({
+    await db.users.update({
       where: { id: userId },
       data: { role: "USER" },
     });

@@ -65,11 +65,11 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
 
   afterEach(async () => {
     // Clean up test data
-    await db.chatMessage.deleteMany({});
-    await db.feature.deleteMany({});
-    await db.workspaceMember.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.chat_messages.deleteMany({});
+    await db.features.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -100,21 +100,16 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: generateUniqueId("test-ws"),
-        ownerId: user.id,
-        sphinxEnabled: false, // Not enabled
+        slug: generateUniqueId("test-ws"),owner_id: user.id,sphinx_enabled: false, // Not enabled
       },
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
@@ -124,7 +119,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       body: JSON.stringify({ inviteeUserId: user.id }),
     });
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     expect(response.status).toBe(400);
     
     const data = await response.json();
@@ -143,8 +138,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await createSphinxEnabledWorkspace({
-      ownerId: owner.id,
+    const workspace = await createSphinxEnabledWorkspace({owner_id: owner.id,
       slug: generateUniqueId("sphinx-ws"),
     });
 
@@ -154,12 +148,9 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       // No sphinxAlias set
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
@@ -169,7 +160,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       body: JSON.stringify({ inviteeUserId: invitee.id }),
     });
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     expect(response.status).toBe(400);
     
     const data = await response.json();
@@ -188,24 +179,18 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await createSphinxEnabledWorkspace({
-      ownerId: owner.id,
+    const workspace = await createSphinxEnabledWorkspace({owner_id: owner.id,
       slug: `sphinx-ws-${generateUniqueId()}`,
     });
 
     const invitee = await createTestUser({
       email: `invitee-${generateUniqueId()}@example.com`,
-      name: "Invitee User",
-      sphinxAlias: "invitee_sphinx",
-      lightningPubkey: "test-pubkey-123",
+      name: "Invitee User",sphinx_alias: "invitee_sphinx",lightning_pubkey: "test-pubkey-123",
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
@@ -215,7 +200,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       body: JSON.stringify({ inviteeUserId: invitee.id }),
     });
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     
     if (response.status !== 200) {
       const errorData = await response.json();
@@ -252,18 +237,17 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await createSphinxEnabledWorkspace({
-      ownerId: owner.id,
+    const workspace = await createSphinxEnabledWorkspace({owner_id: owner.id,
       slug: `sphinx-ws-${generateUniqueId()}`,
     });
 
     const [alice, bob] = await Promise.all([
-      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice", sphinxAlias: "alice", lightningPubkey: "pk-alice" }),
-      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
+      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice",sphinx_alias: "alice",lightning_pubkey: "pk-alice" }),
+      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob",sphinx_alias: "bob",lightning_pubkey: "pk-bob" }),
     ]);
 
-    const feature = await db.feature.create({
-      data: { title: "Multi-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
+    const feature = await db.features.create({
+      data: { title: "Multi-User Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id },
     });
 
     const request = createAuthenticatedRequest(
@@ -272,7 +256,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       { inviteeUserIds: [alice.id, bob.id] }
     );
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -297,19 +281,18 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await createSphinxEnabledWorkspace({
-      ownerId: owner.id,
+    const workspace = await createSphinxEnabledWorkspace({owner_id: owner.id,
       slug: `sphinx-ws-${generateUniqueId()}`,
     });
 
     const [alice, bob, charlie] = await Promise.all([
-      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice", sphinxAlias: "alice", lightningPubkey: "pk-alice" }),
-      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
-      createTestUser({ email: `charlie-${generateUniqueId()}@example.com`, name: "Charlie", sphinxAlias: "charlie", lightningPubkey: "pk-charlie" }),
+      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice",sphinx_alias: "alice",lightning_pubkey: "pk-alice" }),
+      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob",sphinx_alias: "bob",lightning_pubkey: "pk-bob" }),
+      createTestUser({ email: `charlie-${generateUniqueId()}@example.com`, name: "Charlie",sphinx_alias: "charlie",lightning_pubkey: "pk-charlie" }),
     ]);
 
-    const feature = await db.feature.create({
-      data: { title: "Three-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
+    const feature = await db.features.create({
+      data: { title: "Three-User Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id },
     });
 
     const request = createAuthenticatedRequest(
@@ -318,7 +301,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       { inviteeUserIds: [alice.id, bob.id, charlie.id] }
     );
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -354,24 +337,18 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as any);
 
-    const workspace = await createSphinxEnabledWorkspace({
-      ownerId: owner.id,
+    const workspace = await createSphinxEnabledWorkspace({owner_id: owner.id,
       slug: `sphinx-ws-${generateUniqueId()}`,
     });
 
     const invitee = await createTestUser({
       email: `invitee-${generateUniqueId()}@example.com`,
-      name: "Invitee User",
-      sphinxAlias: "invitee_sphinx",
-      lightningPubkey: "test-pubkey-123",
+      name: "Invitee User",sphinx_alias: "invitee_sphinx",lightning_pubkey: "test-pubkey-123",
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
@@ -381,7 +358,7 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       body: JSON.stringify({ inviteeUserId: invitee.id }),
     });
 
-    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
     expect(response.status).toBe(500);
     
     const data = await response.json();

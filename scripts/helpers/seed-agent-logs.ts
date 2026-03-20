@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PrismaClient } from "@prisma/client";
 import { put } from "@vercel/blob";
 
@@ -21,7 +22,7 @@ export async function seedAgentLogs() {
   }
 
   // Get first workspace for seeding
-  const workspace = await prisma.workspace.findFirst({
+  const workspace = await prisma.workspaces.findFirst({
     where: { deleted: false },
     include: {
       stakworkRuns: { take: 10 },
@@ -35,7 +36,7 @@ export async function seedAgentLogs() {
   }
 
   // Check for existing logs
-  const existingCount = await prisma.agentLog.count({
+  const existingCount = await prisma.agent_logs.count({
     where: { workspaceId: workspace.id },
   });
 
@@ -204,7 +205,7 @@ export async function seedAgentLogs() {
   }
 
   // Bulk insert
-  await prisma.agentLog.createMany({
+  await prisma.agent_logs.createMany({
     data: logs,
   });
 

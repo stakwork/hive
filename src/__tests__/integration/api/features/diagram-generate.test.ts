@@ -51,24 +51,18 @@ describe('Diagram Generation S3 Integration', () => {
     
     const workspace = await createTestWorkspace({ 
       name: 'Test Workspace',
-      slug: 'test-workspace',
-      ownerId: testUserId,
+      slug: 'test-workspace',owner_id: testUserId,
     })
     testWorkspaceId = workspace.id
     
     // Add user as workspace member with ADMIN role
-    await db.workspaceMember.create({
-      data: {
-        userId: testUserId,
-        workspaceId: testWorkspaceId,
+    await db.workspace_members.create({
+      data: {user_id: testUserId,workspace_id: testWorkspaceId,
         role: 'ADMIN',
       },
     })
     
-    testFeature = await createTestFeature({
-      workspaceId: testWorkspaceId,
-      createdById: testUserId,
-      updatedById: testUserId,
+    testFeature = await createTestFeature({workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       architecture: 'Sample architecture text for diagram generation',
     })
     testFeatureId = testFeature.id
@@ -93,7 +87,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(200)
@@ -120,7 +114,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(500)
@@ -139,7 +133,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(500)
@@ -161,7 +155,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(500)
@@ -181,7 +175,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(500)
@@ -201,19 +195,19 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       
       expect(response.status).toBe(500)
       
       // Verify feature was not updated
-      const feature = await db.feature.findUnique({ where: { id: testFeatureId } })
+      const feature = await db.features.findUnique({ where: { id: testFeatureId } })
       expect(feature?.diagramUrl).toBeNull()
       expect(feature?.diagramS3Key).toBeNull()
     })
 
     it('should clean up S3 diagram when database update fails', async () => {
       // This test is difficult to implement properly in an integration test
-      // because we need to mock db.feature.update, but that breaks the real database
+      // because we need to mock db.features.update, but that breaks the real database
       // connection for the entire test suite. Instead, we'll skip this specific scenario
       // and rely on the unit tests for DiagramStorageService to validate cleanup logic.
       
@@ -233,7 +227,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       expect(response.status).toBe(200)
@@ -248,7 +242,7 @@ describe('Diagram Generation S3 Integration', () => {
       )
       
       // Verify database was updated
-      const updatedFeature = await db.feature.findUnique({ where: { id: testFeatureId } })
+      const updatedFeature = await db.features.findUnique({ where: { id: testFeatureId } })
       expect(updatedFeature?.diagramUrl).toBe(mockS3Response.s3Url)
       expect(updatedFeature?.diagramS3Key).toBe(mockS3Response.s3Key)
       expect(updatedFeature?.updatedById).toBe(testUserId)
@@ -269,7 +263,7 @@ describe('Diagram Generation S3 Integration', () => {
         method: 'POST',
       })
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: testFeatureId }) })
+      const response = await POST(request, { params: Promise.resolve({feature_id: testFeatureId }) })
       const data = await response.json()
 
       // Should not expose detailed AWS error to client

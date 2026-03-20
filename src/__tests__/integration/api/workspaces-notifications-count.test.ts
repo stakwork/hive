@@ -55,22 +55,19 @@ const TestHelpers = {
 };
 
 // Test Data Setup Functions
-async function createTestWorkspaceScenario(options: {
-  ownerId: string;
-  members?: Array<{ userId: string; role: string }>;
+async function createTestWorkspaceScenario(options: {owner_id: string;
+  members?: Array<{user_id: string; role: string }>;
   withTasks?: boolean;
 }) {
   const slug = generateUniqueSlug("test-workspace");
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: `Test Workspace ${slug}`,
-      slug,
-      ownerId: options.ownerId,
+      slug,owner_id: options.ownerId,
       members: options.members
         ? {
-            create: options.members.map((member) => ({
-              userId: member.userId,
+            create: options.members.map((member) => ({user_id: member.userId,
               role: member.role as any,
             })),
           }
@@ -82,10 +79,8 @@ async function createTestWorkspaceScenario(options: {
 }
 
 async function createTestTask(
-  workspaceId: string,
-  userId: string,
-  options: {
-    workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+workspace_id: string,user_id: string,
+  options: {workflow_status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
     deleted?: boolean;
     withMessage?: boolean;
     artifactType?: "FORM" | "CODE" | "BROWSER" | "LONGFORM";
@@ -93,17 +88,14 @@ async function createTestTask(
     latestMessageArtifactType?: "FORM" | "CODE";
   },
 ) {
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       title: `Test Task ${Date.now()}`,
       description: "Test task description",
       workspaceId,
       status: "TODO",
-      priority: "MEDIUM",
-      workflowStatus: options.workflowStatus || "PENDING",
-      deleted: options.deleted || false,
-      createdById: userId,
-      updatedById: userId,
+      priority: "MEDIUM",workflow_status: options.workflowStatus || "PENDING",
+      deleted: options.deleted || false,created_by_id: userId,updated_by_id: userId,
     },
   });
 
@@ -117,14 +109,13 @@ async function createTestTask(
           ? options.latestMessageArtifactType
           : options.artifactType || "FORM";
 
-      await db.chatMessage.create({
-        data: {
-          taskId: task.id,
+      await db.chat_messages.create({
+        data: {task_id: task.id,
           message: `Test message ${i + 1}`,
           role: "USER",
           status: "SENT",
           timestamp: new Date(Date.now() + i * 1000), // Ensure ordering
-          contextTags: JSON.stringify([]),
+context_tags: JSON.stringify([]),
           artifacts: {
             create: [
               {
@@ -155,8 +146,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     // Create test workspace
-    const scenario = await createTestWorkspaceScenario({
-      ownerId: testUser.id,
+    const scenario = await createTestWorkspaceScenario({owner_id: testUser.id,
     });
     testWorkspace = scenario.workspace;
     testSlug = scenario.slug;
@@ -198,10 +188,8 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
         email: `member-${Date.now()}@example.com`,
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          userId: memberUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: testWorkspace.id,user_id: memberUser.id,
           role: "DEVELOPER",
         },
       });
@@ -231,7 +219,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should exclude soft-deleted workspaces", async () => {
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
         data: { deleted: true },
       });
@@ -245,14 +233,12 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
   describe("Notification Counting Logic", () => {
     test("should count tasks with FORM artifacts in latest message", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withMessage: true,
         artifactType: "FORM",
       });
@@ -264,26 +250,22 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should only count IN_PROGRESS and PENDING tasks", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "COMPLETED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "FAILED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "FAILED",
         withMessage: true,
         artifactType: "FORM",
       });
@@ -295,15 +277,13 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should exclude deleted tasks", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
         deleted: false,
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
         deleted: true,
@@ -316,14 +296,12 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should exclude tasks without chat messages", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: false,
       });
 
@@ -334,20 +312,17 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should exclude tasks with non-FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "CODE",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "BROWSER",
       });
@@ -360,8 +335,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
     test("should only check latest message for FORM artifacts", async () => {
       // Task with FORM in latest message
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         messageCount: 3,
         artifactType: "CODE", // Older messages
@@ -369,8 +343,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
       });
 
       // Task with CODE in latest message (FORM in older messages)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         messageCount: 3,
         artifactType: "FORM", // Older messages
@@ -391,14 +364,12 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should return zero count when no tasks meet criteria", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "COMPLETED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED",
         withMessage: true,
         artifactType: "FORM",
       });
 
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "CODE",
       });
@@ -413,44 +384,38 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
   describe("Complex Scenarios", () => {
     test("should handle mixed task statuses and artifact types correctly", async () => {
       // Should count (IN_PROGRESS + FORM)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
 
       // Should count (PENDING + FORM)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withMessage: true,
         artifactType: "FORM",
       });
 
       // Should NOT count (COMPLETED + FORM)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "COMPLETED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED",
         withMessage: true,
         artifactType: "FORM",
       });
 
       // Should NOT count (IN_PROGRESS + CODE)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "CODE",
       });
 
       // Should NOT count (deleted + IN_PROGRESS + FORM)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
         deleted: true,
       });
 
       // Should NOT count (IN_PROGRESS + no message)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: false,
       });
 
@@ -462,24 +427,21 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
     test("should handle workspace with multiple tasks and varying message histories", async () => {
       // Task 1: Latest message has FORM
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         messageCount: 5,
         latestMessageArtifactType: "FORM",
       });
 
       // Task 2: Latest message has CODE
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         messageCount: 5,
         latestMessageArtifactType: "CODE",
       });
 
       // Task 3: Single message with FORM
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withMessage: true,
         artifactType: "FORM",
       });
@@ -493,8 +455,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     test("should handle large number of tasks efficiently", async () => {
       // Create 50 tasks with varying statuses and artifacts
       for (let i = 0; i < 50; i++) {
-        await createTestTask(testWorkspace.id, testUser.id, {
-          workflowStatus: i % 2 === 0 ? "IN_PROGRESS" : "PENDING",
+        await createTestTask(testWorkspace.id, testUser.id, {workflow_status: i % 2 === 0 ? "IN_PROGRESS" : "PENDING",
           withMessage: i % 3 !== 0, // Some without messages
           artifactType: i % 4 === 0 ? "FORM" : "CODE", // Mix of artifact types
         });
@@ -517,8 +478,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
 
   describe("Database Integrity", () => {
     test("should verify database state after counting", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });
@@ -527,8 +487,8 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
       await GET(request, { params: Promise.resolve({ slug: testSlug }) });
 
       // Verify database state hasn't changed
-      const tasks = await db.task.findMany({
-        where: { workspaceId: testWorkspace.id },
+      const tasks = await db.tasks.findMany({
+        where: {workspace_id: testWorkspace.id },
       });
 
       expect(tasks.length).toBe(1);
@@ -536,8 +496,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Integration Tes
     });
 
     test("should handle concurrent requests correctly", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withMessage: true,
         artifactType: "FORM",
       });

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Fetch task with workspace, repository, and swarm relations
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId, deleted: false, sourceType: "USER_JOURNEY" },
       include: {
         workspace: {
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const encryptedApiKey = encryptionService.encryptField("agentPassword", apiKey);
 
     // Store in database as JSON string
-    await db.task.update({
+    await db.tasks.update({
       where: { id: taskId },
       data: {
         agentPassword: JSON.stringify(encryptedApiKey),
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Revert task status on failure
       try {
-        await db.task.update({
+        await db.tasks.update({
           where: { id: taskId },
           data: { workflowStatus: "ERROR" },
         });
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Step 7: Update Task Status
-    await db.task.update({
+    await db.tasks.update({
       where: { id: taskId },
       data: {
         workflowStatus: "IN_PROGRESS",

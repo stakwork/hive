@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarms.findFirst({ where });
 
     // Return mock data if swarm is not configured (for development/testing)
     if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       // Get workspace slug from workspace ID
       let workspaceSlug = "";
       if (workspaceId) {
-        const workspace = await db.workspace.findUnique({
+        const workspace = await db.workspaces.findUnique({
           where: { id: workspaceId },
           select: { slug: true },
         });

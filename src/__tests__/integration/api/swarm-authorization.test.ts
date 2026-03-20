@@ -88,40 +88,32 @@ describe("Swarm API Authorization Tests", () => {
       const ws = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-ws"),
-          ownerId: owner.id,
+          slug: generateUniqueSlug("test-ws"),owner_id: owner.id,
         },
       });
 
       const otherWs = await tx.workspace.create({
         data: {
           name: "Other Workspace",
-          slug: generateUniqueSlug("other-ws"),
-          ownerId: unauthorized.id,
+          slug: generateUniqueSlug("other-ws"),owner_id: unauthorized.id,
         },
       });
 
       // Create workspace memberships
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: ws.id,
-          userId: admin.id,
+        data: {workspace_id: ws.id,user_id: admin.id,
           role: "ADMIN",
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: ws.id,
-          userId: developer.id,
+        data: {workspace_id: ws.id,user_id: developer.id,
           role: "DEVELOPER",
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: ws.id,
-          userId: viewer.id,
+        data: {workspace_id: ws.id,user_id: viewer.id,
           role: "VIEWER",
         },
       });
@@ -155,8 +147,7 @@ describe("Swarm API Authorization Tests", () => {
       return createPostRequest("http://localhost:3000/api/swarm", {
         workspaceId,
         name: "test-swarm",
-        repositoryName: "test-repo",
-        repositoryUrl: "https://github.com/test/repo",
+        repositoryName: "test-repo",repository_url: "https://github.com/test/repo",
         repositoryDescription: "Test repository",
         repositoryDefaultBranch: "main",
       });
@@ -397,8 +388,8 @@ describe("Swarm API Authorization Tests", () => {
       expect(data.message).toBe("Workspace not found or access denied");
 
       // Verify no swarm was created
-      const swarmCount = await db.swarm.count({
-        where: { workspaceId: workspace.id },
+      const swarmCount = await db.swarms.count({
+        where: {workspace_id: workspace.id },
       });
       expect(swarmCount).toBe(0);
     });
@@ -422,8 +413,7 @@ function createSwarmRequest(workspaceId: string) {
   return createPostRequest("http://localhost:3000/api/swarm", {
     workspaceId,
     name: "test-swarm",
-    repositoryName: "test-repo",
-    repositoryUrl: "https://github.com/test/repo",
+    repositoryName: "test-repo",repository_url: "https://github.com/test/repo",
     repositoryDescription: "Test repository",
     repositoryDefaultBranch: "main",
   });

@@ -38,7 +38,7 @@ export async function GET(
     }
 
     // Look up the feature
-    const feature = await db.feature.findFirst({
+    const feature = await db.features.findFirst({
       where: { id: featureId, deleted: false },
       select: { id: true, workspaceId: true },
     });

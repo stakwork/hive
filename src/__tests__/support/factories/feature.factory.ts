@@ -21,14 +21,10 @@ export async function createTestFeature(
 ): Promise<Feature> {
   const uniqueId = generateUniqueId("feature");
 
-  return db.feature.create({
+  return db.features.create({
     data: {
       title: options.title || `Test Feature ${uniqueId}`,
-      brief: options.brief || `Test feature brief ${uniqueId}`,
-      workspaceId: options.workspaceId,
-      createdById: options.createdById,
-      updatedById: options.updatedById,
-      assigneeId: options.assigneeId || null,
+      brief: options.brief || `Test feature brief ${uniqueId}`,workspace_id: options.workspaceId,created_by_id: options.createdById,updated_by_id: options.updatedById,assignee_id: options.assigneeId || null,
       status: options.status || "BACKLOG",
       priority: options.priority || "LOW",
       requirements: options.requirements || null,

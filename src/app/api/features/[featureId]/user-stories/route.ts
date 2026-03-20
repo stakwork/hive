@@ -20,7 +20,7 @@ export async function GET(
     const { featureId } = await params;
 
     // Verify feature exists and get its workspace
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: {
         id: featureId,
       },
@@ -68,7 +68,7 @@ export async function GET(
     }
 
     // Fetch all user stories for this feature
-    const userStories = await db.userStory.findMany({
+    const userStories = await db.user_stories.findMany({
       where: {
         featureId,
       },

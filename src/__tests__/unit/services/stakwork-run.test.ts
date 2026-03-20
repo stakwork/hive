@@ -16,7 +16,42 @@ import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/cl
 import { isClarifyingQuestions } from "@/types/stakwork";
 import { config } from "@/config/env";
 
-vi.mock("@/lib/db");
+vi.mock("@/lib/db", () => ({
+  db: {workspaces: {
+      findUnique: vi.fn(),
+    },users: {
+      findUnique: vi.fn(),
+    },features: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },stakwork_runs: {
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      count: vi.fn(),
+    },tasks: {
+      create: vi.fn(),
+    },repositories: {
+      findMany: vi.fn(),
+    },whiteboards: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      upsert: vi.fn(),
+    },whiteboard_messages: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },whiteboard_versions: {
+      count: vi.fn(),
+      create: vi.fn(),
+      findFirst: vi.fn(),
+    },
+  },
+}));
 vi.mock("@/lib/service-factory");
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {
@@ -154,11 +189,11 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(mockRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(mockRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 12345 },
@@ -176,11 +211,11 @@ describe("Stakwork Run Service", () => {
         "user-1"
       );
 
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+      expect(db.workspaces.findUnique).toHaveBeenCalledWith({
         where: { id: "ws-1" },
         select: expect.any(Object),
       });
-      expect(db.feature.findFirst).toHaveBeenCalledWith({
+      expect(db.features.findFirst).toHaveBeenCalledWith({
         where: {
           id: "feature-1",
           workspaceId: "ws-1",
@@ -188,7 +223,7 @@ describe("Stakwork Run Service", () => {
         },
         include: expect.any(Object),
       });
-      expect(db.stakworkRun.create).toHaveBeenCalled();
+      expect(db.stakwork_runs.create).toHaveBeenCalled();
       expect(mockStakworkRequest).toHaveBeenCalledWith(
         "/projects",
         expect.objectContaining({
@@ -224,7 +259,7 @@ describe("Stakwork Run Service", () => {
           }),
         })
       );
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: {
           projectId: 12345,
@@ -236,7 +271,7 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should throw error when workspace not found", async () => {
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(null);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(null);
 
       await expect(
         createStakworkRun(
@@ -261,9 +296,9 @@ describe("Stakwork Run Service", () => {
         repositories: [],
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(null);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(null);
 
       await expect(
         createStakworkRun(
@@ -295,10 +330,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.PENDING,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({});
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({});
 
       const mockStakworkRequest = vi.fn().mockRejectedValue(new Error("Stakwork API error"));
       mockedStakworkService.mockReturnValue({
@@ -317,12 +352,12 @@ describe("Stakwork Run Service", () => {
       ).rejects.toThrow("Stakwork API error");
 
       // Should be called twice: once for webhookUrl, once for FAILED status
-      expect(db.stakworkRun.update).toHaveBeenCalledTimes(2);
-      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(1, {
+      expect(db.stakwork_runs.update).toHaveBeenCalledTimes(2);
+      expect(db.stakwork_runs.update).toHaveBeenNthCalledWith(1, {
         where: { id: "run-1" },
         data: expect.objectContaining({ webhookUrl: expect.any(String) }),
       });
-      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(2, {
+      expect(db.stakwork_runs.update).toHaveBeenNthCalledWith(2, {
         where: { id: "run-1" },
         data: { status: WorkflowStatus.FAILED },
       });
@@ -347,10 +382,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.PENDING,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({
         ...mockRun,
         projectId: 12345,
         status: WorkflowStatus.IN_PROGRESS,
@@ -416,11 +451,11 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -486,11 +521,11 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -563,13 +598,13 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(mockFeature);
       // No active run — guard should pass
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(null);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(null);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -619,7 +654,7 @@ describe("Stakwork Run Service", () => {
         members: [{ role: "OWNER" }],
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
 
       await expect(
         createStakworkRun(
@@ -641,7 +676,7 @@ describe("Stakwork Run Service", () => {
         members: [], // User is not a member
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
 
       await expect(
         createStakworkRun(
@@ -672,9 +707,9 @@ describe("Stakwork Run Service", () => {
       };
 
       // Feature belongs to different workspace
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(null); // Not found in this workspace
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue(null); // Not found in this workspace
 
       await expect(
         createStakworkRun(
@@ -706,10 +741,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.PENDING,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValue({});
 
@@ -732,7 +767,7 @@ describe("Stakwork Run Service", () => {
       (config as any).STAKWORK_AI_GENERATION_WORKFLOW_ID = originalConfig;
 
       // Should mark run as FAILED
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: { status: WorkflowStatus.FAILED },
       });
@@ -756,10 +791,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.PENDING,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValue({});
 
@@ -783,7 +818,7 @@ describe("Stakwork Run Service", () => {
       ).rejects.toThrow("Failed to get project ID from Stakwork");
 
       // Should mark run as FAILED
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: { status: WorkflowStatus.FAILED },
       });
@@ -827,10 +862,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -893,10 +928,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -963,10 +998,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -1035,10 +1070,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -1067,7 +1102,7 @@ describe("Stakwork Run Service", () => {
       );
 
       // Verify webhookUrl update contains correct query params
-      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(1, {
+      expect(db.stakwork_runs.update).toHaveBeenNthCalledWith(1, {
         where: { id: "run-123-unique" },
         data: expect.objectContaining({
           webhookUrl: expect.stringContaining("workspace_id=ws-1"),
@@ -1100,10 +1135,10 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn()
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn()
         .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
         .mockResolvedValueOnce(mockUpdatedRun);
 
@@ -1160,8 +1195,8 @@ describe("Stakwork Run Service", () => {
 
       const existingRun = { id: "existing-run-1", status: WorkflowStatus.PENDING };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(existingRun);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(existingRun);
 
       await expect(
         createStakworkRun(
@@ -1175,7 +1210,7 @@ describe("Stakwork Run Service", () => {
       ).rejects.toThrow("active_run:existing-run-1");
 
       // Should not create a new DB record
-      expect(db.stakworkRun.create).not.toHaveBeenCalled();
+      expect(db.stakwork_runs.create).not.toHaveBeenCalled();
     });
 
     test("should throw active_run error when an IN_PROGRESS TASK_GENERATION run already exists for the same feature", async () => {
@@ -1191,8 +1226,8 @@ describe("Stakwork Run Service", () => {
 
       const existingRun = { id: "existing-run-2", status: WorkflowStatus.IN_PROGRESS };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(existingRun);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(existingRun);
 
       await expect(
         createStakworkRun(
@@ -1205,7 +1240,7 @@ describe("Stakwork Run Service", () => {
         )
       ).rejects.toThrow("active_run:existing-run-2");
 
-      expect(db.stakworkRun.create).not.toHaveBeenCalled();
+      expect(db.stakwork_runs.create).not.toHaveBeenCalled();
     });
 
     test("should NOT apply the duplicate guard for non-TASK_GENERATION types", async () => {
@@ -1229,9 +1264,9 @@ describe("Stakwork Run Service", () => {
         webhookUrl: "",
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue({
         id: "feature-1",
         title: "T",
         brief: null,
@@ -1239,8 +1274,8 @@ describe("Stakwork Run Service", () => {
         workspace: { description: "" },
         phases: [],
       });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({
         ...mockRun,
         projectId: 99,
         status: WorkflowStatus.IN_PROGRESS,
@@ -1258,7 +1293,7 @@ describe("Stakwork Run Service", () => {
       expect(result.status).toBe(WorkflowStatus.IN_PROGRESS);
       // findFirst should NOT have been called for the active-run guard
       // (it may still be called internally for other reasons, but the guard skips ARCHITECTURE)
-      const findFirstCalls = (mockedDb.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mock.calls;
+      const findFirstCalls = (mockedDb.stakwork_runs.findFirst as ReturnType<typeof vi.fn>).mock.calls;
       const guardCalls = findFirstCalls.filter((call: unknown[]) => {
         const args = call[0] as { where?: { type?: StakworkRunType } } | undefined;
         return args?.where?.type === StakworkRunType.ARCHITECTURE;
@@ -1277,8 +1312,8 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const result = await processStakworkRunWebhook(
@@ -1294,7 +1329,7 @@ describe("Stakwork Run Service", () => {
         }
       );
 
-      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.updateMany).toHaveBeenCalledWith({
         where: {
           id: "run-1",
           status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
@@ -1330,8 +1365,8 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.COMPLETED,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 0 });
 
       const result = await processStakworkRunWebhook(
         {
@@ -1350,7 +1385,7 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should throw error when run not found", async () => {
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(null);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(null);
 
       await expect(
         processStakworkRunWebhook(
@@ -1373,8 +1408,8 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Test string result
@@ -1382,7 +1417,7 @@ describe("Stakwork Run Service", () => {
         { result: "string result" },
         { type: "ARCHITECTURE", workspace_id: "ws-1" }
       );
-      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
+      expect(db.stakwork_runs.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "string",
@@ -1396,7 +1431,7 @@ describe("Stakwork Run Service", () => {
         { result: ["item1", "item2"] },
         { type: "ARCHITECTURE", workspace_id: "ws-1" }
       );
-      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
+      expect(db.stakwork_runs.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "array",
@@ -1410,7 +1445,7 @@ describe("Stakwork Run Service", () => {
         { result: null },
         { type: "ARCHITECTURE", workspace_id: "ws-1" }
       );
-      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
+      expect(db.stakwork_runs.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "null",
@@ -1427,8 +1462,8 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       mockedPusherServer.trigger = vi.fn().mockRejectedValue(new Error("Pusher error"));
 
       const result = await processStakworkRunWebhook(
@@ -1456,12 +1491,12 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-1" });
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-1", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue({ id: "wb-1" });
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue({ id: "msg-1", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockedRelayoutDiagram = vi.mocked(relayoutDiagram);
@@ -1503,7 +1538,7 @@ describe("Stakwork Run Service", () => {
       );
 
       // Verify whiteboard was upserted
-      expect(db.whiteboard.upsert).toHaveBeenCalledWith({
+      expect(db.whiteboards.upsert).toHaveBeenCalledWith({
         where: { featureId: "feature-1" },
         update: {
           elements: expect.any(Array),
@@ -1533,12 +1568,12 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Feature 2" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-2" });
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-2", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Feature 2" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue({ id: "wb-2" });
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue({ id: "msg-2", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockedRelayoutDiagram = vi.mocked(relayoutDiagram);
@@ -1596,12 +1631,12 @@ describe("Stakwork Run Service", () => {
         createdAt: new Date(),
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue(mockAssistantMessage);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Ensure db is the mocked instance
@@ -1628,13 +1663,13 @@ describe("Stakwork Run Service", () => {
       );
 
       // Verify whiteboard was fetched by featureId
-      expect(db.whiteboard.findUnique).toHaveBeenCalledWith({
+      expect(db.whiteboards.findUnique).toHaveBeenCalledWith({
         where: { featureId: "feature-1" },
         select: { id: true },
       });
 
       // Verify ASSISTANT message was created
-      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+      expect(db.whiteboard_messages.create).toHaveBeenCalledWith({
         data: {
           whiteboardId: "whiteboard-123",
           role: "ASSISTANT",
@@ -1671,11 +1706,11 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(null); // No whiteboard found
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue(null); // No whiteboard found
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Should not throw despite missing whiteboard
@@ -1702,7 +1737,7 @@ describe("Stakwork Run Service", () => {
       ).resolves.toBeDefined();
 
       // Verify whiteboardMessage.create was NOT called
-      expect(db.whiteboardMessage.create).not.toHaveBeenCalled();
+      expect(db.whiteboard_messages.create).not.toHaveBeenCalled();
 
       // Verify Pusher was NOT called with whiteboard-chat-message
       expect(mockedPusherServer.trigger).not.toHaveBeenCalledWith(
@@ -1736,12 +1771,12 @@ describe("Stakwork Run Service", () => {
         createdAt: new Date(),
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Test Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue(mockAssistantMessage);
       
       // Mock Pusher to throw error on all calls
       const pusherError = new Error("Pusher connection failed");
@@ -1773,7 +1808,7 @@ describe("Stakwork Run Service", () => {
       expect(result.status).toBe(WorkflowStatus.COMPLETED);
 
       // Verify message was created despite Pusher failure
-      expect(db.whiteboardMessage.create).toHaveBeenCalled();
+      expect(db.whiteboard_messages.create).toHaveBeenCalled();
 
       // Verify Pusher was attempted for both events (whiteboard-chat-message and stakwork-run-update)
       expect(mockedPusherServer.trigger).toHaveBeenCalledTimes(2);
@@ -1812,11 +1847,11 @@ describe("Stakwork Run Service", () => {
         createdAt: new Date(),
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.whiteboard.update = vi.fn().mockResolvedValue(mockWhiteboard);
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMessage);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboards.update = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue(mockWhiteboard);
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue(mockAssistantMessage);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       vi.mocked(relayoutDiagram).mockResolvedValueOnce({
@@ -1848,7 +1883,7 @@ describe("Stakwork Run Service", () => {
       expect(result.status).toBe(WorkflowStatus.COMPLETED);
 
       // Verify whiteboard was UPDATED (not upserted) since it already exists
-      expect(db.whiteboard.update).toHaveBeenCalledWith({
+      expect(db.whiteboards.update).toHaveBeenCalledWith({
         where: { id: "whiteboard-456" },
         data: {
           elements: expect.any(Array),
@@ -1858,16 +1893,16 @@ describe("Stakwork Run Service", () => {
       });
 
       // Verify whiteboard.upsert was NOT called (standalone path uses update)
-      expect(db.whiteboard.upsert).not.toHaveBeenCalled();
+      expect(db.whiteboards.upsert).not.toHaveBeenCalled();
 
       // Verify whiteboard was fetched by id (not featureId)
-      expect(db.whiteboard.findUnique).toHaveBeenCalledWith({
+      expect(db.whiteboards.findUnique).toHaveBeenCalledWith({
         where: { id: "whiteboard-456" },
         select: { id: true },
       });
 
       // Verify ASSISTANT message was created
-      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+      expect(db.whiteboard_messages.create).toHaveBeenCalledWith({
         data: {
           whiteboardId: "whiteboard-456",
           role: "ASSISTANT",
@@ -1906,12 +1941,12 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Dangling Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-dangling" });
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({ id: "msg-d", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Dangling Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue({ id: "wb-dangling" });
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue({ id: "msg-d", role: "ASSISTANT", content: "Diagram updated based on your request.", status: "SENT" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Use real sanitiseDiagram logic so dangling connections are actually filtered
@@ -2047,9 +2082,9 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-clarify" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue({ id: "wb-clarify" });
       const mockAssistantMsg = {
         id: "msg-clarify-1",
         role: "ASSISTANT",
@@ -2057,7 +2092,7 @@ describe("Stakwork Run Service", () => {
         status: "SENT",
         metadata: clarifyingPayload,
       };
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMsg);
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue(mockAssistantMsg);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const result = await processStakworkRunWebhook(
@@ -2077,7 +2112,7 @@ describe("Stakwork Run Service", () => {
       expect(result.status).toBe(WorkflowStatus.COMPLETED);
 
       // WhiteboardMessage should have been created with the full metadata
-      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+      expect(db.whiteboard_messages.create).toHaveBeenCalledWith({
         data: {
           whiteboardId: "wb-clarify",
           role: "ASSISTANT",
@@ -2098,8 +2133,8 @@ describe("Stakwork Run Service", () => {
       expect(relayoutDiagram).not.toHaveBeenCalled();
 
       // No whiteboard element update should have occurred
-      expect(db.whiteboard.update).not.toHaveBeenCalled();
-      expect(db.whiteboard.upsert).not.toHaveBeenCalled();
+      expect(db.whiteboards.update).not.toHaveBeenCalled();
+      expect(db.whiteboards.upsert).not.toHaveBeenCalled();
     });
 
     test("should store clarifying questions for standalone whiteboard_id (no feature_id)", async () => {
@@ -2116,8 +2151,8 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
       const mockAssistantMsg = {
         id: "msg-clarify-2",
         role: "ASSISTANT",
@@ -2125,7 +2160,7 @@ describe("Stakwork Run Service", () => {
         status: "SENT",
         metadata: clarifyingPayload,
       };
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMsg);
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue(mockAssistantMsg);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const result = await processStakworkRunWebhook(
@@ -2144,7 +2179,7 @@ describe("Stakwork Run Service", () => {
       expect(result.runId).toBe("run-clarify-standalone");
 
       // WhiteboardMessage created with standalone whiteboard id
-      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+      expect(db.whiteboard_messages.create).toHaveBeenCalledWith({
         data: {
           whiteboardId: "wb-standalone-clarify",
           role: "ASSISTANT",
@@ -2162,7 +2197,7 @@ describe("Stakwork Run Service", () => {
 
       // No diagram work
       expect(relayoutDiagram).not.toHaveBeenCalled();
-      expect(db.whiteboard.update).not.toHaveBeenCalled();
+      expect(db.whiteboards.update).not.toHaveBeenCalled();
     });
 
     test("should not call whiteboardMessage.create when no whiteboard is resolvable for clarifying questions", async () => {
@@ -2179,9 +2214,9 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.whiteboardMessage.create = vi.fn();
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboard_messages.create = vi.fn();
       mockedPusherServer.trigger = vi.fn();
 
       // No whiteboard_id, no feature_id in query params
@@ -2198,7 +2233,7 @@ describe("Stakwork Run Service", () => {
       );
 
       expect(result.runId).toBe("run-clarify-no-wb");
-      expect(db.whiteboardMessage.create).not.toHaveBeenCalled();
+      expect(db.whiteboard_messages.create).not.toHaveBeenCalled();
       // Pusher may be called for the workspace run-update event, but never for a whiteboard channel
       const whiteboardTriggerCalls = (mockedPusherServer.trigger as ReturnType<typeof vi.fn>).mock.calls.filter(
         (call: unknown[]) => typeof call[0] === "string" && call[0].startsWith("whiteboard-")
@@ -2222,12 +2257,12 @@ describe("Stakwork Run Service", () => {
         status: WorkflowStatus.IN_PROGRESS,
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Normal Feature" });
-      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
-      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-normal" });
-      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue({ title: "Normal Feature" });
+      mockedDb.whiteboards.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue({ id: "wb-normal" });
+      mockedDb.whiteboard_messages.create = vi.fn().mockResolvedValue({
         id: "msg-normal",
         role: "ASSISTANT",
         content: "Diagram updated based on your request.",
@@ -2259,12 +2294,12 @@ describe("Stakwork Run Service", () => {
       expect(relayoutDiagram).toHaveBeenCalled();
 
       // Whiteboard was upserted
-      expect(db.whiteboard.upsert).toHaveBeenCalledWith(
+      expect(db.whiteboards.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ where: { featureId: "feature-normal" } })
       );
 
       // ASSISTANT message with standard content created
-      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+      expect(db.whiteboard_messages.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ content: "Diagram updated based on your request." }),
       });
     });
@@ -2309,16 +2344,16 @@ describe("Stakwork Run Service", () => {
         createdById: "feature-creator-id",
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({
         ...mockRun,
         status: WorkflowStatus.COMPLETED,
         decision: StakworkRunDecision.ACCEPTED,
       });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.task.create = vi.fn().mockResolvedValue(mockCreatedTask);
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue(mockCreatedTask);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const taskGenerationResult = {
@@ -2349,7 +2384,7 @@ describe("Stakwork Run Service", () => {
       );
 
       // Assert task was created with feature creator's ID, not workspace owner's
-      expect(mockedDb.task.create).toHaveBeenCalledWith({
+      expect(mockedDb.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           createdById: "feature-creator-id",
           title: "Task 1",
@@ -2358,7 +2393,7 @@ describe("Stakwork Run Service", () => {
       });
 
       // Verify stakworkRun.update was called to set decision to ACCEPTED
-      expect(mockedDb.stakworkRun.update).toHaveBeenCalledWith({
+      expect(mockedDb.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: { decision: StakworkRunDecision.ACCEPTED },
       });
@@ -2400,16 +2435,16 @@ describe("Stakwork Run Service", () => {
         createdById: "workspace-owner-id",
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({
         ...mockRun,
         status: WorkflowStatus.COMPLETED,
         decision: StakworkRunDecision.ACCEPTED,
       });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.task.create = vi.fn().mockResolvedValue(mockCreatedTask);
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue(mockCreatedTask);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const taskGenerationResult = {
@@ -2440,7 +2475,7 @@ describe("Stakwork Run Service", () => {
       );
 
       // Assert task was created with workspace owner's ID as fallback
-      expect(mockedDb.task.create).toHaveBeenCalledWith({
+      expect(mockedDb.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           createdById: "workspace-owner-id",
           title: "Task 2",
@@ -2449,7 +2484,7 @@ describe("Stakwork Run Service", () => {
       });
 
       // Verify stakworkRun.update was called to set decision to ACCEPTED
-      expect(mockedDb.stakworkRun.update).toHaveBeenCalledWith({
+      expect(mockedDb.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-2" },
         data: { decision: StakworkRunDecision.ACCEPTED },
       });
@@ -2478,9 +2513,9 @@ describe("Stakwork Run Service", () => {
         },
       ];
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.stakworkRun.count = vi.fn().mockResolvedValue(2);
-      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockRuns);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakwork_runs.count = vi.fn().mockResolvedValue(2);
+      mockedDb.stakwork_runs.findMany = vi.fn().mockResolvedValue(mockRuns);
 
       const result = await getStakworkRuns(
         {
@@ -2503,9 +2538,9 @@ describe("Stakwork Run Service", () => {
         members: [{ userId: "user-1" }],
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.stakworkRun.count = vi.fn().mockResolvedValue(1);
-      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakwork_runs.count = vi.fn().mockResolvedValue(1);
+      mockedDb.stakwork_runs.findMany = vi.fn().mockResolvedValue([]);
 
       await getStakworkRuns(
         {
@@ -2518,7 +2553,7 @@ describe("Stakwork Run Service", () => {
         "user-1"
       );
 
-      expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.findMany).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws-1",
           type: StakworkRunType.ARCHITECTURE,
@@ -2532,7 +2567,7 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should throw error when workspace not found", async () => {
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(null);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(null);
 
       await expect(
         getStakworkRuns({ workspaceId: "non-existent", limit: 10, offset: 0 }, "user-1")
@@ -2546,7 +2581,7 @@ describe("Stakwork Run Service", () => {
         members: [],
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
 
       await expect(
         getStakworkRuns({ workspaceId: "ws-1", limit: 10, offset: 0 }, "user-1")
@@ -2573,16 +2608,16 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
-      mockedDb.feature.update = vi.fn().mockResolvedValue({});
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.features.update = vi.fn().mockResolvedValue({});
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const result = await updateStakworkRunDecision("run-1", "user-1", {
         decision: StakworkRunDecision.ACCEPTED,
       });
 
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: {
           decision: StakworkRunDecision.ACCEPTED,
@@ -2590,7 +2625,7 @@ describe("Stakwork Run Service", () => {
         },
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-1" },
         data: {
           architecture: "Generated architecture content",
@@ -2621,8 +2656,8 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({
         ...mockRun,
         decision: StakworkRunDecision.REJECTED,
         feedback: "Not good enough",
@@ -2634,7 +2669,7 @@ describe("Stakwork Run Service", () => {
         feedback: "Not good enough",
       });
 
-      expect(db.feature.update).not.toHaveBeenCalled();
+      expect(db.features.update).not.toHaveBeenCalled();
     });
 
     test("should store feedback with decision", async () => {
@@ -2646,8 +2681,8 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({});
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({});
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       await updateStakworkRunDecision("run-1", "user-1", {
@@ -2655,7 +2690,7 @@ describe("Stakwork Run Service", () => {
         feedback: "Please add more details",
       });
 
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: {
           decision: StakworkRunDecision.FEEDBACK,
@@ -2665,7 +2700,7 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should throw error when run not found", async () => {
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(null);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(null);
 
       await expect(
         updateStakworkRunDecision("non-existent", "user-1", {
@@ -2684,7 +2719,7 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
 
       await expect(
         updateStakworkRunDecision("run-1", "user-1", {
@@ -2702,8 +2737,8 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({});
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({});
       mockedPusherServer.trigger = vi.fn().mockRejectedValue(new Error("Pusher error"));
 
       const result = await updateStakworkRunDecision("run-1", "user-1", {
@@ -2736,8 +2771,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -2748,7 +2783,7 @@ describe("Stakwork Run Service", () => {
       const result = await stopStakworkRun("run-1", "user-1");
 
       expect(mockStopProject).toHaveBeenCalledWith("12345");
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: {
           status: WorkflowStatus.HALTED,
@@ -2768,7 +2803,7 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should throw error when run not found", async () => {
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(null);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(null);
 
       await expect(
         stopStakworkRun("non-existent", "user-1")
@@ -2788,7 +2823,7 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
 
       await expect(
         stopStakworkRun("run-1", "user-1")
@@ -2808,7 +2843,7 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
 
       await expect(
         stopStakworkRun("run-1", "user-1")
@@ -2828,7 +2863,7 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
 
       await expect(
         stopStakworkRun("run-1", "user-1")
@@ -2855,8 +2890,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Stakwork API fails
@@ -2869,7 +2904,7 @@ describe("Stakwork Run Service", () => {
       const result = await stopStakworkRun("run-1", "user-1");
 
       expect(mockStopProject).toHaveBeenCalledWith("12345");
-      expect(db.stakworkRun.update).toHaveBeenCalled();
+      expect(db.stakwork_runs.update).toHaveBeenCalled();
       expect(result.status).toBe(WorkflowStatus.HALTED);
     });
 
@@ -2893,8 +2928,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -2927,8 +2962,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -2961,8 +2996,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockRejectedValue(new Error("Pusher error"));
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -3002,8 +3037,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -3048,8 +3083,8 @@ describe("Stakwork Run Service", () => {
         feedback: null,
       };
 
-      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedDb.stakwork_runs.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(updatedRun);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const mockStopProject = vi.fn().mockResolvedValue({});
@@ -3059,7 +3094,7 @@ describe("Stakwork Run Service", () => {
 
       await stopStakworkRun("run-1", "user-1");
 
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      expect(db.stakwork_runs.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: {
           status: WorkflowStatus.HALTED,
@@ -3121,9 +3156,9 @@ describe("Stakwork Run Service", () => {
         ],
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue({
         id: "run-2",
         type: StakworkRunType.ARCHITECTURE,
         workspaceId: "ws-1",
@@ -3131,12 +3166,12 @@ describe("Stakwork Run Service", () => {
         autoAccept: true,
         status: WorkflowStatus.PENDING,
       });
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({
         id: "user-1",
         githubAuth: { githubUsername: "testuser" },
       });
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue({
         id: "feature-1",
         title: "Bug Fix",
         brief: "Fix bug",
@@ -3161,8 +3196,8 @@ describe("Stakwork Run Service", () => {
       );
 
       // Verify that a new run was created with the correct type
-      expect(db.stakworkRun.create).toHaveBeenCalled();
-      const createCall = vi.mocked(db.stakworkRun.create).mock.calls[0][0];
+      expect(db.stakwork_runs.create).toHaveBeenCalled();
+      const createCall = vi.mocked(db.stakwork_runs.create).mock.calls[0][0];
       expect(createCall.data).toMatchObject({
         type: StakworkRunType.ARCHITECTURE,
         workspaceId: "ws-1",
@@ -3223,11 +3258,11 @@ describe("Stakwork Run Service", () => {
 
       // First call: webhook lookup finds the ARCHITECTURE run.
       // Second call: TASK_GENERATION duplicate guard — no active run exists yet.
-      mockedDb.stakworkRun.findFirst = vi.fn()
+      mockedDb.stakwork_runs.findFirst = vi.fn()
         .mockResolvedValueOnce(mockRun)
         .mockResolvedValue(null);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue({
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue({
         id: "run-2",
         type: StakworkRunType.TASK_GENERATION,
         workspaceId: "ws-1",
@@ -3235,12 +3270,12 @@ describe("Stakwork Run Service", () => {
         autoAccept: true,
         status: WorkflowStatus.PENDING,
       });
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({
         id: "user-1",
         githubAuth: { githubUsername: "testuser" },
       });
-      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+      mockedDb.features.findFirst = vi.fn().mockResolvedValue({
         id: "feature-1",
         title: "Bug Fix",
         brief: "Fix bug",
@@ -3265,8 +3300,8 @@ describe("Stakwork Run Service", () => {
       );
 
       // Verify that a new run was created with the correct type
-      expect(db.stakworkRun.create).toHaveBeenCalled();
-      const createCall = vi.mocked(db.stakworkRun.create).mock.calls[0][0];
+      expect(db.stakwork_runs.create).toHaveBeenCalled();
+      const createCall = vi.mocked(db.stakwork_runs.create).mock.calls[0][0];
       expect(createCall.data).toMatchObject({
         type: StakworkRunType.TASK_GENERATION,
         workspaceId: "ws-1",
@@ -3311,15 +3346,15 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.features.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue({ id: "task-1" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      const createSpy = vi.spyOn(db.stakworkRun, "create");
+      const createSpy = vi.spyOn(db.stakwork_runs, "create");
 
       await processStakworkRunWebhook(
         {
@@ -3362,11 +3397,11 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      const createSpy = vi.spyOn(db.stakworkRun, "create");
+      const createSpy = vi.spyOn(db.stakwork_runs, "create");
 
       await processStakworkRunWebhook(
         {
@@ -3408,11 +3443,11 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
-      const createSpy = vi.spyOn(db.stakworkRun, "create");
+      const createSpy = vi.spyOn(db.stakwork_runs, "create");
 
       await processStakworkRunWebhook(
         {
@@ -3454,9 +3489,9 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.stakworkRun.create = vi.fn().mockRejectedValue(new Error("Chain creation failed"));
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.stakwork_runs.create = vi.fn().mockRejectedValue(new Error("Chain creation failed"));
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Should not throw
@@ -3511,9 +3546,9 @@ describe("Stakwork Run Service", () => {
         sphinxAlias: "developer-alias",
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockCreator);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
@@ -3533,7 +3568,7 @@ describe("Stakwork Run Service", () => {
       );
 
       // Check that user.findUnique was called to fetch sphinxAlias
-      const userFindCalls = vi.mocked(db.user.findUnique).mock.calls;
+      const userFindCalls = vi.mocked(db.users.findUnique).mock.calls;
       const sphinxAliasCalls = userFindCalls.filter(call => 
         call[0].select && 'sphinxAlias' in call[0].select
       );
@@ -3573,8 +3608,8 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
@@ -3625,9 +3660,9 @@ describe("Stakwork Run Service", () => {
         sphinxAlias: null, // No Sphinx alias
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockCreator);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
@@ -3678,9 +3713,9 @@ describe("Stakwork Run Service", () => {
         sphinxAlias: "developer-alias",
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockCreator);
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(mockCreator);
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
@@ -3725,8 +3760,8 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.FAILED });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       const { sendToSphinx } = await import("@/lib/sphinx/daily-pr-summary");
@@ -3796,12 +3831,12 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
-      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.features.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue({ id: "task-1" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       await processStakworkRunWebhook(
@@ -3817,7 +3852,7 @@ describe("Stakwork Run Service", () => {
         }
       );
 
-      expect(db.task.create).toHaveBeenCalledWith({
+      expect(db.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           title: "Fix bug",
           autoMerge: true,
@@ -3872,12 +3907,12 @@ describe("Stakwork Run Service", () => {
         },
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.feature.update = vi.fn().mockResolvedValue(mockFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
-      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.features.update = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue({ id: "task-1" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       await processStakworkRunWebhook(
@@ -3893,7 +3928,7 @@ describe("Stakwork Run Service", () => {
         }
       );
 
-      expect(db.task.create).toHaveBeenCalledWith({
+      expect(db.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           title: "Regular task",
           autoMerge: undefined,
@@ -3950,12 +3985,12 @@ describe("Stakwork Run Service", () => {
         }),
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(baseFeature);
-      mockedDb.feature.update = vi.fn().mockResolvedValue(baseFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
-      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.features.update = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue({ id: "task-1" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       await processStakworkRunWebhook(
@@ -3963,7 +3998,7 @@ describe("Stakwork Run Service", () => {
         { workspace_id: "ws-1", feature_id: "feature-1", type: "REQUIREMENTS" }
       );
 
-      expect(db.task.create).toHaveBeenCalledWith({
+      expect(db.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ branch: "feature/my-branch" }),
       });
     });
@@ -3984,12 +4019,12 @@ describe("Stakwork Run Service", () => {
         }),
       };
 
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
-      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(baseFeature);
-      mockedDb.feature.update = vi.fn().mockResolvedValue(baseFeature);
-      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
-      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-1" });
+      mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue({ ...mockRun, status: WorkflowStatus.COMPLETED });
+      mockedDb.features.findUnique = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.features.update = vi.fn().mockResolvedValue(baseFeature);
+      mockedDb.repositories.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/test/repo" }]);
+      mockedDb.tasks.create = vi.fn().mockResolvedValue({ id: "task-1" });
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       await processStakworkRunWebhook(
@@ -3997,7 +4032,7 @@ describe("Stakwork Run Service", () => {
         { workspace_id: "ws-1", feature_id: "feature-1", type: "REQUIREMENTS" }
       );
 
-      expect(db.task.create).toHaveBeenCalledWith({
+      expect(db.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ branch: null }),
       });
     });
@@ -4047,11 +4082,11 @@ describe("Stakwork Run Service", () => {
     };
 
     test("should include swarm, GitHub, repo, and history vars in Stakwork payload (fully configured)", async () => {
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4095,11 +4130,11 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should pass history: [] when no prior whiteboard messages exist (first message)", async () => {
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4117,7 +4152,7 @@ describe("Stakwork Run Service", () => {
         currentMessageId: "msg-first",
       });
 
-      expect(mockedDb.whiteboardMessage.findMany).toHaveBeenCalledWith({
+      expect(mockedDb.whiteboard_messages.findMany).toHaveBeenCalledWith({
         where: { whiteboardId: "wb-1", id: { not: "msg-first" } },
         orderBy: { createdAt: "asc" },
         select: { role: true, content: true },
@@ -4134,11 +4169,11 @@ describe("Stakwork Run Service", () => {
         { role: "USER", content: "Follow-up question" },
       ];
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue(priorMessages);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue(priorMessages);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4172,14 +4207,14 @@ describe("Stakwork Run Service", () => {
         repositories: [],
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(minimalWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue({
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(minimalWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue({
         id: "user-1",
         githubAuth: null,
       });
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4217,11 +4252,11 @@ describe("Stakwork Run Service", () => {
         swarm: { ...baseWorkspace.swarm, poolName: null, id: "swarm-fallback-id" },
       };
 
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(workspaceNoPoolName);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(workspaceNoPoolName);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4244,11 +4279,11 @@ describe("Stakwork Run Service", () => {
     });
 
     test("should pass history: [] and skip whiteboardMessage query when currentMessageId is omitted", async () => {
-      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
-      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
-      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
-      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
-      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+      mockedDb.workspaces.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.users.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboard_messages.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakwork_runs.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakwork_runs.update = vi.fn().mockResolvedValue(baseRunUpdated);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 99999 },
@@ -4266,7 +4301,7 @@ describe("Stakwork Run Service", () => {
         // no currentMessageId (called from feature generate route)
       });
 
-      expect(mockedDb.whiteboardMessage.findMany).not.toHaveBeenCalled();
+      expect(mockedDb.whiteboard_messages.findMany).not.toHaveBeenCalled();
 
       const callArgs = mockStakworkRequest.mock.calls[0][1];
       expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([]);
@@ -4315,14 +4350,14 @@ describe("extractDiagramData — payload format variants", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     const mockedDb = vi.mocked(db) as any;
-    mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(baseRun);
-    mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(baseWhiteboard);
-    mockedDb.whiteboard.findFirst = vi.fn().mockResolvedValue(null);
-    mockedDb.whiteboard.update = vi.fn().mockResolvedValue(baseWhiteboard);
-    mockedDb.whiteboardVersion.count = vi.fn().mockResolvedValue(0);
-    mockedDb.whiteboardVersion.create = vi.fn().mockResolvedValue({});
-    mockedDb.whiteboardVersion.findFirst = vi.fn().mockResolvedValue(null);
+    mockedDb.stakwork_runs.findFirst = vi.fn().mockResolvedValue(baseRun);
+    mockedDb.stakwork_runs.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    mockedDb.whiteboards.findUnique = vi.fn().mockResolvedValue(baseWhiteboard);
+    mockedDb.whiteboards.findFirst = vi.fn().mockResolvedValue(null);
+    mockedDb.whiteboards.update = vi.fn().mockResolvedValue(baseWhiteboard);
+    mockedDb.whiteboard_versions.count = vi.fn().mockResolvedValue(0);
+    mockedDb.whiteboard_versions.create = vi.fn().mockResolvedValue({});
+    mockedDb.whiteboard_versions.findFirst = vi.fn().mockResolvedValue(null);
     vi.mocked(pusherServer.trigger).mockResolvedValue(undefined as any);
     vi.mocked(relayoutDiagram).mockResolvedValue({
       elements: [{ id: "layouted-el", type: "rectangle", customData: { source: "ai" } }] as any,

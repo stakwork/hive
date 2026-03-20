@@ -4,24 +4,24 @@
 import { db } from "@/lib/db";
 
 export async function countWorkspaces(): Promise<number> {
-  return db.workspace.count();
+  return db.workspaces.count();
 }
 
 export async function countWorkspaceMembers(
   workspaceId: string,
 ): Promise<number> {
-  return db.workspaceMember.count({
-    where: { workspaceId, leftAt: null },
+  return db.workspace_members.count({
+    where: { workspaceId,left_at: null },
   });
 }
 
 export async function getWorkspaceWithRelations(workspaceId: string) {
-  return db.workspace.findUnique({
+  return db.workspaces.findUnique({
     where: { id: workspaceId },
     include: {
       owner: true,
       members: {
-        where: { leftAt: null },
+        where: {left_at: null },
         include: { user: true },
       },
       swarm: true,
@@ -31,7 +31,7 @@ export async function getWorkspaceWithRelations(workspaceId: string) {
 }
 
 export async function workspaceSlugExists(slug: string): Promise<boolean> {
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { slug },
   });
 
@@ -39,25 +39,25 @@ export async function workspaceSlugExists(slug: string): Promise<boolean> {
 }
 
 export async function deleteWorkspace(workspaceId: string) {
-  await db.workspace.delete({
+  await db.workspaces.delete({
     where: { id: workspaceId },
   });
 }
 
 export async function deleteUser(userId: string) {
-  await db.user.delete({
+  await db.users.delete({
     where: { id: userId },
   });
 }
 
 export async function deleteWorkspaces(workspaceIds: string[]) {
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
 }
 
 export async function deleteUsers(userIds: string[]) {
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }
@@ -72,28 +72,28 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
-    await db.screenshot.deleteMany();
-    await db.attachment.deleteMany();
-    await db.artifact.deleteMany();
-    await db.chatMessage.deleteMany();
-    await db.deployment.deleteMany();
+    await db.screenshots.deleteMany();
+    await db.attachments.deleteMany();
+    await db.artifacts.deleteMany();
+    await db.chat_messages.deleteMany();
+    await db.deployments.deleteMany();
     // notificationTrigger may not exist in older schema versions; swallow if missing
-    try { await db.notificationTrigger.deleteMany(); } catch { /* table may not exist */ }
-    await db.task.deleteMany();
-    await db.janitorRecommendation.deleteMany();
-    await db.janitorRun.deleteMany();
-    await db.janitorConfig.deleteMany();
-    await db.repository.deleteMany();
-    await db.pod.deleteMany();
-    await db.swarm.deleteMany();
-    await db.workspaceMember.deleteMany();
-    await db.workspace.deleteMany();
-    await db.session.deleteMany();
-    await db.account.deleteMany();
-    await db.gitHubAuth.deleteMany();
-    await db.sourceControlToken.deleteMany();
-    await db.sourceControlOrg.deleteMany();
-    await db.user.deleteMany();
+    try { await db.notification_triggers.deleteMany(); } catch { /* table may not exist */ }
+    await db.tasks.deleteMany();
+    await db.janitor_recommendations.deleteMany();
+    await db.janitor_runs.deleteMany();
+    await db.janitor_configs.deleteMany();
+    await db.repositories.deleteMany();
+    await db.pods.deleteMany();
+    await db.swarms.deleteMany();
+    await db.workspace_members.deleteMany();
+    await db.workspaces.deleteMany();
+    await db.sessions.deleteMany();
+    await db.accounts.deleteMany();
+    await db.github_auth.deleteMany();
+    await db.source_control_tokens.deleteMany();
+    await db.source_control_orgs.deleteMany();
+    await db.users.deleteMany();
   } catch {
     await aggressiveReset();
   }

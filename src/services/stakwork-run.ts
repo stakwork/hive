@@ -43,7 +43,7 @@ export async function getFeatureRunHistory(
   featureId: string,
   type: StakworkRunType
 ): Promise<Array<{ role: "assistant" | "user"; content: string }>> {
-  const runs = await db.stakworkRun.findMany({
+  const runs = await db.stakwork_runs.findMany({
     where: {
       featureId,
       type,
@@ -90,7 +90,7 @@ export async function createStakworkRun(
   userId: string
 ) {
   // Validate workspace access and fetch related data
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: input.workspaceId },
     select: {
       id: true,
@@ -143,7 +143,7 @@ export async function createStakworkRun(
 
   // Guard: prevent duplicate TASK_GENERATION runs
   if (input.featureId && input.type === StakworkRunType.TASK_GENERATION) {
-    const activeRun = await db.stakworkRun.findFirst({
+    const activeRun = await db.stakwork_runs.findFirst({
       where: {
         featureId: input.featureId,
         type: input.type,
@@ -174,7 +174,7 @@ export async function createStakworkRun(
       : null;
 
   // Get user info for username
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
     include: {
       githubAuth: {
@@ -191,7 +191,7 @@ export async function createStakworkRun(
   let featureContext: ReturnType<typeof buildFeatureContext> | null = null;
 
   if (input.featureId) {
-    const feature = await db.feature.findFirst({
+    const feature = await db.features.findFirst({
       where: {
         id: input.featureId,
         workspaceId: input.workspaceId,
@@ -240,7 +240,7 @@ export async function createStakworkRun(
   const baseUrl = getBaseUrl();
 
   // Create initial run to get ID
-  let run = await db.stakworkRun.create({
+  let run = await db.stakwork_runs.create({
     data: {
       type: input.type,
       workspaceId: input.workspaceId,
@@ -257,7 +257,7 @@ export async function createStakworkRun(
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${input.type}&workspace_id=${input.workspaceId}${input.featureId ? `&feature_id=${input.featureId}` : ""}`;
 
   // Update run with webhookUrl
-  await db.stakworkRun.update({
+  await db.stakwork_runs.update({
     where: { id: run.id },
     data: { webhookUrl },
   });
@@ -353,7 +353,7 @@ export async function createStakworkRun(
     }
 
     // Step 4: Update DB record with projectId and set status to IN_PROGRESS
-    run = await db.stakworkRun.update({
+    run = await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         projectId,
@@ -364,7 +364,7 @@ export async function createStakworkRun(
     return run;
   } catch (error) {
     // Update status to FAILED if Stakwork call fails
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         status: WorkflowStatus.FAILED,
@@ -390,7 +390,7 @@ export async function createDiagramStakworkRun(input: {
   currentMessageId?: string;
 }) {
   // Validate workspace access and fetch related credentials
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: input.workspaceId },
     select: {
       id: true,
@@ -443,7 +443,7 @@ export async function createDiagramStakworkRun(input: {
     )
     : null;
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: input.userId },
     include: {
       githubAuth: {
@@ -455,7 +455,7 @@ export async function createDiagramStakworkRun(input: {
 
   // Fetch whiteboard message history excluding the just-created message
   const whiteboardHistory = input.currentMessageId
-    ? await db.whiteboardMessage.findMany({
+    ? await db.whiteboard_messages.findMany({
       where: {
         whiteboardId: input.whiteboardId,
         id: { not: input.currentMessageId },
@@ -472,7 +472,7 @@ export async function createDiagramStakworkRun(input: {
   const baseUrl = getBaseUrl();
 
   // Create DB record with PENDING status
-  let run = await db.stakworkRun.create({
+  let run = await db.stakwork_runs.create({
     data: {
       type: StakworkRunType.DIAGRAM_GENERATION,
       workspaceId: input.workspaceId,
@@ -487,7 +487,7 @@ export async function createDiagramStakworkRun(input: {
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${input.workspaceId}&whiteboard_id=${input.whiteboardId}&layout=${input.layout}${input.featureId ? `&feature_id=${input.featureId}` : ''}`;
   const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
 
-  await db.stakworkRun.update({
+  await db.stakwork_runs.update({
     where: { id: run.id },
     data: { webhookUrl },
   });
@@ -541,7 +541,7 @@ export async function createDiagramStakworkRun(input: {
       throw new Error("Failed to get project ID from Stakwork");
     }
 
-    run = await db.stakworkRun.update({
+    run = await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         projectId,
@@ -551,7 +551,7 @@ export async function createDiagramStakworkRun(input: {
 
     return run;
   } catch (error) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
@@ -585,7 +585,7 @@ export function mergeWhiteboardElements(
  * Prunes oldest versions so the total stays at MAX_DIAGRAM_VERSIONS.
  */
 async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<void> {
-  const existing = await db.whiteboard.findUnique({
+  const existing = await db.whiteboards.findUnique({
     where: { id: whiteboardId },
     select: { elements: true, appState: true, files: true },
   });
@@ -602,7 +602,7 @@ async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<v
       minute: "2-digit",
     })}`;
 
-    await tx.whiteboardVersion.create({
+    await tx.whiteboard_versions.create({
       data: {
         whiteboardId,
         elements: existing.elements ?? [],
@@ -612,7 +612,7 @@ async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<v
       },
     });
 
-    const all = await tx.whiteboardVersion.findMany({
+    const all = await tx.whiteboard_versions.findMany({
       where: { whiteboardId },
       orderBy: { createdAt: "asc" },
       select: { id: true },
@@ -620,7 +620,7 @@ async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<v
 
     if (all.length > MAX_DIAGRAM_VERSIONS) {
       const toDelete = all.slice(0, all.length - MAX_DIAGRAM_VERSIONS);
-      await tx.whiteboardVersion.deleteMany({
+      await tx.whiteboard_versions.deleteMany({
         where: { id: { in: toDelete.map((v) => v.id) } },
       });
     }
@@ -755,7 +755,7 @@ export async function processStakworkRunWebhook(
   });
 
   // Find the run by webhookUrl or projectId
-  let run = await db.stakworkRun.findFirst({
+  let run = await db.stakwork_runs.findFirst({
     where: {
       OR: [
         { projectId: project_id || undefined },
@@ -826,7 +826,7 @@ export async function processStakworkRunWebhook(
   // Step 1: Atomic update to prevent race conditions
   // Include COMPLETED in the status filter so the result webhook can still
   // write data even if the status-only webhook (/api/stakwork/webhook) arrived first.
-  const updateResult = await db.stakworkRun.updateMany({
+  const updateResult = await db.stakwork_runs.updateMany({
     where: {
       id: run.id,
       status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
@@ -886,10 +886,10 @@ export async function processStakworkRunWebhook(
         logger.info("[diagram] Clarifying questions response detected — skipping diagram generation", "stakwork-run", { whiteboard_id, feature_id });
         const targetWhiteboardId = whiteboard_id
           ?? (feature_id
-            ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id
+            ? (await db.whiteboards.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id
             : null);
         if (targetWhiteboardId) {
-          const assistantMessage = await db.whiteboardMessage.create({
+          const assistantMessage = await db.whiteboard_messages.create({
             data: {
               whiteboardId: targetWhiteboardId,
               role: "ASSISTANT",
@@ -931,13 +931,13 @@ export async function processStakworkRunWebhook(
 
       if (feature_id) {
         // Feature-linked path: upsert whiteboard by featureId
-        const feature = await db.feature.findUnique({
+        const feature = await db.features.findUnique({
           where: { id: feature_id },
           select: { title: true },
         });
 
         // Snapshot existing whiteboard before AI overwrites it, and fetch existing elements for merge
-        const existingByFeature = await db.whiteboard.findUnique({
+        const existingByFeature = await db.whiteboards.findUnique({
           where: { featureId: feature_id },
           select: { id: true, elements: true },
         });
@@ -959,7 +959,7 @@ export async function processStakworkRunWebhook(
           featureAiElements = offsetExcalidrawElements(featureAiElements, offsetX - aiMinX, offsetY - aiMinY);
         }
 
-        await db.whiteboard.upsert({
+        await db.whiteboards.upsert({
           where: { featureId: feature_id },
           update: {
             elements: mergeWhiteboardElements(
@@ -980,7 +980,7 @@ export async function processStakworkRunWebhook(
         });
         logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
 
-        upsertedWhiteboard = await db.whiteboard.findUnique({
+        upsertedWhiteboard = await db.whiteboards.findUnique({
           where: { featureId: feature_id },
           select: { id: true },
         });
@@ -989,7 +989,7 @@ export async function processStakworkRunWebhook(
         await snapshotWhiteboardBeforeAiUpdate(whiteboard_id);
 
         // Fetch existing elements before overwriting so we can preserve user content
-        const existingWhiteboard = await db.whiteboard.findUnique({
+        const existingWhiteboard = await db.whiteboards.findUnique({
           where: { id: whiteboard_id },
           select: { elements: true },
         });
@@ -1007,7 +1007,7 @@ export async function processStakworkRunWebhook(
           standaloneAiElements = offsetExcalidrawElements(standaloneAiElements, offsetX - aiMinX, offsetY - aiMinY);
         }
 
-        await db.whiteboard.update({
+        await db.whiteboards.update({
           where: { id: whiteboard_id },
           data: {
             elements: mergeWhiteboardElements(
@@ -1020,7 +1020,7 @@ export async function processStakworkRunWebhook(
         });
         logger.info("[diagram] Whiteboard updated successfully", "stakwork-run", { whiteboard_id });
 
-        upsertedWhiteboard = await db.whiteboard.findUnique({
+        upsertedWhiteboard = await db.whiteboards.findUnique({
           where: { id: whiteboard_id },
           select: { id: true },
         });
@@ -1028,7 +1028,7 @@ export async function processStakworkRunWebhook(
 
       // Persist ASSISTANT message and broadcast via Pusher
       if (upsertedWhiteboard) {
-        const assistantMessage = await db.whiteboardMessage.create({
+        const assistantMessage = await db.whiteboard_messages.create({
           data: {
             whiteboardId: upsertedWhiteboard.id,
             role: "ASSISTANT",
@@ -1054,11 +1054,11 @@ export async function processStakworkRunWebhook(
 
       // Notify the user so the chat panel clears the spinner
       const errorWhiteboardId = whiteboard_id
-        ?? (feature_id ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id : null);
+        ?? (feature_id ? (await db.whiteboards.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id : null);
 
       if (errorWhiteboardId) {
         try {
-          const errorMessage = await db.whiteboardMessage.create({
+          const errorMessage = await db.whiteboard_messages.create({
             data: {
               whiteboardId: errorWhiteboardId,
               role: "ASSISTANT",
@@ -1097,7 +1097,7 @@ export async function processStakworkRunWebhook(
   // Step 3: Auto-accept if flag is set and run completed successfully
   if (run.autoAccept && status === WorkflowStatus.COMPLETED && run.featureId && serializedResult) {
     try {
-      await db.stakworkRun.update({
+      await db.stakwork_runs.update({
         where: { id: run.id },
         data: { decision: StakworkRunDecision.ACCEPTED },
       });
@@ -1218,7 +1218,7 @@ async function notifyFastTrackFailureViaSphinx(
 
     // Check if creator has Sphinx alias
     const creator = feature?.createdById
-      ? await db.user.findUnique({ where: { id: feature.createdById }, select: { sphinxAlias: true } })
+      ? await db.users.findUnique({ where: { id: feature.createdById }, select: { sphinxAlias: true } })
       : null;
 
     if (!creator?.sphinxAlias) {
@@ -1257,7 +1257,7 @@ export async function getStakworkRuns(
   userId: string
 ) {
   // Validate workspace access
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: query.workspaceId },
     select: {
       id: true,
@@ -1290,10 +1290,10 @@ export async function getStakworkRuns(
   };
 
   // Get total count
-  const total = await db.stakworkRun.count({ where });
+  const total = await db.stakwork_runs.count({ where });
 
   // Get paginated runs
-  const runs = await db.stakworkRun.findMany({
+  const runs = await db.stakwork_runs.findMany({
     where,
     orderBy: { createdAt: "desc" },
     skip: query.offset,
@@ -1326,7 +1326,7 @@ async function applyAcceptResult(
 ) {
   switch (run.type) {
     case StakworkRunType.ARCHITECTURE:
-      await db.feature.update({
+      await db.features.update({
         where: { id: run.featureId },
         data: { architecture: run.result },
       });
@@ -1335,7 +1335,7 @@ async function applyAcceptResult(
     case StakworkRunType.TASK_GENERATION: {
       const tasksData = JSON.parse(run.result);
 
-      const featureWithPhase = await db.feature.findUnique({
+      const featureWithPhase = await db.features.findUnique({
         where: { id: run.featureId },
         select: {
           isFastTrack: true,
@@ -1361,7 +1361,7 @@ async function applyAcceptResult(
       const isFastTrack = featureWithPhase.isFastTrack ?? false;
 
       // Build URL→ID map for multi-repo task assignment
-      const repos = await db.repository.findMany({
+      const repos = await db.repositories.findMany({
         where: { workspaceId: featureWithPhase.workspace.id },
         select: { id: true, repositoryUrl: true },
       });
@@ -1379,7 +1379,7 @@ async function applyAcceptResult(
         // Resolve repositoryId from repoUrl if provided by AI, fallback to first repo
         const repositoryId = (task.repoUrl && repoUrlToId.get(task.repoUrl)) || firstRepoId;
 
-        const createdTask = await db.task.create({
+        const createdTask = await db.tasks.create({
           data: {
             title: task.title,
             description: task.description || null,
@@ -1404,7 +1404,7 @@ async function applyAcceptResult(
     }
 
     case StakworkRunType.REQUIREMENTS:
-      await db.feature.update({
+      await db.features.update({
         where: { id: run.featureId },
         data: { requirements: run.result },
       });
@@ -1446,7 +1446,7 @@ export async function updateStakworkRunDecision(
   userId: string,
   input: UpdateStakworkRunDecisionInput
 ) {
-  const run = await db.stakworkRun.findUnique({
+  const run = await db.stakwork_runs.findUnique({
     where: { id: runId },
     include: {
       workspace: {
@@ -1487,7 +1487,7 @@ export async function updateStakworkRunDecision(
 
   // If ACCEPTED, validate and verify the feature exists
   if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: input.featureId },
       select: { id: true, workspaceId: true },
     });
@@ -1515,7 +1515,7 @@ export async function updateStakworkRunDecision(
   }
 
   // Update the decision
-  const updatedRun = await db.stakworkRun.update({
+  const updatedRun = await db.stakwork_runs.update({
     where: { id: runId },
     data: updateData,
   });
@@ -1643,7 +1643,7 @@ export async function stopStakworkRun(
   userId: string,
 ) {
   // Query run with workspace access validation
-  const run = await db.stakworkRun.findUnique({
+  const run = await db.stakwork_runs.findUnique({
     where: { id: runId },
     include: {
       workspace: {
@@ -1690,7 +1690,7 @@ export async function stopStakworkRun(
   }
 
   // Optimistically update the run
-  const updatedRun = await db.stakworkRun.update({
+  const updatedRun = await db.stakwork_runs.update({
     where: { id: runId },
     data: {
       status: WorkflowStatus.HALTED,

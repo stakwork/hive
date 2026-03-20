@@ -5,11 +5,9 @@ import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findFirst: vi.fn(),
     },
   },
@@ -79,11 +77,11 @@ describe("getWorkspaceById - Unit Tests", () => {
     test("should return workspace with owner access when user is owner", async () => {
       const userId = "owner-123";
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
 
       const result = await getWorkspaceById("ws-123", userId);
 
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: {
           id: "ws-123",
           deleted: false,
@@ -154,7 +152,7 @@ describe("getWorkspaceById - Unit Tests", () => {
 
       // When an empty string is passed, encryption service returns it as-is (fallback behavior)
       mockEncryptionService.decryptField.mockReturnValue("");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutKey);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithoutKey);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -169,7 +167,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutSwarm);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithoutSwarm);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -188,7 +186,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithInactiveSwarm);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithInactiveSwarm);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -204,7 +202,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutRepos);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithoutRepos);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -235,12 +233,12 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(memberWorkspace);
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMembership);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(memberWorkspace);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(mockMembership);
 
       const result = await getWorkspaceById("ws-123", userId);
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws-123",
           userId: "member-123",
@@ -305,8 +303,8 @@ describe("getWorkspaceById - Unit Tests", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-        (db.workspace.findFirst as Mock).mockResolvedValue(memberWorkspace);
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMembership);
+        (db.workspaces.findFirst as Mock).mockResolvedValue(memberWorkspace);
+        (db.workspace_members.findFirst as Mock).mockResolvedValue(mockMembership);
 
         const result = await getWorkspaceById("ws-123", userId);
 
@@ -318,17 +316,17 @@ describe("getWorkspaceById - Unit Tests", () => {
   describe("Access Denied Scenarios", () => {
     test("should return null when workspace does not exist", async () => {
       const userId = "any-user-123";
-      (db.workspace.findFirst as Mock).mockResolvedValue(null);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(null);
 
       const result = await getWorkspaceById("non-existent-ws", userId);
 
       expect(result).toBeNull();
-      expect(db.workspaceMember.findFirst).not.toHaveBeenCalled();
+      expect(db.workspace_members.findFirst).not.toHaveBeenCalled();
     });
 
     test("should return null when workspace is deleted", async () => {
       const userId = "any-user-123";
-      (db.workspace.findFirst as Mock).mockResolvedValue(null); // Prisma query excludes deleted workspaces
+      (db.workspaces.findFirst as Mock).mockResolvedValue(null); // Prisma query excludes deleted workspaces
 
       const result = await getWorkspaceById("deleted-ws", userId);
 
@@ -342,12 +340,12 @@ describe("getWorkspaceById - Unit Tests", () => {
         ownerId: "different-owner-123",
       };
 
-      (db.workspace.findFirst as Mock).mockResolvedValue(memberWorkspace);
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null); // No membership found
+      (db.workspaces.findFirst as Mock).mockResolvedValue(memberWorkspace);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null); // No membership found
 
       const result = await getWorkspaceById("ws-123", userId);
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws-123",
           userId: "unauthorized-user-123",
@@ -365,8 +363,8 @@ describe("getWorkspaceById - Unit Tests", () => {
         ownerId: "different-owner-123",
       };
 
-      (db.workspace.findFirst as Mock).mockResolvedValue(memberWorkspace);
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null); // No active membership (leftAt is not null)
+      (db.workspaces.findFirst as Mock).mockResolvedValue(memberWorkspace);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null); // No active membership (leftAt is not null)
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -378,7 +376,7 @@ describe("getWorkspaceById - Unit Tests", () => {
     test("should handle database connection errors", async () => {
       const userId = "any-user-123";
       const dbError = new Error("Database connection failed");
-      (db.workspace.findFirst as Mock).mockRejectedValue(dbError);
+      (db.workspaces.findFirst as Mock).mockRejectedValue(dbError);
 
       await expect(getWorkspaceById("ws-123", userId)).rejects.toThrow("Database connection failed");
     });
@@ -391,8 +389,8 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
       const membershipError = new Error("Membership query failed");
 
-      (db.workspace.findFirst as Mock).mockResolvedValue(memberWorkspace);
-      (db.workspaceMember.findFirst as Mock).mockRejectedValue(membershipError);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(memberWorkspace);
+      (db.workspace_members.findFirst as Mock).mockRejectedValue(membershipError);
 
       await expect(getWorkspaceById("ws-123", userId)).rejects.toThrow("Membership query failed");
     });
@@ -402,7 +400,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       mockEncryptionService.decryptField.mockImplementation(() => {
         throw new Error("Decryption failed");
       });
-      (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
 
       // Based on actual implementation, the encryption service isn't being called
       // so this test is no longer relevant for the current implementation
@@ -420,7 +418,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithNullDesc);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithNullDesc);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -435,7 +433,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithNullRepos);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithNullRepos);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -458,7 +456,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithDates);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithDates);
 
       const result = await getWorkspaceById("ws-123", userId);
 
@@ -471,12 +469,12 @@ describe("getWorkspaceById - Unit Tests", () => {
       const userId = "any-user-123";
 
       // Prisma will handle empty ID validation, but we test the function behavior
-      (db.workspace.findFirst as Mock).mockResolvedValue(null);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(null);
 
       const result = await getWorkspaceById("", userId);
 
       expect(result).toBeNull();
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: {
           id: "",
           deleted: false,
@@ -489,12 +487,12 @@ describe("getWorkspaceById - Unit Tests", () => {
       const userId = "";
 
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
-      (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
+      (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
 
       const result = await getWorkspaceById("ws-123", userId);
 
       // Since workspace ownerId doesn't match empty string, should check membership
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws-123",
           userId: "",

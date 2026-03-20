@@ -90,16 +90,12 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${generateUniqueId()}`,
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
-          vercelWebhookSecret: encryptedWebhookSecret,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,vercel_webhook_secret: encryptedWebhookSecret,
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
+        data: {workspace_id: workspace.id,user_id: user.id,
           role: "OWNER",
         },
       });
@@ -107,11 +103,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       let swarm = null;
       if (withSwarm) {
         swarm = await tx.swarm.create({
-          data: {
-            workspaceId: workspace.id,
-            name: `swarm-${generateUniqueId()}.example.com`,
-            swarmUrl: "https://test-swarm.example.com/api",
-            swarmApiKey: encryptedApiKey,
+          data: {workspace_id: workspace.id,
+            name: `swarm-${generateUniqueId()}.example.com`,swarm_url: "https://test-swarm.example.com/api",swarm_api_key: encryptedApiKey,
             status: "ACTIVE",
           },
         });
@@ -327,8 +320,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         `workspace-${workspace.slug}`,
         "highlight-nodes",
         expect.objectContaining({
-          nodeIds: ["endpoint-1"],
-          workspaceId: workspace.slug,
+          nodeIds: ["endpoint-1"],workspace_id: workspace.slug,
           title: "Health", // formatted from /api/health
         }),
       );
@@ -471,9 +463,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       const { workspace } = await createTestWorkspace();
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const logEntry = {

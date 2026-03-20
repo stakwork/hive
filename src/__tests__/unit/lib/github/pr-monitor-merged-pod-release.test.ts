@@ -12,16 +12,13 @@ vi.mock("@octokit/rest", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    $queryRaw: vi.fn(),
-    artifact: {
+    $queryRaw: vi.fn(),artifacts: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    task: {
+    },tasks: {
       update: vi.fn(),
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -102,7 +99,7 @@ describe("monitorOpenPRs - merged PR pod release fallback", () => {
       },
     ] as any);
 
-    vi.mocked(db.artifact.findUnique).mockResolvedValue({
+    vi.mocked(db.artifacts.findUnique).mockResolvedValue({
       content: {
         url: "https://github.com/stakwork/senza-lnd/pull/7632",
         repo: "stakwork/senza-lnd",
@@ -110,8 +107,8 @@ describe("monitorOpenPRs - merged PR pod release fallback", () => {
       },
     } as any);
 
-    vi.mocked(db.artifact.update).mockResolvedValue({} as any);
-    vi.mocked(db.task.update).mockResolvedValue({} as any);
+    vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
+    vi.mocked(db.tasks.update).mockResolvedValue({} as any);
     vi.mocked(releaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: true,
@@ -139,7 +136,7 @@ describe("monitorOpenPRs - merged PR pod release fallback", () => {
   it("releases the assigned pod when a merged PR is detected by the monitor", async () => {
     const stats = await monitorOpenPRs(20);
 
-    expect(db.task.update).toHaveBeenCalledWith({
+    expect(db.tasks.update).toHaveBeenCalledWith({
       where: { id: "task-123" },
       data: { status: "DONE" },
     });
@@ -153,7 +150,7 @@ describe("monitorOpenPRs - merged PR pod release fallback", () => {
       newWorkflowStatus: null,
     });
 
-    expect(db.artifact.update).toHaveBeenCalledWith({
+    expect(db.artifacts.update).toHaveBeenCalledWith({
       where: { id: "artifact-123" },
       data: {
         content: expect.objectContaining({

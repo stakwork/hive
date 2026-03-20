@@ -64,8 +64,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: "test-workspace",
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: "test-workspace",repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -87,8 +86,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: "test-workspace",
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: "test-workspace",repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -111,8 +109,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: "non-existent-workspace",
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: "non-existent-workspace",repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -135,8 +132,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -150,8 +146,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should return 400 for missing repository URL when workspace has no primary repository", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "no-repo-workspace",
         });
 
@@ -176,8 +171,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should return 400 for invalid GitHub repository URL format", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "invalid-url-workspace",
         });
 
@@ -188,8 +182,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.invalid,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.invalid,
           }
         );
 
@@ -203,8 +196,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should return 400 for malformed repository URL", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "malformed-workspace",
         });
 
@@ -215,8 +207,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.malformed,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.malformed,
           }
         );
 
@@ -232,8 +223,7 @@ describe("GitHub App Install API Integration Tests", () => {
     describe("New installation flow", () => {
       test("should generate installation URL when app not installed", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "new-install-workspace",
         });
 
@@ -247,8 +237,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/test-owner/test-repo",
           }
         );
 
@@ -271,8 +260,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should generate installation URL with target_type=User for user repositories", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "user-repo-workspace",
         });
 
@@ -286,8 +274,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/someuser/personal-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/someuser/personal-repo",
           }
         );
 
@@ -303,8 +290,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should support HTTPS repository URL format", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "https-workspace",
         });
 
@@ -317,8 +303,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -332,8 +317,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should support SSH repository URL format", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "ssh-workspace",
         });
 
@@ -346,8 +330,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.ssh,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.ssh,
           }
         );
 
@@ -361,8 +344,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should support repository URL with .git suffix", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "git-suffix-workspace",
         });
 
@@ -375,8 +357,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.httpsWithGit,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.httpsWithGit,
           }
         );
 
@@ -391,12 +372,10 @@ describe("GitHub App Install API Integration Tests", () => {
     describe("Existing installation detection", () => {
       test("should detect existing installation via database and return authorization URL", async () => {
         const { testUser, sourceControlOrg } = await createTestUserWithGitHubTokens({
-          githubOwner: "test-owner",
-          githubInstallationId: 12345678,
+          githubOwner: "test-owner",github_installation_id: 12345678,
         });
 
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "existing-install-workspace",
         });
 
@@ -407,8 +386,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/test-owner/test-repo",
           }
         );
 
@@ -428,8 +406,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should detect existing installation via GitHub API when user has tokens", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "api-check-workspace",
         });
 
@@ -438,8 +415,7 @@ describe("GitHub App Install API Integration Tests", () => {
         );
 
         // Mock getUserAppTokens to return a token
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken: "test_token_123",
+        vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "test_token_123",
         });
 
         // Mock GitHub API response for user type check
@@ -468,8 +444,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/test-owner/test-repo",
           }
         );
 
@@ -496,8 +471,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should handle organization repositories via GitHub API", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "org-repo-workspace",
         });
 
@@ -505,8 +479,7 @@ describe("GitHub App Install API Integration Tests", () => {
           createAuthenticatedSession(testUser)
         );
 
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken: "test_org_token",
+        vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "test_org_token",
         });
 
         // Mock user type check - org
@@ -535,8 +508,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-org/org-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/test-org/org-repo",
           }
         );
 
@@ -561,8 +533,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should handle case when GitHub API returns 404 for installation check", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "no-install-workspace",
         });
 
@@ -570,8 +541,7 @@ describe("GitHub App Install API Integration Tests", () => {
           createAuthenticatedSession(testUser)
         );
 
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken: "test_token",
+        vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "test_token",
         });
 
         // Mock user type check
@@ -594,8 +564,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            workspaceSlug: workspace.slug,repository_url: "https://github.com/test-owner/test-repo",
           }
         );
 
@@ -616,8 +585,7 @@ describe("GitHub App Install API Integration Tests", () => {
         delete process.env.GITHUB_APP_SLUG;
 
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "config-error-workspace",
         });
 
@@ -628,8 +596,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -643,8 +610,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should handle GitHub API network errors gracefully", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "network-error-workspace",
         });
 
@@ -652,8 +618,7 @@ describe("GitHub App Install API Integration Tests", () => {
           createAuthenticatedSession(testUser)
         );
 
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken: "test_token",
+        vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "test_token",
         });
 
         // Mock network error
@@ -662,8 +627,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -683,19 +647,17 @@ describe("GitHub App Install API Integration Tests", () => {
         );
 
         // Create workspace then delete it to cause database inconsistency
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "db-error-workspace",
         });
 
         const { db } = await import("@/lib/db");
-        await db.workspace.delete({ where: { id: workspace.id } });
+        await db.workspaces.delete({ where: { id: workspace.id } });
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -709,8 +671,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should handle getUserAppTokens returning null", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "no-tokens-workspace",
         });
 
@@ -723,8 +684,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -740,8 +700,7 @@ describe("GitHub App Install API Integration Tests", () => {
     describe("State token generation", () => {
       test("should generate unique state tokens for each request", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "state-test-workspace",
         });
 
@@ -755,16 +714,14 @@ describe("GitHub App Install API Integration Tests", () => {
         const request1 = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
         const request2 = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -780,8 +737,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
       test("should include workspace slug and repository URL in state token", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "state-content-workspace",
         });
 
@@ -794,8 +750,7 @@ describe("GitHub App Install API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/app/install",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
+            workspaceSlug: workspace.slug,repository_url: testRepositoryUrls.https,
           }
         );
 

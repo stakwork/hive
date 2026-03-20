@@ -16,7 +16,7 @@ export async function updateStakgraphStatus(
   
   if (repositoryId) {
     // Update specific repository only
-    const repository = await db.repository.findUnique({
+    const repository = await db.repositories.findUnique({
       where: { id: repositoryId },
       select: { id: true, repositoryUrl: true, workspaceId: true },
     });
@@ -45,7 +45,7 @@ export async function updateStakgraphStatus(
     }),
 
     ...repositoriesToUpdate.map(repo =>
-      db.repository.update({
+      db.repositories.update({
         where: {
           repositoryUrl_workspaceId: {
             repositoryUrl: repo.repositoryUrl,

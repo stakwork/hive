@@ -46,10 +46,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("rejects unauthenticated requests", async () => {
       const { workspace, owner } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -65,7 +62,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectUnauthorized(response);
@@ -74,10 +71,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("rejects requests with invalid user session", async () => {
       const { workspace, owner } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -90,7 +84,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -101,10 +95,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("rejects non-workspace member access", async () => {
       const { workspace, owner } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -117,7 +108,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -126,10 +117,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("allows workspace owner access", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture description",
       });
 
@@ -151,7 +139,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -163,10 +151,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
         memberRole: "DEVELOPER",
       });
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -187,7 +172,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -196,15 +181,12 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("rejects access to deleted workspace", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: { deleted: true },
       });
@@ -216,7 +198,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -236,7 +218,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: nonExistentFeatureId }),
+        params: Promise.resolve({feature_id: nonExistentFeatureId }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -249,10 +231,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       const { workspace: workspace2, owner: owner2 } = await createTestWorkspaceScenario();
 
       // Feature belongs to workspace2
-      const feature = await createTestFeature({
-        workspaceId: workspace2.id,
-        createdById: owner2.id,
-        updatedById: owner2.id,
+      const feature = await createTestFeature({workspace_id: workspace2.id,created_by_id: owner2.id,updated_by_id: owner2.id,
         architecture: "Test architecture",
       });
 
@@ -264,7 +243,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -273,15 +252,12 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("returns 404 for deleted feature", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
       // Soft delete feature
-      await db.feature.update({
+      await db.features.update({
         where: { id: feature.id },
         data: { deleted: true },
       });
@@ -293,7 +269,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Deleted features are filtered in the query, so they appear as "not found"
@@ -304,10 +280,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("returns 400 when architecture text is missing", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: null, // No architecture text
       });
 
@@ -318,7 +291,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Architecture text required", 400);
@@ -327,10 +300,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("returns 400 when architecture text is empty string", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "   ", // Whitespace only
       });
 
@@ -341,7 +311,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Architecture text required", 400);
@@ -352,10 +322,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("generates diagram and returns S3 URL", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         title: "Diagram Feature",
         brief: "Feature for testing diagram generation",
         architecture: "Microservices architecture with API gateway, services, and database",
@@ -379,7 +346,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -395,10 +362,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("updates feature with diagram URL and S3 key", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture description",
       });
 
@@ -417,11 +381,11 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Verify database record updated
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -435,10 +399,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const architectureText = "API Gateway -> Microservices -> PostgreSQL Database";
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: architectureText,
       });
 
@@ -456,7 +417,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Verify Gemini called with architecture text
@@ -466,10 +427,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("uploads image buffer to S3 with correct parameters", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -488,7 +446,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Verify S3 upload called with correct parameters
@@ -504,10 +462,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles Gemini authentication errors", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -524,7 +479,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -537,10 +492,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles Gemini rate limit errors", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -557,7 +509,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -570,10 +522,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles Gemini invalid response errors", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -590,7 +539,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -603,10 +552,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles Gemini network errors", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -623,7 +569,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -636,10 +582,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles unknown Gemini errors", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -654,7 +597,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -669,10 +612,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles S3 upload failures", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -690,7 +630,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(
@@ -705,10 +645,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
     test("handles multiple concurrent requests for same feature", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         architecture: "Test architecture",
       });
 
@@ -734,7 +671,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       const responses = await Promise.all(
         requests.map((req) =>
           POST(req, {
-            params: Promise.resolve({ featureId: feature.id }),
+            params: Promise.resolve({feature_id: feature.id }),
           })
         )
       );
@@ -752,22 +689,13 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const features = await Promise.all([
-        createTestFeature({
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           architecture: "Architecture 1",
         }),
-        createTestFeature({
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           architecture: "Architecture 2",
         }),
-        createTestFeature({
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           architecture: "Architecture 3",
         }),
       ]);
@@ -791,7 +719,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
       const responses = await Promise.all(
         requests.map((req, idx) =>
           POST(req, {
-            params: Promise.resolve({ featureId: features[idx].id }),
+            params: Promise.resolve({feature_id: features[idx].id }),
           })
         )
       );
@@ -803,7 +731,7 @@ describe("POST /api/features/[featureId]/diagram/generate - Integration Tests", 
 
       // Verify all features updated
       for (const feature of features) {
-        const updated = await db.feature.findUnique({
+        const updated = await db.features.findUnique({
           where: { id: feature.id },
         });
         expect(updated?.diagramUrl).toBeTruthy();

@@ -37,30 +37,25 @@ describe("FEATURE_COMPLETED notification", () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    owner = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
+    owner = await db.users.create({
+      data: { email: "owner@test.com", name: "Owner",lightning_pubkey: "test-pubkey-owner" },
     });
-    assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
+    assignee = await db.users.create({
+      data: { email: "assignee@test.com", name: "Assignee",lightning_pubkey: "test-pubkey-assignee" },
     });
 
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    workspace = await createTestWorkspace({owner_id: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-complete",
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: owner.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: owner.id, role: "OWNER" },
     });
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "My Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        assigneeId: assignee.id,
+        title: "My Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: assignee.id,
         status: "IN_PROGRESS",
       },
     });
@@ -72,26 +67,16 @@ describe("FEATURE_COMPLETED notification", () => {
 
   it("creates a FEATURE_COMPLETED notification when all tasks are DONE", async () => {
     // Create tasks that are all DONE with COMPLETED workflow status
-    await db.task.create({
+    await db.tasks.create({
       data: {
-        title: "Task 1",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
+        title: "Task 1",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
+        status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
       },
     });
-    await db.task.create({
+    await db.tasks.create({
       data: {
-        title: "Task 2",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
+        title: "Task 2",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
+        status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
       },
     });
 
@@ -100,10 +85,9 @@ describe("FEATURE_COMPLETED notification", () => {
     // Give async fire-and-forget a moment to settle
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
-        notificationType: NotificationTriggerType.FEATURE_COMPLETED,
-        featureId: feature.id,
+        notificationType: NotificationTriggerType.FEATURE_COMPLETED,feature_id: feature.id,
       },
     });
 
@@ -117,30 +101,24 @@ describe("FEATURE_COMPLETED notification", () => {
 
   it("falls back to createdById when feature has no assignee", async () => {
     // Remove assignee
-    await db.feature.update({
+    await db.features.update({
       where: { id: feature.id },
-      data: { assigneeId: null },
+      data: {assignee_id: null },
     });
 
-    await db.task.create({
+    await db.tasks.create({
       data: {
-        title: "Task 1",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
+        title: "Task 1",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
+        status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
       },
     });
 
     await updateFeatureStatusFromTasks(feature.id);
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
-        notificationType: NotificationTriggerType.FEATURE_COMPLETED,
-        featureId: feature.id,
+        notificationType: NotificationTriggerType.FEATURE_COMPLETED,feature_id: feature.id,
       },
     });
 

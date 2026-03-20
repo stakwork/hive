@@ -20,8 +20,7 @@ import {
 
 // Mock dependencies
 vi.mock("@/lib/db", () => ({
-  db: {
-    sourceControlToken: {
+  db: {source_control_tokens: {
       findFirst: vi.fn(),
     },
   },
@@ -61,7 +60,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: "encrypted-refresh",
       };
 
-      mockDb.sourceControlToken.findFirst.mockResolvedValue(mockTokenData);
+      mockDb.source_control_tokens.findFirst.mockResolvedValue(mockTokenData);
 
       global.fetch = vi.fn().mockResolvedValue(
         mockGitHubApiResponses.installationRepositoriesSuccess([
@@ -72,7 +71,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(result).toBe(true);
-      expect(mockDb.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(mockDb.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: testUserId,
           sourceControlOrg: {
@@ -87,7 +86,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false when no tokens found", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue(null);
+      mockDb.source_control_tokens.findFirst.mockResolvedValue(null);
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -96,7 +95,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false when token field is null", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: null,
         refreshToken: "encrypted-refresh",
       });
@@ -108,7 +107,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should handle decryption errors gracefully", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: "encrypted-refresh",
       });
@@ -133,7 +132,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
   describe("URL Parsing", () => {
     test("should parse HTTPS GitHub URL", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -154,7 +153,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should parse SSH GitHub URL", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -171,7 +170,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false for invalid URL: gitlab.com", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -183,7 +182,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false for invalid URL: empty", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -195,7 +194,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false for invalid URL: malformed", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -209,7 +208,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
   describe("GitHub Installation API", () => {
     beforeEach(() => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -298,7 +297,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
   describe("Repository Matching", () => {
     beforeEach(() => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -386,7 +385,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
   describe("Edge Cases", () => {
     test("should handle missing installationId parameter", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -403,7 +402,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should handle different installation IDs", async () => {
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -434,7 +433,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         mockGitHubApiResponses.installationRepositoriesSuccess(largeReposList),
       );
 
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });
@@ -454,7 +453,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         }),
       });
 
-      mockDb.sourceControlToken.findFirst.mockResolvedValue({
+      mockDb.source_control_tokens.findFirst.mockResolvedValue({
         token: "encrypted-token",
         refreshToken: null,
       });

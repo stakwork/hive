@@ -46,7 +46,7 @@ export async function PATCH(
     }
 
     // Find repository and verify user has access via workspace membership
-    const repository = await db.repository.findUnique({
+    const repository = await db.repositories.findUnique({
       where: { id },
       include: {
         workspace: {
@@ -101,7 +101,7 @@ export async function PATCH(
     const settings = validationResult.data;
 
     // Update repository settings
-    const updatedRepository = await db.repository.update({
+    const updatedRepository = await db.repositories.update({
       where: { id },
       data: {
         ...(settings.codeIngestionEnabled !== undefined && {
@@ -180,7 +180,7 @@ export async function GET(
     }
 
     // Find repository and verify user has access
-    const repository = await db.repository.findUnique({
+    const repository = await db.repositories.findUnique({
       where: { id },
       include: {
         workspace: {

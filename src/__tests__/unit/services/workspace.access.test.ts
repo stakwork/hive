@@ -6,11 +6,9 @@ import { WorkspaceRole } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findFirst: vi.fn(),
     },
   },
@@ -56,7 +54,7 @@ describe("Workspace Access Validation", () => {
         updatedAt: "2024-01-01T00:00:00.000Z",
       };
 
-      mockedDb.workspace.findFirst.mockResolvedValue({
+      mockedDb.workspaces.findFirst.mockResolvedValue({
         ...mockWorkspace,
         createdAt: new Date("2024-01-01"),
         updatedAt: new Date("2024-01-01"),
@@ -85,7 +83,7 @@ describe("Workspace Access Validation", () => {
     });
 
     test("should return no access for invalid user", async () => {
-      mockedDb.workspace.findFirst.mockResolvedValue(null);
+      mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
       const result = await validateWorkspaceAccess("test-workspace", "user1");
 
@@ -125,7 +123,7 @@ describe("Workspace Access Validation", () => {
       test("should return full permissions for workspace owner", async () => {
         const userId = "owner-123";
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(mockWorkspaceData);
+        mockedDb.workspaces.findFirst.mockResolvedValue(mockWorkspaceData);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -165,8 +163,8 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -206,8 +204,8 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -247,8 +245,8 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -288,8 +286,8 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -329,8 +327,8 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -356,7 +354,7 @@ describe("Workspace Access Validation", () => {
     describe("Access Denied Scenarios", () => {
       test("should return no access when workspace does not exist", async () => {
         const userId = "any-user-123";
-        mockedDb.workspace.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("non-existent-ws", userId);
 
@@ -366,13 +364,13 @@ describe("Workspace Access Validation", () => {
           canWrite: false,
           canAdmin: false,
         });
-        expect(mockedDb.workspaceMember.findFirst).not.toHaveBeenCalled();
+        expect(mockedDb.workspace_members.findFirst).not.toHaveBeenCalled();
       });
 
       test("should return no access when workspace is deleted", async () => {
         const userId = "any-user-123";
         // Prisma query excludes deleted workspaces via where clause
-        mockedDb.workspace.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("deleted-ws", userId);
 
@@ -391,12 +389,12 @@ describe("Workspace Access Validation", () => {
           ownerId: "different-owner-123",
         };
 
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
-        expect(mockedDb.workspaceMember.findFirst).toHaveBeenCalledWith({
+        expect(mockedDb.workspace_members.findFirst).toHaveBeenCalledWith({
           where: {
             workspaceId: "ws-123",
             userId: "unauthorized-user-123",
@@ -419,8 +417,8 @@ describe("Workspace Access Validation", () => {
           ownerId: "different-owner-123",
         };
 
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(null); // leftAt is not null, so no membership found
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(null); // leftAt is not null, so no membership found
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -436,7 +434,7 @@ describe("Workspace Access Validation", () => {
     describe("Edge Cases", () => {
       test("should handle null workspace ID", async () => {
         const userId = "any-user-123";
-        mockedDb.workspace.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById(null as any, userId);
 
@@ -450,7 +448,7 @@ describe("Workspace Access Validation", () => {
 
       test("should handle undefined workspace ID", async () => {
         const userId = "any-user-123";
-        mockedDb.workspace.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById(undefined as any, userId);
 
@@ -464,7 +462,7 @@ describe("Workspace Access Validation", () => {
 
       test("should handle empty workspace ID", async () => {
         const userId = "any-user-123";
-        mockedDb.workspace.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("", userId);
 
@@ -478,13 +476,13 @@ describe("Workspace Access Validation", () => {
 
       test("should handle null user ID", async () => {
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(mockWorkspaceData);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(mockWorkspaceData);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("ws-123", null as any);
 
         // Since workspace ownerId doesn't match null, should check membership
-        expect(mockedDb.workspaceMember.findFirst).toHaveBeenCalled();
+        expect(mockedDb.workspace_members.findFirst).toHaveBeenCalled();
         expect(result).toEqual({
           hasAccess: false,
           canRead: false,
@@ -495,13 +493,13 @@ describe("Workspace Access Validation", () => {
 
       test("should handle undefined user ID", async () => {
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(mockWorkspaceData);
-        mockedDb.workspaceMember.findFirst.mockResolvedValue(null);
+        mockedDb.workspaces.findFirst.mockResolvedValue(mockWorkspaceData);
+        mockedDb.workspace_members.findFirst.mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById("ws-123", undefined as any);
 
         // Since workspace ownerId doesn't match undefined, should check membership
-        expect(mockedDb.workspaceMember.findFirst).toHaveBeenCalled();
+        expect(mockedDb.workspace_members.findFirst).toHaveBeenCalled();
         expect(result).toEqual({
           hasAccess: false,
           canRead: false,
@@ -518,7 +516,7 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(workspaceWithNullDesc);
+        mockedDb.workspaces.findFirst.mockResolvedValue(workspaceWithNullDesc);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -535,7 +533,7 @@ describe("Workspace Access Validation", () => {
         };
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(workspaceWithDates);
+        mockedDb.workspaces.findFirst.mockResolvedValue(workspaceWithDates);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -548,7 +546,7 @@ describe("Workspace Access Validation", () => {
       test("should handle database connection errors", async () => {
         const userId = "any-user-123";
         const dbError = new Error("Database connection failed");
-        mockedDb.workspace.findFirst.mockRejectedValue(dbError);
+        mockedDb.workspaces.findFirst.mockRejectedValue(dbError);
 
         await expect(validateWorkspaceAccessById("ws-123", userId)).rejects.toThrow(
           "Database connection failed"
@@ -564,8 +562,8 @@ describe("Workspace Access Validation", () => {
         const membershipError = new Error("Membership query failed");
 
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
-        mockedDb.workspaceMember.findFirst.mockRejectedValue(membershipError);
+        mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
+        mockedDb.workspace_members.findFirst.mockRejectedValue(membershipError);
 
         await expect(validateWorkspaceAccessById("ws-123", userId)).rejects.toThrow(
           "Membership query failed"
@@ -577,7 +575,7 @@ describe("Workspace Access Validation", () => {
       test("should validate workspace data structure is preserved", async () => {
         const userId = "owner-123";
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(mockWorkspaceData);
+        mockedDb.workspaces.findFirst.mockResolvedValue(mockWorkspaceData);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -594,7 +592,7 @@ describe("Workspace Access Validation", () => {
       test("should ensure permission flags are always boolean", async () => {
         const userId = "owner-123";
         mockEncryptionService.decryptField.mockReturnValue("");
-        mockedDb.workspace.findFirst.mockResolvedValue(mockWorkspaceData);
+        mockedDb.workspaces.findFirst.mockResolvedValue(mockWorkspaceData);
 
         const result = await validateWorkspaceAccessById("ws-123", userId);
 
@@ -622,7 +620,7 @@ describe("Workspace Access Validation", () => {
           };
 
           mockEncryptionService.decryptField.mockReturnValue("");
-          mockedDb.workspace.findFirst.mockResolvedValue(memberWorkspace);
+          mockedDb.workspaces.findFirst.mockResolvedValue(memberWorkspace);
 
           if (role !== WorkspaceRole.OWNER) {
             const mockMembership = {
@@ -632,7 +630,7 @@ describe("Workspace Access Validation", () => {
               role,
               leftAt: null,
             };
-            mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+            mockedDb.workspace_members.findFirst.mockResolvedValue(mockMembership);
           }
 
           const result = await validateWorkspaceAccessById("ws-123", userId);

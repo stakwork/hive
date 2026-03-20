@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const taskId = searchParams.get("taskId");
 
     // Fetch workspace (include members filter only when we have a userId for ownership check)
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { id: workspaceId },
       include: {
         owner: true,
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Still save podId and agentUrl to task in dev mode
       if (taskId) {
         try {
-          await db.task.update({
+          await db.tasks.update({
             where: { id: taskId },
             data: {
               podId: mockPodId,
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Guard: reject if the task already has a pod assigned
     if (taskId) {
-      const existingTask = await db.task.findUnique({
+      const existingTask = await db.tasks.findUnique({
         where: { id: taskId },
         select: { podId: true },
       });
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       try {
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
-        await db.task.update({
+        await db.tasks.update({
           where: { id: taskId },
           data: {
             podId: podWorkspace.id,

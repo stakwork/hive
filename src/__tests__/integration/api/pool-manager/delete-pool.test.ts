@@ -170,7 +170,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
         status: 404,
         service: "pool-manager",
         message: "Pool not found",
-        details: { poolName: "nonexistent-pool" },
+        details: {pool_name: "nonexistent-pool" },
       };
       mockDeletePool.mockRejectedValue(apiError);
 

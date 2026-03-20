@@ -8,12 +8,10 @@ import {
 } from "@/services/roadmap/user-stories";
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    feature: {
+  db: {features: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    userStory: {
+    },user_stories: {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
@@ -21,11 +19,9 @@ vi.mock("@/lib/db", () => ({
       findFirst: vi.fn(),
       count: vi.fn(),
       findMany: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findUnique: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
     },
     $transaction: vi.fn(),
@@ -76,22 +72,22 @@ describe("User Stories Service - planUpdatedAt", () => {
 
   describe("createUserStory", () => {
     it("should stamp planUpdatedAt when creating a user story", async () => {
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature as any);
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
       // Mock calculateNextOrder's findFirst call
-      vi.mocked(db.userStory.findFirst).mockResolvedValue({ order: 0 } as any);
-      vi.mocked(db.userStory.create).mockResolvedValue({
+      vi.mocked(db.user_stories.findFirst).mockResolvedValue({ order: 0 } as any);
+      vi.mocked(db.user_stories.create).mockResolvedValue({
         ...mockUserStory,
         createdBy: mockUser,
         updatedBy: mockUser,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await createUserStory("feature-123", "user-123", { title: "New Story" });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
@@ -100,58 +96,58 @@ describe("User Stories Service - planUpdatedAt", () => {
 
   describe("updateUserStory", () => {
     it("should stamp planUpdatedAt when updating story title", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.update).mockResolvedValue({
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.update).mockResolvedValue({
         ...mockUserStory,
         title: "Updated Title",
         createdBy: mockUser,
         updatedBy: mockUser,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await updateUserStory("story-123", "user-123", { title: "Updated Title" });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
     });
 
     it("should stamp planUpdatedAt when updating story completed status", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.update).mockResolvedValue({
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.update).mockResolvedValue({
         ...mockUserStory,
         completed: true,
         createdBy: mockUser,
         updatedBy: mockUser,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await updateUserStory("story-123", "user-123", { completed: true });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
     });
 
     it("should stamp planUpdatedAt when updating both title and completed", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.update).mockResolvedValue({
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.update).mockResolvedValue({
         ...mockUserStory,
         title: "Updated Title",
         completed: true,
@@ -159,26 +155,26 @@ describe("User Stories Service - planUpdatedAt", () => {
         updatedBy: mockUser,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await updateUserStory("story-123", "user-123", {
         title: "Updated Title",
         completed: true,
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
     });
 
     it("should NOT stamp planUpdatedAt when updating only order", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.update).mockResolvedValue({
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.update).mockResolvedValue({
         ...mockUserStory,
         order: 5,
         createdBy: mockUser,
@@ -188,16 +184,16 @@ describe("User Stories Service - planUpdatedAt", () => {
 
       await updateUserStory("story-123", "user-123", { order: 5 });
 
-      expect(db.feature.update).not.toHaveBeenCalled();
+      expect(db.features.update).not.toHaveBeenCalled();
     });
 
     it("should stamp planUpdatedAt when updating title along with order", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.update).mockResolvedValue({
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.update).mockResolvedValue({
         ...mockUserStory,
         title: "Updated Title",
         order: 5,
@@ -205,14 +201,14 @@ describe("User Stories Service - planUpdatedAt", () => {
         updatedBy: mockUser,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await updateUserStory("story-123", "user-123", {
         title: "Updated Title",
         order: 5,
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
@@ -221,17 +217,17 @@ describe("User Stories Service - planUpdatedAt", () => {
 
   describe("deleteUserStory", () => {
     it("should stamp planUpdatedAt when deleting a user story", async () => {
-      vi.mocked(db.userStory.findUnique).mockResolvedValue({
+      vi.mocked(db.user_stories.findUnique).mockResolvedValue({
         ...mockUserStory,
         feature: mockFeature,
       } as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
-      vi.mocked(db.userStory.delete).mockResolvedValue(mockUserStory as any);
-      vi.mocked(db.feature.update).mockResolvedValue({} as any);
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.user_stories.delete).mockResolvedValue(mockUserStory as any);
+      vi.mocked(db.features.update).mockResolvedValue({} as any);
 
       await deleteUserStory("story-123", "user-123");
 
-      expect(db.feature.update).toHaveBeenCalledWith({
+      expect(db.features.update).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         data: { planUpdatedAt: expect.any(Date) },
       });
@@ -240,10 +236,10 @@ describe("User Stories Service - planUpdatedAt", () => {
 
   describe("reorderUserStories", () => {
     it("should NOT stamp planUpdatedAt when reordering stories", async () => {
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature as any);
-      vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(mockWorkspaceMember as any);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature as any);
+      vi.mocked(db.workspace_members.findUnique).mockResolvedValue(mockWorkspaceMember as any);
       vi.mocked(db.$transaction).mockResolvedValue([]);
-      vi.mocked(db.userStory.findMany).mockResolvedValue([
+      vi.mocked(db.user_stories.findMany).mockResolvedValue([
         {
           ...mockUserStory,
           createdBy: mockUser,
@@ -257,7 +253,7 @@ describe("User Stories Service - planUpdatedAt", () => {
       ]);
 
       // Verify feature.update was NOT called (planUpdatedAt should not be stamped)
-      expect(db.feature.update).not.toHaveBeenCalled();
+      expect(db.features.update).not.toHaveBeenCalled();
     });
   });
 });

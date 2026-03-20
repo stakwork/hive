@@ -4,8 +4,7 @@ import { db } from "@/lib/db";
 
 // Mock the database module
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -39,11 +38,11 @@ describe("getPrimaryRepository", () => {
       ],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     const result = await getPrimaryRepository("workspace-1");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: "workspace-1" },
       include: {
         repositories: {
@@ -89,11 +88,11 @@ describe("getPrimaryRepository", () => {
       repositories: [],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     const result = await getPrimaryRepository("workspace-without-repos");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: "workspace-without-repos" },
       include: {
         repositories: {
@@ -120,11 +119,11 @@ describe("getPrimaryRepository", () => {
   });
 
   test("should return null when workspace does not exist", async () => {
-    (db.workspace.findUnique as Mock).mockResolvedValue(null);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
     const result = await getPrimaryRepository("non-existent-workspace");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: "non-existent-workspace" },
       include: {
         repositories: {
@@ -187,11 +186,11 @@ describe("getPrimaryRepository", () => {
       ],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     const result = await getPrimaryRepository("workspace-1");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: "workspace-1" },
       include: {
         repositories: {
@@ -220,13 +219,13 @@ describe("getPrimaryRepository", () => {
 
   test("should handle database errors gracefully", async () => {
     const dbError = new Error("Database connection failed");
-    (db.workspace.findUnique as Mock).mockRejectedValue(dbError);
+    (db.workspaces.findUnique as Mock).mockRejectedValue(dbError);
 
     await expect(getPrimaryRepository("workspace-1")).rejects.toThrow(
       "Database connection failed"
     );
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: "workspace-1" },
       include: {
         repositories: {
@@ -253,12 +252,12 @@ describe("getPrimaryRepository", () => {
 
   test("should correctly construct query with workspace ID", async () => {
     const workspaceId = "test-workspace-123";
-    (db.workspace.findUnique as Mock).mockResolvedValue(null);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
     await getPrimaryRepository(workspaceId);
 
-    expect(db.workspace.findUnique).toHaveBeenCalledTimes(1);
-    expect(db.workspace.findUnique).toHaveBeenCalledWith({
+    expect(db.workspaces.findUnique).toHaveBeenCalledTimes(1);
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith({
       where: { id: workspaceId },
       include: {
         repositories: {
@@ -305,11 +304,11 @@ describe("getPrimaryRepository", () => {
       ],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     await getPrimaryRepository("workspace-1");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith(
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
           repositories: expect.objectContaining({
@@ -342,7 +341,7 @@ describe("getPrimaryRepository", () => {
       ],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     const result = await getPrimaryRepository("workspace-1");
 
@@ -378,7 +377,7 @@ describe("getPrimaryRepository", () => {
 
   test("should handle Prisma query timeout errors", async () => {
     const timeoutError = new Error("Query timeout");
-    (db.workspace.findUnique as Mock).mockRejectedValue(timeoutError);
+    (db.workspaces.findUnique as Mock).mockRejectedValue(timeoutError);
 
     await expect(getPrimaryRepository("workspace-1")).rejects.toThrow(
       "Query timeout"
@@ -407,11 +406,11 @@ describe("getPrimaryRepository", () => {
       ],
     };
 
-    (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+    (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
     await getPrimaryRepository("workspace-1");
 
-    expect(db.workspace.findUnique).toHaveBeenCalledWith(
+    expect(db.workspaces.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
           repositories: expect.objectContaining({

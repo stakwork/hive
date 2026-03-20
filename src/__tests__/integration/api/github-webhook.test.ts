@@ -75,7 +75,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(data.success).toBe(true);
 
       // Verify repository status was updated
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(updatedRepo?.status).toBe(RepositoryStatus.PENDING);
@@ -90,8 +90,8 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       );
 
       // Verify swarm ingestRefId was updated
-      const swarm = await db.swarm.findFirst({
-        where: { workspaceId: repository.workspaceId },
+      const swarm = await db.swarms.findFirst({
+        where: {workspace_id: repository.workspaceId },
       });
       expect(swarm?.ingestRefId).toBe("integration-req-123");
     });
@@ -120,7 +120,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(data.success).toBe(false);
 
       // Verify repository status was not updated
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.status).toBe(RepositoryStatus.SYNCED);
@@ -131,8 +131,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
     test("should handle webhook with encrypted secrets correctly", async () => {
       const customWebhookSecret = "custom_secret_for_integration_test_12345";
-      const { repository } = await createWebhookTestScenario({
-        webhookSecret: customWebhookSecret,
+      const { repository } = await createWebhookTestScenario({webhook_secret: customWebhookSecret,
       });
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
@@ -195,7 +194,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(triggerAsyncSync).not.toHaveBeenCalled();
 
       // Verify repository status was not updated
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.status).toBe(RepositoryStatus.SYNCED);
@@ -269,11 +268,10 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       const { repository, webhookSecret, workspace } = await createWebhookTestScenario();
 
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -331,7 +329,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(response.status).toBe(202);
 
       // Verify the correct repository was found and processed
-      const foundRepo = await db.repository.findFirst({
+      const foundRepo = await db.repositories.findFirst({
         where: { githubWebhookId: customWebhookId },
       });
       expect(foundRepo).toBeTruthy();
@@ -363,8 +361,8 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       const { repository, webhookSecret } = await createWebhookTestScenario();
 
       // Delete swarm to simulate missing configuration
-      await db.swarm.deleteMany({
-        where: { workspaceId: repository.workspaceId },
+      await db.swarms.deleteMany({
+        where: {workspace_id: repository.workspaceId },
       });
 
       const payload = createGitHubPushPayload(
@@ -395,12 +393,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       const encryptionService = EncryptionService.getInstance();
       const plainSecret = "super_secret_webhook_key_12345";
 
-      const { repository } = await createWebhookTestScenario({
-        webhookSecret: plainSecret,
+      const { repository } = await createWebhookTestScenario({webhook_secret: plainSecret,
       });
 
       // Verify secret is stored encrypted
-      const storedRepo = await db.repository.findUnique({
+      const storedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -484,16 +481,15 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     test("should fetch GitHub credentials when workspace owner exists", async () => {
       const testUser = await createTestUser({
         name: "Webhook Test User",
-        withGitHubAuth: true,
-        githubUsername: "webhook-test-user",
+        withGitHubAuth: true,github_username: "webhook-test-user",
       });
 
       const { repository, webhookSecret, workspace } = await createWebhookTestScenario();
 
       // Update workspace to have real owner
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { ownerId: testUser.id },
+        data: {owner_id: testUser.id },
       });
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({

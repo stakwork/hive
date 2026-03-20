@@ -80,7 +80,7 @@ export async function POST(
     } else if (accessResult.error.type === "SWARM_API_KEY_MISSING") {
       // Auth passed but no API key — look up workspace ID and use the
       // internal helper that allows an empty key.
-      const ws = await db.workspace.findFirst({
+      const ws = await db.workspaces.findFirst({
         where: { slug, deleted: false },
         select: { id: true, stakworkApiKey: true },
       });
@@ -135,7 +135,7 @@ export async function POST(
         })();
 
     // Query workspace for stakworkApiKey and StakworkRuns
-    const workspaceRow = await db.workspace.findFirst({
+    const workspaceRow = await db.workspaces.findFirst({
       where: { slug, deleted: false },
       select: { id: true, stakworkApiKey: true },
     });
@@ -158,7 +158,7 @@ export async function POST(
     // Query last 25 StakworkRun summaries with non-null projectId,
     // including any associated agent logs
     const rawRuns = workspaceRow
-      ? await db.stakworkRun.findMany({
+      ? await db.stakwork_runs.findMany({
           where: {
             workspaceId: workspaceRow.id,
             projectId: { not: null },

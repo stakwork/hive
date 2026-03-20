@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       try {
         // Get the swarm
         console.log("[agent-stream] Fetching swarm from database", logContext);
-        const swarm = await db.swarm.findFirst({
+        const swarm = await db.swarms.findFirst({
           where: { id: swarmId },
           include: { workspace: { select: { slug: true } } }
         });
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
 
                     for (const [serviceName, envVars] of envVarsPerService) {
                       // Delete existing service-specific env vars for this service
-                      await db.environmentVariable.deleteMany({
+                      await db.environment_variables.deleteMany({
                         where: {
                           swarmId: swarm.id,
                           serviceName: serviceName,
@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
                       // Encrypt and insert new env vars
                       if (envVars.length > 0) {
                         const encrypted = encryptEnvVars(envVars);
-                        await db.environmentVariable.createMany({
+                        await db.environment_variables.createMany({
                           data: encrypted.map((ev) => ({
                             swarmId: swarm.id,
                             serviceName: serviceName,
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
                 }
 
                 // Update agent status to completed and mark container files as set up
-                await db.swarm.update({
+                await db.swarms.update({
                   where: { id: swarm.id },
                   data: {
                     agentStatus: 'COMPLETED',
@@ -307,7 +307,7 @@ export async function GET(request: NextRequest) {
             timeoutMinutes: (maxAttempts * 5) / 60,
           });
 
-          await db.swarm.update({
+          await db.swarms.update({
             where: { id: swarm.id },
             data: {
               agentStatus: 'FAILED',

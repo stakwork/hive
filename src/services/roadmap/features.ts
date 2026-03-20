@@ -118,7 +118,7 @@ export async function listFeatures({
     : { updatedAt: "desc" };
 
   const [rawFeatures, totalCount, totalCountWithoutFilters] = await Promise.all([
-    db.feature.findMany({
+    db.features.findMany({
       where: whereClause,
       select: {
         id: true,
@@ -165,11 +165,11 @@ export async function listFeatures({
       skip,
       take: limit,
     }),
-    db.feature.count({
+    db.features.count({
       where: whereClause,
     }),
     // Count total features in workspace without any filters (for UI logic)
-    db.feature.count({
+    db.features.count({
       where: {
         workspaceId,
         deleted: false,
@@ -266,7 +266,7 @@ export async function createFeature(
     throw new Error("Title is required");
   }
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
   });
 
@@ -278,7 +278,7 @@ export async function createFeature(
   validateEnum(data.priority, FeaturePriority, "priority");
 
   if (data.assigneeId) {
-    const assignee = await db.user.findFirst({
+    const assignee = await db.users.findFirst({
       where: {
         id: data.assigneeId,
         deleted: false,
@@ -290,7 +290,7 @@ export async function createFeature(
     }
   }
 
-  const feature = await db.feature.create({
+  const feature = await db.features.create({
     data: {
       title: data.title.trim(),
       brief: data.brief?.trim() || null,
@@ -362,7 +362,7 @@ export async function updateFeature(
   validateEnum(data.priority, FeaturePriority, "priority");
 
   if (data.assigneeId !== undefined && data.assigneeId !== null) {
-    const assignee = await db.user.findFirst({
+    const assignee = await db.users.findFirst({
       where: {
         id: data.assigneeId,
       },
@@ -419,7 +419,7 @@ export async function updateFeature(
     updateData.planUpdatedAt = new Date();
   }
 
-  const updatedFeature = await db.feature.update({
+  const updatedFeature = await db.features.update({
     where: {
       id: featureId,
     },
@@ -550,15 +550,15 @@ export async function updateFeature(
   if (data.assigneeId && typeof data.assigneeId === "string" && data.assigneeId !== userId) {
     void (async () => {
       try {
-        const featureForNotif = await db.feature.findUnique({
+        const featureForNotif = await db.features.findUnique({
           where: { id: featureId },
           select: { workspaceId: true, title: true, workspace: { select: { slug: true } } },
         });
         if (featureForNotif) {
           const featureUrl = `${process.env.NEXTAUTH_URL}/w/${featureForNotif.workspace.slug}/plan/${featureId}`;
           const [targetUser, originatingUser] = await Promise.all([
-            db.user.findUnique({ where: { id: data.assigneeId! }, select: { sphinxAlias: true, name: true } }),
-            db.user.findUnique({ where: { id: userId }, select: { name: true } }),
+            db.users.findUnique({ where: { id: data.assigneeId! }, select: { sphinxAlias: true, name: true } }),
+            db.users.findUnique({ where: { id: userId }, select: { name: true } }),
           ]);
           const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
           const originatorName = originatingUser?.name ?? "Someone";
@@ -589,7 +589,7 @@ export async function deleteFeature(
 ): Promise<void> {
   await validateFeatureAccess(featureId, userId);
 
-  await db.feature.update({
+  await db.features.update({
     where: { id: featureId },
     data: {
       deleted: true,

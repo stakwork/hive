@@ -35,10 +35,10 @@ describe('GET /api/features/[featureId]/image', () => {
   };
 
   beforeEach(async () => {
-    await db.feature.deleteMany();
-    await db.workspaceMember.deleteMany();
-    await db.workspace.deleteMany();
-    await db.user.deleteMany();
+    await db.features.deleteMany();
+    await db.workspace_members.deleteMany();
+    await db.workspaces.deleteMany();
+    await db.users.deleteMany();
 
     vi.clearAllMocks();
     mockGeneratePresignedDownloadUrl.mockResolvedValue('https://s3.example.com/fresh-presigned-url');
@@ -47,18 +47,15 @@ describe('GET /api/features/[featureId]/image', () => {
   describe('Authentication', () => {
     it('should return 401 for unauthenticated requests', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue(null);
 
       const response = await GET(
         createRequest(feature.id, 'features/ws/swarm/feat/file.png'),
-        { params: Promise.resolve({ featureId: feature.id }) }
+        { params: Promise.resolve({feature_id: feature.id }) }
       );
 
       expect(response.status).toBe(401);
@@ -71,11 +68,8 @@ describe('GET /api/features/[featureId]/image', () => {
     it('should return 403 for users without workspace access', async () => {
       const owner = await createTestUser();
       const outsider = await createTestUser({ email: 'outsider@example.com' });
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({
@@ -84,7 +78,7 @@ describe('GET /api/features/[featureId]/image', () => {
 
       const response = await GET(
         createRequest(feature.id, 'features/ws/swarm/feat/file.png'),
-        { params: Promise.resolve({ featureId: feature.id }) }
+        { params: Promise.resolve({feature_id: feature.id }) }
       );
 
       expect(response.status).toBe(403);
@@ -103,7 +97,7 @@ describe('GET /api/features/[featureId]/image', () => {
 
       const response = await GET(
         createRequest('non-existent-feature-id', 'features/ws/swarm/feat/file.png'),
-        { params: Promise.resolve({ featureId: 'non-existent-feature-id' }) }
+        { params: Promise.resolve({feature_id: 'non-existent-feature-id' }) }
       );
 
       expect(response.status).toBe(404);
@@ -113,11 +107,8 @@ describe('GET /api/features/[featureId]/image', () => {
 
     it('should return 400 when path query param is missing', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({
@@ -126,7 +117,7 @@ describe('GET /api/features/[featureId]/image', () => {
 
       const response = await GET(
         createRequest(feature.id), // no path param
-        { params: Promise.resolve({ featureId: feature.id }) }
+        { params: Promise.resolve({feature_id: feature.id }) }
       );
 
       expect(response.status).toBe(400);
@@ -136,11 +127,8 @@ describe('GET /api/features/[featureId]/image', () => {
 
     it('should return 400 when path does not start with features/ (path traversal guard)', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({
@@ -157,7 +145,7 @@ describe('GET /api/features/[featureId]/image', () => {
       for (const badPath of maliciousPaths) {
         const response = await GET(
           createRequest(feature.id, badPath),
-          { params: Promise.resolve({ featureId: feature.id }) }
+          { params: Promise.resolve({feature_id: feature.id }) }
         );
 
         expect(response.status).toBe(400);
@@ -170,11 +158,8 @@ describe('GET /api/features/[featureId]/image', () => {
   describe('Success', () => {
     it('should return a fresh presigned URL for a valid request', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({
@@ -185,7 +170,7 @@ describe('GET /api/features/[featureId]/image', () => {
 
       const response = await GET(
         createRequest(feature.id, s3Path),
-        { params: Promise.resolve({ featureId: feature.id }) }
+        { params: Promise.resolve({feature_id: feature.id }) }
       );
 
       expect(response.status).toBe(200);
@@ -200,21 +185,16 @@ describe('GET /api/features/[featureId]/image', () => {
     it('should allow workspace members (non-owner) to retrieve image URLs', async () => {
       const owner = await createTestUser();
       const member = await createTestUser({ email: 'member@example.com' });
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: 'DEVELOPER',
         },
       });
 
-      const feature = await createTestFeature({
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+      const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({
@@ -225,7 +205,7 @@ describe('GET /api/features/[featureId]/image', () => {
 
       const response = await GET(
         createRequest(feature.id, s3Path),
-        { params: Promise.resolve({ featureId: feature.id }) }
+        { params: Promise.resolve({feature_id: feature.id }) }
       );
 
       expect(response.status).toBe(200);

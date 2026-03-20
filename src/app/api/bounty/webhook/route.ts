@@ -18,7 +18,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "artifactId and taskId are required" }, { status: 400 });
     }
 
-    const artifact = await db.artifact.findUnique({
+    const artifact = await db.artifacts.findUnique({
       where: { id: artifactId },
     });
 
@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest) {
       targetWorkspaceId: targetWorkspaceId || "",
     };
 
-    await db.artifact.update({
+    await db.artifacts.update({
       where: { id: artifactId },
       data: {
         content: updatedContent as unknown as Prisma.InputJsonValue,

@@ -38,38 +38,30 @@ describe("TASK_ASSIGNED notification", () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    owner = await db.user.create({
+    owner = await db.users.create({
       data: { email: "owner@test.com", name: "Owner" },
     });
-    assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
+    assignee = await db.users.create({
+      data: { email: "assignee@test.com", name: "Assignee",lightning_pubkey: "test-pubkey-assignee" },
     });
 
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    workspace = await createTestWorkspace({owner_id: owner.id,
       name: "Test Workspace",
       slug: "test-ws-task-assign",
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: owner.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: owner.id, role: "OWNER" },
     });
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "My Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
-    task = await db.task.create({
+    task = await db.tasks.create({
       data: {
-        title: "My Task",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Task",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -81,15 +73,14 @@ describe("TASK_ASSIGNED notification", () => {
   it("creates a TASK_ASSIGNED notification_trigger row when assigning to another user", async () => {
     const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
 
-    await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
+    await updateTicket(task.id, owner.id, {assignee_id: assignee.id });
 
     await new Promise((r) => setTimeout(r, 100));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,task_id: task.id,
       },
     });
 
@@ -103,11 +94,11 @@ describe("TASK_ASSIGNED notification", () => {
   });
 
   it("does NOT create a notification when self-assigning", async () => {
-    await updateTicket(task.id, owner.id, { assigneeId: owner.id });
+    await updateTicket(task.id, owner.id, {assignee_id: owner.id });
 
     await new Promise((r) => setTimeout(r, 100));
 
-    const records = await db.notificationTrigger.findMany({
+    const records = await db.notification_triggers.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
     });
 
@@ -115,11 +106,11 @@ describe("TASK_ASSIGNED notification", () => {
   });
 
   it("does NOT create a notification for system assignees", async () => {
-    await updateTicket(task.id, owner.id, { assigneeId: "system:task-coordinator" });
+    await updateTicket(task.id, owner.id, {assignee_id: "system:task-coordinator" });
 
     await new Promise((r) => setTimeout(r, 100));
 
-    const records = await db.notificationTrigger.findMany({
+    const records = await db.notification_triggers.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
     });
 
@@ -136,41 +127,33 @@ describe("TASK_ASSIGNED notification — DM not configured (no lightningPubkey)"
   beforeEach(async () => {
     await resetDatabase();
 
-    owner = await db.user.create({
+    owner = await db.users.create({
       data: { email: "owner2@test.com", name: "Owner2" },
     });
-    assignee = await db.user.create({
+    assignee = await db.users.create({
       data: { email: "assignee2@test.com", name: "Assignee2" },
     });
 
     // Plain workspace — no Sphinx config
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    workspace = await createTestWorkspace({owner_id: owner.id,
       name: "No Sphinx Workspace",
       slug: "test-ws-no-sphinx",
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: owner.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: owner.id, role: "OWNER" },
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "My Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
-    task = await db.task.create({
+    task = await db.tasks.create({
       data: {
-        title: "My Task",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Task",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -180,15 +163,14 @@ describe("TASK_ASSIGNED notification — DM not configured (no lightningPubkey)"
   });
 
   it("creates a SKIPPED notification_trigger row when user has no lightningPubkey", async () => {
-    await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
+    await updateTicket(task.id, owner.id, {assignee_id: assignee.id });
 
     await new Promise((r) => setTimeout(r, 100));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,task_id: task.id,
       },
     });
 

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the task and get its workspace with swarm details
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the chat message
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         message,
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       console.error(`Failed to call workflow editor: ${response.statusText}`);
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { workflowStatus: WorkflowStatus.FAILED },
       });
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
         updateData.stakworkProjectId = result.data.project_id;
       }
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: updateData,
       });
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
       // Create a new WORKFLOW artifact with the projectId so the panel can poll it
       if (result.data?.project_id) {
         try {
-          const newMessage = await db.chatMessage.create({
+          const newMessage = await db.chat_messages.create({
             data: {
               taskId,
               message: "",
@@ -294,7 +294,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { workflowStatus: WorkflowStatus.FAILED },
       });

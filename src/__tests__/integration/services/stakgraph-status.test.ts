@@ -22,16 +22,14 @@ describe("updateStakgraphStatus - Integration Tests", () => {
     testSwarmId = scenario.swarm!.id;
 
     // Create test repository using fixture
-    await createTestRepository({
-      workspaceId: testWorkspaceId,
-      repositoryUrl: testRepositoryUrl,
+    await createTestRepository({workspace_id: testWorkspaceId,repository_url: testRepositoryUrl,
       status: RepositoryStatus.PENDING,
     });
   });
 
   test("should update repository status to PENDING when webhook status is InProgress", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-123", status: "InProgress", progress: 50 },
     );
 
@@ -40,7 +38,7 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should update repository status to SYNCED when webhook status is Complete", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-456", status: "Complete", progress: 100, result: { nodes: 10, edges: 20 } },
     );
 
@@ -49,7 +47,7 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should update repository status to FAILED when webhook status is Failed", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-789", status: "Failed", progress: 75, error: "Some error occurred" },
     );
 
@@ -58,7 +56,7 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should handle case-insensitive status values (COMPLETE uppercase)", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-abc", status: "COMPLETE", progress: 100 },
     );
 
@@ -67,7 +65,7 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should handle case-insensitive status values (complete lowercase)", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-def", status: "complete", progress: 100 },
     );
 
@@ -76,11 +74,11 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should update swarm ingestRefId", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-new-id", status: "Complete", progress: 100 },
     );
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { id: testSwarmId },
     });
 
@@ -89,7 +87,7 @@ describe("updateStakgraphStatus - Integration Tests", () => {
 
   test("should update repository status when primary repository exists", async () => {
     await updateStakgraphStatus(
-      { id: testSwarmId, workspaceId: testWorkspaceId },
+      { id: testSwarmId,workspace_id: testWorkspaceId },
       { request_id: "req-no-repo", status: "Complete", progress: 100 },
     );
 

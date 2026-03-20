@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the task and get its workspace with swarm details
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get user details
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: {
         id: userId,
       },
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the chat message
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         message,
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 
     // Get workspace slug for GitHub credentials
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: task.workspaceId },
       select: { slug: true },
     });

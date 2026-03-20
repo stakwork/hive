@@ -150,7 +150,7 @@ describe("Calls API - Integration Tests", () => {
 
       // Update swarm to have an empty name
       const { db } = await import("@/lib/db");
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm!.id },
         data: { name: "" },
       });

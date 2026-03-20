@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the swarm and verify user has access to the workspace
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: {
         ...(workspaceId ? { workspaceId } : {}),
         ...(swarmId ? { swarmId } : {}),
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const swarm = await db.swarm.findFirst({
+  const swarm = await db.swarms.findFirst({
     where: { swarmId: id },
     include: {
       workspace: {

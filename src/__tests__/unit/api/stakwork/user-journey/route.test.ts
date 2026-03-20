@@ -90,25 +90,25 @@ describe("POST /api/stakwork/user-journey", () => {
     mockFetch = vi.mocked(global.fetch);
 
     // Mock db methods
-    vi.mocked(db).workspace = {
+    vi.mocked(db).workspaces = {
       findUnique: mockDbWorkspaceFindUnique,
     } as any;
 
-    vi.mocked(db).swarm = {
+    vi.mocked(db).swarms = {
       findUnique: mockDbSwarmFindUnique,
     } as any;
 
     // Mock task and repository for tests that don't override them
-    vi.mocked(db).task = {
+    vi.mocked(db).tasks = {
       create: vi.fn().mockResolvedValue({ id: "task-123" }),
       update: vi.fn().mockResolvedValue({ id: "task-123" }),
     } as any;
 
-    vi.mocked(db).repository = {
+    vi.mocked(db).repositories = {
       findFirst: vi.fn().mockResolvedValue(null),
     } as any;
 
-    vi.mocked(db).chatMessage = {
+    vi.mocked(db).chat_messages = {
       create: vi.fn().mockResolvedValue({ id: "msg-123" }),
     } as any;
 
@@ -452,7 +452,7 @@ describe("POST /api/stakwork/user-journey", () => {
       expect(json).toEqual({ error: "Failed to create chat message" });
     });
 
-    it("should return 500 when db.workspace.findUnique throws error", async () => {
+    it("should return 500 when db.workspaces.findUnique throws error", async () => {
       mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
       mockDbWorkspaceFindUnique.mockRejectedValue(new Error("Query failed"));
 
@@ -556,16 +556,16 @@ describe("POST /api/stakwork/user-journey", () => {
       mockDbRepositoryFindFirst = vi.fn();
       mockDbChatMessageCreate = vi.fn();
 
-      vi.mocked(db).task = {
+      vi.mocked(db).tasks = {
         create: mockDbTaskCreate,
         update: mockDbTaskUpdate,
       } as any;
 
-      vi.mocked(db).repository = {
+      vi.mocked(db).repositories = {
         findFirst: mockDbRepositoryFindFirst,
       } as any;
 
-      vi.mocked(db).chatMessage = {
+      vi.mocked(db).chat_messages = {
         create: mockDbChatMessageCreate,
       } as any;
     });

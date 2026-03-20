@@ -32,7 +32,7 @@ export async function createScreenshot(
     actionIndex: 0,
   };
 
-  return db.screenshot.create({
+  return db.screenshots.create({
     data: {
       workspaceId,
       ...defaults,
@@ -78,7 +78,7 @@ export async function createJanitorConfig(
     prOutOfDateFixEnabled: false,
   };
 
-  return db.janitorConfig.create({
+  return db.janitor_configs.create({
     data: {
       workspaceId,
       ...defaults,
@@ -108,7 +108,7 @@ export async function createJanitorRun(
     completedAt: new Date(),
   };
 
-  return db.janitorRun.create({
+  return db.janitor_runs.create({
     data: {
       janitorConfigId,
       ...defaults,
@@ -145,7 +145,7 @@ export async function createJanitorRecommendation(
     status: "PENDING" as const,
   };
 
-  return db.janitorRecommendation.create({
+  return db.janitor_recommendations.create({
     data: {
       workspaceId,
       ...defaults,

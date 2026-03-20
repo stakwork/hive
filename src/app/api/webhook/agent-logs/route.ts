@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the workspace exists
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { id: workspace_id, deleted: false },
       select: { id: true },
     });
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     // If stakwork_run_id provided, resolve it to our internal cuid
     let resolvedStakworkRunId: string | null = null;
     if (stakwork_run_id) {
-      const run = await db.stakworkRun.findFirst({
+      const run = await db.stakwork_runs.findFirst({
         where: { projectId: stakwork_run_id, workspaceId: workspace_id },
         select: { id: true },
       });
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     // If task_id provided, verify it exists and belongs to this workspace
     if (task_id) {
-      const task = await db.task.findFirst({
+      const task = await db.tasks.findFirst({
         where: { id: task_id, workspaceId: workspace_id, deleted: false },
         select: { id: true },
       });
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     // If feature_id provided, verify it exists and belongs to this workspace
     if (feature_id) {
-      const feature = await db.feature.findFirst({
+      const feature = await db.features.findFirst({
         where: { id: feature_id, workspaceId: workspace_id, deleted: false },
         select: { id: true },
       });
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Upsert the AgentLog record (overwrite if same agent + run/task/feature)
-    const existing = await db.agentLog.findFirst({
+    const existing = await db.agent_logs.findFirst({
       where: {
         agent,
         workspaceId: workspace_id,
@@ -152,11 +152,11 @@ export async function POST(request: NextRequest) {
     });
 
     const agentLog = existing
-      ? await db.agentLog.update({
+      ? await db.agent_logs.update({
           where: { id: existing.id },
           data: { blobUrl: blob.url },
         })
-      : await db.agentLog.create({
+      : await db.agent_logs.create({
           data: {
             blobUrl: blob.url,
             agent,

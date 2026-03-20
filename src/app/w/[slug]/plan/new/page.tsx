@@ -14,11 +14,12 @@ export default function NewPlanPage() {
   const handleSubmit = async (
     message: string,
     options?: { isPrototype: boolean; selectedRepoId: string | null },
+    pendingFiles?: Array<{ file: File; filename: string; mimeType: string; size: number }>,
   ) => {
     setIsLoading(true);
     try {
       if (options?.isPrototype) {
-        // Prototype flow: create a PROTOTYPE task and redirect to task chat
+        // Prototype flow: create a PROTOTYPE task and redirect to task chat (attachments out of scope)
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -56,7 +57,7 @@ export default function NewPlanPage() {
         return;
       }
 
-      // Standard feature creation flow (unchanged)
+      // Standard feature creation flow
       // 1. Create Feature record
       const featureRes = await fetch("/api/features", {
         method: "POST",
@@ -70,18 +71,50 @@ export default function NewPlanPage() {
 
       const { data: feature } = await featureRes.json();
 
-      // 2. Send first chat message + trigger Stakwork workflow
+      // 2. Upload staged files sequentially (best-effort — failures are logged and skipped)
+      const attachments: Array<{ path: string; filename: string; mimeType: string; size: number }> =
+        [];
+      for (const pf of pendingFiles ?? []) {
+        try {
+          const res = await fetch("/api/upload/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              featureId: feature.id,
+              filename: pf.filename,
+              contentType: pf.mimeType,
+              size: pf.size,
+            }),
+          });
+          if (!res.ok) throw new Error("Failed to get upload URL");
+          const { presignedUrl, s3Path } = await res.json();
+          const uploadRes = await fetch(presignedUrl, {
+            method: "PUT",
+            body: pf.file,
+            headers: { "Content-Type": pf.mimeType },
+          });
+          if (!uploadRes.ok) throw new Error("Failed to upload to S3");
+          attachments.push({ path: s3Path, filename: pf.filename, mimeType: pf.mimeType, size: pf.size });
+        } catch (err) {
+          console.error("Attachment upload failed, continuing:", err);
+        }
+      }
+
+      // 3. Send first chat message + trigger Stakwork workflow (include attachments if any)
       const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          ...(attachments.length > 0 && { attachments }),
+        }),
       });
 
       if (!chatRes.ok) {
         console.error("Failed to send initial message, but feature was created");
       }
 
-      // 3. Navigate to the plan chat view
+      // 4. Navigate to the plan chat view
       router.push(`/w/${workspaceSlug}/plan/${feature.id}`);
     } catch (error) {
       console.error("Error creating plan:", error);

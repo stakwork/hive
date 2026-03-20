@@ -129,30 +129,21 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       const workspace = await tx.workspace.create({
         data: {
           name: "Agent Stream Test Workspace",
-          slug: generateUniqueSlug("agent-stream-ws"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("agent-stream-ws"),owner_id: user.id,
         },
       });
 
       const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: "agent-stream-swarm",
-          swarmId: generateUniqueId("swarm"),
-          status: "ACTIVE",
-          swarmUrl: "https://agent-stream-swarm.sphinx.chat/api",
-          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          services: [],
-          agentRequestId: requestId,
-          agentStatus: "PROCESSING",
+        data: {workspace_id: workspace.id,
+          name: "agent-stream-swarm",swarm_id: generateUniqueId("swarm"),
+          status: "ACTIVE",swarm_url: "https://agent-stream-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
+          services: [],agent_request_id: requestId,agent_status: "PROCESSING",
         },
       });
 
       await tx.repository.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
-          workspaceId: workspace.id,
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",workspace_id: workspace.id,
           status: "SYNCED",
           branch: "main",
         },
@@ -198,8 +189,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -296,8 +286,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -356,8 +345,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -393,8 +381,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -443,8 +430,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -490,8 +476,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         };
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -547,7 +532,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
           expect(timeoutEvent.data.message).toContain("timed out");
 
           // Verify database was updated
-          const updatedSwarm = await db.swarm.findUnique({
+          const updatedSwarm = await db.swarms.findUnique({
             where: { id: testSwarm.id },
           });
 
@@ -567,8 +552,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -629,8 +613,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -688,8 +671,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -727,8 +709,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -761,8 +742,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -811,8 +791,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -831,10 +810,8 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       const response = await GET(request);
       await parseSSEStream(response);
 
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        services: mockServices,
-        containerFiles: expect.objectContaining({
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({workspace_id: testWorkspace.id,
+        services: mockServices,container_files: expect.objectContaining({
           Dockerfile: expect.any(String),
           "pm2.config.js": expect.any(String),
           "docker-compose.yml": expect.any(String),
@@ -857,8 +834,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -878,7 +854,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       await parseSSEStream(response);
 
       // Verify swarm was updated in database
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -897,8 +873,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -918,7 +893,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       await parseSSEStream(response);
 
       // Verify swarmApiKey is still encrypted
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -995,8 +970,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         };
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1054,8 +1028,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1094,8 +1067,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1130,8 +1102,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1184,8 +1155,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         };
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1225,8 +1195,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         data: mockApiResponse.result,
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1281,8 +1250,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
         },
       });
 
-      mockGetPrimaryRepository.mockResolvedValue({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      mockGetPrimaryRepository.mockResolvedValue({repository_url: "https://github.com/test-org/test-repo",
       });
 
       mockParseGithubOwnerRepo.mockReturnValue({
@@ -1319,7 +1287,7 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       expect(completedEvent!.data.data.services).toEqual(mockServices);
 
       // Verify database updates
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -1328,10 +1296,8 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
       expect(updatedSwarm?.containerFilesSetUp).toBe(true);
 
       // Verify saveOrUpdateSwarm was called correctly (WITHOUT environmentVariables)
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        services: mockServices,
-        containerFiles: expect.objectContaining({
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({workspace_id: testWorkspace.id,
+        services: mockServices,container_files: expect.objectContaining({
           Dockerfile: expect.any(String),
           "pm2.config.js": expect.any(String),
           "docker-compose.yml": expect.any(String),

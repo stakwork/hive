@@ -67,8 +67,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("owner", "repo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -97,8 +96,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("owner", "repo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -127,8 +125,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("testowner", "testrepo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -175,8 +172,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("owner", "repo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "test-github-app-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "test-github-app-token",
       });
 
       const axiosInstance = {
@@ -237,8 +233,7 @@ describe("GET /api/github/repository/data", () => {
         },
       ];
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -273,8 +268,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("owner", "repo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -304,8 +298,7 @@ describe("GET /api/github/repository/data", () => {
       });
 
       const mockRepo = mockGitHubState.createRepository("owner", "repo");
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -352,8 +345,7 @@ describe("GET /api/github/repository/data", () => {
         updated_at: "2024-01-01T00:00:00Z",
       };
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -399,8 +391,7 @@ describe("GET /api/github/repository/data", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "expired-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "expired-token",
       });
 
       const axiosInstance = {
@@ -426,8 +417,7 @@ describe("GET /api/github/repository/data", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -453,8 +443,7 @@ describe("GET /api/github/repository/data", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -480,8 +469,7 @@ describe("GET /api/github/repository/data", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -505,8 +493,7 @@ describe("GET /api/github/repository/data", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -545,8 +532,7 @@ describe("GET /api/github/repository/data", () => {
         },
       ];
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -603,8 +589,7 @@ describe("GET /api/github/repository/data", () => {
         },
       ];
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -650,8 +635,7 @@ describe("GET /api/github/repository/data", () => {
         topics: null,
       };
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {
@@ -701,8 +685,7 @@ describe("GET /api/github/repository/data", () => {
         },
       }));
 
-      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({
-        accessToken: "mock-token",
+      vi.mocked(githubApp.getUserAppTokens).mockResolvedValue({access_token: "mock-token",
       });
 
       const axiosInstance = {

@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     console.log("where", where);
 
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarms.findFirst({ where });
 
     console.log("swarm", swarm);
 
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
     // Get the workspace associated with this swarm
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: swarm.workspaceId },
       select: { slug: true },
     });
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Store the agent request ID and status in database
-        await db.swarm.update({
+        await db.swarms.update({
           where: { id: swarm.id },
           data: {
             agentRequestId: initData.request_id,
@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
       });
 
       // Mark container files as set up since we have services and env vars
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
         data: { containerFilesSetUp: true },
       });

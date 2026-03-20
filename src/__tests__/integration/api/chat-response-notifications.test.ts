@@ -64,22 +64,18 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     // Set API token env
     process.env.API_TOKEN = API_TOKEN;
 
-    owner = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
+    owner = await db.users.create({
+      data: { email: "owner@test.com", name: "Owner",lightning_pubkey: "test-pubkey-owner" },
     });
 
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    workspace = await createTestWorkspace({owner_id: owner.id,
       name: "Test Workspace",
       slug: "test-ws-chat-notif",
     });
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "My Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -90,8 +86,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
   });
 
   it("creates PLAN_AWAITING_CLARIFICATION notification for FORM artifact with featureId", async () => {
-    const req = makeRequest({
-      featureId: feature.id,
+    const req = makeRequest({feature_id: feature.id,
       message: "What is the form question?",
       artifacts: [{ type: "FORM", content: { question: "Which approach?" } }],
     });
@@ -102,11 +97,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     // Allow async notification to settle
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: owner.id,
-        notificationType: NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
-        featureId: feature.id,
+        notificationType: NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,feature_id: feature.id,
       },
     });
 
@@ -118,8 +112,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
   });
 
   it("creates PLAN_AWAITING_APPROVAL notification for PLAN artifact with featureId", async () => {
-    const req = makeRequest({
-      featureId: feature.id,
+    const req = makeRequest({feature_id: feature.id,
       message: "Plan ready",
       artifacts: [{ type: "PLAN", content: { plan: "<plan><brief>Test</brief></plan>" } }],
     });
@@ -127,11 +120,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     await POST(req);
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: owner.id,
-        notificationType: NotificationTriggerType.PLAN_AWAITING_APPROVAL,
-        featureId: feature.id,
+        notificationType: NotificationTriggerType.PLAN_AWAITING_APPROVAL,feature_id: feature.id,
       },
     });
 
@@ -143,8 +135,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
   });
 
   it("creates PLAN_TASKS_GENERATED notification for TASKS artifact with featureId", async () => {
-    const req = makeRequest({
-      featureId: feature.id,
+    const req = makeRequest({feature_id: feature.id,
       message: "Tasks generated",
       artifacts: [{ type: "TASKS", content: { tasks: [] } }],
     });
@@ -152,11 +143,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     await POST(req);
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: owner.id,
-        notificationType: NotificationTriggerType.PLAN_TASKS_GENERATED,
-        featureId: feature.id,
+        notificationType: NotificationTriggerType.PLAN_TASKS_GENERATED,feature_id: feature.id,
       },
     });
 
@@ -168,18 +158,13 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
   });
 
   it("creates GRAPH_CHAT_RESPONSE notification for task response without plan artifacts", async () => {
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "My Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        assigneeId: owner.id,
+        title: "My Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: owner.id,
       },
     });
 
-    const req = makeRequest({
-      taskId: task.id,
+    const req = makeRequest({task_id: task.id,
       message: "Here is the answer",
       artifacts: [], // no FORM/PLAN/TASKS
     });
@@ -187,11 +172,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     await POST(req);
     await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
         targetUserId: owner.id,
-        notificationType: NotificationTriggerType.GRAPH_CHAT_RESPONSE,
-        taskId: task.id,
+        notificationType: NotificationTriggerType.GRAPH_CHAT_RESPONSE,task_id: task.id,
       },
     });
 

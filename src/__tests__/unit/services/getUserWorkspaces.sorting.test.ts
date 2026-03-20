@@ -4,11 +4,9 @@ import { db } from "@/lib/db";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findMany: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findMany: vi.fn(),
     },
   },
@@ -85,8 +83,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -166,8 +164,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         // ws1, ws2, ws4 have no lastAccessedAt (null)
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -274,8 +272,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -354,8 +352,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce([]) // Second call for owner memberships (all null)
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -418,8 +416,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -477,8 +475,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -520,8 +518,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce(ownerMemberships) // Second call for owner memberships
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -550,8 +548,8 @@ describe("getUserWorkspaces - lastAccessedAt Sorting Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships
         .mockResolvedValueOnce([]) // Second call for owner memberships (none)
         .mockResolvedValueOnce([]); // Third call for member counts

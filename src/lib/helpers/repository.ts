@@ -18,7 +18,7 @@ export type RepositoryInfo = {
 };
 
 export async function getPrimaryRepository(workspaceId: string): Promise<RepositoryInfo | null> {
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     include: {
       repositories: {
@@ -66,7 +66,7 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
 }
 
 export async function getRepositoryById(repositoryId: string, workspaceId: string): Promise<RepositoryInfo | null> {
-  const repo = await db.repository.findUnique({
+  const repo = await db.repositories.findUnique({
     where: { id: repositoryId },
     select: {
       id: true,
@@ -108,7 +108,7 @@ export async function getRepositoryById(repositoryId: string, workspaceId: strin
 }
 
 export async function getAllRepositories(workspaceId: string): Promise<RepositoryInfo[]> {
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     include: {
       repositories: {

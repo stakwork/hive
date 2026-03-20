@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarms.findFirst({ where });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
       console.error("[Sync] Swarm not found or misconfigured", { workspaceId, swarmId });
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id as string;
 
     // Get the workspace associated with this swarm for GitHub access
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: swarm.workspaceId },
       select: { slug: true },
     });
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      await db.repository.update({
+      await db.repositories.update({
         where: {
           repositoryUrl_workspaceId: {
             repositoryUrl: repositoryUrl,
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
         repositoryUrl,
       });
       try {
-        await db.repository.update({
+        await db.repositories.update({
           where: {
             repositoryUrl_workspaceId: {
               repositoryUrl: repositoryUrl,

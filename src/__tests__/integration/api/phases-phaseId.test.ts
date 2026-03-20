@@ -39,73 +39,56 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     // Create workspace
-    const workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id,
       name: "Test Workspace",
       slug: "test-workspace",
     });
     workspaceId = workspace.id;
 
     // Add member to workspace
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: member.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: member.id,
         role: "DEVELOPER",
       },
     });
 
     // Create feature
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
     featureId = feature.id;
 
     // Create phase with tickets
-    const phase = await db.phase.create({
+    const phase = await db.phases.create({
       data: {
         name: "Phase 1",
         description: "Test phase description",
         status: "NOT_STARTED",
-        order: 0,
-        featureId: feature.id,
+        order: 0,feature_id: feature.id,
       },
     });
     phaseId = phase.id;
 
     // Create some tickets in the phase
-    await db.task.create({
+    await db.tasks.create({
       data: {
         title: "Ticket 1",
         description: "Test ticket",
         status: "TODO",
         priority: "MEDIUM",
-        order: 0,
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        phaseId: phase.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        order: 0,workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
-    await db.task.create({
+    await db.tasks.create({
       data: {
         title: "Ticket 2",
         description: "Another test ticket",
         status: "TODO",
         priority: "HIGH",
-        order: 1,
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        phaseId: phase.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        order: 1,workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -192,7 +175,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ phaseId: "non-existent-id" }),
+        params: Promise.resolve({phase_id: "non-existent-id" }),
       });
 
       await expectNotFound(response, "not found");
@@ -200,11 +183,10 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("does not enforce 404 for soft-deleted phase on GET", async () => {
       // Soft delete the phase
-      await db.phase.update({
+      await db.phases.update({
         where: { id: phaseId },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -226,11 +208,10 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("filters out deleted tickets from phase", async () => {
       // Soft delete one ticket
-      await db.task.updateMany({
+      await db.tasks.updateMany({
         where: { title: "Ticket 1" },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -250,17 +231,12 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("returns tickets ordered by order field", async () => {
       // Create additional tickets with specific order
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Ticket 0",
           status: "TODO",
           priority: "LOW",
-          order: -1,
-          workspaceId: workspaceId,
-          featureId: featureId,
-          phaseId: phaseId,
-          createdById: owner.id,
-          updatedById: owner.id,
+          order: -1,workspace_id: workspaceId,feature_id: featureId,phase_id: phaseId,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -298,7 +274,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.data.id).toBe(phaseId);
 
       // Verify in database
-      const updatedPhase = await db.phase.findUnique({
+      const updatedPhase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(updatedPhase?.name).toBe("Updated Phase Name");
@@ -334,7 +310,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.data.status).toBe("IN_PROGRESS");
 
       // Verify in database
-      const updatedPhase = await db.phase.findUnique({
+      const updatedPhase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(updatedPhase?.status).toBe("IN_PROGRESS");
@@ -500,7 +476,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ phaseId: "non-existent-id" }),
+        params: Promise.resolve({phase_id: "non-existent-id" }),
       });
 
       await expectNotFound(response, "not found");
@@ -508,11 +484,10 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("does not enforce 404 for soft-deleted phase on PATCH", async () => {
       // Soft delete the phase
-      await db.phase.update({
+      await db.phases.update({
         where: { id: phaseId },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -556,7 +531,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       await expectSuccess(response2);
 
       // Final state should reflect both updates
-      const finalPhase = await db.phase.findUnique({
+      const finalPhase = await db.phases.findUnique({
         where: { id: phaseId },
       });
 
@@ -583,7 +558,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.message).toContain("deleted");
 
       // Verify soft delete in database
-      const deletedPhase = await db.phase.findUnique({
+      const deletedPhase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(deletedPhase?.deleted).toBe(true);
@@ -605,7 +580,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.success).toBe(true);
 
       // Verify in database
-      const deletedPhase = await db.phase.findUnique({
+      const deletedPhase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(deletedPhase?.deleted).toBe(true);
@@ -613,8 +588,8 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("soft delete does not orphan tickets automatically", async () => {
       // Get initial tickets
-      const ticketsBefore = await db.task.findMany({
-        where: { phaseId: phaseId },
+      const ticketsBefore = await db.tasks.findMany({
+        where: {phase_id: phaseId },
       });
       expect(ticketsBefore).toHaveLength(2);
       expect(ticketsBefore[0].phaseId).toBe(phaseId);
@@ -631,7 +606,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
       // Verify tickets still reference the phase (soft delete doesn't trigger onDelete cascade)
       // Note: Tickets need to be manually updated to set phaseId to null if desired
-      const ticketsAfter = await db.task.findMany({
+      const ticketsAfter = await db.tasks.findMany({
         where: {
           id: { in: ticketsBefore.map((t) => t.id) },
         },
@@ -646,8 +621,8 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("does not delete ticket records when phase is deleted", async () => {
-      const ticketsBefore = await db.task.findMany({
-        where: { phaseId: phaseId },
+      const ticketsBefore = await db.tasks.findMany({
+        where: {phase_id: phaseId },
       });
       const ticketIds = ticketsBefore.map((t) => t.id);
 
@@ -662,7 +637,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       // Verify tickets still exist
-      const ticketsAfter = await db.task.findMany({
+      const ticketsAfter = await db.tasks.findMany({
         where: { id: { in: ticketIds } },
       });
 
@@ -685,7 +660,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       await expectError(response, "Access denied", 403);
 
       // Verify phase was not deleted
-      const phase = await db.phase.findUnique({
+      const phase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(phase?.deleted).toBe(false);
@@ -703,7 +678,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       await expectUnauthorized(response);
 
       // Verify phase was not deleted
-      const phase = await db.phase.findUnique({
+      const phase = await db.phases.findUnique({
         where: { id: phaseId },
       });
       expect(phase?.deleted).toBe(false);
@@ -716,7 +691,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       );
 
       const response = await DELETE(request, {
-        params: Promise.resolve({ phaseId: "non-existent-id" }),
+        params: Promise.resolve({phase_id: "non-existent-id" }),
       });
 
       await expectNotFound(response, "not found");
@@ -724,11 +699,10 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("does not enforce 404 for already deleted phase", async () => {
       // Soft delete the phase first
-      await db.phase.update({
+      await db.phases.update({
         where: { id: phaseId },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -752,21 +726,19 @@ describe("Phase API: /api/phases/[phaseId]", () => {
   describe("Data Consistency", () => {
     test("phase order remains consistent after deletion", async () => {
       // Create multiple phases
-      const phase2 = await db.phase.create({
+      const phase2 = await db.phases.create({
         data: {
           name: "Phase 2",
           status: "NOT_STARTED",
-          order: 1,
-          featureId: featureId,
+          order: 1,feature_id: featureId,
         },
       });
 
-      const phase3 = await db.phase.create({
+      const phase3 = await db.phases.create({
         data: {
           name: "Phase 3",
           status: "NOT_STARTED",
-          order: 2,
-          featureId: featureId,
+          order: 2,feature_id: featureId,
         },
       });
 
@@ -777,13 +749,12 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       );
 
       await DELETE(request, {
-        params: Promise.resolve({ phaseId: phase2.id }),
+        params: Promise.resolve({phase_id: phase2.id }),
       });
 
       // Verify remaining phases maintain their order
-      const remainingPhases = await db.phase.findMany({
-        where: {
-          featureId: featureId,
+      const remainingPhases = await db.phases.findMany({
+        where: {feature_id: featureId,
           deleted: false,
         },
         orderBy: { order: "asc" },
@@ -798,28 +769,25 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("soft-deleted phases are filtered from queries", async () => {
       // Create another phase
-      await db.phase.create({
+      await db.phases.create({
         data: {
           name: "Phase 2",
           status: "NOT_STARTED",
-          order: 1,
-          featureId: featureId,
+          order: 1,feature_id: featureId,
         },
       });
 
       // Soft delete first phase
-      await db.phase.update({
+      await db.phases.update({
         where: { id: phaseId },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
       // Query non-deleted phases
-      const activePhases = await db.phase.findMany({
-        where: {
-          featureId: featureId,
+      const activePhases = await db.phases.findMany({
+        where: {feature_id: featureId,
           deleted: false,
         },
       });
@@ -829,7 +797,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("updatedat timestamp is updated on phase modification", async () => {
-      const phaseBefore = await db.phase.findUnique({
+      const phaseBefore = await db.phases.findUnique({
         where: { id: phaseId },
       });
 
@@ -846,7 +814,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
         params: Promise.resolve({ phaseId }),
       });
 
-      const phaseAfter = await db.phase.findUnique({
+      const phaseAfter = await db.phases.findUnique({
         where: { id: phaseId },
       });
 

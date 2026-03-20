@@ -70,8 +70,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -126,8 +125,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -176,8 +174,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -227,8 +224,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -279,8 +275,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.ssh,
+          {repository_url: testRepositoryUrls.ssh,
           }
         );
 
@@ -320,8 +315,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.httpsWithGit,
+          {repository_url: testRepositoryUrls.httpsWithGit,
           }
         );
 
@@ -364,8 +358,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -398,8 +391,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -416,8 +408,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -443,8 +434,7 @@ describe("GitHub App Check API Integration Tests", () => {
         // Use a URL whose owner has no SourceControlOrg in DB
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: "https://github.com/brand-new-user/my-repo",
+          {repository_url: "https://github.com/brand-new-user/my-repo",
           }
         );
 
@@ -473,8 +463,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -518,8 +507,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.invalid,
+          {repository_url: testRepositoryUrls.invalid,
           }
         );
 
@@ -540,8 +528,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.malformed,
+          {repository_url: testRepositoryUrls.malformed,
           }
         );
 
@@ -569,8 +556,7 @@ describe("GitHub App Check API Integration Tests", () => {
         // "unknown-owner" has no SourceControlOrg in the DB
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: "https://github.com/unknown-owner/test-repo",
+          {repository_url: "https://github.com/unknown-owner/test-repo",
           }
         );
 
@@ -601,8 +587,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -642,8 +627,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -674,8 +658,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 

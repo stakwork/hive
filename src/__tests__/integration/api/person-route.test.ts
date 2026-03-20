@@ -14,15 +14,14 @@ describe("POST /person", () => {
 
   beforeEach(async () => {
     const encryptedPubkey = encryptionService.encryptField("lightningPubkey", TEST_PUBKEY);
-    const user = await createTestUser({
-      lightningPubkey: JSON.stringify(encryptedPubkey),
+    const user = await createTestUser({lightning_pubkey: JSON.stringify(encryptedPubkey),
     });
     testUserId = user.id;
   });
 
   afterEach(async () => {
     if (testUserId) {
-      await db.user.delete({ where: { id: testUserId } }).catch(() => {});
+      await db.users.delete({ where: { id: testUserId } }).catch(() => {});
     }
   });
 
@@ -42,7 +41,7 @@ describe("POST /person", () => {
     const data = await result.json<{ success: boolean }>();
     expect(data).toEqual({ success: true });
 
-    const updated = await db.user.findUnique({ where: { id: testUserId } });
+    const updated = await db.users.findUnique({ where: { id: testUserId } });
     expect(updated?.sphinxAlias).toBe("alice");
     expect(updated?.sphinxRouteHint).toBe("hint:abc123");
   });

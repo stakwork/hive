@@ -29,20 +29,15 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
     outsider = await createTestUser({ name: "Outsider" });
 
     // Setup workspace and membership
-    workspace = await createTestWorkspace({ ownerId: owner.id });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: member.id,
+    workspace = await createTestWorkspace({owner_id: owner.id });
+    await createTestMembership({workspace_id: workspace.id,user_id: member.id,
       role: "DEVELOPER",
     });
 
     // Create feature for testing
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -56,7 +51,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -75,7 +70,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -93,7 +88,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(403);
@@ -108,7 +103,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectUnauthorized(response);
@@ -125,7 +120,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -133,7 +128,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       expect(result.data.featureId).toBe(feature.id);
 
       // Verify database state
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
         include: { feature: true },
       });
@@ -153,7 +148,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: nonExistentFeatureId }),
+        params: Promise.resolve({feature_id: nonExistentFeatureId }),
       });
 
       expect(response.status).toBe(404);
@@ -162,7 +157,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
 
     it("should return 404 when feature workspace is soft-deleted", async () => {
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: { deleted: true },
       });
@@ -174,7 +169,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(404);
@@ -189,7 +184,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -207,7 +202,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -222,7 +217,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -237,7 +232,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -252,14 +247,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.name).toBe("Trimmed Phase Name");
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.name).toBe("Trimmed Phase Name");
@@ -273,7 +268,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -289,14 +284,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.description).toBe("Trimmed Description");
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.description).toBe("Trimmed Description");
@@ -310,14 +305,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.description).toBeNull();
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.description).toBeNull();
@@ -333,7 +328,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -348,7 +343,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response1 = await POST(request1, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result1 = await expectSuccess(response1, 201);
       expect(result1.data.order).toBe(0);
@@ -360,7 +355,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response2 = await POST(request2, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result2 = await expectSuccess(response2, 201);
       expect(result2.data.order).toBe(1);
@@ -372,7 +367,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response3 = await POST(request3, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result3 = await expectSuccess(response3, 201);
       expect(result3.data.order).toBe(2);
@@ -380,12 +375,9 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
 
     it("should calculate order independently per feature", async () => {
       // Create second feature
-      const feature2 = await db.feature.create({
+      const feature2 = await db.features.create({
         data: {
-          title: "Second Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Second Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -396,7 +388,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response1 = await POST(request1, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result1 = await expectSuccess(response1, 201);
       expect(result1.data.order).toBe(0);
@@ -408,7 +400,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response2 = await POST(request2, {
-        params: Promise.resolve({ featureId: feature2.id }),
+        params: Promise.resolve({feature_id: feature2.id }),
       });
       const result2 = await expectSuccess(response2, 201);
       expect(result2.data.order).toBe(0);
@@ -420,7 +412,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response3 = await POST(request3, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result3 = await expectSuccess(response3, 201);
       expect(result3.data.order).toBe(1);
@@ -434,14 +426,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response1 = await POST(request1, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result1 = await expectSuccess(response1, 201);
 
       // Soft delete the phase
-      await db.phase.update({
+      await db.phases.update({
         where: { id: result1.data.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       // Create second phase (order should still be 1, not 0)
@@ -451,7 +443,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         owner
       );
       const response2 = await POST(request2, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result2 = await expectSuccess(response2, 201);
       expect(result2.data.order).toBe(1);
@@ -467,12 +459,12 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       // Query database directly
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
         include: { _count: { select: { tasks: true } } },
       });
@@ -496,12 +488,12 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       // Verify phase cannot exist without valid feature
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
         include: { feature: true },
       });
@@ -518,14 +510,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.status).toBe("NOT_STARTED");
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.status).toBe("NOT_STARTED");
@@ -539,12 +531,12 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       // Verify deleted flag in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.deleted).toBe(false);
@@ -561,7 +553,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -589,7 +581,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -606,7 +598,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -641,7 +633,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectSuccess(response, 201);
@@ -659,7 +651,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: invalidFeatureId }),
+        params: Promise.resolve({feature_id: invalidFeatureId }),
       });
 
       // Should return error status (404 or 500 depending on validation)
@@ -674,7 +666,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -692,7 +684,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBeGreaterThanOrEqual(400);
@@ -712,7 +704,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
         );
 
         const response = await POST(request, {
-          params: Promise.resolve({ featureId: feature.id }),
+          params: Promise.resolve({feature_id: feature.id }),
         });
         const result = await expectSuccess(response, 201);
         createdPhases.push(result.data);
@@ -725,8 +717,8 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       expect(createdPhases[2].order).toBe(2);
 
       // Verify in database
-      const phasesInDb = await db.phase.findMany({
-        where: { featureId: feature.id },
+      const phasesInDb = await db.phases.findMany({
+        where: {feature_id: feature.id },
         orderBy: { order: "asc" },
       });
       expect(phasesInDb).toHaveLength(3);
@@ -751,8 +743,8 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const [response1, response2] = await Promise.all([
-        POST(request1, { params: Promise.resolve({ featureId: feature.id }) }),
-        POST(request2, { params: Promise.resolve({ featureId: feature.id }) }),
+        POST(request1, { params: Promise.resolve({feature_id: feature.id }) }),
+        POST(request2, { params: Promise.resolve({feature_id: feature.id }) }),
       ]);
 
       const result1 = await expectSuccess(response1, 201);
@@ -784,14 +776,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.name).toBe(longName);
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.name).toBe(longName);
@@ -806,14 +798,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.description).toBe(longDescription);
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.description).toBe(longDescription);
@@ -830,7 +822,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
@@ -838,7 +830,7 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       expect(result.data.description).toBe(specialDescription);
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.name).toBe(specialName);
@@ -853,14 +845,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.description).toBeNull();
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.description).toBeNull();
@@ -874,14 +866,14 @@ describe("POST /api/features/[featureId]/phases - Phase Creation", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
       const result = await expectSuccess(response, 201);
 
       expect(result.data.description).toBeNull();
 
       // Verify in database
-      const phaseInDb = await db.phase.findUnique({
+      const phaseInDb = await db.phases.findUnique({
         where: { id: result.data.id },
       });
       expect(phaseInDb?.description).toBeNull();

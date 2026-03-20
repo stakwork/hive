@@ -3,11 +3,9 @@ import { FeatureStatus, TaskStatus, WorkflowStatus } from "@prisma/client";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findMany: vi.fn(),
-    },
-    feature: {
+    },features: {
       findUnique: vi.fn(),
     },
   },
@@ -49,11 +47,11 @@ describe("updateFeatureStatusFromTasks", () => {
 
   describe("No Tasks Scenario", () => {
     test("returns early when feature has no tasks", async () => {
-      vi.mocked(db.task.findMany).mockResolvedValue([]);
+      vi.mocked(db.tasks.findMany).mockResolvedValue([]);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(db.task.findMany).toHaveBeenCalledWith({
+      expect(db.tasks.findMany).toHaveBeenCalledWith({
         where: {
           featureId: mockFeatureId,
           deleted: false,
@@ -64,7 +62,7 @@ describe("updateFeatureStatusFromTasks", () => {
         },
       });
 
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
       expect(updateFeature).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("No tasks found for feature")
@@ -78,12 +76,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("does not update feature when task has WorkflowStatus.FAILED", async () => {
@@ -91,12 +89,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("does not update feature when FAILED task is mixed with BLOCKED task", async () => {
@@ -105,12 +103,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("does not update feature when FAILED task is mixed with IN_PROGRESS task", async () => {
@@ -119,12 +117,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.FAILED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("does not update feature when ERROR task is mixed with COMPLETED task", async () => {
@@ -133,12 +131,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("does not update feature when mix of FAILED and IN_PROGRESS tasks (early return before IN_PROGRESS check)", async () => {
@@ -148,12 +146,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -163,8 +161,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.BLOCKED, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -181,8 +179,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.HALTED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -200,8 +198,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.BLOCKED, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -219,8 +217,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.BLOCKED, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -239,8 +237,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -257,8 +255,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.IN_PROGRESS },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -277,8 +275,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -298,8 +296,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -317,8 +315,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -335,8 +333,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -359,12 +357,12 @@ describe("updateFeatureStatusFromTasks", () => {
         status: FeatureStatus.IN_PROGRESS,
       };
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(featureInProgress);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(featureInProgress);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(db.feature.findUnique).toHaveBeenCalled();
+      expect(db.features.findUnique).toHaveBeenCalled();
       expect(updateFeature).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("already has status")
@@ -376,11 +374,11 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.PENDING },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
       expect(updateFeature).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("No status change needed")
@@ -392,11 +390,11 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.CANCELLED, workflowStatus: WorkflowStatus.COMPLETED },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
       expect(updateFeature).not.toHaveBeenCalled();
     });
   });
@@ -407,8 +405,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.IN_PROGRESS },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(null);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
@@ -422,7 +420,7 @@ describe("updateFeatureStatusFromTasks", () => {
   describe("Error Handling", () => {
     test("logs and throws error when task query fails", async () => {
       const error = new Error("Database error");
-      vi.mocked(db.task.findMany).mockRejectedValue(error);
+      vi.mocked(db.tasks.findMany).mockRejectedValue(error);
 
       await expect(updateFeatureStatusFromTasks(mockFeatureId)).rejects.toThrow("Database error");
 
@@ -438,8 +436,8 @@ describe("updateFeatureStatusFromTasks", () => {
       ];
       const error = new Error("Database error");
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockRejectedValue(error);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockRejectedValue(error);
 
       await expect(updateFeatureStatusFromTasks(mockFeatureId)).rejects.toThrow("Database error");
 
@@ -455,8 +453,8 @@ describe("updateFeatureStatusFromTasks", () => {
       ];
       const error = new Error("Update error");
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockRejectedValue(error);
 
       await expect(updateFeatureStatusFromTasks(mockFeatureId)).rejects.toThrow("Update error");
@@ -478,12 +476,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("leaves feature unchanged when multiple ERROR/FAILED tasks", async () => {
@@ -493,12 +491,12 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.TODO, workflowStatus: WorkflowStatus.ERROR },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
 
       expect(updateFeature).not.toHaveBeenCalled();
-      expect(db.feature.findUnique).not.toHaveBeenCalled();
+      expect(db.features.findUnique).not.toHaveBeenCalled();
     });
 
     test("handles large number of tasks efficiently", async () => {
@@ -507,8 +505,8 @@ describe("updateFeatureStatusFromTasks", () => {
         workflowStatus: WorkflowStatus.COMPLETED,
       }));
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);
@@ -527,8 +525,8 @@ describe("updateFeatureStatusFromTasks", () => {
         { status: TaskStatus.IN_PROGRESS, workflowStatus: WorkflowStatus.IN_PROGRESS },
       ];
 
-      vi.mocked(db.task.findMany).mockResolvedValue(tasks);
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.tasks.findMany).mockResolvedValue(tasks);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
       vi.mocked(updateFeature).mockResolvedValue({} as any);
 
       await updateFeatureStatusFromTasks(mockFeatureId);

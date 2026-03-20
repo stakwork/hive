@@ -25,7 +25,7 @@ export async function GET(
   try {
     const { featureId } = await params;
 
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
@@ -37,7 +37,7 @@ export async function GET(
     const userOrResponse = await requireAuthOrApiToken(request, feature.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const messages = await db.chatMessage.findMany({
+    const messages = await db.chat_messages.findMany({
       where: { featureId },
       include: {
         artifacts: true,
@@ -82,7 +82,7 @@ export async function POST(
   try {
     const { featureId } = await params;
 
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });

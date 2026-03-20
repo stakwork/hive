@@ -34,8 +34,7 @@ describe("Conversation Management API Integration Tests", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: testUser.id,
+          description: "Test workspace description",owner_id: testUser.id,
         },
       });
 
@@ -43,7 +42,7 @@ describe("Conversation Management API Integration Tests", () => {
     });
   }
 
-  async function createTestConversation(workspaceId: string, userId: string, options: {
+  async function createTestConversation(workspaceId: string,user_id: string, options: {
     title?: string;
     messages?: any[];
     isShared?: boolean;
@@ -55,7 +54,7 @@ describe("Conversation Management API Integration Tests", () => {
       { role: "assistant", content: "Test response" },
     ];
 
-    return await db.sharedConversation.create({
+    return await db.shared_conversations.create({
       data: {
         workspaceId,
         userId,
@@ -94,7 +93,7 @@ describe("Conversation Management API Integration Tests", () => {
       test("should return 403 for non-member user", async () => {
         const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
-        const nonMemberUser = await db.user.create({
+        const nonMemberUser = await db.users.create({
           data: {
             id: generateUniqueId("non-member"),
             email: `nonmember-${generateUniqueId()}@example.com`,
@@ -411,7 +410,7 @@ describe("Conversation Management API Integration Tests", () => {
         );
 
         const messages = [
-          { role: "user", content: "Test", createdAt: new Date().toISOString() },
+          { role: "user", content: "Test",created_at: new Date().toISOString() },
         ];
 
         const request = createPostRequest(
@@ -492,7 +491,7 @@ describe("Conversation Management API Integration Tests", () => {
     test("should return 404 when accessing another user's conversation", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
-      const otherUser = await db.user.create({
+      const otherUser = await db.users.create({
         data: {
           id: generateUniqueId("other-user"),
           email: `other-${generateUniqueId()}@example.com`,
@@ -536,7 +535,7 @@ describe("Conversation Management API Integration Tests", () => {
       );
 
       const newMessages = [
-        { role: "user", content: "Second", createdAt: new Date().toISOString() },
+        { role: "user", content: "Second",created_at: new Date().toISOString() },
         { role: "assistant", content: "Second response" },
       ];
 
@@ -573,7 +572,7 @@ describe("Conversation Management API Integration Tests", () => {
         `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/conversations/${conv.id}`,
         {
           messages: [
-            { role: "user", content: "New message", createdAt: newDate.toISOString() },
+            { role: "user", content: "New message",created_at: newDate.toISOString() },
           ],
         }
       );
@@ -621,7 +620,7 @@ describe("Conversation Management API Integration Tests", () => {
     test("should return 404 when updating another user's conversation", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
-      const otherUser = await db.user.create({
+      const otherUser = await db.users.create({
         data: {
           id: generateUniqueId("other-user"),
           email: `other-${generateUniqueId()}@example.com`,
@@ -673,7 +672,7 @@ describe("Conversation Management API Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify deletion
-      const deleted = await db.sharedConversation.findUnique({
+      const deleted = await db.shared_conversations.findUnique({
         where: { id: conv.id },
       });
       expect(deleted).toBeNull();
@@ -701,7 +700,7 @@ describe("Conversation Management API Integration Tests", () => {
     test("should return 404 when deleting another user's conversation", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
-      const otherUser = await db.user.create({
+      const otherUser = await db.users.create({
         data: {
           id: generateUniqueId("other-user"),
           email: `other-${generateUniqueId()}@example.com`,
@@ -753,7 +752,7 @@ describe("Conversation Management API Integration Tests", () => {
       const data = await response.json();
 
       // Verify isShared is true
-      const conv = await db.sharedConversation.findUnique({
+      const conv = await db.shared_conversations.findUnique({
         where: { id: data.shareId },
       });
       expect(conv?.isShared).toBe(true);
@@ -792,7 +791,7 @@ describe("Conversation Management API Integration Tests", () => {
       expect(data.shareId).toBe(conv.id);
 
       // Verify it was updated and marked as shared
-      const updated = await db.sharedConversation.findUnique({
+      const updated = await db.shared_conversations.findUnique({
         where: { id: conv.id },
       });
       expect(updated?.isShared).toBe(true);
@@ -821,7 +820,7 @@ describe("Conversation Management API Integration Tests", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      const conv = await db.sharedConversation.findUnique({
+      const conv = await db.shared_conversations.findUnique({
         where: { id: data.shareId },
       });
       expect(conv?.title).toBe("How to use React hooks?");

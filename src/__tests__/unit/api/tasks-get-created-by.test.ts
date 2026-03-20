@@ -4,11 +4,9 @@ import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    task: {
+    },tasks: {
       findMany: vi.fn(),
       count: vi.fn(),
     },
@@ -67,9 +65,9 @@ const mockTask = {
 describe("GET /api/tasks - createdById filter (unit)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.task.findMany as Mock).mockResolvedValue([mockTask]);
-    (db.task.count as Mock).mockResolvedValue(1);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.tasks.findMany as Mock).mockResolvedValue([mockTask]);
+    (db.tasks.count as Mock).mockResolvedValue(1);
   });
 
   test("passes createdById to Prisma whereClause when param is set", async () => {
@@ -80,7 +78,7 @@ describe("GET /api/tasks - createdById filter (unit)", () => {
     const response = await GET(request);
     expect(response.status).toBe(200);
 
-    expect(db.task.findMany).toHaveBeenCalledWith(
+    expect(db.tasks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           createdById: "creator1",
@@ -97,7 +95,7 @@ describe("GET /api/tasks - createdById filter (unit)", () => {
     const response = await GET(request);
     expect(response.status).toBe(200);
 
-    const callArgs = (db.task.findMany as Mock).mock.calls[0][0];
+    const callArgs = (db.tasks.findMany as Mock).mock.calls[0][0];
     expect(callArgs.where).not.toHaveProperty("createdById");
   });
 });

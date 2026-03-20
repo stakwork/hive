@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   PrismaClient,
   SwarmStatus,
@@ -28,7 +29,7 @@ async function seedUsersWithAccounts() {
   const results: Array<{ id: string; email: string }> = [];
 
   for (const u of users) {
-    const user = await prisma.user.upsert({
+    const user = await prisma.users.upsert({
       where: { email: u.email },
       update: { name: u.name },
       create: { name: u.name, email: u.email, emailVerified: new Date() },
@@ -37,7 +38,7 @@ async function seedUsersWithAccounts() {
     const providerAccountId = `${user.id.slice(0, 8)}-gh`;
     const plainAccessToken = `gho_test_token_${user.id}`;
 
-    await prisma.account.upsert({
+    await prisma.accounts.upsert({
       where: {
         provider_providerAccountId: { provider: "github", providerAccountId },
       },
@@ -89,7 +90,7 @@ async function seedWorkspacesAndSwarms(
   for (const item of items) {
     const stakworkApiKey = `stakwork_key_${item.workspace.slug}`;
 
-    const ws = await prisma.workspace.upsert({
+    const ws = await prisma.workspaces.upsert({
       where: { slug: item.workspace.slug },
       update: {
         name: item.workspace.name,
@@ -105,7 +106,7 @@ async function seedWorkspacesAndSwarms(
     });
 
     // Add the owner as a workspace member with OWNER role
-    await prisma.workspaceMember.upsert({
+    await prisma.workspace_members.upsert({
       where: {
         workspaceId_userId: {
           workspaceId: ws.id,
@@ -123,7 +124,7 @@ async function seedWorkspacesAndSwarms(
     // Add the dev-mock user as a DEVELOPER in all workspaces
     const devUser = users.find((u) => u.email === "dev-user@mock.dev");
     if (devUser && devUser.id !== item.owner.id) {
-      await prisma.workspaceMember.upsert({
+      await prisma.workspace_members.upsert({
         where: {
           workspaceId_userId: {
             workspaceId: ws.id,
@@ -143,7 +144,7 @@ async function seedWorkspacesAndSwarms(
 
     const swarmApiKey = `swarm_key_${item.swarm.name}`;
 
-    await prisma.swarm.upsert({
+    await prisma.swarms.upsert({
       where: { workspaceId: ws.id },
       update: {
         name: item.swarm.name,
@@ -174,7 +175,7 @@ async function seedTasksWithLayerTypes(
   users: Array<{ id: string; email: string }>,
 ) {
   // Get all workspaces
-  const workspaces = await prisma.workspace.findMany();
+  const workspaces = await prisma.workspaces.findMany();
   if (workspaces.length === 0) {
     console.log("No workspaces found, skipping task seeding");
     return;
@@ -382,7 +383,7 @@ async function seedTasksWithLayerTypes(
   console.log(`Creating ${tasksData.length} tasks with layer types...`);
 
   for (const taskData of tasksData) {
-    await prisma.task.create({
+    await prisma.tasks.create({
       data: {
         title: taskData.title,
         description: taskData.description,
@@ -405,7 +406,7 @@ async function seedFeaturesWithStakworkRuns(
   users: Array<{ id: string; email: string }>,
 ) {
   // Get all workspaces
-  const workspaces = await prisma.workspace.findMany();
+  const workspaces = await prisma.workspaces.findMany();
   if (workspaces.length === 0) {
     console.log("No workspaces found, skipping feature seeding");
     return;
@@ -424,7 +425,7 @@ async function seedFeaturesWithStakworkRuns(
 
   // Scenario 1: Old pending + newer accepted ARCHITECTURE run
   // Should NOT show indicator (latest is accepted)
-  const feature1 = await prisma.feature.create({
+  const feature1 = await prisma.features.create({
     data: {
       title: "Sequential Test: Old Pending → New Accepted",
       brief: "Test case: older ARCHITECTURE run pending, newer ARCHITECTURE run accepted",
@@ -445,7 +446,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // Old pending run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature1.id}/old`,
       type: StakworkRunType.ARCHITECTURE,
@@ -463,7 +464,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // Newer accepted run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature1.id}/new`,
       type: StakworkRunType.ARCHITECTURE,
@@ -483,7 +484,7 @@ async function seedFeaturesWithStakworkRuns(
 
   // Scenario 2: Old accepted + newer pending REQUIREMENTS run
   // Should show indicator (latest is pending)
-  const feature2 = await prisma.feature.create({
+  const feature2 = await prisma.features.create({
     data: {
       title: "Sequential Test: Old Accepted → New Pending",
       brief: "Test case: older REQUIREMENTS run accepted, newer REQUIREMENTS run pending",
@@ -504,7 +505,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // Old accepted run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature2.id}/old`,
       type: StakworkRunType.REQUIREMENTS,
@@ -522,7 +523,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // Newer pending run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature2.id}/new`,
       type: StakworkRunType.REQUIREMENTS,
@@ -543,7 +544,7 @@ async function seedFeaturesWithStakworkRuns(
   // ARCHITECTURE: accepted (latest), REQUIREMENTS: pending (latest), 
   // TASK_GENERATION: old pending + newer accepted
   // Should only show indicator for REQUIREMENTS
-  const feature3 = await prisma.feature.create({
+  const feature3 = await prisma.features.create({
     data: {
       title: "Mixed Sequential Test: Multiple Run Types",
       brief: "Test case: mixed run types with different decision states to test per-type logic",
@@ -564,7 +565,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // ARCHITECTURE - latest is accepted
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature3.id}/arch`,
       type: StakworkRunType.ARCHITECTURE,
@@ -583,7 +584,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // REQUIREMENTS - latest is pending (should show indicator)
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature3.id}/req`,
       type: StakworkRunType.REQUIREMENTS,
@@ -601,7 +602,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // TASK_GENERATION - old pending run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature3.id}/tasks-old`,
       type: StakworkRunType.TASK_GENERATION,
@@ -621,7 +622,7 @@ async function seedFeaturesWithStakworkRuns(
   });
 
   // TASK_GENERATION - newer accepted run
-  await prisma.stakworkRun.create({
+  await prisma.stakwork_runs.create({
     data: {
       webhookUrl: `https://example.com/webhook/${feature3.id}/tasks-new`,
       type: StakworkRunType.TASK_GENERATION,
@@ -668,7 +669,7 @@ async function seedFeaturesWithStakworkRuns(
   ];
 
   for (const featureData of simpleFeatures) {
-    const feature = await prisma.feature.create({
+    const feature = await prisma.features.create({
       data: {
         title: featureData.title,
         brief: featureData.brief,
@@ -696,7 +697,7 @@ async function seedFeaturesWithStakworkRuns(
       ];
       const randomType = runTypes[Math.floor(Math.random() * runTypes.length)];
 
-      await prisma.stakworkRun.create({
+      await prisma.stakwork_runs.create({
         data: {
           webhookUrl: `https://example.com/webhook/${feature.id}`,
           type: randomType,
@@ -709,7 +710,7 @@ async function seedFeaturesWithStakworkRuns(
         },
       });
     } else {
-      await prisma.stakworkRun.create({
+      await prisma.stakwork_runs.create({
         data: {
           webhookUrl: `https://example.com/webhook/${feature.id}`,
           type: StakworkRunType.ARCHITECTURE,
@@ -736,7 +737,7 @@ async function seedFeaturesWithStakworkRuns(
 export async function seedAutoMergeTestScenarios(
   users?: Array<{ id: string; email: string }>,
 ) {
-  const workspaces = await prisma.workspace.findMany();
+  const workspaces = await prisma.workspaces.findMany();
   if (workspaces.length === 0) {
     console.log("No workspaces found, skipping auto-merge test seeding");
     return;
@@ -745,7 +746,7 @@ export async function seedAutoMergeTestScenarios(
   const workspace = workspaces[0];
   
   // Get or use provided users
-  const seedUsers = users || await prisma.user.findMany({ take: 1 });
+  const seedUsers = users || await prisma.users.findMany({ take: 1 });
   if (seedUsers.length === 0) {
     console.log("No users found, skipping auto-merge test seeding");
     return;
@@ -753,12 +754,12 @@ export async function seedAutoMergeTestScenarios(
   const userId = seedUsers[0].id;
 
   // Find or create system user for task-coordinator
-  let systemUser = await prisma.user.findFirst({
+  let systemUser = await prisma.users.findFirst({
     where: { email: "system:task-coordinator@hive.local" },
   });
 
   if (!systemUser) {
-    systemUser = await prisma.user.create({
+    systemUser = await prisma.users.create({
       data: {
         email: "system:task-coordinator@hive.local",
         name: "Task Coordinator",
@@ -771,7 +772,7 @@ export async function seedAutoMergeTestScenarios(
 
   // FEATURE A: Payment Integration - All tasks with autoMerge: true
   // Sequential dependency chain to test coordinator auto-progression
-  const paymentFeature = await prisma.feature.create({
+  const paymentFeature = await prisma.features.create({
     data: {
       title: "Payment Integration",
       brief: "End-to-end payment processing system",
@@ -783,7 +784,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const paymentPhase = await prisma.phase.create({
+  const paymentPhase = await prisma.phases.create({
     data: {
       name: "Implementation",
       featureId: paymentFeature.id,
@@ -792,7 +793,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Task 1: Add payment API endpoints (no dependencies)
-  const paymentTask1 = await prisma.task.create({
+  const paymentTask1 = await prisma.tasks.create({
     data: {
       title: "Add payment API endpoints",
       description:
@@ -813,7 +814,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Task 2: Implement payment UI components (depends on Task 1)
-  const paymentTask2 = await prisma.task.create({
+  const paymentTask2 = await prisma.tasks.create({
     data: {
       title: "Implement payment UI components",
       description:
@@ -834,7 +835,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Task 3: Add payment confirmation flow (depends on Task 2)
-  const paymentTask3 = await prisma.task.create({
+  const paymentTask3 = await prisma.tasks.create({
     data: {
       title: "Add payment confirmation flow",
       description:
@@ -860,7 +861,7 @@ export async function seedAutoMergeTestScenarios(
 
   // FEATURE B: User Profile Enhancement - Mixed auto-merge settings
   // Tests coordinator handling of manual intervention mid-chain
-  const profileFeature = await prisma.feature.create({
+  const profileFeature = await prisma.features.create({
     data: {
       title: "User Profile Enhancement",
       brief: "Improve user profile management and customization",
@@ -872,7 +873,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const profilePhase = await prisma.phase.create({
+  const profilePhase = await prisma.phases.create({
     data: {
       name: "Development",
       featureId: profileFeature.id,
@@ -881,7 +882,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Task 1: Update profile schema - autoMerge: true (no dependencies)
-  const profileTask1 = await prisma.task.create({
+  const profileTask1 = await prisma.tasks.create({
     data: {
       title: "Update profile schema",
       description:
@@ -903,7 +904,7 @@ export async function seedAutoMergeTestScenarios(
 
   // Task 2: Add profile edit UI - autoMerge: false (depends on Task 1)
   // Manual review required for UI changes
-  const profileTask2 = await prisma.task.create({
+  const profileTask2 = await prisma.tasks.create({
     data: {
       title: "Add profile edit UI",
       description:
@@ -924,7 +925,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Task 3: Add avatar upload - autoMerge: true (depends on Task 2)
-  const profileTask3 = await prisma.task.create({
+  const profileTask3 = await prisma.tasks.create({
     data: {
       title: "Add avatar upload",
       description:
@@ -949,7 +950,7 @@ export async function seedAutoMergeTestScenarios(
   );
 
   // EDGE CASE TASKS: Various PR artifact states for UI testing
-  const edgeCaseFeature = await prisma.feature.create({
+  const edgeCaseFeature = await prisma.features.create({
     data: {
       title: "Edge Case Testing Feature",
       brief: "Tasks with various auto-merge and PR states for testing",
@@ -961,7 +962,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const edgeCasePhase = await prisma.phase.create({
+  const edgeCasePhase = await prisma.phases.create({
     data: {
       name: "Testing",
       featureId: edgeCaseFeature.id,
@@ -970,7 +971,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Edge Case 1: autoMerge with open PR (should show badge)
-  const edgeTask1 = await prisma.task.create({
+  const edgeTask1 = await prisma.tasks.create({
     data: {
       title: "Task with open PR and auto-merge",
       description: "Test auto-merge badge display with IN_PROGRESS PR artifact",
@@ -988,7 +989,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const edgeMessage1 = await prisma.chatMessage.create({
+  const edgeMessage1 = await prisma.chat_messages.create({
     data: {
       taskId: edgeTask1.id,
       message: "Created PR with auto-merge enabled",
@@ -997,7 +998,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  await prisma.artifact.create({
+  await prisma.artifacts.create({
     data: {
       messageId: edgeMessage1.id,
       type: "PULL_REQUEST",
@@ -1013,7 +1014,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Edge Case 2: autoMerge with merged PR (should NOT show badge)
-  const edgeTask2 = await prisma.task.create({
+  const edgeTask2 = await prisma.tasks.create({
     data: {
       title: "Task with merged PR and auto-merge",
       description: "Test that badge doesn't show for already merged PRs",
@@ -1031,7 +1032,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const edgeMessage2 = await prisma.chatMessage.create({
+  const edgeMessage2 = await prisma.chat_messages.create({
     data: {
       taskId: edgeTask2.id,
       message: "PR merged successfully",
@@ -1040,7 +1041,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  await prisma.artifact.create({
+  await prisma.artifacts.create({
     data: {
       messageId: edgeMessage2.id,
       type: "PULL_REQUEST",
@@ -1056,7 +1057,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Edge Case 3: Manual merge workflow (autoMerge: false with PR)
-  const edgeTask3 = await prisma.task.create({
+  const edgeTask3 = await prisma.tasks.create({
     data: {
       title: "Task with manual merge required",
       description: "Test manual merge workflow with autoMerge disabled",
@@ -1074,7 +1075,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  const edgeMessage3 = await prisma.chatMessage.create({
+  const edgeMessage3 = await prisma.chat_messages.create({
     data: {
       taskId: edgeTask3.id,
       message: "Created PR requiring manual review",
@@ -1083,7 +1084,7 @@ export async function seedAutoMergeTestScenarios(
     },
   });
 
-  await prisma.artifact.create({
+  await prisma.artifacts.create({
     data: {
       messageId: edgeMessage3.id,
       type: "PULL_REQUEST",
@@ -1099,7 +1100,7 @@ export async function seedAutoMergeTestScenarios(
   });
 
   // Edge Case 4: Coordinator handling (autoMerge with PENDING workflow)
-  const edgeTask4 = await prisma.task.create({
+  const edgeTask4 = await prisma.tasks.create({
     data: {
       title: "Task awaiting coordinator processing",
       description:

@@ -401,7 +401,7 @@ export async function updatePRArtifactProgress(
   prStatus?: "IN_PROGRESS" | "DONE" | "CANCELLED",
 ): Promise<void> {
   // Fetch current artifact content
-  const artifact = await db.artifact.findUnique({
+  const artifact = await db.artifacts.findUnique({
     where: { id: artifactId },
     select: { content: true },
   });
@@ -420,7 +420,7 @@ export async function updatePRArtifactProgress(
     ...(prStatus && { status: prStatus }),
   } as unknown as Prisma.InputJsonValue;
 
-  await db.artifact.update({
+  await db.artifacts.update({
     where: { id: artifactId },
     data: { content: updatedContent },
   });
@@ -455,7 +455,7 @@ export async function notifyPRStatusChange(
 
   // Also broadcast to workspace channel for UI-wide updates
   try {
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: { workspace: { select: { slug: true } } },
     });
@@ -720,7 +720,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
         // Update task status to DONE if PR was merged
         if (result.merged) {
-          await db.task.update({
+          await db.tasks.update({
             where: { id: pr.taskId },
             data: { status: TaskStatus.DONE },
           });
@@ -1025,7 +1025,7 @@ export async function triggerAgentModeFix(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: {
         agentUrl: true,
@@ -1066,7 +1066,7 @@ export async function triggerAgentModeFix(
     } else {
       webhookSecret = generateWebhookSecret();
       const encryptedSecret = encryptionService.encryptField("agentWebhookSecret", webhookSecret);
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { agentWebhookSecret: JSON.stringify(encryptedSecret) },
       });
@@ -1078,7 +1078,7 @@ export async function triggerAgentModeFix(
     const webhookUrl = `${baseUrl}/api/agent/webhook?token=${webhookToken}`;
 
     // 6. Save system message about the fix attempt
-    const triggerMessage = await db.chatMessage.create({
+    const triggerMessage = await db.chat_messages.create({
       data: {
         taskId,
         message: `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`,
@@ -1162,7 +1162,7 @@ export async function triggerLiveModeFix(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task to get workspace owner and workflow status
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: {
         mode: true,
@@ -1234,7 +1234,7 @@ export async function triggerLiveModeFix(
  */
 export async function triggerFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
   // Load task to determine mode
-  const task = await db.task.findUnique({
+  const task = await db.tasks.findUnique({
     where: { id: taskId },
     select: { mode: true },
   });

@@ -20,7 +20,7 @@ export async function POST(
     let slug = rawSlug && rawSlug !== "_" ? rawSlug : null;
 
     if (!slug && swarmName) {
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { name: swarmName },
         select: { workspace: { select: { slug: true, deleted: true } } },
       });
@@ -37,7 +37,7 @@ export async function POST(
     }
 
     // Get workspace with swarm info
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,

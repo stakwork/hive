@@ -176,7 +176,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const swarm = (await db.swarm.findUnique({
+    const swarm = (await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
       select: swarmSelect,
     })) as SwarmSelectResult | null;
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const environmentVariables = swarm?.environmentVariables;
 
     // Fetch service-specific env vars from the table
-    const serviceEnvVarsFromTable = await db.environmentVariable.findMany({
+    const serviceEnvVarsFromTable = await db.environment_variables.findMany({
       where: {
         swarmId: swarm.id,
         serviceName: { not: "" }, // Only service-specific vars (not global)
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const repositories = await db.repository.findMany({
+    const repositories = await db.repositories.findMany({
       where: { workspaceId: workspace.id },
       select: {
         id: true,
@@ -296,7 +296,7 @@ async function migrateEnvironmentVariablesToTable(
   );
 
   // Always delete existing global env vars first
-  await db.environmentVariable.deleteMany({
+  await db.environment_variables.deleteMany({
     where: {
       swarmId,
       serviceName: "",
@@ -306,7 +306,7 @@ async function migrateEnvironmentVariablesToTable(
   // If there are env vars to save, encrypt and insert them
   if (filteredEnvVars.length > 0) {
     const encrypted = encryptEnvVars(filteredEnvVars);
-    await db.environmentVariable.createMany({
+    await db.environment_variables.createMany({
       data: encrypted.map((ev) => ({
         swarmId,
         serviceName: "", // Empty string indicates global scope
@@ -342,7 +342,7 @@ async function saveServiceEnvironmentVariables(
       .map(([key, value]) => ({ name: key, value }));
 
     // Delete existing service-specific env vars for this service
-    await db.environmentVariable.deleteMany({
+    await db.environment_variables.deleteMany({
       where: {
         swarmId,
         serviceName: serviceName,
@@ -352,7 +352,7 @@ async function saveServiceEnvironmentVariables(
     // Encrypt and insert new env vars if any
     if (envVarsArray.length > 0) {
       const encrypted = encryptEnvVars(envVarsArray);
-      await db.environmentVariable.createMany({
+      await db.environment_variables.createMany({
         data: encrypted.map((ev) => ({
           swarmId,
           serviceName: serviceName,
@@ -379,7 +379,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (isApiTokenAuth) {
       // API token auth - get workspace by slug directly (no user session needed)
-      workspace = await db.workspace.findFirst({
+      workspace = await db.workspaces.findFirst({
         where: { slug, deleted: false },
         select: { id: true },
       });
@@ -456,7 +456,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Only process repositories if provided
     if (settings.repositories && settings.repositories.length > 0) {
-      const existingRepos = await db.repository.findMany({
+      const existingRepos = await db.repositories.findMany({
         where: { workspaceId: workspace.id },
       });
 
@@ -466,7 +466,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       reposToCreate = incomingRepos.filter((r) => !r.id);
       if (reposToCreate.length > 0) {
-        await db.repository.createMany({
+        await db.repositories.createMany({
           data: reposToCreate.map((repo) => ({
             workspaceId: workspace.id,
             repositoryUrl: repo.repositoryUrl,
@@ -483,7 +483,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       const reposToUpdate = incomingRepos.filter((r) => r.id);
       for (const repo of reposToUpdate) {
-        await db.repository.update({
+        await db.repositories.update({
           where: { id: repo.id },
           data: {
             repositoryUrl: repo.repositoryUrl,
@@ -499,7 +499,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
       if (repoIdsToDelete.length > 0) {
-        await db.repository.deleteMany({
+        await db.repositories.deleteMany({
           where: {
             id: { in: repoIdsToDelete },
             workspaceId: workspace.id,
@@ -509,7 +509,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch existing swarm for merge (partial update support)
-    const existingSwarm = await db.swarm.findUnique({
+    const existingSwarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
       select: {
         name: true,
@@ -525,7 +525,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // Get all repo names for pm2 generation (needed for multi-repo cwd resolution)
-    const allRepos = await db.repository.findMany({
+    const allRepos = await db.repositories.findMany({
       where: { workspaceId: workspace.id },
       select: { id: true, repositoryUrl: true, branch: true, name: true, codeIngestionEnabled: true },
       orderBy: { createdAt: "asc" },
@@ -587,7 +587,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       description: settings.description,
     });
 
-    const swarm = (await db.swarm.findUnique({
+    const swarm = (await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
       select: swarmSelect,
     })) as SwarmSelectResult | null;
@@ -667,7 +667,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
             if (defaultBranch && defaultBranch !== repo.branch) {
               console.log(`[Stakgraph] Updating ${repo.name} branch to detected default: ${defaultBranch}`);
-              await db.repository.update({
+              await db.repositories.update({
                 where: { id: repo.id },
                 data: { branch: defaultBranch },
               });
@@ -710,7 +710,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const repoNames = reposRequestingRepair.map((r) => r.name).join(", ");
       const primaryNewRepo = reposRequestingRepair[0];
 
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
         data: {
           pendingRepairTrigger: {
@@ -728,7 +728,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };
 
     // Fetch updated repositories for response
-    const updatedRepositories = await db.repository.findMany({
+    const updatedRepositories = await db.repositories.findMany({
       where: { workspaceId: workspace.id },
       select: {
         id: true,

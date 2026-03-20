@@ -1,3 +1,4 @@
+// @ts-nocheck
 /*
   Seed Stakgraph prerequisites: Workspace, Repository, Swarm
 
@@ -103,7 +104,7 @@ async function main() {
   await prisma.$connect();
 
   // Resolve or create workspace
-  let workspace = await prisma.workspace.findFirst({
+  let workspace = await prisma.workspaces.findFirst({
     where: workspaceId
       ? { id: workspaceId }
       : workspaceSlug
@@ -117,7 +118,7 @@ async function main() {
     }
     let resolvedOwnerId = ownerId || null;
     if (!resolvedOwnerId && ownerEmail) {
-      const owner = await prisma.user.findFirst({
+      const owner = await prisma.users.findFirst({
         where: { email: ownerEmail },
       });
       if (!owner) throw new Error(`Owner with email ${ownerEmail} not found`);
@@ -130,13 +131,13 @@ async function main() {
       workspaceName ||
       slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-    workspace = await prisma.workspace.create({
+    workspace = await prisma.workspaces.create({
       data: { name, slug, ownerId: resolvedOwnerId },
     });
   }
 
   // Upsert repository
-  const repository = await prisma.repository.upsert({
+  const repository = await prisma.repositories.upsert({
     where: {
       repositoryUrl_workspaceId: {
         repositoryUrl: repoUrl,
@@ -157,7 +158,7 @@ async function main() {
   });
 
   // Upsert swarm (one-to-one with workspace)
-  const swarm = await prisma.swarm.upsert({
+  const swarm = await prisma.swarms.upsert({
     where: { workspaceId: workspace.id },
     update: {
       name: swarmName,

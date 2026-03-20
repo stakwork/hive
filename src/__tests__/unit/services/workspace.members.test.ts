@@ -114,7 +114,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
       mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
 
       const result = await getWorkspaceMembers("workspace1");
 
@@ -178,7 +178,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
       mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
 
       const result = await getWorkspaceMembers("workspace1");
 
@@ -250,7 +250,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
       mockedMapWorkspaceMembers.mockReturnValue(filteredMembers);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
 
       const result = await getWorkspaceMembers("workspace1");
 
@@ -290,7 +290,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
       mockedMapWorkspaceMembers.mockReturnValue([]);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
       mockDecryptField.mockReturnValueOnce("plaintext_pubkey_123");
 
       const result = await getWorkspaceMembers("workspace1");
@@ -318,7 +318,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
       mockedMapWorkspaceMembers.mockReturnValue([]);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
 
       const result = await getWorkspaceMembers("workspace1");
 
@@ -347,7 +347,7 @@ describe("Workspace Member Management", () => {
 
       mockedGetActiveWorkspaceMembers.mockResolvedValue([]);
       mockedMapWorkspaceMembers.mockReturnValue([]);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
       mockDecryptField.mockImplementationOnce(() => { throw new Error("Decryption failed"); });
 
       const result = await getWorkspaceMembers("workspace1");

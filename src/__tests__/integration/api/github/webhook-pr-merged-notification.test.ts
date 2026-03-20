@@ -58,32 +58,28 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
     testSetup = await createWebhookTestScenario();
 
     // Set lightningPubkey on user so DM notifications are eligible
-    await db.user.update({
+    await db.users.update({
       where: { id: testSetup.user.id },
-      data: { lightningPubkey: "test-pubkey-user" },
+      data: {lightning_pubkey: "test-pubkey-user" },
     });
 
     // Create task with the test workspace owner as creator
-    task = await db.task.create({
+    task = await db.tasks.create({
       data: {
-        title: "PR Task",
-        workspaceId: testSetup.workspace.id,
-        createdById: testSetup.user.id,
-        updatedById: testSetup.user.id,
+        title: "PR Task",workspace_id: testSetup.workspace.id,created_by_id: testSetup.user.id,updated_by_id: testSetup.user.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
 
     // Create chat message + PR artifact linking the task to the PR URL
-    const msg = await db.chatMessage.create({
-      data: {
-        taskId: task.id,
+    const msg = await db.chat_messages.create({
+      data: {task_id: task.id,
         role: "ASSISTANT",
         message: "PR opened",
         status: "SENT",
       },
     });
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: msg.id,
         type: ArtifactType.PULL_REQUEST,
@@ -126,7 +122,7 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
     );
 
     const res = await POST(req as any, {
-      params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      params: Promise.resolve({workspace_id: testSetup.workspace.id }),
     });
 
     // Route should succeed
@@ -135,10 +131,9 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
     // Allow async notification to settle
     await new Promise((r) => setTimeout(r, 300));
 
-    const record = await db.notificationTrigger.findFirst({
+    const record = await db.notification_triggers.findFirst({
       where: {
-        notificationType: NotificationTriggerType.TASK_PR_MERGED,
-        taskId: task.id,
+        notificationType: NotificationTriggerType.TASK_PR_MERGED,task_id: task.id,
       },
     });
 

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const concise = searchParams.get("concise") === "true";
 
     // Get swarm for this workspace
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
     });
 

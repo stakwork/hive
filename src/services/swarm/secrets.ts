@@ -9,7 +9,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // TO-DO add role check
 export async function getSwarmPoolApiKeyFor(id: string): Promise<string> {
-  const swarm = await db.swarm.findFirst({
+  const swarm = await db.swarms.findFirst({
     where: { id },
     select: { id: true, poolApiKey: true } as { id: true; poolApiKey: true },
   });
@@ -22,7 +22,7 @@ export async function getSwarmPoolApiKeyFor(id: string): Promise<string> {
 }
 
 export async function updateSwarmPoolApiKeyFor(id: string) {
-  const swarm = await db.swarm.findFirst({
+  const swarm = await db.swarms.findFirst({
     where: { id },
     select: { swarmId: true } as { swarmId: true },
   });
@@ -65,7 +65,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
 
     const poolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", poolUser.authentication_token));
 
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id },
       data: { poolApiKey },
     });

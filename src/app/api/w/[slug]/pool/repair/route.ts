@@ -41,7 +41,7 @@ export async function POST(
       );
     }
 
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId: workspace.id },
       select: {
         id: true,

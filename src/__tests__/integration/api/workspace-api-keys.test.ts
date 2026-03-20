@@ -37,10 +37,8 @@ describe("Workspace API Keys Integration Tests", () => {
     });
 
     const adminUser = await createTestUser({ name: "Admin User" });
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: scenario.workspace.id,
-        userId: adminUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: scenario.workspace.id,user_id: adminUser.id,
         role: "ADMIN",
       },
     });
@@ -79,13 +77,11 @@ describe("Workspace API Keys Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Create an API key directly in the database
-      await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Test Key",
           keyPrefix: "hive_tes",
-          keyHash: "testhash123",
-          createdById: ownerUser.id,
+          keyHash: "testhash123",created_by_id: ownerUser.id,
         },
       });
 
@@ -208,7 +204,7 @@ describe("Workspace API Keys Integration Tests", () => {
       expect(data.keyPrefix).toBe(data.key.slice(0, 8));
 
       // Verify key was stored in database
-      const keyInDb = await db.workspaceApiKey.findUnique({
+      const keyInDb = await db.workspace_api_keys.findUnique({
         where: { id: data.id },
       });
       expect(keyInDb).toBeTruthy();
@@ -240,7 +236,7 @@ describe("Workspace API Keys Integration Tests", () => {
       expect(data.expiresAt).toBeDefined();
 
       // Verify expiration was stored
-      const keyInDb = await db.workspaceApiKey.findUnique({
+      const keyInDb = await db.workspace_api_keys.findUnique({
         where: { id: data.id },
       });
       expect(keyInDb?.expiresAt).toBeTruthy();
@@ -347,13 +343,11 @@ describe("Workspace API Keys Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Create an API key
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Key to Revoke",
           keyPrefix: "hive_tes",
-          keyHash: "revoketesthash",
-          createdById: ownerUser.id,
+          keyHash: "revoketesthash",created_by_id: ownerUser.id,
         },
       });
 
@@ -371,7 +365,7 @@ describe("Workspace API Keys Integration Tests", () => {
       expect(data.message).toBe("API key revoked");
 
       // Verify key was revoked in database
-      const keyInDb = await db.workspaceApiKey.findUnique({
+      const keyInDb = await db.workspace_api_keys.findUnique({
         where: { id: apiKey.id },
       });
       expect(keyInDb?.revokedAt).toBeTruthy();
@@ -382,13 +376,11 @@ describe("Workspace API Keys Integration Tests", () => {
       const { developerUser, ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Create an API key owned by developer
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Developer Key",
           keyPrefix: "hive_dev",
-          keyHash: "devkeyhash",
-          createdById: ownerUser.id,
+          keyHash: "devkeyhash",created_by_id: ownerUser.id,
         },
       });
 
@@ -406,7 +398,7 @@ describe("Workspace API Keys Integration Tests", () => {
       await expectForbidden(response);
 
       // Verify key was NOT revoked
-      const keyInDb = await db.workspaceApiKey.findUnique({
+      const keyInDb = await db.workspace_api_keys.findUnique({
         where: { id: apiKey.id },
       });
       expect(keyInDb?.revokedAt).toBeNull();
@@ -416,13 +408,11 @@ describe("Workspace API Keys Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Create an already revoked API key
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Already Revoked",
           keyPrefix: "hive_rev",
-          keyHash: "revokedkeyhash",
-          createdById: ownerUser.id,
+          keyHash: "revokedkeyhash",created_by_id: ownerUser.id,
           revokedAt: new Date(),
           revokedById: ownerUser.id,
         },
@@ -464,13 +454,11 @@ describe("Workspace API Keys Integration Tests", () => {
       });
 
       // Create key in other workspace
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: otherScenario.workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: otherScenario.workspace.id,
           name: "Other Workspace Key",
           keyPrefix: "hive_oth",
-          keyHash: "otherwshash",
-          createdById: otherScenario.owner.id,
+          keyHash: "otherwshash",created_by_id: otherScenario.owner.id,
         },
       });
 
@@ -489,13 +477,11 @@ describe("Workspace API Keys Integration Tests", () => {
     test("should return 401 when user not authenticated", async () => {
       const { workspace, ownerUser } = await createTestWorkspaceWithUsers();
 
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Test Key",
           keyPrefix: "hive_tes",
-          keyHash: "testkeyhash",
-          createdById: ownerUser.id,
+          keyHash: "testkeyhash",created_by_id: ownerUser.id,
         },
       });
 
@@ -515,13 +501,11 @@ describe("Workspace API Keys Integration Tests", () => {
       const { viewerUser, ownerUser, workspace } =
         await createTestWorkspaceWithUsers();
 
-      const apiKey = await db.workspaceApiKey.create({
-        data: {
-          workspaceId: workspace.id,
+      const apiKey = await db.workspace_api_keys.create({
+        data: {workspace_id: workspace.id,
           name: "Test Key",
           keyPrefix: "hive_tes",
-          keyHash: "viewertesthash",
-          createdById: ownerUser.id,
+          keyHash: "viewertesthash",created_by_id: ownerUser.id,
         },
       });
 

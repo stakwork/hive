@@ -6,16 +6,15 @@ import { filterImagesFromDisplay } from '@/lib/utils/markdown-filters';
 describe('Brief Markdown Filtering Integration', () => {
   beforeEach(async () => {
     // Clean up test data
-    await db.feature.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.features.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
   });
 
   it('should preserve markdown image in database while displaying placeholder', async () => {
     // Create test user and workspace
     const user = await createTestUser({ email: 'test@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace',
       slug: 'test-workspace',
     });
@@ -35,10 +34,7 @@ Steps to reproduce:
 Expected: User should be logged in
 Actual: Error is thrown`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'Fix Login Button Bug',
       brief: briefWithImage,
       status: 'BACKLOG',
@@ -62,8 +58,7 @@ Actual: Error is thrown`;
 
   it('should handle multiple images in brief', async () => {
     const user = await createTestUser({ email: 'test2@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 2',
       slug: 'test-workspace-2',
     });
@@ -76,10 +71,7 @@ Some text in between
 
 ![Screenshot 2](https://s3.amazonaws.com/bucket/image2.jpg?key=value)`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'Multiple Images Bug',
       brief: briefWithMultipleImages,
       status: 'BACKLOG',
@@ -96,8 +88,7 @@ Some text in between
 
   it('should handle S3 URLs with query parameters correctly', async () => {
     const user = await createTestUser({ email: 'test3@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 3',
       slug: 'test-workspace-3',
     });
@@ -106,10 +97,7 @@ Some text in between
 
 ![Bug Screenshot](https://s3.amazonaws.com/my-bucket/path/to/screenshot.png?AWSAccessKeyId=AKIAIOSFODNN7EXAMPLE&Expires=1234567890&Signature=abc123)`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'S3 URL Bug',
       brief: briefWithS3Url,
       status: 'BACKLOG',
@@ -127,8 +115,7 @@ Some text in between
 
   it('should preserve markdown during edits', async () => {
     const user = await createTestUser({ email: 'test4@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 4',
       slug: 'test-workspace-4',
     });
@@ -139,10 +126,7 @@ Some text in between
 
 More text`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'Edit Test',
       brief: originalBrief,
       status: 'BACKLOG',
@@ -153,12 +137,12 @@ More text`;
     // The markdown image should be preserved
     const updatedBrief = originalBrief.replace('Original text', 'Updated text');
     
-    await db.feature.update({
+    await db.features.update({
       where: { id: feature.id },
       data: { brief: updatedBrief },
     });
 
-    const updated = await db.feature.findUnique({
+    const updated = await db.features.findUnique({
       where: { id: feature.id },
     });
 
@@ -184,8 +168,7 @@ More text`;
 
   it('should handle brief with no images', async () => {
     const user = await createTestUser({ email: 'test6@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 6',
       slug: 'test-workspace-6',
     });
@@ -194,10 +177,7 @@ More text`;
 
 Just plain text describing the issue.`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'Text Only Bug',
       brief: textOnlyBrief,
       status: 'BACKLOG',
@@ -212,8 +192,7 @@ Just plain text describing the issue.`;
 
   it('should handle images without alt text', async () => {
     const user = await createTestUser({ email: 'test7@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 7',
       slug: 'test-workspace-7',
     });
@@ -224,10 +203,7 @@ Just plain text describing the issue.`;
 
 No alt text on image above`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'No Alt Text',
       brief: briefWithNoAlt,
       status: 'BACKLOG',
@@ -242,8 +218,7 @@ No alt text on image above`;
 
   it('should handle consecutive images with proper spacing', async () => {
     const user = await createTestUser({ email: 'test8@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
+    const workspace = await createTestWorkspace({owner_id: user.id,
       name: 'Test Workspace 8',
       slug: 'test-workspace-8',
     });
@@ -256,10 +231,7 @@ No alt text on image above`;
 
 End of images`;
 
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
+    const feature = await createTestFeature({workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       title: 'Consecutive Images',
       brief: briefWithConsecutiveImages,
       status: 'BACKLOG',

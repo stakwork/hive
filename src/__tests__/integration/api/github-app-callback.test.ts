@@ -51,10 +51,8 @@ describe("GitHub App Callback API Integration Tests", () => {
     describe("Success scenarios", () => {
       test("should handle successful OAuth callback with valid code and state", async () => {
         const testUser = await createTestUser({ name: "Test User" });
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "test-workspace",
-          repositoryDraft: "https://github.com/test-owner/test-repo",
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "test-workspace",repository_draft: "https://github.com/test-owner/test-repo",
         });
 
         getMockedSession().mockResolvedValue(
@@ -153,19 +151,17 @@ describe("GitHub App Callback API Integration Tests", () => {
         );
 
         // Verify SourceControlOrg creation
-        const sourceControlOrg = await db.sourceControlOrg.findUnique({
-          where: { githubLogin: "test-owner" },
+        const sourceControlOrg = await db.source_control_orgs.findUnique({
+          where: {github_login: "test-owner" },
         });
         expect(sourceControlOrg).toBeTruthy();
         expect(sourceControlOrg?.type).toBe("USER");
         expect(sourceControlOrg?.githubInstallationId).toBe(98765);
 
         // Verify SourceControlToken creation with encrypted tokens
-        const token = await db.sourceControlToken.findUnique({
+        const token = await db.source_control_tokens.findUnique({
           where: {
-            userId_sourceControlOrgId: {
-              userId: testUser.id,
-              sourceControlOrgId: sourceControlOrg!.id,
+            userId_sourceControlOrgId: {user_id: testUser.id,source_control_org_id: sourceControlOrg!.id,
             },
           },
         });
@@ -187,7 +183,7 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(decryptedToken).toBe("ghu_test_access_token");
 
         // Verify workspace linking
-        const updatedWorkspace = await db.workspace.findUnique({
+        const updatedWorkspace = await db.workspaces.findUnique({
           where: { id: workspace.id },
         });
         expect(updatedWorkspace?.sourceControlOrgId).toBe(sourceControlOrg!.id);
@@ -197,20 +193,15 @@ describe("GitHub App Callback API Integration Tests", () => {
         const testUser = await createTestUser({ name: "OAuth User" });
 
         // Create existing SourceControlOrg
-        const sourceControlOrg = await db.sourceControlOrg.create({
+        const sourceControlOrg = await db.source_control_orgs.create({
           data: {
-            type: "USER",
-            githubLogin: "existing-owner",
-            githubInstallationId: 55555,
+            type: "USER",github_login: "existing-owner",github_installation_id: 55555,
             name: "Existing Owner",
           },
         });
 
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "oauth-workspace",
-          sourceControlOrgId: sourceControlOrg.id,
-          repositoryDraft: "https://github.com/existing-owner/oauth-repo",
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "oauth-workspace",source_control_org_id: sourceControlOrg.id,repository_draft: "https://github.com/existing-owner/oauth-repo",
         });
 
         getMockedSession().mockResolvedValue(
@@ -259,11 +250,9 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(location).toContain(`/w/${workspace.slug}`);
 
         // Verify SourceControlToken was created/updated
-        const token = await db.sourceControlToken.findUnique({
+        const token = await db.source_control_tokens.findUnique({
           where: {
-            userId_sourceControlOrgId: {
-              userId: testUser.id,
-              sourceControlOrgId: sourceControlOrg.id,
+            userId_sourceControlOrgId: {user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
             },
           },
         });
@@ -280,10 +269,8 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should handle repository access validation with push permissions", async () => {
         const testUser = await createTestUser({ name: "Push User" });
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "push-workspace",
-          repositoryDraft: "https://github.com/push-owner/push-repo",
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "push-workspace",repository_draft: "https://github.com/push-owner/push-repo",
         });
 
         getMockedSession().mockResolvedValue(
@@ -360,10 +347,8 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should handle repository access validation with read-only permissions", async () => {
         const testUser = await createTestUser({ name: "Read User" });
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "read-workspace",
-          repositoryDraft: "https://github.com/read-owner/read-repo",
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "read-workspace",repository_draft: "https://github.com/read-owner/read-repo",
         });
 
         getMockedSession().mockResolvedValue(
@@ -434,10 +419,8 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should handle admin permissions granting push access", async () => {
         const testUser = await createTestUser({ name: "Admin User" });
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "admin-workspace",
-          repositoryDraft: "https://github.com/admin-owner/admin-repo",
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "admin-workspace",repository_draft: "https://github.com/admin-owner/admin-repo",
         });
 
         getMockedSession().mockResolvedValue(
@@ -699,8 +682,7 @@ describe("GitHub App Callback API Integration Tests", () => {
     describe("Token exchange scenarios", () => {
       test("should redirect with error when token exchange fails", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "token-fail-workspace",
         });
 
@@ -737,8 +719,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should redirect with error when GitHub returns invalid code", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "invalid-code-workspace",
         });
 
@@ -779,8 +760,7 @@ describe("GitHub App Callback API Integration Tests", () => {
     describe("GitHub API error scenarios", () => {
       test("should redirect with error when user fetch fails", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "user-fetch-fail",
         });
 
@@ -825,8 +805,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should handle network errors gracefully", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "network-error-workspace",
         });
 
@@ -864,21 +843,17 @@ describe("GitHub App Callback API Integration Tests", () => {
         const testUser = await createTestUser();
 
         // Create existing SourceControlOrg
-        const sourceControlOrg = await db.sourceControlOrg.create({
+        const sourceControlOrg = await db.source_control_orgs.create({
           data: {
-            type: "USER",
-            githubLogin: "existing-user",
-            githubInstallationId: 77777,
+            type: "USER",github_login: "existing-user",github_installation_id: 77777,
             name: "Existing User",
           },
         });
 
         // Create existing token
         const encryptionService = EncryptionService.getInstance();
-        const existingToken = await db.sourceControlToken.create({
-          data: {
-            userId: testUser.id,
-            sourceControlOrgId: sourceControlOrg.id,
+        const existingToken = await db.source_control_tokens.create({
+          data: {user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
             token: JSON.stringify(
               encryptionService.encryptField(
                 "source_control_token",
@@ -889,10 +864,8 @@ describe("GitHub App Callback API Integration Tests", () => {
           },
         });
 
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "update-token-workspace",
-          sourceControlOrgId: sourceControlOrg.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "update-token-workspace",source_control_org_id: sourceControlOrg.id,
         });
 
         getMockedSession().mockResolvedValue(
@@ -936,19 +909,15 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(response.status).toBe(307);
 
         // Verify token was updated, not created
-        const tokenCount = await db.sourceControlToken.count({
-          where: {
-            userId: testUser.id,
-            sourceControlOrgId: sourceControlOrg.id,
+        const tokenCount = await db.source_control_tokens.count({
+          where: {user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           },
         });
         expect(tokenCount).toBe(1); // Still only one token
 
-        const updatedToken = await db.sourceControlToken.findUnique({
+        const updatedToken = await db.source_control_tokens.findUnique({
           where: {
-            userId_sourceControlOrgId: {
-              userId: testUser.id,
-              sourceControlOrgId: sourceControlOrg.id,
+            userId_sourceControlOrgId: {user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
             },
           },
         });
@@ -966,19 +935,15 @@ describe("GitHub App Callback API Integration Tests", () => {
         const testUser = await createTestUser();
 
         // Create SourceControlOrg with old installation ID
-        const sourceControlOrg = await db.sourceControlOrg.create({
+        const sourceControlOrg = await db.source_control_orgs.create({
           data: {
-            type: "ORG",
-            githubLogin: "test-org",
-            githubInstallationId: 11111, // Old ID
+            type: "ORG",github_login: "test-org",github_installation_id: 11111, // Old ID
             name: "Test Organization",
           },
         });
 
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "update-install-workspace",
-          sourceControlOrgId: sourceControlOrg.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "update-install-workspace",source_control_org_id: sourceControlOrg.id,
         });
 
         getMockedSession().mockResolvedValue(
@@ -1034,7 +999,7 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(response.status).toBe(307);
 
         // Verify installation ID was updated
-        const updatedOrg = await db.sourceControlOrg.findUnique({
+        const updatedOrg = await db.source_control_orgs.findUnique({
           where: { id: sourceControlOrg.id },
         });
         expect(updatedOrg?.githubInstallationId).toBe(22222);
@@ -1045,8 +1010,7 @@ describe("GitHub App Callback API Integration Tests", () => {
     describe("Encryption validation", () => {
       test("should encrypt tokens with proper AES-256-GCM structure", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "encrypt-test-workspace",
         });
 
@@ -1101,14 +1065,12 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(response.status).toBe(307);
 
         // Retrieve stored token
-        const sourceControlOrg = await db.sourceControlOrg.findUnique({
-          where: { githubLogin: "encrypt-user" },
+        const sourceControlOrg = await db.source_control_orgs.findUnique({
+          where: {github_login: "encrypt-user" },
         });
-        const token = await db.sourceControlToken.findUnique({
+        const token = await db.source_control_tokens.findUnique({
           where: {
-            userId_sourceControlOrgId: {
-              userId: testUser.id,
-              sourceControlOrgId: sourceControlOrg!.id,
+            userId_sourceControlOrgId: {user_id: testUser.id,source_control_org_id: sourceControlOrg!.id,
             },
           },
         });
@@ -1149,8 +1111,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should set correct expiration time for refresh tokens (8 hours)", async () => {
         const testUser = await createTestUser();
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
           slug: "expiry-test-workspace",
         });
 
@@ -1209,14 +1170,12 @@ describe("GitHub App Callback API Integration Tests", () => {
         const afterTime = Date.now();
 
         // Retrieve stored token
-        const sourceControlOrg = await db.sourceControlOrg.findUnique({
-          where: { githubLogin: "expiry-user" },
+        const sourceControlOrg = await db.source_control_orgs.findUnique({
+          where: {github_login: "expiry-user" },
         });
-        const token = await db.sourceControlToken.findUnique({
+        const token = await db.source_control_tokens.findUnique({
           where: {
-            userId_sourceControlOrgId: {
-              userId: testUser.id,
-              sourceControlOrgId: sourceControlOrg!.id,
+            userId_sourceControlOrgId: {user_id: testUser.id,source_control_org_id: sourceControlOrg!.id,
             },
           },
         });
@@ -1237,19 +1196,15 @@ describe("GitHub App Callback API Integration Tests", () => {
       test("should handle uninstall action by unlinking workspace", async () => {
         const testUser = await createTestUser();
 
-        const sourceControlOrg = await db.sourceControlOrg.create({
+        const sourceControlOrg = await db.source_control_orgs.create({
           data: {
-            type: "USER",
-            githubLogin: "uninstall-user",
-            githubInstallationId: 99999,
+            type: "USER",github_login: "uninstall-user",github_installation_id: 99999,
             name: "Uninstall User",
           },
         });
 
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "uninstall-workspace",
-          sourceControlOrgId: sourceControlOrg.id, // Initially linked
+        const workspace = await createTestWorkspace({owner_id: testUser.id,
+          slug: "uninstall-workspace",source_control_org_id: sourceControlOrg.id, // Initially linked
         });
 
         getMockedSession().mockResolvedValue(
@@ -1287,7 +1242,7 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(response.status).toBe(307);
 
         // Verify workspace was unlinked
-        const updatedWorkspace = await db.workspace.findUnique({
+        const updatedWorkspace = await db.workspaces.findUnique({
           where: { id: workspace.id },
         });
         expect(updatedWorkspace?.sourceControlOrgId).toBeNull();

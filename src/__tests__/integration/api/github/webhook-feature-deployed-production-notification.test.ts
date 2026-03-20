@@ -26,7 +26,7 @@ vi.mock("@octokit/rest", () => ({
 
 // Mock GitHub App token retrieval
 vi.mock("@/lib/githubApp", () => ({
-  getUserAppTokens: vi.fn().mockResolvedValue({ accessToken: "test-token" }),
+  getUserAppTokens: vi.fn().mockResolvedValue({access_token: "test-token" }),
 }));
 
 // Mock GitHub PAT retrieval
@@ -60,7 +60,7 @@ vi.mock("@/lib/pusher", () => ({
 import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
 
 /** Build a deployment_status webhook payload for the given commit/environment. */
-function createDeploymentStatusPayload(commitSha: string, environment: string, state: string, repositoryUrl: string) {
+function createDeploymentStatusPayload(commitSha: string, environment: string, state: string,repository_url: string) {
   return {
     deployment_status: {
       state,
@@ -91,7 +91,7 @@ async function waitForNotification(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const record = await db.notificationTrigger.findFirst({ where: where as any });
+    const record = await db.notification_triggers.findFirst({ where: where as any });
     if (record) return record;
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -116,40 +116,31 @@ describe("GitHub Webhook — FEATURE_DEPLOYED_PRODUCTION notification", () => {
     testSetup = await createWebhookTestScenario();
 
     // Give the workspace owner a lightningPubkey so the notification is eligible
-    await db.user.update({
+    await db.users.update({
       where: { id: testSetup.user.id },
-      data: { lightningPubkey: "test-pubkey-deploy" },
+      data: {lightning_pubkey: "test-pubkey-deploy" },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        userId: testSetup.user.id,
-        workspaceId: testSetup.workspace.id,
+    await db.workspace_members.create({
+      data: {user_id: testSetup.user.id,workspace_id: testSetup.workspace.id,
         role: "OWNER",
       },
     });
 
     // Create a feature linked to this workspace
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "Deploy Feature",
-        workspaceId: testSetup.workspace.id,
-        createdById: testSetup.user.id,
-        updatedById: testSetup.user.id,
+        title: "Deploy Feature",workspace_id: testSetup.workspace.id,created_by_id: testSetup.user.id,updated_by_id: testSetup.user.id,
       },
     });
 
     // Create a task linked to the feature and repository
-    task = await createTestTask({
-      workspaceId: testSetup.workspace.id,
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id,
-      status: TaskStatus.DONE,
-      featureId: feature.id,
+    task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id,
+      status: TaskStatus.DONE,feature_id: feature.id,
     });
 
     // Attach a PULL_REQUEST artifact carrying the merge commit SHA
-    const msg = await createTestChatMessage({ taskId: task.id, message: "PR merged" });
+    const msg = await createTestChatMessage({task_id: task.id, message: "PR merged" });
     await createTestArtifact({
       messageId: msg.id,
       type: "PULL_REQUEST",
@@ -161,10 +152,8 @@ describe("GitHub Webhook — FEATURE_DEPLOYED_PRODUCTION notification", () => {
     });
 
     // Seed an earlier STAGING deployment so the webhook handler has a baseline
-    await db.deployment.create({
-      data: {
-        taskId: task.id,
-        repositoryId: testSetup.repository.id,
+    await db.deployments.create({
+      data: {task_id: task.id,repository_id: testSetup.repository.id,
         commitSha: "baseline-sha",
         environment: "STAGING",
         status: "SUCCESS",
@@ -198,14 +187,13 @@ describe("GitHub Webhook — FEATURE_DEPLOYED_PRODUCTION notification", () => {
     );
 
     const res = await POST(req as any, {
-      params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      params: Promise.resolve({workspace_id: testSetup.workspace.id }),
     });
 
     expect([200, 202]).toContain(res.status);
 
     const record = await waitForNotification({
-      notificationType: NotificationTriggerType.FEATURE_DEPLOYED_PRODUCTION,
-      featureId: feature.id,
+      notificationType: NotificationTriggerType.FEATURE_DEPLOYED_PRODUCTION,feature_id: feature.id,
     });
 
     expect(record).not.toBeNull();

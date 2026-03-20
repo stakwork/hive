@@ -20,7 +20,7 @@ import { createAndSendNotification } from "@/services/notifications";
 export async function updateFeatureStatusFromTasks(featureId: string): Promise<void> {
   try {
     // Step 2: Query all non-deleted tasks for the feature
-    const tasks = await db.task.findMany({
+    const tasks = await db.tasks.findMany({
       where: {
         featureId,
         deleted: false,
@@ -91,7 +91,7 @@ export async function updateFeatureStatusFromTasks(featureId: string): Promise<v
     }
 
     // Step 5: Get current feature with workspace
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: {
         id: true,
@@ -132,7 +132,7 @@ export async function updateFeatureStatusFromTasks(featureId: string): Promise<v
       const featureUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${featureId}`;
       void (async () => {
         try {
-          const targetUser = await db.user.findUnique({
+          const targetUser = await db.users.findUnique({
             where: { id: targetUserId },
             select: { sphinxAlias: true, name: true },
           });

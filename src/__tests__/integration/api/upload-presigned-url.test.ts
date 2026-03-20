@@ -37,26 +37,16 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: testUser.id,
+          description: "Test workspace description",owner_id: testUser.id,
         },
       });
 
       const testSwarm = await tx.swarm.create({
-        data: {
-          swarmId: `swarm-${Date.now()}`,
+        data: {swarm_id: `swarm-${Date.now()}`,
           name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          swarmApiKey: "test-api-key",
-          swarmUrl: "https://test-swarm.com/api",
-          swarmSecretAlias: "test-secret",
-          poolName: "test-pool",
+          status: "ACTIVE",instance_type: "XL",swarm_api_key: "test-api-key",swarm_url: "https://test-swarm.com/api",swarm_secret_alias: "test-secret",pool_name: "test-pool",
           environmentVariables: [],
-          services: [],
-          workspaceId: testWorkspace.id,
-          agentRequestId: null,
-          agentStatus: null,
+          services: [],workspace_id: testWorkspace.id,agent_request_id: null,agent_status: null,
         },
       });
 
@@ -65,11 +55,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
           id: generateUniqueId("task"),
           title: "Test Task",
           description: "Test task description",
-          status: "TODO",
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: "TODO",workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -83,8 +69,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
   describe("Authentication Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {task_id: "test-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -99,8 +84,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     });
 
     test("should return 401 for request without middleware headers", async () => {
-      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {task_id: "test-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -117,8 +101,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should return 400 for missing filename", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         // filename missing
         contentType: "image/jpeg",
         size: 1024000,
@@ -135,8 +118,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should return 400 for missing contentType", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         // contentType missing
         size: 1024000,
@@ -153,8 +135,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should return 400 for missing size", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         // size missing
@@ -189,8 +170,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should return 400 for invalid size (negative)", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: -1, // Invalid negative size
@@ -208,8 +188,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: "non-existent-task-id",
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: "non-existent-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -225,13 +204,12 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
       // Mark task as deleted
-      await db.task.update({
+      await db.tasks.update({
         where: { id: testTask.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -256,8 +234,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -272,8 +249,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         // Log request data for debugging
         console.log(
           "Request body:",
-          JSON.stringify({
-            taskId: testTask.id,
+          JSON.stringify({task_id: testTask.id,
             filename: "test.jpg",
             contentType: "image/jpeg",
             size: 1024000,
@@ -298,8 +274,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       // Mock S3Service to reject PDF
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "document.pdf",
         contentType: "application/pdf",
         size: 1024000,
@@ -319,8 +294,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       // Mock S3Service to reject JavaScript
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "malicious.js",
         contentType: "application/javascript",
         size: 1024000,
@@ -341,8 +315,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(false);
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "large-image.jpg",
         contentType: "image/jpeg",
         size: 11 * 1024 * 1024, // 11MB
@@ -377,8 +350,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       ];
 
       for (const { contentType, filename } of imageTypes) {
-        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-          taskId: testTask.id,
+        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
           filename,
           contentType,
           size: 1024000,
@@ -406,8 +378,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -442,8 +413,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "file with spaces & special!chars@.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -461,7 +431,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     });
 
     test("should use default swarmId when swarm is not configured", async () => {
-      const testUser = await db.user.create({
+      const testUser = await db.users.create({
         data: {
           id: generateUniqueId("test-user"),
           email: `test-${generateUniqueId()}@example.com`,
@@ -469,26 +439,21 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         },
       });
 
-      const testWorkspace = await db.workspace.create({
+      const testWorkspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace without swarm",
-          ownerId: testUser.id,
+          description: "Test workspace without swarm",owner_id: testUser.id,
         },
       });
 
-      const testTask = await db.task.create({
+      const testTask = await db.tasks.create({
         data: {
           id: generateUniqueId("task"),
           title: "Test Task",
           description: "Test task description",
-          status: "TODO",
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: "TODO",workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -502,8 +467,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -535,8 +499,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -569,8 +532,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       const contentTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
       for (const contentType of contentTypes) {
-        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-          taskId: testTask.id,
+        const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
           filename: "test.jpg",
           contentType,
           size: 1024000,
@@ -595,8 +557,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123",
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "image.png",
         contentType: "image/png",
         size: 2048000,
@@ -636,8 +597,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         new Error("AWS SDK Error: Invalid credentials"),
       );
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -654,8 +614,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
       // Use malformed task ID to trigger database error
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: "malformed-task-id-that-causes-db-error",
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: "malformed-task-id-that-causes-db-error",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -673,8 +632,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should handle empty filename string", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "", // Empty string
         contentType: "image/jpeg",
         size: 1024000,
@@ -690,8 +648,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
     test("should handle zero byte file size", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: "empty.jpg",
         contentType: "image/jpeg",
         size: 0, // Zero bytes
@@ -717,8 +674,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
       const longFilename = "a".repeat(500) + ".jpg"; // 500+ character filename
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {task_id: testTask.id,
         filename: longFilename,
         contentType: "image/jpeg",
         size: 1024000,

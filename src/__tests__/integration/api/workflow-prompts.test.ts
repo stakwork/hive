@@ -62,17 +62,14 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
     otherUser = await createTestUser();
 
     // Create stakwork workspace
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
     // Add test user as workspace member
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -188,10 +185,8 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
     test("allows workspace member (DEVELOPER role) to create prompt", async () => {
       const memberUser = await createTestUser({ name: "Developer User" });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: stakworkWorkspace.id,
-          userId: memberUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: stakworkWorkspace.id,user_id: memberUser.id,
           role: "DEVELOPER",
         },
       });
@@ -618,16 +613,13 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
     testUser = await createTestUser();
     otherUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -1132,16 +1124,13 @@ describe("GET /api/workflow/prompts/[id] Integration Tests", () => {
 
     testUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -1286,16 +1275,13 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
 
     testUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -1526,16 +1512,13 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
     testUser = await createTestUser();
     otherUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -1928,16 +1911,13 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests"
     testUser = await createTestUser();
     otherUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -2404,16 +2384,13 @@ describe("DELETE /api/workflow/prompts/[id] Integration Tests", () => {
     testUser = await createTestUser();
     otherUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });

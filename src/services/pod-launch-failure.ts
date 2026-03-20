@@ -34,7 +34,7 @@ function hasOOMKilled(containers: ContainerStatus[]): boolean {
 async function getLaunchFailureAttemptCount(
   workspaceId: string
 ): Promise<number> {
-  return await db.stakworkRun.count({
+  return await db.stakwork_runs.count({
     where: {
       workspaceId,
       type: StakworkRunType.POD_LAUNCH_FAILURE,
@@ -75,7 +75,7 @@ async function bumpPoolMemory(
 
   try {
     // Update pool memory in database
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: workspace.swarm.id },
       data: { poolMemory: newMemory },
     });
@@ -139,7 +139,7 @@ export async function processPodLaunchFailure(
   );
 
   // Find workspace by swarm ID (poolName maps to Swarm.id)
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       deleted: false,
       swarm: { id: poolName },
@@ -189,7 +189,7 @@ export async function processPodLaunchFailure(
   }
 
   // Check for in-progress repair (prevent duplicates)
-  const inProgress = await db.stakworkRun.findFirst({
+  const inProgress = await db.stakwork_runs.findFirst({
     where: {
       workspaceId: workspace.id,
       type: StakworkRunType.POD_LAUNCH_FAILURE,
@@ -226,7 +226,7 @@ export async function processPodLaunchFailure(
       );
 
       if (workspace.swarm) {
-        await db.swarm.update({
+        await db.swarms.update({
           where: { id: workspace.swarm.id },
           data: { podState: PodState.FAILED },
         });
@@ -318,7 +318,7 @@ async function triggerLaunchFailureRepair(
   const containerConfig = await getSwarmContainerConfig(workspaceId);
 
   // Create StakworkRun record
-  const run = await db.stakworkRun.create({
+  const run = await db.stakwork_runs.create({
     data: {
       type: StakworkRunType.POD_LAUNCH_FAILURE,
       workspaceId,
@@ -330,7 +330,7 @@ async function triggerLaunchFailureRepair(
   // Get pod repair workflow ID (reuses existing workflow)
   const workflowId = config.STAKWORK_POD_REPAIR_WORKFLOW_ID;
   if (!workflowId) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
@@ -372,7 +372,7 @@ async function triggerLaunchFailureRepair(
 
     const projectId = response?.data?.project_id;
 
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         projectId,
@@ -382,7 +382,7 @@ async function triggerLaunchFailureRepair(
 
     return { runId: run.id, projectId: projectId || null };
   } catch (error) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });

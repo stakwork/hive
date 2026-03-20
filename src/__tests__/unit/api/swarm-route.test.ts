@@ -53,20 +53,16 @@ vi.mock("crypto", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    $transaction: vi.fn(),
-    workspace: {
+    $transaction: vi.fn(),workspaces: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    sourceControlOrg: {
+    },source_control_orgs: {
       findUnique: vi.fn(),
-    },
-    swarm: {
+    },swarms: {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-    },
-    repository: {
+    },repositories: {
       create: vi.fn(),
     },
   },
@@ -112,42 +108,42 @@ describe("POST /api/swarm - Unit Tests", () => {
     // Setup default database transaction mock
     mockDb.$transaction.mockImplementation(async (callback) => {
       return callback({
-        swarm: mockDb.swarm,
-        repository: mockDb.repository,
+        swarms: mockDb.swarms,
+        repositories: mockDb.repositories,
       });
     });
 
     // Default database mocks
-    mockDb.workspace.findUnique.mockResolvedValue({
+    mockDb.workspaces.findUnique.mockResolvedValue({
       id: "workspace-123",
       slug: "test-workspace",
       sourceControlOrg: null, // No existing linkage
     });
-    mockDb.sourceControlOrg.findUnique.mockResolvedValue({
+    mockDb.source_control_orgs.findUnique.mockResolvedValue({
       id: "source-control-org-123",
       githubLogin: "test",
       githubInstallationId: 12345,
     });
-    mockDb.workspace.update.mockResolvedValue({
+    mockDb.workspaces.update.mockResolvedValue({
       id: "workspace-123",
       sourceControlOrgId: "source-control-org-123",
     });
 
-    mockDb.swarm.findFirst.mockResolvedValue(null); // No existing swarm
-    mockDb.swarm.create.mockResolvedValue({
+    mockDb.swarms.findFirst.mockResolvedValue(null); // No existing swarm
+    mockDb.swarms.create.mockResolvedValue({
       id: "placeholder-swarm-123",
       workspaceId: "workspace-123",
       name: "temp-uuid-123",
       status: SwarmStatus.PENDING,
     });
-    mockDb.swarm.update.mockResolvedValue({
+    mockDb.swarms.update.mockResolvedValue({
       id: "placeholder-swarm-123",
       workspaceId: "workspace-123",
       name: "swarm2bCar4",
       status: SwarmStatus.ACTIVE,
       swarmId: "swarm2bCar4",
     });
-    mockDb.repository.create.mockResolvedValue({
+    mockDb.repositories.create.mockResolvedValue({
       id: "repo-123",
       name: "test-repo",
       repositoryUrl: "https://github.com/test/repo",
@@ -512,7 +508,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.message).toBe("Service temporarily unavailable");
 
       // Verify placeholder swarm was marked as FAILED
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+      expect(mockDb.swarms.update).toHaveBeenCalledWith({
         where: { id: "placeholder-swarm-123" },
         data: {
           status: SwarmStatus.FAILED,
@@ -539,7 +535,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(JSON.stringify(data)).not.toContain("api-key-secret-123");
 
       // Verify placeholder was marked as FAILED
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+      expect(mockDb.swarms.update).toHaveBeenCalledWith({
         where: { id: "placeholder-swarm-123" },
         data: {
           status: SwarmStatus.FAILED,
@@ -613,14 +609,14 @@ describe("POST /api/swarm - Unit Tests", () => {
 
     test("should link workspace to existing SourceControlOrg", async () => {
       // Workspace without existing linkage
-      mockDb.workspace.findUnique.mockResolvedValue({
+      mockDb.workspaces.findUnique.mockResolvedValue({
         id: "workspace-123",
         slug: "test-workspace",
         sourceControlOrg: null,
       });
 
       // Existing SourceControlOrg found
-      mockDb.sourceControlOrg.findUnique.mockResolvedValue({
+      mockDb.source_control_orgs.findUnique.mockResolvedValue({
         id: "source-control-org-123",
         githubLogin: "test",
         githubInstallationId: 12345,
@@ -632,20 +628,20 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify workspace was linked to SourceControlOrg
-      expect(mockDb.workspace.update).toHaveBeenCalledWith({
+      expect(mockDb.workspaces.update).toHaveBeenCalledWith({
         where: { id: "workspace-123" },
         data: { sourceControlOrgId: "source-control-org-123" },
       });
 
       // Verify GitHub owner extraction from repository URL
-      expect(mockDb.sourceControlOrg.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.source_control_orgs.findUnique).toHaveBeenCalledWith({
         where: { githubLogin: "test" },
       });
     });
 
     test("should skip linking if workspace already has SourceControlOrg", async () => {
       // Workspace with existing linkage
-      mockDb.workspace.findUnique.mockResolvedValue({
+      mockDb.workspaces.findUnique.mockResolvedValue({
         id: "workspace-123",
         slug: "test-workspace",
         sourceControlOrg: {
@@ -661,20 +657,20 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify no linking attempted since workspace already linked
-      expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      expect(mockDb.source_control_orgs.findUnique).not.toHaveBeenCalled();
+      expect(mockDb.workspaces.update).not.toHaveBeenCalled();
     });
 
     test("should handle case where no SourceControlOrg exists for GitHub owner", async () => {
       // Workspace without existing linkage
-      mockDb.workspace.findUnique.mockResolvedValue({
+      mockDb.workspaces.findUnique.mockResolvedValue({
         id: "workspace-123",
         slug: "test-workspace",
         sourceControlOrg: null,
       });
 
       // No SourceControlOrg found for this GitHub owner
-      mockDb.sourceControlOrg.findUnique.mockResolvedValue(null);
+      mockDb.source_control_orgs.findUnique.mockResolvedValue(null);
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -682,17 +678,17 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify GitHub owner lookup was attempted
-      expect(mockDb.sourceControlOrg.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.source_control_orgs.findUnique).toHaveBeenCalledWith({
         where: { githubLogin: "test" },
       });
 
       // Verify no linking happened since no SourceControlOrg exists
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      expect(mockDb.workspaces.update).not.toHaveBeenCalled();
     });
 
     test("should handle invalid GitHub repository URL", async () => {
       // Workspace without existing linkage
-      mockDb.workspace.findUnique.mockResolvedValue({
+      mockDb.workspaces.findUnique.mockResolvedValue({
         id: "workspace-123",
         slug: "test-workspace",
         sourceControlOrg: null,
@@ -709,8 +705,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify no GitHub owner lookup since URL is invalid
-      expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      expect(mockDb.source_control_orgs.findUnique).not.toHaveBeenCalled();
+      expect(mockDb.workspaces.update).not.toHaveBeenCalled();
     });
   });
 
@@ -790,14 +786,14 @@ describe("POST /api/swarm - Unit Tests", () => {
       // Setup transaction to verify repository creation
       mockDb.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
-          swarm: {
+          swarms: {
             findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({
               id: "placeholder-swarm-123",
               status: SwarmStatus.PENDING,
             }),
           },
-          repository: {
+          repositories: {
             create: vi.fn().mockResolvedValue({
               id: "repo-123",
               name: "custom-repo-name",
@@ -808,7 +804,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         const result = await callback(mockTx);
 
         // Verify repository was created with correct data
-        expect(mockTx.repository.create).toHaveBeenCalledWith({
+        expect(mockTx.repositories.create).toHaveBeenCalledWith({
           data: {
             name: "custom-repo-name",
             repositoryUrl: "https://github.com/test/repo",
@@ -973,7 +969,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(500);
 
       // Verify status flow: placeholder created with PENDING, then updated to FAILED
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+      expect(mockDb.swarms.update).toHaveBeenCalledWith({
         where: { id: "placeholder-swarm-123" },
         data: {
           status: SwarmStatus.FAILED,
@@ -987,7 +983,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       // Setup transaction to capture what gets created
       mockDb.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
-          swarm: {
+          swarms: {
             findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({
               id: "placeholder-swarm-123",
@@ -995,7 +991,7 @@ describe("POST /api/swarm - Unit Tests", () => {
               status: SwarmStatus.PENDING,
             }),
           },
-          repository: {
+          repositories: {
             create: vi.fn(),
           },
         };
@@ -1003,7 +999,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         const result = await callback(mockTx);
 
         // Verify placeholder was created with UUID name
-        expect(mockTx.swarm.create).toHaveBeenCalledWith({
+        expect(mockTx.swarms.create).toHaveBeenCalledWith({
           data: expect.objectContaining({
             name: "custom-uuid-456",
             status: SwarmStatus.PENDING,

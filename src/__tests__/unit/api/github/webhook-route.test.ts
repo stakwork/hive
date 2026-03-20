@@ -17,16 +17,13 @@ import { NextRequest } from "next/server";
 
 // Mock dependencies
 vi.mock("@/lib/db", () => ({
-  db: {
-    repository: {
+  db: {repositories: {
       findFirst: vi.fn(),
       update: vi.fn(),
-    },
-    swarm: {
+    },swarms: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -76,7 +73,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(db.repository.findFirst).not.toHaveBeenCalled();
+      expect(db.repositories.findFirst).not.toHaveBeenCalled();
     });
 
     test("should return 400 when x-github-event header is missing", async () => {
@@ -160,7 +157,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -193,7 +190,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Repository Lookup", () => {
     test("should filter out deleted workspaces when looking up repository", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue(null);
+      vi.mocked(db.repositories.findFirst).mockResolvedValue(null);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -206,7 +203,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
       expect(response.status).toBe(404);
       expect(data.success).toBe(false);
-      expect(db.repository.findFirst).toHaveBeenCalledWith({
+      expect(db.repositories.findFirst).toHaveBeenCalledWith({
         where: {
           githubWebhookId: mockWebhookId,
           workspace: {
@@ -219,7 +216,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should return 404 when repository is not found", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue(null);
+      vi.mocked(db.repositories.findFirst).mockResolvedValue(null);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -232,7 +229,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
       expect(response.status).toBe(404);
       expect(data.success).toBe(false);
-      expect(db.repository.findFirst).toHaveBeenCalledWith({
+      expect(db.repositories.findFirst).toHaveBeenCalledWith({
         where: {
           githubWebhookId: mockWebhookId,
           workspace: {
@@ -245,7 +242,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should return 404 when repository is missing webhook secret", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -274,7 +271,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Signature Verification", () => {
     test("should return 401 when signature does not match", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -301,7 +298,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should verify signature using timing-safe comparison", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -314,7 +311,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         },
       } as any);
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
@@ -322,7 +319,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -338,8 +335,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -356,7 +353,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Branch Filtering", () => {
     beforeEach(() => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -371,14 +368,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should accept push to main branch", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -391,8 +388,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload(testBranches.main);
       const body = JSON.stringify(payload);
@@ -409,14 +406,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should accept push to master branch", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -429,8 +426,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload(testBranches.master);
       const body = JSON.stringify(payload);
@@ -461,7 +458,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should accept push to configured repository branch", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -474,14 +471,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         },
       } as any);
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -494,8 +491,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload(testBranches.develop);
       const body = JSON.stringify(payload);
@@ -514,7 +511,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Event Type Filtering", () => {
     beforeEach(() => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -559,14 +556,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should only process push events", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -579,8 +576,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -597,7 +594,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Async Sync Trigger", () => {
     beforeEach(() => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -610,7 +607,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         },
       } as any);
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
@@ -618,7 +615,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -636,8 +633,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -668,8 +665,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -679,7 +676,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
       await POST(request as any);
 
-      expect(db.repository.update).toHaveBeenCalledWith({
+      expect(db.repositories.update).toHaveBeenCalledWith({
         where: { id: "repo-123" },
         data: { status: RepositoryStatus.PENDING },
       });
@@ -695,8 +692,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: mockRequestId },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -706,14 +703,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
       await POST(request as any);
 
-      expect(db.swarm.update).toHaveBeenCalledWith({
+      expect(db.swarms.update).toHaveBeenCalledWith({
         where: { id: "swarm-123" },
         data: { ingestRefId: mockRequestId },
       });
     });
 
     test("should return 400 when swarm is missing", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
+      vi.mocked(db.swarms.findUnique).mockResolvedValue(null);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -738,8 +735,8 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.repository.update).mockResolvedValue({} as any);
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.repositories.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -761,7 +758,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
   describe("Error Handling", () => {
     test("should return 500 when database query fails", async () => {
-      vi.mocked(db.repository.findFirst).mockRejectedValue(new Error("Database connection failed"));
+      vi.mocked(db.repositories.findFirst).mockRejectedValue(new Error("Database connection failed"));
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
@@ -777,7 +774,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
     });
 
     test("should return 500 when encryption service fails", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -820,7 +817,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         }),
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-owner/test-repo",
@@ -833,14 +830,14 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         },
       } as any);
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: "swarm-123",
         workspaceId: "workspace-123",
         name: "test-swarm",
         swarmApiKey: JSON.stringify({ data: "encrypted" }),
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: "workspace-123",
         ownerId: "user-123",
       } as any);
@@ -848,7 +845,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
       // Repository update fails
-      vi.mocked(db.repository.update).mockRejectedValue(new Error("Update failed"));
+      vi.mocked(db.repositories.update).mockRejectedValue(new Error("Update failed"));
 
       vi.mocked(triggerAsyncSync).mockResolvedValue({
         ok: true,
@@ -856,7 +853,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         data: { request_id: "req-123" },
       });
 
-      vi.mocked(db.swarm.update).mockResolvedValue({} as any);
+      vi.mocked(db.swarms.update).mockResolvedValue({} as any);
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);

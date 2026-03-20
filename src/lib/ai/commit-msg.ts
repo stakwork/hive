@@ -10,7 +10,7 @@ export async function generateCommitMessage(
   branchPrefix?: string,
 ) {
   // Load conversation history from the task and get workspace slug
-  const task = await db.task.findUnique({
+  const task = await db.tasks.findUnique({
     where: { id: taskId },
     select: {
       workspace: {
@@ -29,7 +29,7 @@ export async function generateCommitMessage(
   let messagesSince: Date | undefined = sinceTimestamp;
   
   if (!messagesSince) {
-    const latestPRArtifact = await db.artifact.findFirst({
+    const latestPRArtifact = await db.artifacts.findFirst({
       where: {
         message: { taskId },
         type: "PULL_REQUEST",
@@ -44,7 +44,7 @@ export async function generateCommitMessage(
   }
 
   // Fetch messages, optionally filtered by timestamp
-  const chatMessages = await db.chatMessage.findMany({
+  const chatMessages = await db.chat_messages.findMany({
     where: { 
       taskId,
       ...(messagesSince && { timestamp: { gt: messagesSince } }),

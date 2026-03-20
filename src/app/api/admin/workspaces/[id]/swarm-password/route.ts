@@ -18,7 +18,7 @@ export async function GET(
   const { id: workspaceId } = await params;
 
   // Look up the swarm for this workspace
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: { swarmPassword: true },
   });

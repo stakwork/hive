@@ -28,7 +28,7 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
 
   return await db.$transaction(async (tx) => {
     // Create test user
-    const testUser = await tx.user.create({
+    const testUser = await tx.users.create({
       data: {
         id: generateUniqueId("test-user"),
         email: `test-${generateUniqueId()}@example.com`,
@@ -37,10 +37,9 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
     });
 
     // Create source control org for GitHub organization
-    const sourceControlOrg = await tx.sourceControlOrg.create({
+    const sourceControlOrg = await tx.source_control_orgs.create({
       data: {
-        id: generateUniqueId("test-org"),
-        githubLogin: githubOwner,
+        id: generateUniqueId("test-org"),github_login: githubOwner,
         githubInstallationId,
         name: `${githubOwner} Organization`,
         type: "USER", // Default to USER type
@@ -53,11 +52,9 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
       accessToken
     );
 
-    const sourceControlToken = await tx.sourceControlToken.create({
+    const sourceControlToken = await tx.source_control_tokens.create({
       data: {
-        id: generateUniqueId("test-token"),
-        userId: testUser.id,
-        sourceControlOrgId: sourceControlOrg.id,
+        id: generateUniqueId("test-token"),user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
         token: JSON.stringify(encryptedToken),
       },
     });
@@ -76,10 +73,9 @@ export async function createAdditionalOrgForUser(
   githubInstallationId = 987654321
 ) {
   return await db.$transaction(async (tx) => {
-    const org = await tx.sourceControlOrg.create({
+    const org = await tx.source_control_orgs.create({
       data: {
-        id: generateUniqueId(`${githubOwner}-org`),
-        githubLogin: githubOwner,
+        id: generateUniqueId(`${githubOwner}-org`),github_login: githubOwner,
         githubInstallationId,
         name: `${githubOwner} Organization`,
       },
@@ -90,11 +86,10 @@ export async function createAdditionalOrgForUser(
       accessToken
     );
 
-    const token = await tx.sourceControlToken.create({
+    const token = await tx.source_control_tokens.create({
       data: {
         id: generateUniqueId(`${githubOwner}-token`),
-        userId,
-        sourceControlOrgId: org.id,
+        userId,source_control_org_id: org.id,
         token: JSON.stringify(encryptedToken),
       },
     });

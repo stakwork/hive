@@ -88,8 +88,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
       const mockAccount = {
         provider: "github",
-        type: "oauth" as const,
-        providerAccountId: mockGitHubProfile.id.toString(),
+        type: "oauth" as const,provider_account_id: mockGitHubProfile.id.toString(),
         access_token: mockOAuthTokenResponse.access_token,
         refresh_token: null,
         expires_at: null,
@@ -118,9 +117,8 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(result).toBe(true);
 
       // Verify account was created with encrypted token
-      const account = await db.account.findFirst({
-        where: {
-          userId: testUser.id,
+      const account = await db.accounts.findFirst({
+        where: {user_id: testUser.id,
           provider: "github",
         },
       });
@@ -197,8 +195,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         },
         account: {
           provider: "github",
-          type: "oauth",
-          providerAccountId: "123456",
+          type: "oauth",provider_account_id: "123456",
           access_token: "test_token",
           refresh_token: null,
           expires_at: null,
@@ -236,14 +233,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         mockAccessToken
       );
 
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "123456",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user,repo",
+          provider: "github",provider_account_id: "123456",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user,repo",
         },
       });
 
@@ -275,19 +269,16 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         originalToken
       );
 
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "789012",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "789012",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
       // Retrieve and decrypt
-      const retrievedAccount = await db.account.findUnique({
+      const retrievedAccount = await db.accounts.findUnique({
         where: { id: account.id },
       });
 
@@ -319,14 +310,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         tag: encryptedToken.tag.slice(0, -2) + "XX",
       };
 
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "345678",
-          access_token: JSON.stringify(tamperedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "345678",
+          access_token: JSON.stringify(tamperedToken),scope: "read:user",
         },
       });
 
@@ -352,14 +340,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
       expect(encryptedToken.keyId).toBe(activeKeyId);
 
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "456789",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "456789",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
@@ -381,14 +366,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       // Create account with malformed encrypted token
       const malformedToken = "invalid-json-{corrupt}";
 
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "567890",
-          access_token: malformedToken,
-          scope: "read:user",
+          provider: "github",provider_account_id: "567890",
+          access_token: malformedToken,scope: "read:user",
         },
       });
 
@@ -425,8 +407,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
       const mockAccount = {
         provider: "github",
-        type: "oauth" as const,
-        providerAccountId: generateUniqueId(),
+        type: "oauth" as const,provider_account_id: generateUniqueId(),
         access_token: "gho_new_user_token",
         refresh_token: null,
         expires_at: null,
@@ -437,7 +418,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       };
 
       // Simulate user creation before callback (NextAuth creates user via adapter)
-      const createdUser = await db.user.create({
+      const createdUser = await db.users.create({
         data: {
           id: mockUser.id,
           email: mockUser.email,
@@ -457,7 +438,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(result).toBe(true);
 
       // Verify user exists
-      const user = await db.user.findUnique({
+      const user = await db.users.findUnique({
         where: { id: createdUser.id },
       });
 
@@ -493,8 +474,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
       const mockAccount = {
         provider: "github",
-        type: "oauth" as const,
-        providerAccountId: generateUniqueId(),
+        type: "oauth" as const,provider_account_id: generateUniqueId(),
         access_token: "gho_existing_user_token",
         refresh_token: null,
         expires_at: null,
@@ -515,7 +495,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(result).toBe(true);
 
       // Verify only one user exists with this email
-      const users = await db.user.findMany({
+      const users = await db.users.findMany({
         where: { email: existingEmail },
       });
 
@@ -536,14 +516,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         "first_token"
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
           provider: "github",
           providerAccountId,
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
@@ -554,14 +532,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       );
 
       await expect(
-        db.account.create({
-          data: {
-            userId: generateUniqueId("different-user"),
+        db.accounts.create({
+          data: {user_id: generateUniqueId("different-user"),
             type: "oauth",
             provider: "github",
             providerAccountId, // Same GitHub ID
-            access_token: JSON.stringify(duplicateEncryptedToken),
-            scope: "read:user",
+            access_token: JSON.stringify(duplicateEncryptedToken),scope: "read:user",
           },
         })
       ).rejects.toThrow(); // Unique constraint violation
@@ -588,14 +564,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         "profile_sync_token"
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: mockGitHubProfile.id.toString(),
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user,repo",
+          provider: "github",provider_account_id: mockGitHubProfile.id.toString(),
+          access_token: JSON.stringify(encryptedToken),scope: "read:user,repo",
         },
       });
 
@@ -615,16 +588,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       await sessionCallback!({
         session: mockSession,
         user: {
-          ...testUser,
-          emailVerified: null,
+          ...testUser,email_verified: null,
           image: null,
           role: "USER" as const,
           timezone: null,
           locale: null,
-          deleted: false,
-          deletedAt: null,
-          lastLoginAt: null,
-          poolApiKey: null,
+          deleted: false,deleted_at: null,last_login_at: null,pool_api_key: null,
         },
         token: {},
       });
@@ -640,8 +609,8 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       );
 
       // Verify GitHubAuth record was created/updated
-      const githubAuth = await db.gitHubAuth.findUnique({
-        where: { userId: testUser.id },
+      const githubAuth = await db.github_auth.findUnique({
+        where: {user_id: testUser.id },
       });
 
       expect(githubAuth).toBeTruthy();
@@ -668,14 +637,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         "failing_token"
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "fail-sync-id",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "fail-sync-id",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
@@ -694,16 +660,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const result = await sessionCallback!({
         session: mockSession,
         user: {
-          ...testUser,
-          emailVerified: null,
+          ...testUser,email_verified: null,
           image: null,
           role: "USER" as const,
           timezone: null,
           locale: null,
-          deleted: false,
-          deletedAt: null,
-          lastLoginAt: null,
-          poolApiKey: null,
+          deleted: false,deleted_at: null,last_login_at: null,pool_api_key: null,
         },
         token: {},
       });
@@ -722,10 +684,9 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const sessionToken = `session_${generateUniqueId()}`;
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-      const session = await db.session.create({
+      const session = await db.sessions.create({
         data: {
-          sessionToken,
-          userId: testUser.id,
+          sessionToken,user_id: testUser.id,
           expires: expiresAt,
         },
       });
@@ -735,7 +696,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(session.sessionToken).toBe(sessionToken);
 
       // Verify session can be retrieved
-      const retrievedSession = await db.session.findUnique({
+      const retrievedSession = await db.sessions.findUnique({
         where: { sessionToken },
         include: { user: true },
       });
@@ -754,14 +715,10 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Create GitHubAuth record
-      await db.gitHubAuth.create({
-        data: {
-          userId: testUser.id,
-          githubUserId: mockGitHubProfile.id.toString(),
-          githubUsername: mockGitHubProfile.login,
+      await db.github_auth.create({
+        data: {user_id: testUser.id,github_user_id: mockGitHubProfile.id.toString(),github_username: mockGitHubProfile.login,
           githubNodeId: mockGitHubProfile.node_id,
-          name: mockGitHubProfile.name,
-          publicRepos: mockGitHubProfile.public_repos,
+          name: mockGitHubProfile.name,public_repos: mockGitHubProfile.public_repos,
           followers: mockGitHubProfile.followers,
           following: mockGitHubProfile.following,
           accountType: mockGitHubProfile.type,
@@ -782,24 +739,19 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const result = await sessionCallback!({
         session: mockSession,
         user: {
-          ...testUser,
-          emailVerified: null,
+          ...testUser,email_verified: null,
           image: null,
           role: "USER" as const,
           timezone: null,
           locale: null,
-          deleted: false,
-          deletedAt: null,
-          lastLoginAt: null,
-          poolApiKey: null,
+          deleted: false,deleted_at: null,last_login_at: null,pool_api_key: null,
         },
         token: {},
       });
 
       expect(result.user).toHaveProperty("github");
       expect(result.user.github).toMatchObject({
-        username: mockGitHubProfile.login,
-        publicRepos: mockGitHubProfile.public_repos,
+        username: mockGitHubProfile.login,public_repos: mockGitHubProfile.public_repos,
         followers: mockGitHubProfile.followers,
       });
     });
@@ -813,16 +765,15 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const expiredDate = new Date(Date.now() - 1000 * 60 * 60); // 1 hour ago
       const sessionToken = `expired_${generateUniqueId()}`;
 
-      await db.session.create({
+      await db.sessions.create({
         data: {
-          sessionToken,
-          userId: testUser.id,
+          sessionToken,user_id: testUser.id,
           expires: expiredDate,
         },
       });
 
       // Verify session exists but is expired
-      const session = await db.session.findUnique({
+      const session = await db.sessions.findUnique({
         where: { sessionToken },
       });
 
@@ -911,27 +862,23 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         "first_token"
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
           provider: "github",
           providerAccountId,
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
       // Attempt duplicate with same [provider, providerAccountId]
       await expect(
-        db.account.create({
-          data: {
-            userId: generateUniqueId("another-user"),
+        db.accounts.create({
+          data: {user_id: generateUniqueId("another-user"),
             type: "oauth",
             provider: "github",
             providerAccountId, // Duplicate
-            access_token: JSON.stringify(encryptedToken),
-            scope: "read:user",
+            access_token: JSON.stringify(encryptedToken),scope: "read:user",
           },
         })
       ).rejects.toThrow();
@@ -946,14 +893,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const plaintextToken = "plaintext_token_not_encrypted";
 
       // This should work in the database but fail decryption
-      const account = await db.account.create({
-        data: {
-          userId: testUser.id,
+      const account = await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "encryption-fail-id",
+          provider: "github",provider_account_id: "encryption-fail-id",
           access_token: plaintextToken, // Not encrypted
-          scope: "read:user",
+scope: "read:user",
         },
       });
 
@@ -988,7 +933,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const uniqueEmail = `concurrent-${generateUniqueId()}@example.com`;
 
       // Simulate two concurrent OAuth callbacks for the same user
-      const user1 = db.user.create({
+      const user1 = db.users.create({
         data: {
           id: generateUniqueId("user-1"),
           email: uniqueEmail,
@@ -996,7 +941,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         },
       });
 
-      const user2 = db.user.create({
+      const user2 = db.users.create({
         data: {
           id: generateUniqueId("user-2"),
           email: uniqueEmail, // Same email
@@ -1026,8 +971,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         },
         account: {
           provider: "github",
-          type: "oauth",
-          providerAccountId: "999999",
+          type: "oauth",provider_account_id: "999999",
           access_token: "incomplete_token",
           refresh_token: null,
           expires_at: null,
@@ -1057,14 +1001,11 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         "secret_token_never_expose"
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "security-test-id",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "security-test-id",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
@@ -1083,16 +1024,12 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const result = await sessionCallback!({
         session: mockSession,
         user: {
-          ...testUser,
-          emailVerified: null,
+          ...testUser,email_verified: null,
           image: null,
           role: "USER" as const,
           timezone: null,
           locale: null,
-          deleted: false,
-          deletedAt: null,
-          lastLoginAt: null,
-          poolApiKey: null,
+          deleted: false,deleted_at: null,last_login_at: null,pool_api_key: null,
         },
         token: {},
       });
@@ -1114,21 +1051,17 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         accessToken
       );
 
-      await db.account.create({
-        data: {
-          userId: testUser.id,
+      await db.accounts.create({
+        data: {user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "enforcement-id",
-          access_token: JSON.stringify(encryptedToken),
-          scope: "read:user",
+          provider: "github",provider_account_id: "enforcement-id",
+          access_token: JSON.stringify(encryptedToken),scope: "read:user",
         },
       });
 
       // Verify all stored tokens in database are encrypted
-      const accounts = await db.account.findMany({
-        where: {
-          userId: testUser.id,
+      const accounts = await db.accounts.findMany({
+        where: {user_id: testUser.id,
           provider: "github",
         },
       });

@@ -57,12 +57,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("rejects unauthenticated requests", async () => {
       const { workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const request = createGetRequest(
@@ -79,12 +77,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("rejects non-member access", async () => {
       const { workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const nonMember = await createTestUser();
@@ -104,12 +100,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("allows workspace owner access", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const request = createAuthenticatedGetRequest(
@@ -127,13 +121,11 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("allows workspace member access", async () => {
       const { members, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
         memberCount: 1,
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const member = members[0];
@@ -191,7 +183,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("returns 400 when workspace has no repositories", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
       const request = createAuthenticatedGetRequest(
@@ -213,19 +205,17 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("returns 400 when swarm API key not configured", async () => {
       const { owner, workspace, swarm } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       // Remove swarm API key
       const { db } = await import("@/lib/db");
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm!.id },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
       const request = createAuthenticatedGetRequest(
@@ -243,12 +233,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("returns 400 when GitHub authentication not configured", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       // Mock GitHub auth not configured
@@ -273,12 +261,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("returns 500 when unable to determine graph service URL", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       // Mock URL transformation failure
@@ -301,12 +287,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("detects and returns sensitive data leaks", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const mockLeaks: GitLeakResult[] = [
@@ -373,12 +357,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("returns empty array when no leaks found", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       mockSwarmApiRequest.mockResolvedValue({
@@ -407,12 +389,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("correctly maps all GitLeakResult fields", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       const mockLeak: GitLeakResult = {
@@ -454,12 +434,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("calls swarmApiRequestAuth with correct parameters", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       mockGetGithubAuth.mockResolvedValue({
@@ -476,8 +454,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      expect(mockSwarmApiRequest).toHaveBeenCalledWith({
-        swarmUrl: "http://test-swarm:3355",
+      expect(mockSwarmApiRequest).toHaveBeenCalledWith({swarm_url: "http://test-swarm:3355",
         endpoint: "/leaks",
         method: "GET",
         apiKey: expect.any(String),
@@ -494,12 +471,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("handles graph service unavailable error (503)", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       mockSwarmApiRequest.mockResolvedValue({
@@ -526,12 +501,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("handles timeout error (504)", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       // Simulate timeout error
@@ -558,12 +531,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("handles fetch connection error", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       // Simulate fetch connection failure
@@ -584,12 +555,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("handles general server error (500)", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       mockSwarmApiRequest.mockRejectedValue(
@@ -611,12 +580,10 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("handles swarm service error with response data", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       });
 
       mockSwarmApiRequest.mockResolvedValue({
@@ -646,18 +613,14 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("valid repositoryId scans the correct repository URL", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      const repo1 = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo1",
+      const repo1 = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo1",
         name: "repo1",
       });
 
-      const repo2 = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/repo2",
+      const repo2 = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo2",
         name: "repo2",
       });
 
@@ -677,7 +640,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`,
         owner,
-        { repositoryId: repo2.id },
+        {repository_id: repo2.id },
       );
 
       const response = await GET(request, {
@@ -695,23 +658,19 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("repositoryId from a different workspace returns 400", async () => {
       const { owner: owner1, workspace: workspace1 } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      await createTestRepository({
-        workspaceId: workspace1.id,
-        repositoryUrl: "https://github.com/test/workspace1-repo",
+      await createTestRepository({workspace_id: workspace1.id,repository_url: "https://github.com/test/workspace1-repo",
         name: "workspace1-repo",
       });
 
       const { workspace: workspace2 } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      const workspace2Repo = await createTestRepository({
-        workspaceId: workspace2.id,
-        repositoryUrl: "https://github.com/test/workspace2-repo",
+      const workspace2Repo = await createTestRepository({workspace_id: workspace2.id,repository_url: "https://github.com/test/workspace2-repo",
         name: "workspace2-repo",
       });
 
@@ -726,7 +685,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace1.slug}/git-leaks`,
         owner1,
-        { repositoryId: workspace2Repo.id },
+        {repository_id: workspace2Repo.id },
       );
 
       const response = await GET(request, {
@@ -743,18 +702,14 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
     test("omitted repositoryId falls back to first repository", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario({
         withSwarm: true,
-        swarm: { status: "ACTIVE", swarmUrl: "http://test-swarm:8444/api" },
+        swarm: { status: "ACTIVE",swarm_url: "http://test-swarm:8444/api" },
       });
 
-      const repo1 = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/first-repo",
+      const repo1 = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/first-repo",
         name: "first-repo",
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test/second-repo",
+      await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/second-repo",
         name: "second-repo",
       });
 

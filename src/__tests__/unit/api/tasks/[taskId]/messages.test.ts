@@ -6,11 +6,9 @@ import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       findMany: vi.fn(),
     },
   },
@@ -97,7 +95,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(401);
       expect(data.error).toBe("Unauthorized");
-      expect(db.task.findFirst).not.toHaveBeenCalled();
+      expect(db.tasks.findFirst).not.toHaveBeenCalled();
     });
 
     test("should return 401 if no auth headers present", async () => {
@@ -113,7 +111,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(401);
       expect(data.error).toBe("Unauthorized");
-      expect(db.task.findFirst).not.toHaveBeenCalled();
+      expect(db.tasks.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -130,11 +128,11 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.error).toBe("Task ID is required");
-      expect(db.task.findFirst).not.toHaveBeenCalled();
+      expect(db.tasks.findFirst).not.toHaveBeenCalled();
     });
 
     test("should return 404 if task not found", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(null);
+      (db.tasks.findFirst as Mock).mockResolvedValue(null);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -147,12 +145,12 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Task not found");
-      expect(db.chatMessage.findMany).not.toHaveBeenCalled();
+      expect(db.chat_messages.findMany).not.toHaveBeenCalled();
     });
 
     test("should validate task query includes deleted filter", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -162,7 +160,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         params: Promise.resolve({ taskId: mockTaskId }),
       });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           id: mockTaskId,
           deleted: false,
@@ -190,7 +188,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       };
 
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithDifferentOwner);
+      (db.tasks.findFirst as Mock).mockResolvedValue(taskWithDifferentOwner);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -203,12 +201,12 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(403);
       expect(data.error).toBe("Access denied");
-      expect(db.chatMessage.findMany).not.toHaveBeenCalled();
+      expect(db.chat_messages.findMany).not.toHaveBeenCalled();
     });
 
     test("should allow access if user is workspace owner", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -219,7 +217,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(db.chatMessage.findMany).toHaveBeenCalled();
+      expect(db.chat_messages.findMany).toHaveBeenCalled();
     });
 
     test("should allow access if user is workspace member", async () => {
@@ -232,8 +230,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       };
 
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithMember);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(taskWithMember);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -244,12 +242,12 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(db.chatMessage.findMany).toHaveBeenCalled();
+      expect(db.chat_messages.findMany).toHaveBeenCalled();
     });
 
     test("should filter workspace members by current user in query", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -259,7 +257,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         params: Promise.resolve({ taskId: mockTaskId }),
       });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: expect.any(Object),
         select: {
           id: true,
@@ -299,8 +297,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Message Retrieval", () => {
     test("should return messages with artifacts ordered by timestamp", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue(mockChatMessages);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -334,8 +332,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should parse contextTags from JSON string", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue(mockChatMessages);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -353,8 +351,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should include task metadata in response", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -375,8 +373,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should retrieve messages ordered by createdAt ascending", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -386,7 +384,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         params: Promise.resolve({ taskId: mockTaskId }),
       });
 
-      expect(db.chatMessage.findMany).toHaveBeenCalledWith({
+      expect(db.chat_messages.findMany).toHaveBeenCalledWith({
         where: {
           taskId: mockTaskId,
         },
@@ -416,8 +414,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return empty array when task has no messages", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -442,8 +440,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       ];
 
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithoutArtifacts);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue(messagesWithoutArtifacts);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -461,7 +459,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Error Handling", () => {
     test("should return 500 on database error during task fetch", async () => {
-      (db.task.findFirst as Mock).mockRejectedValue(new Error("Database connection failed"));
+      (db.tasks.findFirst as Mock).mockRejectedValue(new Error("Database connection failed"));
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -477,8 +475,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return 500 on database error during message fetch", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockRejectedValue(new Error("Query timeout"));
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockRejectedValue(new Error("Query timeout"));
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -501,8 +499,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       ];
 
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithInvalidJSON);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue(messagesWithInvalidJSON);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -549,8 +547,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Response Structure", () => {
     test("should return correct response structure", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue(mockChatMessages);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -571,8 +569,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should not include sensitive workspace data", async () => {
-      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -593,8 +591,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         ...mockTask,
         sourceType: "PROTOTYPE",
       };
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithSourceType);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(taskWithSourceType);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -614,8 +612,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         ...mockTask,
         sourceType: "USER",
       };
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithSourceType);
-      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+      (db.tasks.findFirst as Mock).mockResolvedValue(taskWithSourceType);
+      (db.chat_messages.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,

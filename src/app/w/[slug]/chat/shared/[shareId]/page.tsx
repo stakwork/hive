@@ -37,7 +37,7 @@ async function getSharedConversation(
 ): Promise<{ data?: SharedConversationData; error?: string; status: number }> {
   try {
     // Find workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -54,7 +54,7 @@ async function getSharedConversation(
 
     // Check if user is a workspace member (owner or explicit member)
     const isOwner = workspace.ownerId === userId;
-    const isMember = isOwner || await db.workspaceMember.findFirst({
+    const isMember = isOwner || await db.workspace_members.findFirst({
       where: {
         workspaceId: workspace.id,
         userId,
@@ -70,7 +70,7 @@ async function getSharedConversation(
     }
 
     // Fetch the shared conversation
-    const sharedConversation = await db.sharedConversation.findUnique({
+    const sharedConversation = await db.shared_conversations.findUnique({
       where: {
         id: shareId,
       },

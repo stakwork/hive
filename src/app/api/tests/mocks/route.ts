@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Look up swarm
-    const swarm = await db.swarm.findFirst({ where: { workspaceId } });
+    const swarm = await db.swarms.findFirst({ where: { workspaceId } });
 
     if (!swarm) {
       return NextResponse.json(

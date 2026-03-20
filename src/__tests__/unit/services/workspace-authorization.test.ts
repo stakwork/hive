@@ -4,12 +4,10 @@ import { db } from "@/lib/db";
 import { WorkspaceRole } from "@prisma/client";
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -99,8 +97,8 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
   describe("validateWorkspaceAccess", () => {
     describe("when allowOwner is true (default behavior)", () => {
       it("should allow owner to bypass role restrictions", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId, true);
 
@@ -109,12 +107,12 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
         expect(result.canRead).toBe(true);
         expect(result.canWrite).toBe(true);
         expect(result.canAdmin).toBe(true);
-        expect(db.workspaceMember.findUnique).not.toHaveBeenCalled();
+        expect(db.workspace_members.findUnique).not.toHaveBeenCalled();
       });
 
       it("should allow owner to bypass role restrictions when parameter is omitted", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId);
 
@@ -128,14 +126,14 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
 
     describe("when allowOwner is false", () => {
       it("should deny access when owner has no membership role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId, false);
 
         expectNoAccess(result);
-        expect(db.workspaceMember.findUnique).toHaveBeenCalledWith({
+        expect(db.workspace_members.findUnique).toHaveBeenCalledWith({
           where: {
             workspaceId_userId: {
               workspaceId: mockWorkspaceId,
@@ -149,9 +147,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has VIEWER role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.VIEWER));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.VIEWER));
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId, false);
 
@@ -160,9 +158,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has DEVELOPER role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.DEVELOPER));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.DEVELOPER));
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId, false);
 
@@ -171,9 +169,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has ADMIN role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.ADMIN));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.ADMIN));
 
         const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockOwnerId, false);
 
@@ -182,8 +180,8 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should not affect non-owner users", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue({
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue({
           id: "member-1",
           workspaceId: mockWorkspaceId,
           userId: mockUserId,
@@ -217,7 +215,7 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
         expect(result.canRead).toBe(true);
         expect(result.canWrite).toBe(true);
         expect(result.canAdmin).toBe(false);
-        expect(db.workspaceMember.findUnique).not.toHaveBeenCalled();
+        expect(db.workspace_members.findUnique).not.toHaveBeenCalled();
       });
     });
   });
@@ -225,8 +223,8 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
   describe("validateWorkspaceAccessById", () => {
     describe("when allowOwner is true (default behavior)", () => {
       it("should allow owner to bypass role restrictions", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId, true);
 
@@ -235,12 +233,12 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
         expect(result.canRead).toBe(true);
         expect(result.canWrite).toBe(true);
         expect(result.canAdmin).toBe(true);
-        expect(db.workspaceMember.findUnique).not.toHaveBeenCalled();
+        expect(db.workspace_members.findUnique).not.toHaveBeenCalled();
       });
 
       it("should allow owner to bypass role restrictions when parameter is omitted", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId);
 
@@ -254,14 +252,14 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
 
     describe("when allowOwner is false", () => {
       it("should deny access when owner has no membership role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(null);
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(null);
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId, false);
 
         expectNoAccess(result);
-        expect(db.workspaceMember.findUnique).toHaveBeenCalledWith({
+        expect(db.workspace_members.findUnique).toHaveBeenCalledWith({
           where: {
             workspaceId_userId: {
               workspaceId: mockWorkspaceId,
@@ -275,9 +273,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has VIEWER role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.VIEWER));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.VIEWER));
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId, false);
 
@@ -286,9 +284,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has DEVELOPER role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.DEVELOPER));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.DEVELOPER));
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId, false);
 
@@ -297,9 +295,9 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should use membership role when owner has ADMIN role", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-        vi.mocked(db.workspaceMember.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.ADMIN));
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+        vi.mocked(db.workspace_members.findUnique).mockResolvedValue(createMembershipMock(WorkspaceRole.ADMIN));
 
         const result = await validateWorkspaceAccessById(mockWorkspaceId, mockOwnerId, false);
 
@@ -308,8 +306,8 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
       });
 
       it("should not affect non-owner users", async () => {
-        vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-        vi.mocked(db.workspaceMember.findFirst).mockResolvedValue({
+        vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+        vi.mocked(db.workspace_members.findFirst).mockResolvedValue({
           id: "member-1",
           workspaceId: mockWorkspaceId,
           userId: mockUserId,
@@ -343,14 +341,14 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
         expect(result.canRead).toBe(true);
         expect(result.canWrite).toBe(true);
         expect(result.canAdmin).toBe(false);
-        expect(db.workspaceMember.findUnique).not.toHaveBeenCalled();
+        expect(db.workspace_members.findUnique).not.toHaveBeenCalled();
       });
     });
   });
 
   describe("Edge Cases", () => {
     it("should handle workspace not found", async () => {
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(null);
 
       const result = await validateWorkspaceAccess(mockWorkspaceSlug, mockUserId, false);
 
@@ -358,7 +356,7 @@ describe("Workspace Authorization with allowOwner Parameter", () => {
     });
 
     it("should handle workspace not found by ID", async () => {
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(null);
 
       const result = await validateWorkspaceAccessById(mockWorkspaceId, mockUserId, false);
 

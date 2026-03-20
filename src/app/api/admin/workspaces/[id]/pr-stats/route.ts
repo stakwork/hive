@@ -43,7 +43,7 @@ export async function GET(
 
   const { id: workspaceId } = await params;
 
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: {
       id: true,

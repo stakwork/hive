@@ -17,7 +17,7 @@ export async function GET(
     const { featureId } = await context.params;
 
     // Look up feature to get workspaceId for auth
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
@@ -41,7 +41,7 @@ export async function GET(
 
     // Fetch all image attachments for tasks in this feature
     // Single query with nested where filters (no N+1)
-    const attachments = await db.attachment.findMany({
+    const attachments = await db.attachments.findMany({
       where: {
         mimeType: { startsWith: "image/" },
         message: {

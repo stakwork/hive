@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { repoAgent } from "@/lib/ai/askTools";
@@ -28,12 +29,14 @@ export async function POST(request: NextRequest) {
 
     const workspaceId = (vars.workspaceId as string | undefined) ?? STAKWORK_WORKSPACE_ID;
 
-    run = await db.stakworkRun.create({
+    run = await db.stakwork_runs.create({
       data: {
+        id: randomUUID(),
         type: StakworkRunType.REPO_AGENT,
         status: WorkflowStatus.IN_PROGRESS,
-        webhookUrl,
-        workspaceId,
+        webhook_url: webhookUrl,
+        workspace_id: workspaceId,
+        updated_at: new Date(),
       },
       select: { id: true },
     });
@@ -52,12 +55,12 @@ export async function POST(request: NextRequest) {
       subAgents: vars.subAgents as import("@/lib/ai/askTools").SubAgent[] | undefined,
     });
 
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         status: WorkflowStatus.COMPLETED,
         result: JSON.stringify(agentResult),
-        updatedAt: new Date(),
+        updated_at: new Date(),
       },
     });
 
@@ -72,9 +75,9 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : String(error);
 
     if (run) {
-      await db.stakworkRun.update({
+      await db.stakwork_runs.update({
         where: { id: run.id },
-        data: { status: WorkflowStatus.FAILED, updatedAt: new Date() },
+        data: { status: WorkflowStatus.FAILED, updated_at: new Date() },
       });
 
       if (webhookUrl) {

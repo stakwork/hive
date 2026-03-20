@@ -78,9 +78,7 @@ describe("POST /api/chat/message Integration Tests", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: testUser.id,
-          stakworkApiKey: "test-stakwork-key",
+          description: "Test workspace description",owner_id: testUser.id,stakwork_api_key: "test-stakwork-key",
         },
       });
 
@@ -90,30 +88,17 @@ describe("POST /api/chat/message Integration Tests", () => {
           id: generateUniqueId("task"),
           title: "Test Task",
           description: "Test task description",
-          status: "TODO",
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: "TODO",workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
       // Create swarm linked to workspace (optional for tests that need it)
       const testSwarm = await tx.swarm.create({
-        data: {
-          swarmId: `swarm-${Date.now()}`,
+        data: {swarm_id: `swarm-${Date.now()}`,
           name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          swarmApiKey: "test-api-key",
-          swarmUrl: "https://test-swarm.com/api",
-          swarmSecretAlias: "test-secret",
-          poolName: "test-pool",
+          status: "ACTIVE",instance_type: "XL",swarm_api_key: "test-api-key",swarm_url: "https://test-swarm.com/api",swarm_secret_alias: "test-secret",pool_name: "test-pool",
           environmentVariables: [],
-          services: [],
-          workspaceId: testWorkspace.id,
-          agentRequestId: null,
-          agentStatus: null,
+          services: [],workspace_id: testWorkspace.id,agent_request_id: null,agent_status: null,
         },
       });
 
@@ -127,8 +112,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
   describe("Authentication Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/chat/message", {task_id: "test-task-id",
         message: "Test message",
       });
 
@@ -138,8 +122,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     });
 
     test("should return 401 for request without auth headers", async () => {
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/chat/message", {task_id: "test-task-id",
         message: "Test message",
       });
 
@@ -153,8 +136,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 400 for missing message", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: "test-task-id",
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: "test-task-id",
         // message missing
       });
 
@@ -183,8 +165,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: "non-existent-task-id",
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: "non-existent-task-id",
         message: "Test message",
       });
 
@@ -200,8 +181,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Create different user who doesn't have access
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", unauthorizedUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", unauthorizedUser, {task_id: testTask.id,
         message: "Test message",
       });
 
@@ -225,10 +205,8 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Clear STAKWORK config to use mock service
       vi.mocked(config).STAKWORK_API_KEY = "";
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
-        message: "Test message content",
-        contextTags: [{ type: "file", value: "test.js" }],
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
+        message: "Test message content",context_tags: [{ type: "file", value: "test.js" }],
         artifacts: [
           {
             type: ArtifactType.CODE,
@@ -258,8 +236,8 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(data.message.attachments).toHaveLength(1);
 
       // Verify chat message was created in database
-      const chatMessage = await db.chatMessage.findFirst({
-        where: { taskId: testTask.id },
+      const chatMessage = await db.chat_messages.findFirst({
+        where: {task_id: testTask.id },
         include: { artifacts: true, attachments: true },
       });
 
@@ -284,8 +262,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Restore STAKWORK config to use Stakwork service
       vi.mocked(config).STAKWORK_API_KEY = "test-stakwork-key";
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Test Stakwork message",
         mode: "test",
       });
@@ -298,7 +275,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(data.workflow.project_id).toBe(12345);
 
       // Verify task was updated with workflow status
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
       });
 
@@ -316,8 +293,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       } as Response);
 
       // Test live mode
-      const liveRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const liveRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Live mode test",
         mode: "live",
       });
@@ -326,8 +302,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(liveResponse.status).toBe(201);
 
       // Test unit mode
-      const unitRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const unitRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Unit mode test",
         mode: "unit",
       });
@@ -336,8 +311,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(unitResponse.status).toBe(201);
 
       // Test integration mode
-      const integrationRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const integrationRequest = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Integration mode test",
         mode: "integration",
       });
@@ -359,8 +333,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       vi.mocked(config).STAKWORK_API_KEY = "test-stakwork-key";
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Test message",
       });
 
@@ -371,7 +344,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify task workflow status was NOT changed (remains PENDING, the initial value)
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
       });
 
@@ -386,8 +359,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       vi.mocked(config).STAKWORK_API_KEY = ""; // Use mock service
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: "Test message",
       });
 
@@ -403,8 +375,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle database errors gracefully", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: "invalid-task-format", // This will cause database error
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: "invalid-task-format", // This will cause database error
         message: "Test message",
       });
 
@@ -426,10 +397,8 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       vi.mocked(config).STAKWORK_API_KEY = "";
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
-        message: "Test message",
-        contextTags: [],
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
+        message: "Test message",context_tags: [],
         artifacts: [],
         attachments: [],
       });
@@ -456,8 +425,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       const longMessage = "a".repeat(10000); // Very long message
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: longMessage,
       });
 
@@ -481,8 +449,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       const specialMessage = "Test with 🚀 emojis and special chars: àáâäåæçèéêë & <html> tags";
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
-        taskId: testTask.id,
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {task_id: testTask.id,
         message: specialMessage,
       });
 

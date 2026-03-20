@@ -90,17 +90,17 @@ describe("Integration: /api/cron/task-coordinator", () => {
     process.env.CRON_SECRET = "test-cron-secret";
 
     // Clean up test data
-    await db.task.deleteMany({});
-    await db.janitorRecommendation.deleteMany({});
-    await db.janitorRun.deleteMany({});
-    await db.janitorConfig.deleteMany({});
-    await db.workspaceMember.deleteMany({});
-    await db.swarm.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.tasks.deleteMany({});
+    await db.janitor_recommendations.deleteMany({});
+    await db.janitor_runs.deleteMany({});
+    await db.janitor_configs.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.swarms.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
 
     // Create test user
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: "test@example.com",
         name: "Test User",
@@ -108,17 +108,14 @@ describe("Integration: /api/cron/task-coordinator", () => {
     });
 
     // Create test workspace with janitor config (without swarm first)
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         slug: "test-workspace-integration",
-        name: "Test Workspace Integration",
-        ownerId: testUser.id,
+        name: "Test Workspace Integration",owner_id: testUser.id,
         janitorConfig: {
           create: {
             taskCoordinatorEnabled: true,
-            recommendationSweepEnabled: true,
-            ticketSweepEnabled: true,
-            unitTestsEnabled: false,
+            recommendationSweepEnabled: true,ticket_sweep_enabled: true,unit_tests_enabled: false,
             integrationTestsEnabled: false,
             e2eTestsEnabled: false,
             securityReviewEnabled: false,
@@ -131,14 +128,9 @@ describe("Integration: /api/cron/task-coordinator", () => {
     });
 
     // Create test swarm with pool configuration (after workspace exists)
-    testSwarm = await db.swarm.create({
+    testSwarm = await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.com",
-        workspaceId: testWorkspace.id,
-        poolName: "test-pool",
-        swarmSecretAlias: "{{TEST_SECRET}}",
-        poolApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.com",workspace_id: testWorkspace.id,pool_name: "test-pool",swarm_secret_alias: "{{TEST_SECRET}}",pool_api_key: JSON.stringify({
           data: "encrypted-pool-api-key",
           iv: "test-iv",
           tag: "test-tag",
@@ -150,10 +142,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
     });
 
     // Add user as workspace member
-    await db.workspaceMember.create({
-      data: {
-        userId: testUser.id,
-        workspaceId: testWorkspace.id,
+    await db.workspace_members.create({
+      data: {user_id: testUser.id,workspace_id: testWorkspace.id,
         role: "OWNER",
       },
     });
@@ -168,14 +158,14 @@ describe("Integration: /api/cron/task-coordinator", () => {
     }
 
     // Clean up test data
-    await db.task.deleteMany({});
-    await db.janitorRecommendation.deleteMany({});
-    await db.janitorRun.deleteMany({});
-    await db.janitorConfig.deleteMany({});
-    await db.workspaceMember.deleteMany({});
-    await db.swarm.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.tasks.deleteMany({});
+    await db.janitor_recommendations.deleteMany({});
+    await db.janitor_runs.deleteMany({});
+    await db.janitor_configs.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.swarms.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
     vi.clearAllMocks();
   });
 
@@ -185,19 +175,13 @@ describe("Integration: /api/cron/task-coordinator", () => {
       const twentyFiveHoursAgo = new Date();
       twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
 
-      const staleTask = await db.task.create({
+      const staleTask = await db.tasks.create({
         data: {
           title: "Stale Task",
-          description: "This task has been running for too long",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "This task has been running for too long",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "IN_PROGRESS",
-          mode: "agent",
-          sourceType: "USER",
-          priority: "MEDIUM",
-          createdAt: twentyFiveHoursAgo,
-          updatedAt: twentyFiveHoursAgo,
+          mode: "agent",source_type: "USER",
+          priority: "MEDIUM",created_at: twentyFiveHoursAgo,updated_at: twentyFiveHoursAgo,
         },
       });
 
@@ -213,7 +197,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.success).toBe(true);
 
       // Verify database state: task should be HALTED
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: staleTask.id },
       });
 
@@ -227,19 +211,13 @@ describe("Integration: /api/cron/task-coordinator", () => {
       const twoHoursAgo = new Date();
       twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
 
-      const recentTask = await db.task.create({
+      const recentTask = await db.tasks.create({
         data: {
           title: "Recent Task",
-          description: "This task is still fresh",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "This task is still fresh",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "IN_PROGRESS",
-          mode: "agent",
-          sourceType: "USER",
-          priority: "MEDIUM",
-          createdAt: twoHoursAgo,
-          updatedAt: twoHoursAgo,
+          mode: "agent",source_type: "USER",
+          priority: "MEDIUM",created_at: twoHoursAgo,updated_at: twoHoursAgo,
         },
       });
 
@@ -255,7 +233,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.success).toBe(true);
 
       // Verify database state: task should remain IN_PROGRESS
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: recentTask.id },
       });
 
@@ -268,19 +246,13 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Phase 2: Ticket Sweep", () => {
     test("should process TODO task with TASK_COORDINATOR assignee", async () => {
       // Create eligible ticket
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
           title: "Ticket for Coordinator",
-          description: "This ticket should be processed",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "This ticket should be processed",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "HIGH",
-          dependsOnTaskIds: [], // No dependencies
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "HIGH",depends_on_task_ids: [], // No dependencies
         },
       });
 
@@ -297,42 +269,28 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
       // Verify startTaskWorkflow was called
       const { startTaskWorkflow } = await import("@/services/task-workflow");
-      expect(startTaskWorkflow).toHaveBeenCalledWith({
-        taskId: ticket.id,
-        userId: testUser.id,
+      expect(startTaskWorkflow).toHaveBeenCalledWith({task_id: ticket.id,user_id: testUser.id,
         mode: "live",
       });
     });
 
     test("should dispatch 2 tasks when unusedVms=3 (slotsAvailable=2) and 2 eligible TODO tasks exist", async () => {
       // Create 2 eligible tickets (no dependencies)
-      const ticket1 = await db.task.create({
+      const ticket1 = await db.tasks.create({
         data: {
-          title: "Ticket 1",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Ticket 1",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "HIGH",
-          dependsOnTaskIds: [],
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "HIGH",depends_on_task_ids: [],
         },
       });
 
-      const ticket2 = await db.task.create({
+      const ticket2 = await db.tasks.create({
         data: {
-          title: "Ticket 2",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Ticket 2",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "MEDIUM",
-          dependsOnTaskIds: [],
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "MEDIUM",depends_on_task_ids: [],
         },
       });
 
@@ -350,39 +308,27 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       expect(startTaskWorkflow).toHaveBeenCalledTimes(2);
-      expect(startTaskWorkflow).toHaveBeenCalledWith({ taskId: ticket1.id, userId: testUser.id, mode: "live" });
-      expect(startTaskWorkflow).toHaveBeenCalledWith({ taskId: ticket2.id, userId: testUser.id, mode: "live" });
+      expect(startTaskWorkflow).toHaveBeenCalledWith({task_id: ticket1.id,user_id: testUser.id, mode: "live" });
+      expect(startTaskWorkflow).toHaveBeenCalledWith({task_id: ticket2.id,user_id: testUser.id, mode: "live" });
     });
 
     test("should respect priority ordering (CRITICAL → HIGH → MEDIUM → LOW)", async () => {
       // Create tickets with different priorities
-      const lowTask = await db.task.create({
+      const lowTask = await db.tasks.create({
         data: {
-          title: "Low Priority Ticket",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Low Priority Ticket",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "LOW",
-          dependsOnTaskIds: [],
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "LOW",depends_on_task_ids: [],
         },
       });
 
-      const criticalTask = await db.task.create({
+      const criticalTask = await db.tasks.create({
         data: {
-          title: "Critical Priority Ticket",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Critical Priority Ticket",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "CRITICAL",
-          dependsOnTaskIds: [],
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "CRITICAL",depends_on_task_ids: [],
         },
       });
 
@@ -397,41 +343,30 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
       // Verify CRITICAL task was processed (not LOW)
       const { startTaskWorkflow } = await import("@/services/task-workflow");
-      expect(startTaskWorkflow).toHaveBeenCalledWith({
-        taskId: criticalTask.id, // CRITICAL task processed first
-        userId: testUser.id,
+      expect(startTaskWorkflow).toHaveBeenCalledWith({task_id: criticalTask.id, // CRITICAL task processed first
+user_id: testUser.id,
         mode: "live",
       });
     });
 
     test("should skip tasks with dependencies", async () => {
       // Create blocking task
-      const blockingTask = await db.task.create({
+      const blockingTask = await db.tasks.create({
         data: {
-          title: "Blocking Task",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Blocking Task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "USER",
+          mode: "agent",source_type: "USER",
           priority: "HIGH",
         },
       });
 
       // Create dependent task
-      const dependentTask = await db.task.create({
+      const dependentTask = await db.tasks.create({
         data: {
-          title: "Dependent Ticket",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Dependent Ticket",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "HIGH",
-          dependsOnTaskIds: [blockingTask.id], // Has dependency
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "HIGH",depends_on_task_ids: [blockingTask.id], // Has dependency
         },
       });
 
@@ -451,29 +386,24 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
     test("should unassign coordinator task whose dependency has a CANCELLED PR artifact", async () => {
       // Create the blocking task (will have a CANCELLED PR artifact)
-      const blockingTask = await db.task.create({
+      const blockingTask = await db.tasks.create({
         data: {
-          title: "Cancelled PR Task",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Cancelled PR Task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "IN_PROGRESS",
-          mode: "agent",
-          sourceType: "USER",
+          mode: "agent",source_type: "USER",
           priority: "HIGH",
         },
       });
 
       // Add a chat message with a CANCELLED PR artifact to the blocking task
-      const chatMessage = await db.chatMessage.create({
-        data: {
-          taskId: blockingTask.id,
+      const chatMessage = await db.chat_messages.create({
+        data: {task_id: blockingTask.id,
           message: "PR was closed without merging",
           role: "ASSISTANT",
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: chatMessage.id,
           type: "PULL_REQUEST",
@@ -485,23 +415,17 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Create the coordinator-assigned task that depends on the blocked task
-      const coordinatorTask = await db.task.create({
+      const coordinatorTask = await db.tasks.create({
         data: {
-          title: "Permanently Blocked Coordinator Task",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Permanently Blocked Coordinator Task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
-          mode: "agent",
-          sourceType: "TASK_COORDINATOR",
-          systemAssigneeType: "TASK_COORDINATOR",
-          priority: "HIGH",
-          dependsOnTaskIds: [blockingTask.id],
+          mode: "agent",source_type: "TASK_COORDINATOR",system_assignee_type: "TASK_COORDINATOR",
+          priority: "HIGH",depends_on_task_ids: [blockingTask.id],
         },
       });
 
       // Verify systemAssigneeType is set before the sweep
-      const beforeSweep = await db.task.findUnique({ where: { id: coordinatorTask.id } });
+      const beforeSweep = await db.tasks.findUnique({ where: { id: coordinatorTask.id } });
       expect(beforeSweep?.systemAssigneeType).toBe("TASK_COORDINATOR");
 
       // Execute the cron endpoint
@@ -512,13 +436,13 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(response.status).toBe(200);
 
       // Verify the coordinator task was unassigned (systemAssigneeType cleared)
-      const afterSweep = await db.task.findUnique({ where: { id: coordinatorTask.id } });
+      const afterSweep = await db.tasks.findUnique({ where: { id: coordinatorTask.id } });
       expect(afterSweep?.systemAssigneeType).toBeNull();
 
       // Verify startTaskWorkflow was NOT called — unassigned, not dispatched
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       expect(startTaskWorkflow).not.toHaveBeenCalledWith(
-        expect.objectContaining({ taskId: coordinatorTask.id })
+        expect.objectContaining({task_id: coordinatorTask.id })
       );
     });
   });
@@ -526,20 +450,16 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Phase 3: Recommendation Sweep", () => {
     test("should accept pending recommendation and create task with TASK_COORDINATOR sourceType", async () => {
       // Create janitor run
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
       // Create pending recommendation
-      const recommendation = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const recommendation = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Add unit tests for UserService",
           description: "UserService lacks test coverage",
           priority: "HIGH",
@@ -562,7 +482,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.tasksCreated).toBe(1);
 
       // Verify recommendation status changed
-      const updatedRecommendation = await db.janitorRecommendation.findUnique({
+      const updatedRecommendation = await db.janitor_recommendations.findUnique({
         where: { id: recommendation.id },
       });
 
@@ -572,10 +492,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(updatedRecommendation!.acceptedById).toBe(testUser.id);
 
       // Verify task was created with correct sourceType marker
-      const createdTask = await db.task.findFirst({
-        where: {
-          workspaceId: testWorkspace.id,
-          sourceType: "TASK_COORDINATOR", // Important: prevents duplication
+      const createdTask = await db.tasks.findFirst({
+        where: {workspace_id: testWorkspace.id,source_type: "TASK_COORDINATOR", // Important: prevents duplication
         },
       });
 
@@ -586,20 +504,16 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
     test("should process CRITICAL priority before HIGH priority", async () => {
       // Create janitor run
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
       // Create HIGH priority recommendation (created first)
-      const highRec = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const highRec = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "High Priority Recommendation",
           description: "High priority code quality improvement",
           priority: "HIGH",
@@ -610,10 +524,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Create CRITICAL priority recommendation (created second)
-      const criticalRec = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const criticalRec = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Critical Priority Recommendation",
           description: "Critical security vulnerability found",
           priority: "CRITICAL",
@@ -634,10 +546,10 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.tasksCreated).toBe(1); // Only 1 per run
 
       // Verify CRITICAL recommendation was accepted (not HIGH)
-      const criticalUpdated = await db.janitorRecommendation.findUnique({
+      const criticalUpdated = await db.janitor_recommendations.findUnique({
         where: { id: criticalRec.id },
       });
-      const highUpdated = await db.janitorRecommendation.findUnique({
+      const highUpdated = await db.janitor_recommendations.findUnique({
         where: { id: highRec.id },
       });
 
@@ -647,20 +559,16 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
     test("should limit to 1 recommendation per workspace per run", async () => {
       // Create janitor run
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
       // Create 3 pending recommendations
-      const rec1 = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const rec1 = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Recommendation 1",
           description: "Test description 1",
           priority: "HIGH",
@@ -670,10 +578,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
         },
       });
 
-      const rec2 = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const rec2 = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Recommendation 2",
           description: "Test description 2",
           priority: "HIGH",
@@ -683,10 +589,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
         },
       });
 
-      const rec3 = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const rec3 = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Recommendation 3",
           description: "Test description 3",
           priority: "HIGH",
@@ -707,9 +611,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.tasksCreated).toBe(1); // Only 1 task created
 
       // Count accepted recommendations
-      const acceptedCount = await db.janitorRecommendation.count({
-        where: {
-          workspaceId: testWorkspace.id,
+      const acceptedCount = await db.janitor_recommendations.count({
+        where: {workspace_id: testWorkspace.id,
           status: "ACCEPTED",
         },
       });
@@ -721,19 +624,15 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Data Integrity & Deduplication", () => {
     test("should mark tasks with sourceType=TASK_COORDINATOR to prevent duplication", async () => {
       // Create janitor run and recommendation
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
-      const recommendation = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const recommendation = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Test Recommendation",
           description: "Test recommendation description",
           priority: "HIGH",
@@ -753,9 +652,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(response.status).toBe(200);
 
       // Verify created task has TASK_COORDINATOR sourceType
-      const createdTask = await db.task.findFirst({
-        where: {
-          workspaceId: testWorkspace.id,
+      const createdTask = await db.tasks.findFirst({
+        where: {workspace_id: testWorkspace.id,
         },
       });
 
@@ -765,19 +663,15 @@ describe("Integration: /api/cron/task-coordinator", () => {
 
     test("should not create duplicate tasks from same recommendation", async () => {
       // Create janitor run and recommendation
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
-      const recommendation = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      const recommendation = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Test Recommendation",
           description: "Test recommendation description",
           priority: "HIGH",
@@ -795,10 +689,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       await GET(mockRequest); // Second execution
 
       // Count tasks created
-      const taskCount = await db.task.count({
-        where: {
-          workspaceId: testWorkspace.id,
-          sourceType: "TASK_COORDINATOR",
+      const taskCount = await db.tasks.count({
+        where: {workspace_id: testWorkspace.id,source_type: "TASK_COORDINATOR",
         },
       });
 
@@ -809,17 +701,15 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Error Isolation", () => {
     test("should continue processing other workspaces when one fails", async () => {
       // Create second workspace without swarm (should fail)
-      const workspace2 = await db.workspace.create({
+      const workspace2 = await db.workspaces.create({
         data: {
           slug: "workspace-no-swarm",
-          name: "Workspace Without Swarm",
-          ownerId: testUser.id,
+          name: "Workspace Without Swarm",owner_id: testUser.id,
           // No swarm created - this workspace lacks a swarm
           janitorConfig: {
             create: {
               taskCoordinatorEnabled: true,
-              recommendationSweepEnabled: true,
-              ticketSweepEnabled: false,
+              recommendationSweepEnabled: true,ticket_sweep_enabled: false,
             },
           },
         },
@@ -829,19 +719,15 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Create recommendation for first workspace (should succeed)
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
-      await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Test Recommendation",
           description: "Test recommendation description",
           priority: "HIGH",
@@ -864,9 +750,8 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.tasksCreated).toBe(1); // Only first workspace succeeded
 
       // Verify task was created for successful workspace
-      const taskCount = await db.task.count({
-        where: {
-          workspaceId: testWorkspace.id,
+      const taskCount = await db.tasks.count({
+        where: {workspace_id: testWorkspace.id,
         },
       });
 
@@ -894,19 +779,15 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Result Aggregation", () => {
     test("should return correct execution metrics", async () => {
       // Create janitor run and recommendation
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: testWorkspace.janitorConfig!.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: testWorkspace.janitorConfig!.id,janitor_type: "UNIT_TESTS",
           status: "COMPLETED",
           metadata: {},
         },
       });
 
-      await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: testWorkspace.id,
+      await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: testWorkspace.id,
           title: "Test Recommendation",
           description: "Test recommendation description",
           priority: "HIGH",

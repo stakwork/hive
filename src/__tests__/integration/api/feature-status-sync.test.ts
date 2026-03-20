@@ -46,79 +46,58 @@ describe("Feature Status Sync Integration Tests", () => {
    * Helper function to create a complete feature with tasks setup
    */
   async function createFeatureWithTasks() {
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         email: `user-${generateUniqueId()}@example.com`,
         name: "Test User",
       },
     });
 
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: `workspace-${generateUniqueId()}`,
-        ownerId: user.id,
+        slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
       },
     });
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
         title: "Test Feature",
-        brief: "Test Brief",
-        workspaceId: workspace.id,
+        brief: "Test Brief",workspace_id: workspace.id,
         status: FeatureStatus.BACKLOG,
-        priority: Priority.MEDIUM,
-        createdById: user.id,
-        updatedById: user.id,
+        priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
-    const phase = await db.phase.create({
+    const phase = await db.phases.create({
       data: {
-        name: "Phase 1",
-        featureId: feature.id,
+        name: "Phase 1",feature_id: feature.id,
         order: 0,
       },
     });
 
     // Create 3 tasks: 1 TODO, 1 IN_PROGRESS, 1 DONE
-    const task1 = await db.task.create({
+    const task1 = await db.tasks.create({
       data: {
-        title: "Task 1 - TODO",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        phaseId: phase.id,
+        title: "Task 1 - TODO",workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,
         status: TaskStatus.TODO,
-        priority: Priority.MEDIUM,
-        createdById: user.id,
-        updatedById: user.id,
+        priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
-    const task2 = await db.task.create({
+    const task2 = await db.tasks.create({
       data: {
-        title: "Task 2 - IN_PROGRESS",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        phaseId: phase.id,
+        title: "Task 2 - IN_PROGRESS",workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,
         status: TaskStatus.IN_PROGRESS,
-        priority: Priority.MEDIUM,
-        createdById: user.id,
-        updatedById: user.id,
+        priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
-    const task3 = await db.task.create({
+    const task3 = await db.tasks.create({
       data: {
-        title: "Task 3 - DONE",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        phaseId: phase.id,
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
-        priority: Priority.MEDIUM,
-        createdById: user.id,
-        updatedById: user.id,
+        title: "Task 3 - DONE",workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,
+        status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
+        priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
@@ -137,13 +116,13 @@ describe("Feature Status Sync Integration Tests", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: task1.id }),
+        params: Promise.resolve({task_id: task1.id }),
       });
 
       expectSuccess(response);
 
       // Verify feature status was synced to IN_PROGRESS
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -154,26 +133,26 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Update task1 to DONE
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task1.id },
-        data: { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        data: { status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED },
       });
 
       // Update task2 from IN_PROGRESS to DONE
       const request = createAuthenticatedPatchRequest(
         `/api/tasks/${task2.id}`,
-        { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        { status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED },
         { id: user.id, email: user.email!, name: user.name || "Test User" }
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: task2.id }),
+        params: Promise.resolve({task_id: task2.id }),
       });
 
       expectSuccess(response);
 
       // Verify feature status was synced to COMPLETED
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -181,29 +160,25 @@ describe("Feature Status Sync Integration Tests", () => {
     });
 
     test("should not fail when task has no featureId", async () => {
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: `workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
 
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
-          title: "Standalone Task",
-          workspaceId: workspace.id,
+          title: "Standalone Task",workspace_id: workspace.id,
           status: TaskStatus.TODO,
-          priority: Priority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -214,7 +189,7 @@ describe("Feature Status Sync Integration Tests", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should succeed without attempting feature sync
@@ -228,9 +203,9 @@ describe("Feature Status Sync Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Update task1 to DONE first
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task1.id },
-        data: { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        data: { status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED },
       });
 
       // Save message with PR artifact for task2
@@ -249,13 +224,13 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       const response = await POST_MESSAGES_SAVE(request, {
-        params: Promise.resolve({ taskId: task2.id }),
+        params: Promise.resolve({task_id: task2.id }),
       });
 
       expectSuccess(response, 201);
 
       // Verify task2 was auto-completed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task2.id },
       });
 
@@ -263,7 +238,7 @@ describe("Feature Status Sync Integration Tests", () => {
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
 
       // Verify feature status was synced to COMPLETED
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -271,29 +246,25 @@ describe("Feature Status Sync Integration Tests", () => {
     });
 
     test("should not sync when task has no featureId", async () => {
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: `workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
 
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
-          title: "Standalone Task",
-          workspaceId: workspace.id,
+          title: "Standalone Task",workspace_id: workspace.id,
           status: TaskStatus.IN_PROGRESS,
-          priority: Priority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -314,7 +285,7 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       const response = await POST_MESSAGES_SAVE(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should succeed without attempting feature sync
@@ -327,9 +298,9 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, workspace, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Update task1 to DONE first
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task1.id },
-        data: { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        data: { status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED },
       });
 
       // Simulate stakwork webhook for task2 completion
@@ -345,14 +316,14 @@ describe("Feature Status Sync Integration Tests", () => {
       expectSuccess(response);
 
       // Verify task2 workflow status was updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task2.id },
       });
 
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
 
       // Verify feature status was synced
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -376,14 +347,14 @@ describe("Feature Status Sync Integration Tests", () => {
       expectSuccess(response);
 
       // Verify task1 workflow status was updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task1.id },
       });
 
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
 
       // Verify feature status was NOT changed — failed task workflow must not mutate feature status
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -391,30 +362,25 @@ describe("Feature Status Sync Integration Tests", () => {
     });
 
     test("should not fail when task has no featureId", async () => {
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: `workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
 
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
-          title: "Standalone Task",
-          workspaceId: workspace.id,
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          priority: Priority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Standalone Task",workspace_id: workspace.id,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.IN_PROGRESS,
+          priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -444,7 +410,7 @@ describe("Feature Status Sync Integration Tests", () => {
       expect(updatedTask.status).toBe(TaskStatus.IN_PROGRESS);
 
       // Verify feature status was synced to IN_PROGRESS
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -455,21 +421,20 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Update task1 to DONE
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task1.id },
-        data: { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        data: { status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED },
       });
 
       // Update task2 from IN_PROGRESS to DONE with COMPLETED workflow
       const updatedTask = await updateTicket(task2.id, user.id, {
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
+        status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
       });
 
       expect(updatedTask.status).toBe(TaskStatus.DONE);
 
       // Verify feature status was synced to COMPLETED
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -479,7 +444,7 @@ describe("Feature Status Sync Integration Tests", () => {
     test("should not sync when updating non-status fields", async () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
 
-      const initialFeature = await db.feature.findUnique({
+      const initialFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -489,7 +454,7 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Verify feature status was NOT changed
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -502,7 +467,7 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, feature, task1 } = await createFeatureWithTasks();
 
       // Delete the feature to cause sync to fail
-      await db.feature.delete({
+      await db.features.delete({
         where: { id: feature.id },
       });
 
@@ -514,14 +479,14 @@ describe("Feature Status Sync Integration Tests", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: task1.id }),
+        params: Promise.resolve({task_id: task1.id }),
       });
 
       // Should succeed despite feature sync failure
       expectSuccess(response);
 
       // Verify task was updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task1.id },
       });
 
@@ -531,35 +496,31 @@ describe("Feature Status Sync Integration Tests", () => {
 
   describe("Edge Cases", () => {
     test("should handle feature with no tasks", async () => {
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: `workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
           title: "Empty Feature",
-          brief: "Feature with no tasks",
-          workspaceId: workspace.id,
+          brief: "Feature with no tasks",workspace_id: workspace.id,
           status: FeatureStatus.BACKLOG,
-          priority: Priority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Feature status should remain unchanged when no tasks exist
-      const unchangedFeature = await db.feature.findUnique({
+      const unchangedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 
@@ -570,7 +531,7 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Set one task to BLOCKED
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task1.id },
         data: { status: TaskStatus.BLOCKED },
       });
@@ -583,11 +544,11 @@ describe("Feature Status Sync Integration Tests", () => {
       );
 
       await PATCH(request, {
-        params: Promise.resolve({ taskId: task2.id }),
+        params: Promise.resolve({task_id: task2.id }),
       });
 
       // Feature should be IN_PROGRESS (blocked tasks keep it in progress)
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 

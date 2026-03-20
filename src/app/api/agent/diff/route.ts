@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch podId from task record
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: { podId: true },
     });
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     console.log(">>> [DIFF] Found podId from task:", podId);
 
     // Verify user has access to the workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { id: workspaceId },
       include: {
         owner: true,

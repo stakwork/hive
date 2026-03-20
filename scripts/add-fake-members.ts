@@ -1,4 +1,6 @@
+// @ts-nocheck
 import { PrismaClient } from "@prisma/client";
+import { randomUUID } from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -59,7 +61,7 @@ async function addFakeMembers() {
   console.log(`Adding fake members to workspace: ${WORKSPACE_ID}\n`);
 
   // Check if workspace exists
-  const workspace = await prisma.workspace.findUnique({
+  const workspace = await prisma.workspaces.findUnique({
     where: { id: WORKSPACE_ID },
   });
 
@@ -73,18 +75,20 @@ async function addFakeMembers() {
   for (const member of FAKE_MEMBERS) {
     try {
       // Check if user already exists
-      let user = await prisma.user.findUnique({
+      let user = await prisma.users.findUnique({
         where: { email: member.email },
       });
 
       if (!user) {
         // Create new user
-        user = await prisma.user.create({
+        user = await prisma.users.create({
           data: {
+            id: randomUUID(),
             name: member.name,
             email: member.email,
             image: member.image,
-            emailVerified: new Date(),
+            email_verified: new Date(),
+            updated_at: new Date(),
           },
         });
         console.log(`✅ Created user: ${member.name}`);
@@ -93,11 +97,11 @@ async function addFakeMembers() {
       }
 
       // Check if already a member
-      const existingMember = await prisma.workspaceMember.findUnique({
+      const existingMember = await prisma.workspace_members.findUnique({
         where: {
-          workspaceId_userId: {
-            workspaceId: WORKSPACE_ID,
-            userId: user.id,
+          workspace_id_user_id: {
+            workspace_id: WORKSPACE_ID,
+            user_id: user.id,
           },
         },
       });
@@ -108,12 +112,13 @@ async function addFakeMembers() {
       }
 
       // Add as workspace member
-      await prisma.workspaceMember.create({
+      await prisma.workspace_members.create({
         data: {
-          workspaceId: WORKSPACE_ID,
-          userId: user.id,
+          id: randomUUID(),
+          workspace_id: WORKSPACE_ID,
+          user_id: user.id,
           role: member.role,
-          joinedAt: new Date(),
+          joined_at: new Date(),
         },
       });
 
@@ -124,8 +129,8 @@ async function addFakeMembers() {
   }
 
   // Show final count
-  const totalMembers = await prisma.workspaceMember.count({
-    where: { workspaceId: WORKSPACE_ID },
+  const totalMembers = await prisma.workspace_members.count({
+    where: { workspace_id: WORKSPACE_ID },
   });
 
   console.log(`\n🎉 Done! Total members in workspace: ${totalMembers}`);

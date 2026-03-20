@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify workspace exists
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug: workspaceSlug,
         deleted: false,

@@ -43,7 +43,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
     }>;
   }>
 > {
-  return await db.workspace.findMany({
+  return await db.workspaces.findMany({
     where: {
       deleted: false,
       janitorConfig: {
@@ -103,7 +103,7 @@ export async function cleanupStaleJanitorRuns(): Promise<{
   staleThreshold.setHours(staleThreshold.getHours() - STALE_JANITOR_RUN_HOURS);
 
   // Find runs stuck in PENDING or RUNNING for > 2 hours
-  const staleRuns = await db.janitorRun.findMany({
+  const staleRuns = await db.janitor_runs.findMany({
     where: {
       status: { in: ["PENDING", "RUNNING"] },
       createdAt: { lt: staleThreshold },
@@ -115,7 +115,7 @@ export async function cleanupStaleJanitorRuns(): Promise<{
 
   for (const run of staleRuns) {
     try {
-      await db.janitorRun.update({
+      await db.janitor_runs.update({
         where: { id: run.id },
         data: {
           status: "FAILED",
@@ -145,7 +145,7 @@ export async function shouldSkipJanitorRun(
   repositoryId: string,
 ): Promise<boolean> {
   // Check for in-progress janitor run (PENDING or RUNNING)
-  const inProgressRun = await db.janitorRun.findFirst({
+  const inProgressRun = await db.janitor_runs.findFirst({
     where: {
       janitorConfig: { workspaceId },
       janitorType,
@@ -163,7 +163,7 @@ export async function shouldSkipJanitorRun(
   }
 
   // Check for pending recommendations for this specific repo
-  const pendingRecommendation = await db.janitorRecommendation.findFirst({
+  const pendingRecommendation = await db.janitor_recommendations.findFirst({
     where: {
       workspaceId,
       status: "PENDING",
@@ -181,7 +181,7 @@ export async function shouldSkipJanitorRun(
   }
 
   // Find the most recent task with this janitor type and repository
-  const task = await db.task.findFirst({
+  const task = await db.tasks.findFirst({
     where: {
       workspaceId,
       janitorType,

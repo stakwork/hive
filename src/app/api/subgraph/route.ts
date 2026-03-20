@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get swarm data for the workspace
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: {
         workspaceId: workspaceAccess.workspace?.id,
       },

@@ -15,10 +15,7 @@ vi.mock("@/lib/auth/api-token", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    feature: { findUnique: vi.fn(), update: vi.fn() },
-    chatMessage: { create: vi.fn(), findMany: vi.fn() },
-    artifact: { findFirst: vi.fn() },
+  db: {features: { findUnique: vi.fn(), update: vi.fn() },chat_messages: { create: vi.fn(), findMany: vi.fn() },artifacts: { findFirst: vi.fn() },
   },
 }));
 
@@ -129,10 +126,10 @@ const featureParams = Promise.resolve({ featureId: "feature-123" });
 describe("POST /api/features/[featureId]/chat — attachment handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
-    vi.mocked(db.feature.update).mockResolvedValue({} as any);
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.features.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
+    vi.mocked(db.features.update).mockResolvedValue({} as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
   });
 
   it("returns 400 when no message and no attachments are provided", async () => {
@@ -158,7 +155,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       mimeType: "image/png",
       size: 1024,
     };
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       makeChatMessage({ message: "", attachments: [{ id: "att-1", ...attachment }] }) as any,
     );
 
@@ -177,7 +174,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       mimeType: "image/png",
       size: 2048,
     };
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       makeChatMessage({
         message: "Check this image",
         attachments: [{ id: "att-1", ...attachment }],
@@ -199,7 +196,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       mimeType: "image/png",
       size: 4096,
     };
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       makeChatMessage({ message: "See screenshot", attachments: [{ id: "att-1", ...attachment }] }) as any,
     );
 
@@ -207,7 +204,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     const response = await POST(request, { params: featureParams });
 
     expect(response.status).toBe(201);
-    expect(db.chatMessage.create).toHaveBeenCalledWith(
+    expect(db.chat_messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           attachments: {
@@ -232,7 +229,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       mimeType: "image/png",
       size: 8192,
     };
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       makeChatMessage({ message: "Here's the diagram", attachments: [{ id: "att-1", ...attachment }] }) as any,
     );
 
@@ -252,7 +249,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       { path: "uploads/img1.png", filename: "img1.png", mimeType: "image/png", size: 1000 },
       { path: "uploads/img2.jpg", filename: "img2.jpg", mimeType: "image/jpeg", size: 2000 },
     ];
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       makeChatMessage({
         message: "Two images",
         attachments: attachments.map((a, i) => ({ id: `att-${i}`, ...a })),
@@ -271,7 +268,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
   });
 
   it("passes empty attachments array to callStakworkAPI when no attachments sent", async () => {
-    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
+    vi.mocked(db.chat_messages.create).mockResolvedValue(makeChatMessage() as any);
 
     const request = createChatRequest({ message: "Text only message" });
     const response = await POST(request, { params: featureParams });

@@ -44,7 +44,7 @@ describe("Slug Availability API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("existing");
-          await createTestWorkspace({ ownerId: user.id, slug });
+          await createTestWorkspace({owner_id: user.id, slug });
           return { user, slug };
         },
         expectedStatus: 200,
@@ -61,7 +61,7 @@ describe("Slug Availability API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("testslug");
-          await createTestWorkspace({ ownerId: user.id, slug });
+          await createTestWorkspace({owner_id: user.id, slug });
           return { user, slug: slug.toUpperCase() }; // Query with uppercase
         },
         expectedStatus: 200,
@@ -77,7 +77,7 @@ describe("Slug Availability API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("mixedcase");
-          await createTestWorkspace({ ownerId: user.id, slug });
+          await createTestWorkspace({owner_id: user.id, slug });
           // Create mixed case version for query
           const mixedCaseSlug = slug.split('').map((c, i) => 
             i % 2 === 0 ? c.toUpperCase() : c.toLowerCase()
@@ -97,12 +97,12 @@ describe("Slug Availability API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("deleted");
-          const workspace = await createTestWorkspace({ ownerId: user.id, slug });
+          const workspace = await createTestWorkspace({owner_id: user.id, slug });
           
           // Soft-delete the workspace
-          await db.workspace.update({
+          await db.workspaces.update({
             where: { id: workspace.id },
-            data: { deleted: true, deletedAt: new Date() },
+            data: { deleted: true,deleted_at: new Date() },
           });
           
           return { user, slug };
@@ -113,14 +113,14 @@ describe("Slug Availability API - Integration Tests", () => {
           expect(data.success).toBe(true);
           
           // CURRENT BUG: Endpoint returns false (unavailable) because it doesn't filter by deleted: false
-          // The database query: db.workspace.findUnique({ where: { slug: slug.toLowerCase() } })
+          // The database query: db.workspaces.findUnique({ where: { slug: slug.toLowerCase() } })
           // does not exclude soft-deleted workspaces, so they still show as unavailable.
           expect(data.data.isAvailable).toBe(false);
           expect(data.data.message).toBe("A workspace with this slug already exists");
           
           // EXPECTED BEHAVIOR (after bug fix):
           // The endpoint should filter soft-deleted workspaces:
-          // db.workspace.findUnique({ where: { slug: slug.toLowerCase(), deleted: false } })
+          // db.workspaces.findUnique({ where: { slug: slug.toLowerCase(), deleted: false } })
           // Then soft-deleted slugs would correctly show as available:
           // expect(data.data.isAvailable).toBe(true);
           // expect(data.data.message).toBe("Slug is available");
@@ -134,13 +134,12 @@ describe("Slug Availability API - Integration Tests", () => {
           
           // Create workspace with different slug, then soft-delete it
           const differentSlug = generateUniqueSlug("different");
-          const workspace = await createTestWorkspace({ 
-            ownerId: user.id, 
+          const workspace = await createTestWorkspace({owner_id: user.id, 
             slug: differentSlug 
           });
-          await db.workspace.update({
+          await db.workspaces.update({
             where: { id: workspace.id },
-            data: { deleted: true, deletedAt: new Date() },
+            data: { deleted: true,deleted_at: new Date() },
           });
           
           return { user, slug }; // Query for slug that was never used

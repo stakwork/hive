@@ -5,20 +5,16 @@ import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/clie
 
 // Mock all dependencies at module level
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -156,18 +152,18 @@ const TestHelpers = {
   },
 
   setupValidTaskAndUser: () => {
-    mockDb.task.findFirst.mockResolvedValue(TestDataFactory.createValidTask() as any);
-    mockDb.user.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
-    mockDb.workspace.findUnique.mockResolvedValue(TestDataFactory.createValidWorkspace() as any);
+    mockDb.tasks.findFirst.mockResolvedValue(TestDataFactory.createValidTask() as any);
+    mockDb.users.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
+    mockDb.workspaces.findUnique.mockResolvedValue(TestDataFactory.createValidWorkspace() as any);
   },
 
   setupTaskStatusCheck: (status: string = "TODO") => {
-    mockDb.task.findUnique.mockResolvedValue({ status } as any);
+    mockDb.tasks.findUnique.mockResolvedValue({ status } as any);
   },
 
   setupValidChatMessage: () => {
-    mockDb.chatMessage.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
-    mockDb.chatMessage.findMany.mockResolvedValue([]);
+    mockDb.chat_messages.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
+    mockDb.chat_messages.findMany.mockResolvedValue([]);
   },
 
   setupValidGithubProfile: () => {
@@ -215,7 +211,7 @@ const TestHelpers = {
   },
 
   expectTaskUpdatedWithStatus: async (status: WorkflowStatus) => {
-    expect(mockDb.task.update).toHaveBeenCalledWith(
+    expect(mockDb.tasks.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "test-task-id" },
         data: expect.objectContaining({
@@ -240,7 +236,7 @@ const MockSetup = {
     TestHelpers.setupS3Service();
     TestHelpers.setupSwarmUrlTransform();
     TestHelpers.setupTaskStatusCheck("TODO");
-    mockDb.task.update.mockResolvedValue({} as any);
+    mockDb.tasks.update.mockResolvedValue({} as any);
 
     // Ensure all required configs are set to trigger Stakwork path
     vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -261,7 +257,7 @@ const MockSetup = {
     TestHelpers.setupS3Service();
     TestHelpers.setupSwarmUrlTransform();
     TestHelpers.setupTaskStatusCheck("TODO");
-    mockDb.task.update.mockResolvedValue({} as any);
+    mockDb.tasks.update.mockResolvedValue({} as any);
 
     // Ensure all required configs are set to trigger Stakwork path
     vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -436,7 +432,7 @@ describe("callStakwork Function Unit Tests", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(null);
       TestHelpers.setupS3Service();
       TestHelpers.setupSwarmUrlTransform();
-      mockDb.task.update.mockResolvedValue({} as any);
+      mockDb.tasks.update.mockResolvedValue({} as any);
 
       // Ensure all required configs are set to trigger Stakwork path
       vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -513,7 +509,7 @@ describe("callStakwork Function Unit Tests", () => {
       TestHelpers.setupValidTaskAndUser();
       TestHelpers.setupValidGithubProfile();
       TestHelpers.setupSwarmUrlTransform();
-      mockDb.task.update.mockResolvedValue({} as any);
+      mockDb.tasks.update.mockResolvedValue({} as any);
 
       // Ensure all required configs are set to trigger Stakwork path
       vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -524,7 +520,7 @@ describe("callStakwork Function Unit Tests", () => {
         generatePresignedDownloadUrl: mockGeneratePresignedUrl,
       } as any);
 
-      mockDb.chatMessage.create.mockResolvedValue(
+      mockDb.chat_messages.create.mockResolvedValue(
         TestDataFactory.createChatMessage({
           attachments: [{ path: "uploads/file1.pdf" }, { path: "uploads/file2.jpg" }],
         }) as any,
@@ -597,10 +593,10 @@ describe("callStakwork Function Unit Tests", () => {
       TestHelpers.setupValidChatMessage();
       TestHelpers.setupValidGithubProfile();
       TestHelpers.setupS3Service();
-      mockDb.task.update.mockResolvedValue({} as any);
+      mockDb.tasks.update.mockResolvedValue({} as any);
 
       // Task with no swarm
-      mockDb.task.findFirst.mockResolvedValue({
+      mockDb.tasks.findFirst.mockResolvedValue({
         ...TestDataFactory.createValidTask(),
         workspace: {
           ownerId: "test-user-id",
@@ -609,8 +605,8 @@ describe("callStakwork Function Unit Tests", () => {
         },
       } as any);
 
-      mockDb.user.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
-      mockDb.workspace.findUnique.mockResolvedValue(TestDataFactory.createValidWorkspace() as any);
+      mockDb.users.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
+      mockDb.workspaces.findUnique.mockResolvedValue(TestDataFactory.createValidWorkspace() as any);
 
       // Ensure all required configs are set to trigger Stakwork path
       vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -646,7 +642,7 @@ describe("callStakwork Function Unit Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify task status was NOT updated (no project_id means no-op)
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should handle HTTP 500 error from Stakwork API — leave workflowStatus unchanged", async () => {
@@ -657,7 +653,7 @@ describe("callStakwork Function Unit Tests", () => {
 
       expect(response.status).toBe(201);
       // Verify task status was NOT updated (infrastructure failure → no-op)
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should handle network errors — leave workflowStatus unchanged", async () => {
@@ -667,7 +663,7 @@ describe("callStakwork Function Unit Tests", () => {
       TestHelpers.setupValidGithubProfile();
       TestHelpers.setupS3Service();
       TestHelpers.setupSwarmUrlTransform();
-      mockDb.task.update.mockResolvedValue({} as any);
+      mockDb.tasks.update.mockResolvedValue({} as any);
 
       // Ensure all required configs are set to trigger Stakwork path
       vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -681,7 +677,7 @@ describe("callStakwork Function Unit Tests", () => {
 
       expect(response.status).toBe(201);
       // Network error → no project_id → no workflowStatus update
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should update task to IN_PROGRESS on successful Stakwork call", async () => {
@@ -692,7 +688,7 @@ describe("callStakwork Function Unit Tests", () => {
 
       expect(response.status).toBe(201);
 
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "test-task-id" },
           data: expect.objectContaining({
@@ -839,7 +835,7 @@ describe("callStakwork Function Unit Tests", () => {
       TestHelpers.setupValidGithubProfile();
       TestHelpers.setupS3Service();
       TestHelpers.setupSwarmUrlTransform();
-      mockDb.task.update.mockResolvedValue({} as any);
+      mockDb.tasks.update.mockResolvedValue({} as any);
 
       // Ensure all required configs are set to trigger Stakwork path
       vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
@@ -878,7 +874,7 @@ describe("callStakwork Function Unit Tests", () => {
 
       expect(response.status).toBe(201);
       // API error → no project_id → workflowStatus left unchanged (no update call)
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
   });
 });

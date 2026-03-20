@@ -4,8 +4,7 @@ import { NextRequest } from "next/server";
 // --- Mocks (hoisted) ---
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: {
+  db: {users: {
       findMany: vi.fn(),
       update: vi.fn(),
     },
@@ -63,17 +62,17 @@ describe("POST /person", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toBeDefined();
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("returns 400 when owner_pubkey is not a string", async () => {
     const res = await POST(makeRequest({ owner_pubkey: 12345 }));
     expect(res.status).toBe(400);
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("returns 404 when no user matches the pubkey", async () => {
-    (db.user.findMany as Mock).mockResolvedValue([
+    (db.users.findMany as Mock).mockResolvedValue([
       { id: "user-1", lightningPubkey: JSON.stringify({ data: "enc" }) },
     ]);
     mockDecryptField.mockReturnValue("other-pubkey");
@@ -82,15 +81,15 @@ describe("POST /person", () => {
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.error).toBe("User not found");
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("returns { success: true } and updates sphinxAlias + sphinxRouteHint on match", async () => {
-    (db.user.findMany as Mock).mockResolvedValue([
+    (db.users.findMany as Mock).mockResolvedValue([
       { id: "user-1", lightningPubkey: JSON.stringify({ data: "enc" }) },
     ]);
     mockDecryptField.mockReturnValue(TEST_PUBKEY);
-    (db.user.update as Mock).mockResolvedValue({});
+    (db.users.update as Mock).mockResolvedValue({});
 
     const res = await POST(
       makeRequest({ owner_pubkey: TEST_PUBKEY, owner_alias: "alice", owner_route_hint: "hint123" })
@@ -98,42 +97,42 @@ describe("POST /person", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { sphinxAlias: "alice", sphinxRouteHint: "hint123" },
     });
   });
 
   it("handles partial body — only owner_pubkey provided, alias and route_hint are undefined", async () => {
-    (db.user.findMany as Mock).mockResolvedValue([
+    (db.users.findMany as Mock).mockResolvedValue([
       { id: "user-1", lightningPubkey: JSON.stringify({ data: "enc" }) },
     ]);
     mockDecryptField.mockReturnValue(TEST_PUBKEY);
-    (db.user.update as Mock).mockResolvedValue({});
+    (db.users.update as Mock).mockResolvedValue({});
 
     const res = await POST(makeRequest({ owner_pubkey: TEST_PUBKEY }));
 
     expect(res.status).toBe(200);
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { sphinxAlias: undefined, sphinxRouteHint: undefined },
     });
   });
 
   it("skips users whose pubkey fails to decrypt and continues checking others", async () => {
-    (db.user.findMany as Mock).mockResolvedValue([
+    (db.users.findMany as Mock).mockResolvedValue([
       { id: "user-bad", lightningPubkey: '{"bad":"data"}' },
       { id: "user-good", lightningPubkey: JSON.stringify({ data: "enc" }) },
     ]);
     mockDecryptField
       .mockImplementationOnce(() => { throw new Error("decrypt error"); })
       .mockReturnValueOnce(TEST_PUBKEY);
-    (db.user.update as Mock).mockResolvedValue({});
+    (db.users.update as Mock).mockResolvedValue({});
 
     const res = await POST(makeRequest({ owner_pubkey: TEST_PUBKEY }));
 
     expect(res.status).toBe(200);
-    expect(db.user.update).toHaveBeenCalledWith(
+    expect(db.users.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "user-good" } })
     );
   });

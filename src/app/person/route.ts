@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by decrypting and comparing lightningPubkey fields
-    const usersWithPubkey = await db.user.findMany({
+    const usersWithPubkey = await db.users.findMany({
       where: { lightningPubkey: { not: null } },
       select: { id: true, lightningPubkey: true },
     });
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    await db.user.update({
+    await db.users.update({
       where: { id: matchedUserId },
       data: {
         sphinxAlias: owner_alias,

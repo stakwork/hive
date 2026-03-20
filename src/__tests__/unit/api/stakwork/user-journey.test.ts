@@ -18,27 +18,22 @@ import {
 
 // Mock all external dependencies
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-    },
-    swarm: {
+    },swarms: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
-    },
-    repository: {
+    },repositories: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
-    },
-    task: {
+    },tasks: {
       create: vi.fn(),
       update: vi.fn(),
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -181,7 +176,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(null);
 
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
@@ -277,7 +272,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -289,7 +284,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should return 404 when no swarm is configured for workspace", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
+      vi.mocked(db.swarms.findUnique).mockResolvedValue(null);
 
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
@@ -302,7 +297,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
 
       await expectError(response, "No swarm found for this workspace", 404);
-      expect(db.swarm.findUnique).toHaveBeenCalledWith({
+      expect(db.swarms.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: mockWorkspaceId },
         select: {
           id: true,
@@ -329,7 +324,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -339,20 +334,20 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
       } as any);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "User Journey Test",
         status: "TODO",
@@ -361,11 +356,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -552,7 +547,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -562,14 +557,14 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
@@ -577,7 +572,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should create task with sourceType USER_JOURNEY and proper fields", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Login Test",
         status: "TODO",
@@ -586,11 +581,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -608,7 +603,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.task.create).toHaveBeenCalledWith({
+      expect(db.tasks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           title: "Login Test",
           description: "User login journey test",
@@ -636,7 +631,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should use default title when not provided", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "User Journey Test",
         status: "TODO",
@@ -645,11 +640,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -665,7 +660,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "User Journey Test",
@@ -675,7 +670,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should use testName as fallback title", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "dashboard-navigation",
         status: "TODO",
@@ -684,11 +679,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -705,7 +700,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "dashboard-navigation",
@@ -717,7 +712,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     test("should create ChatMessage with test code as ASSISTANT role", async () => {
       const testCode = "await page.goto('/login'); await page.fill('#username', 'test');";
       
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Login Test",
         status: "TODO",
@@ -726,11 +721,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -746,7 +741,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.chatMessage.create).toHaveBeenCalledWith({
+      expect(db.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           role: "ASSISTANT",
@@ -757,7 +752,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should update task with stakworkProjectId after successful Stakwork call", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -766,11 +761,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -786,7 +781,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.task.update).toHaveBeenCalledWith({
+      expect(db.tasks.update).toHaveBeenCalledWith({
         where: { id: mockTaskId },
         data: { stakworkProjectId: 67890 },
       });
@@ -798,7 +793,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         statusText: "Internal Server Error",
       } as Response);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -807,7 +802,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
@@ -824,7 +819,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
 
       expect(response.status).toBe(201);
       expect(data.task.stakworkProjectId).toBeNull();
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).not.toHaveBeenCalled();
     });
   });
 
@@ -843,7 +838,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -853,14 +848,14 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
@@ -868,7 +863,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should return 500 when task creation fails", async () => {
-      vi.mocked(db.task.create).mockRejectedValue(
+      vi.mocked(db.tasks.create).mockRejectedValue(
         new Error("Database constraint violation")
       );
 
@@ -887,7 +882,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should proceed when ChatMessage creation fails (non-fatal)", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -896,11 +891,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockRejectedValue(
+      vi.mocked(db.chat_messages.create).mockRejectedValue(
         new Error("ChatMessage insert failed")
       );
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -922,7 +917,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should proceed when task.update with stakworkProjectId fails (non-fatal)", async () => {
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -931,11 +926,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockRejectedValue(
+      vi.mocked(db.tasks.update).mockRejectedValue(
         new Error("Update failed")
       );
 
@@ -970,25 +965,25 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
       } as any);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -997,11 +992,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -1031,7 +1026,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should use swarm.id as poolName fallback when poolName is null", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
@@ -1056,7 +1051,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should handle empty swarmUrl gracefully", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: null,
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
@@ -1084,7 +1079,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should handle missing repository gracefully", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue(null);
+      vi.mocked(db.repositories.findFirst).mockResolvedValue(null);
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         token: "ghp_test_token",
@@ -1102,7 +1097,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const response = await POST(request);
       await expectSuccess(response, 201);
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             repositoryId: null,
@@ -1117,7 +1112,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should use repository branch when available", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "develop",
@@ -1161,7 +1156,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -1171,20 +1166,20 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
       } as any);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -1193,11 +1188,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -1287,7 +1282,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -1297,20 +1292,20 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
       } as any);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -1319,11 +1314,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -1386,7 +1381,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         ownerId: mockUserId,
       } as any);
 
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({
         id: mockWorkspaceId,
         slug: "test-workspace",
       } as any);
@@ -1396,20 +1391,20 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "test-user",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
         poolName: "test-pool",
       } as any);
 
-      vi.mocked(db.repository.findFirst).mockResolvedValue({
+      vi.mocked(db.repositories.findFirst).mockResolvedValue({
         id: "repo-123",
         repositoryUrl: "https://github.com/test/repo",
         branch: "main",
       } as any);
 
-      vi.mocked(db.task.create).mockResolvedValue({
+      vi.mocked(db.tasks.create).mockResolvedValue({
         id: mockTaskId,
         title: "Test",
         status: "TODO",
@@ -1418,11 +1413,11 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         stakworkProjectId: null,
       } as any);
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "message-123",
       } as any);
 
-      vi.mocked(db.task.update).mockResolvedValue({
+      vi.mocked(db.tasks.update).mockResolvedValue({
         id: mockTaskId,
         stakworkProjectId: 67890,
       } as any);
@@ -1457,7 +1452,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       expect(data.success).toBe(true);
       expect(data.workflow).toBeDefined();
       // Task should not be updated with stakworkProjectId
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should handle Stakwork API response with missing data field", async () => {
@@ -1791,7 +1786,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should handle swarmUrl with different port numbers", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://custom-swarm.sphinx.chat:9000/api",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
@@ -1818,7 +1813,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
 
     test("should handle swarmUrl without /api suffix", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "https://test-swarm.sphinx.chat",
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
@@ -2042,7 +2037,7 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
         username: "",
       });
 
-      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+      vi.mocked(db.swarms.findUnique).mockResolvedValue({
         id: mockSwarmId,
         swarmUrl: "",
         swarmSecretAlias: "",

@@ -16,7 +16,7 @@ export async function requireSuperAdmin(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
     select: { role: true },
   });

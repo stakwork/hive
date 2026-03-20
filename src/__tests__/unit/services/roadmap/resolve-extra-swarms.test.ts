@@ -3,8 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: { findFirst: vi.fn() },
+  db: {workspaces: { findFirst: vi.fn() },
   },
 }));
 
@@ -47,7 +46,7 @@ function makeWorkspace(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const mockFindFirst = vi.mocked(db.workspace.findFirst as ReturnType<typeof vi.fn>);
+const mockFindFirst = vi.mocked(db.workspaces.findFirst as ReturnType<typeof vi.fn>);
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

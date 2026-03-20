@@ -28,7 +28,7 @@ export async function POST(
     await validateFeatureAccess(featureId, userOrResponse.id);
 
     // Step 3: Fetch feature with first phase
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: {
         id: true,
@@ -77,7 +77,7 @@ export async function POST(
 
     // Step 5: Query all unassigned TODO tasks in first phase
     // Only assign tasks that are in TODO status (not IN_PROGRESS or DONE)
-    const unassignedTasks = await db.task.findMany({
+    const unassignedTasks = await db.tasks.findMany({
       where: {
         phaseId: firstPhase.id,
         assigneeId: null,
@@ -102,7 +102,7 @@ export async function POST(
     }
 
     // Step 7: Bulk update tasks to assign to Task Coordinator
-    const result = await db.task.updateMany({
+    const result = await db.tasks.updateMany({
       where: {
         id: {
           in: unassignedTasks.map((task) => task.id),

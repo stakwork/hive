@@ -21,7 +21,7 @@ export async function POST(
     }
 
     // Fetch whiteboard with workspace access check and feature data
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -57,7 +57,7 @@ export async function POST(
     }
 
     // Guard against concurrent diagram generation
-    const activeGeneration = await db.stakworkRun.findFirst({
+    const activeGeneration = await db.stakwork_runs.findFirst({
       where: {
         OR: [
           ...(whiteboard.featureId ? [{ featureId: whiteboard.featureId }] : []),
@@ -77,7 +77,7 @@ export async function POST(
     }
 
     // Find the last ASSISTANT message with pending clarifying questions
-    const pendingClarification = await db.whiteboardMessage.findFirst({
+    const pendingClarification = await db.whiteboard_messages.findFirst({
       where: {
         whiteboardId,
         role: "ASSISTANT",
@@ -94,7 +94,7 @@ export async function POST(
     }
 
     // Find the last USER message before the clarifying questions message (original prompt)
-    const originalPromptMessage = await db.whiteboardMessage.findFirst({
+    const originalPromptMessage = await db.whiteboard_messages.findFirst({
       where: {
         whiteboardId,
         role: "USER",
@@ -106,7 +106,7 @@ export async function POST(
     const originalPrompt = originalPromptMessage?.content ?? "";
 
     // Persist USER message with the formatted answers
-    const message = await db.whiteboardMessage.create({
+    const message = await db.whiteboard_messages.create({
       data: {
         whiteboardId,
         role: "USER",

@@ -46,7 +46,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
   }
 
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: {
       swarmUrl: true,
@@ -103,7 +103,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: { swarmUrl: true, swarmPassword: true },
   });
@@ -190,7 +190,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   // Persist for UI display and auditability
-  const swarmWithEnv = await db.swarm.findUnique({
+  const swarmWithEnv = await db.swarms.findUnique({
     where: { workspaceId },
     select: { environmentVariables: true },
   });
@@ -203,7 +203,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     { name: ENV_KEY, value: JSON.stringify(config) },
   ];
 
-  await db.swarm.update({
+  await db.swarms.update({
     where: { workspaceId },
     data: {
       environmentVariables: encryptEnvVars(nextEnvVars) as unknown as Prisma.InputJsonValue,

@@ -37,7 +37,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
   return await db.$transaction(async (tx) => {
     // Create user first (required by foreign key constraint)
     const ownerId = generateUniqueId("user");
-    const user = await tx.user.create({
+    const user = await tx.users.create({
       data: {
         id: ownerId,
         name: "Test User",
@@ -46,25 +46,19 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
     });
 
     // Create workspace with valid owner
-    const workspace = await tx.workspace.create({
+    const workspace = await tx.workspaces.create({
       data: {
         id: workspaceId,
         name: `Test Workspace ${workspaceId}`,
-        slug: `test-workspace-${workspaceId.toLowerCase()}`,
-        ownerId: user.id,
+        slug: `test-workspace-${workspaceId.toLowerCase()}`,owner_id: user.id,
       },
     });
 
     // Create swarm for workspace
-    const swarm = await tx.swarm.create({
+    const swarm = await tx.swarms.create({
       data: {
-        id: generateUniqueId("swarm"),
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat",
-        swarmApiKey: JSON.stringify(encryptionService.encryptField("swarmApiKey", "sk_test_swarm_123")),
-        agentRequestId: null,
-        agentStatus: null,
+        id: generateUniqueId("swarm"),workspace_id: workspace.id,
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat",swarm_api_key: JSON.stringify(encryptionService.encryptField("swarmApiKey", "sk_test_swarm_123")),agent_request_id: null,agent_status: null,
       },
     });
 
@@ -74,11 +68,10 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
       : null;
 
     // Create repository with webhook config
-    const repository = await tx.repository.create({
+    const repository = await tx.repositories.create({
       data: {
         id: generateUniqueId("repo"),
-        name: "Test Repository",
-        workspaceId: workspace.id,
+        name: "Test Repository",workspace_id: workspace.id,
         repositoryUrl,
         branch,
         status,
@@ -361,7 +354,7 @@ export async function createTestUserWithGitHubAuth(
   const { githubUsername, email, name } = options;
 
   // Check if user already exists
-  const existingUser = await db.user.findFirst({
+  const existingUser = await db.users.findFirst({
     where: {
       githubAuth: {
         githubUsername,
@@ -377,17 +370,15 @@ export async function createTestUserWithGitHubAuth(
   }
 
   // Create user with GitHub auth
-  const user = await db.user.create({
+  const user = await db.users.create({
     data: {
       name: name || `Test User ${uniqueId}`,
       email: email || `test-${uniqueId}@example.com`,
       githubAuth: {
-        create: {
-          githubUserId: generateUniqueId("github"),
+        create: {github_user_id: generateUniqueId("github"),
           githubUsername,
           name: name || `Test User ${uniqueId}`,
-          bio: "Test bio",
-          publicRepos: 10,
+          bio: "Test bio",public_repos: 10,
           followers: 5,
         },
       },
@@ -419,10 +410,8 @@ export async function createTestSourceControlToken(
   const uniqueId = generateUniqueId("org");
 
   // Create or get source control org
-  const org = await db.sourceControlOrg.create({
-    data: {
-      githubLogin: githubLogin || `test-org-${uniqueId}`,
-      githubInstallationId: installationId || Math.floor(Math.random() * 1000000),
+  const org = await db.source_control_orgs.create({
+    data: {github_login: githubLogin || `test-org-${uniqueId}`,github_installation_id: installationId || Math.floor(Math.random() * 1000000),
       name: `Test Org ${uniqueId}`,
     },
   });
@@ -434,10 +423,9 @@ export async function createTestSourceControlToken(
   );
 
   // Create source control token
-  const token = await db.sourceControlToken.create({
+  const token = await db.source_control_tokens.create({
     data: {
-      userId,
-      sourceControlOrgId: org.id,
+      userId,source_control_org_id: org.id,
       token: encryptedToken,
       scopes: ["repo", "read:org"],
     },

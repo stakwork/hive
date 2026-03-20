@@ -99,14 +99,14 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Workspace not found or access denied");
         } finally {
-          await db.user.delete({ where: { id: user.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("returns 404 when user is not workspace member", async () => {
         const owner = await createTestUser();
         const nonMember = await createTestUser({ email: "nonmember@example.com" });
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
@@ -124,19 +124,19 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Workspace not found or access denied");
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.deleteMany({ where: { id: { in: [owner.id, nonMember.id] } } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.deleteMany({ where: { id: { in: [owner.id, nonMember.id] } } });
         }
       });
 
       test("returns 404 when workspace is soft-deleted", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: workspace.id },
-          data: { deleted: true, deletedAt: new Date() },
+          data: { deleted: true,deleted_at: new Date() },
         });
 
         getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -155,9 +155,9 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Workspace not found or access denied");
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -165,7 +165,7 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe("Swarm Configuration Validation", () => {
       test("returns 404 when swarm does not exist for workspace", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
 
         getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
@@ -183,24 +183,21 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Swarm not found for this workspace");
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("returns 400 when swarmUrl is missing", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: null,
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: null,swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -220,23 +217,20 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Swarm configuration is incomplete");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("returns 400 when swarmApiKey is missing", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: null,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: null,
           },
         });
 
@@ -256,10 +250,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toContain("Swarm configuration is incomplete");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -267,16 +261,13 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe("Query Parameters", () => {
       test("accepts node_type parameter for filtering", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -312,25 +303,22 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("accepts ref_ids parameter for filtering specific nodes", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -364,25 +352,22 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("applies default values for limit and limit_mode", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -413,25 +398,22 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("transforms node_type JSON array to comma-separated string", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -459,10 +441,10 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -470,16 +452,13 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe("External API Integration", () => {
       test("returns nodes and edges from swarm service", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -515,25 +494,22 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.data.nodes[0].name).toBe("TestFile.ts");
           expect(data.data.edges[0].type).toBe("imports");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("handles swarm API error responses", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -560,25 +536,22 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toBe("Failed to fetch graph nodes");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("returns empty arrays when swarm has no graph data", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -604,10 +577,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.data.nodes).toEqual([]);
           expect(data.data.edges).toEqual([]);
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -615,16 +588,13 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe("S3 Media URL Processing", () => {
       test("presigns S3 URLs for sphinx-livekit-recordings media", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -661,25 +631,22 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.data.nodes[0].properties.media_url).toContain("presigned-url");
           expect(data.data.nodes[0].properties.media_url).toContain("sphinx-livekit-recordings");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("does not modify non-S3 media URLs", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -714,10 +681,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.success).toBe(true);
           expect(data.data.nodes[0].properties.media_url).toBe(originalUrl);
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -727,16 +694,13 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe.skip("Cache Control", () => {
       test("accepts noCache parameter to bypass cache", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -764,25 +728,22 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("defaults to cache enabled when noCache is not specified", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -807,10 +768,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           const calledUrl = mockFetch.mock.calls[0][0] as string;
           expect(calledUrl).not.toContain("no_cache");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -820,16 +781,13 @@ describe("Graph Nodes API - Integration Tests", () => {
     describe.skip("Date-Based Filtering", () => {
       test("accepts date parameter for incremental node loading", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -858,25 +816,22 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("returns only nodes added after specified date", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -908,10 +863,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.data.nodes).toHaveLength(1);
           expect(data.data.nodes[0].name).toBe("NewFile.ts");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -921,16 +876,13 @@ describe("Graph Nodes API - Integration Tests", () => {
       // TODO: Re-enable after implementing date and noCache parameter support
       test.skip("applies multiple filters simultaneously", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -964,25 +916,22 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(calledUrl).toContain("limit=50");
           expect(calledUrl).toContain("no_cache=true");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
       test("combines node_type array with other filters", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -1012,10 +961,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(calledUrl).toContain("node_types=file%2Cfunction");
           expect(calledUrl).toContain("ref_ids=node1%2Cnode2");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -1025,16 +974,13 @@ describe("Graph Nodes API - Integration Tests", () => {
       // TODO: Add parameter validation in route handler
       test("passes invalid limit parameter to swarm API", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -1063,10 +1009,10 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
@@ -1074,16 +1020,13 @@ describe("Graph Nodes API - Integration Tests", () => {
       // TODO: Filter out empty arrays before adding to apiParams
       test("handles empty node_type array by creating empty string parameter", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -1110,10 +1053,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           // Empty array gets joined to empty string, still added as parameter
           expect(calledUrl).toContain("node_types=");
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
 
@@ -1121,16 +1064,13 @@ describe("Graph Nodes API - Integration Tests", () => {
       // TODO: Implement date parameter validation
       test.skip("handles invalid date format gracefully", async () => {
         const user = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: user.id });
+        const workspace = await createTestWorkspace({owner_id: user.id });
         const encryptionService = EncryptionService.getInstance();
         const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-        await db.swarm.create({
+        await db.swarms.create({
           data: {
-            name: generateUniqueSlug("test-swarm"),
-            workspaceId: workspace.id,
-            swarmUrl: "https://test-swarm.example.com",
-            swarmApiKey: encryptedApiKey,
+            name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
           },
         });
 
@@ -1158,10 +1098,10 @@ describe("Graph Nodes API - Integration Tests", () => {
             expect.any(Object)
           );
         } finally {
-          await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: user.id } });
+          await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: user.id } });
         }
       });
     });
@@ -1178,24 +1118,19 @@ describe("Graph Nodes API - Integration Tests", () => {
         async ({ role, shouldAccess }) => {
           const owner = await createTestUser();
           const member = await createTestUser({ email: "member@example.com" });
-          const workspace = await createTestWorkspace({ ownerId: owner.id });
+          const workspace = await createTestWorkspace({owner_id: owner.id });
           const encryptionService = EncryptionService.getInstance();
           const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-api-key"));
 
-          await db.swarm.create({
+          await db.swarms.create({
             data: {
-              name: generateUniqueSlug("test-swarm"),
-              workspaceId: workspace.id,
-              swarmUrl: "https://test-swarm.example.com",
-              swarmApiKey: encryptedApiKey,
+              name: generateUniqueSlug("test-swarm"),workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: encryptedApiKey,
             },
           });
 
           if (role !== "OWNER") {
-            await db.workspaceMember.create({
-              data: {
-                workspaceId: workspace.id,
-                userId: member.id,
+            await db.workspace_members.create({
+              data: {workspace_id: workspace.id,user_id: member.id,
                 role,
               },
             });
@@ -1229,10 +1164,10 @@ describe("Graph Nodes API - Integration Tests", () => {
           expect(data.message).toContain("Workspace not found or access denied");
             }
           } finally {
-            await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
-            await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-            await db.workspace.delete({ where: { id: workspace.id } });
-            await db.user.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
+            await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
+            await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+            await db.workspaces.delete({ where: { id: workspace.id } });
+            await db.users.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
           }
         }
       );

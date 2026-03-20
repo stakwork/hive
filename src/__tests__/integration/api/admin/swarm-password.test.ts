@@ -28,27 +28,21 @@ describe("GET /api/admin/workspaces/[id]/swarm-password", () => {
 
     // Create workspace with no swarm
     workspace = await createTestWorkspace({
-      name: "No Swarm Workspace",
-      ownerId: regularUser.id,
+      name: "No Swarm Workspace",owner_id: regularUser.id,
     });
 
     // Create workspace with swarm and password
     workspaceWithSwarm = await createTestWorkspace({
-      name: "Swarm Workspace",
-      ownerId: regularUser.id,
+      name: "Swarm Workspace",owner_id: regularUser.id,
     });
-    await createTestSwarm({
-      workspaceId: workspaceWithSwarm.id,
-      swarmPassword: TEST_PASSWORD,
+    await createTestSwarm({workspace_id: workspaceWithSwarm.id,swarm_password: TEST_PASSWORD,
     });
 
     // Create workspace with swarm but no password
     workspaceWithSwarmNoPassword = await createTestWorkspace({
-      name: "Swarm No Password Workspace",
-      ownerId: regularUser.id,
+      name: "Swarm No Password Workspace",owner_id: regularUser.id,
     });
-    await createTestSwarm({
-      workspaceId: workspaceWithSwarmNoPassword.id,
+    await createTestSwarm({workspace_id: workspaceWithSwarmNoPassword.id,
     });
   });
 

@@ -48,15 +48,14 @@ const TestHelpers = {
 async function createTestWorkspace(ownerId: string, options?: { deleted?: boolean }) {
   const slug = generateUniqueSlug("test-workspace");
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: `Test Workspace ${slug}`,
       slug,
       ownerId,
       deleted: options?.deleted || false,
       members: {
-        create: {
-          userId: ownerId,
+        create: {user_id: ownerId,
           role: "OWNER",
         },
       },
@@ -66,8 +65,8 @@ async function createTestWorkspace(ownerId: string, options?: { deleted?: boolea
   return workspace;
 }
 
-async function addWorkspaceMember(workspaceId: string, userId: string, role: string) {
-  await db.workspaceMember.create({
+async function addWorkspaceMember(workspaceId: string,user_id: string, role: string) {
+  await db.workspace_members.create({
     data: {
       workspaceId,
       userId,
@@ -77,63 +76,51 @@ async function addWorkspaceMember(workspaceId: string, userId: string, role: str
 }
 
 async function createCoordinatorTask(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options?: {
     deleted?: boolean;
     taskStatus?: "TODO" | "IN_PROGRESS" | "DONE";
-    systemAssigneeType?: string;
+system_assignee_type?: string;
   },
 ) {
-  return db.task.create({
+  return db.tasks.create({
     data: {
       title: `Coordinator Task ${generateUniqueId("ctask")}`,
       description: "Coordinator task description",
       workspaceId,
       status: (options?.taskStatus ?? "TODO") as any,
-      priority: "MEDIUM",
-      workflowStatus: "PENDING",
-      deleted: options?.deleted || false,
-      systemAssigneeType: (options?.systemAssigneeType ?? "TASK_COORDINATOR") as any,
-      createdById: userId,
-      updatedById: userId,
+      priority: "MEDIUM",workflow_status: "PENDING",
+      deleted: options?.deleted || false,system_assignee_type: (options?.systemAssigneeType ?? "TASK_COORDINATOR") as any,created_by_id: userId,updated_by_id: userId,
     },
   });
 }
 
 async function createTestTask(
-  workspaceId: string,
-  userId: string,
-  options?: {
-    workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+workspace_id: string,user_id: string,
+  options?: {workflow_status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
     deleted?: boolean;
     withFormArtifact?: boolean;
   },
 ) {
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       title: `Test Task ${generateUniqueId("task")}`,
       description: "Test task description",
       workspaceId,
       status: "TODO",
-      priority: "MEDIUM",
-      workflowStatus: options?.workflowStatus || "PENDING",
-      deleted: options?.deleted || false,
-      createdById: userId,
-      updatedById: userId,
+      priority: "MEDIUM",workflow_status: options?.workflowStatus || "PENDING",
+      deleted: options?.deleted || false,created_by_id: userId,updated_by_id: userId,
     },
   });
 
   // Create a message with FORM artifact if requested
   if (options?.withFormArtifact) {
-    await db.chatMessage.create({
-      data: {
-        taskId: task.id,
+    await db.chat_messages.create({
+      data: {task_id: task.id,
         message: "Test message with form",
         role: "ASSISTANT",
         status: "SENT",
-        timestamp: new Date(),
-        contextTags: JSON.stringify([]),
+        timestamp: new Date(),context_tags: JSON.stringify([]),
         artifacts: {
           create: [
             {
@@ -257,10 +244,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Task Counting - Total", () => {
     test("should count all non-deleted tasks", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "FAILED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "FAILED" });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -272,9 +259,9 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should exclude deleted tasks from total count", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING", deleted: true });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING", deleted: true });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING", deleted: true });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING", deleted: true });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -298,10 +285,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Task Counting - In Progress", () => {
     test("should count only tasks with IN_PROGRESS workflow status", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED" });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -313,8 +300,8 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should exclude deleted IN_PROGRESS tasks", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS", deleted: true });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS", deleted: true });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -328,12 +315,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Task Counting - Waiting For Input", () => {
     test("should count tasks with IN_PROGRESS status and FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
       });
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
       });
 
@@ -347,12 +332,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should count tasks with PENDING status and FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withFormArtifact: true,
       });
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withFormArtifact: true,
       });
 
@@ -366,12 +349,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should not count tasks without FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: false,
       });
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withFormArtifact: false,
       });
 
@@ -385,8 +366,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should not count COMPLETED tasks with FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "COMPLETED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED",
         withFormArtifact: true,
       });
 
@@ -400,8 +380,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should not count FAILED tasks with FORM artifacts", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "FAILED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "FAILED",
         withFormArtifact: true,
       });
 
@@ -415,12 +394,10 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should exclude deleted tasks from waitingForInput count", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
       });
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
         deleted: true,
       });
@@ -438,32 +415,27 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
   describe("Complex Scenarios", () => {
     test("should handle mixed task statuses and types correctly", async () => {
       // Should count in total and inProgress
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: false,
       });
 
       // Should count in total, inProgress, and waitingForInput
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
       });
 
       // Should count in total and waitingForInput
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "PENDING",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING",
         withFormArtifact: true,
       });
 
       // Should count in total only
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "COMPLETED",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED",
         withFormArtifact: true,
       });
 
       // Should NOT count (deleted)
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
         deleted: true,
       });
@@ -480,8 +452,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     test("should handle large number of tasks efficiently", async () => {
       // Create 50 tasks with varying statuses
       for (let i = 0; i < 50; i++) {
-        await createTestTask(testWorkspace.id, testUser.id, {
-          workflowStatus: i % 3 === 0 ? "IN_PROGRESS" : i % 3 === 1 ? "PENDING" : "COMPLETED",
+        await createTestTask(testWorkspace.id, testUser.id, {workflow_status: i % 3 === 0 ? "IN_PROGRESS" : i % 3 === 1 ? "PENDING" : "COMPLETED",
           withFormArtifact: i % 2 === 0,
           deleted: i % 10 === 0, // 10% deleted
         });
@@ -536,8 +507,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Concurrent Requests", () => {
     test("should handle concurrent requests correctly", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, {
-        workflowStatus: "IN_PROGRESS",
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "IN_PROGRESS",
         withFormArtifact: true,
       });
 
@@ -581,9 +551,9 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should handle workspace with all tasks in same status", async () => {
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "COMPLETED" });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -598,7 +568,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
   describe("Task Counting - Queued (queuedCount)", () => {
     test("returns queuedCount: 0 when no coordinator-queued tasks exist", async () => {
       // Only regular TODO tasks, no TASK_COORDINATOR assignment
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING" });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -614,7 +584,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createCoordinatorTask(testWorkspace.id, testUser.id);
       await createCoordinatorTask(testWorkspace.id, testUser.id);
       // Regular task — should not be counted
-      await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
+      await createTestTask(testWorkspace.id, testUser.id, {workflow_status: "PENDING" });
 
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
@@ -654,7 +624,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
     test("does not count non-TASK_COORDINATOR TODO tasks in queuedCount", async () => {
       // TODO task with a different system assignee type
-      await createCoordinatorTask(testWorkspace.id, testUser.id, { systemAssigneeType: "BOUNTY_HUNTER" });
+      await createCoordinatorTask(testWorkspace.id, testUser.id, {system_assignee_type: "BOUNTY_HUNTER" });
       // Genuine coordinator task
       await createCoordinatorTask(testWorkspace.id, testUser.id);
 

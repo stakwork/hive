@@ -51,9 +51,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "test-workspace-id",
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: "test-workspace-id",
         }
       );
 
@@ -70,9 +68,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "test-workspace-id",
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: "test-workspace-id",
         }
       );
 
@@ -91,9 +87,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -114,8 +108,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          workspaceId: workspace.id,
+        {workspace_id: workspace.id,
         }
       );
 
@@ -131,8 +124,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
+        {repository_url: "https://github.com/stakwork/hive",
         }
       );
 
@@ -173,9 +165,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -194,9 +184,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -213,10 +201,8 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       // Create member user
       const member = await createTestUser({ email: "member@test.com" });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
@@ -225,9 +211,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -249,9 +233,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -267,9 +249,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "nonexistent-workspace-id",
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: "nonexistent-workspace-id",
         }
       );
 
@@ -291,9 +271,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -316,9 +294,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -348,9 +324,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/private-repo",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/private-repo",workspace_id: workspace.id,
         }
       );
 
@@ -375,9 +349,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -396,18 +368,16 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       });
 
       // Update swarm URL to localhost
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm!.id },
-        data: { swarmUrl: "http://localhost:8080" },
+        data: {swarm_url: "http://localhost:8080" },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -429,9 +399,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -466,9 +434,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -489,9 +455,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -511,9 +475,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/facebook/react",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/facebook/react",workspace_id: workspace.id,
         }
       );
 
@@ -535,9 +497,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "git@github.com:vercel/next.js.git",
-          workspaceId: workspace.id,
+        {repository_url: "git@github.com:vercel/next.js.git",workspace_id: workspace.id,
         }
       );
 
@@ -559,9 +519,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/microsoft/typescript.git",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/microsoft/typescript.git",workspace_id: workspace.id,
         }
       );
 
@@ -585,9 +543,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -612,9 +568,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -652,9 +606,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -672,10 +624,9 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       });
 
       // Set empty encrypted API key
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm!.id },
-        data: {
-          swarmApiKey: JSON.stringify(
+        data: {swarm_api_key: JSON.stringify(
             encryptionService.encryptField("swarmApiKey", "")
           ),
         },
@@ -685,9 +636,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 
@@ -707,9 +656,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
+        {repository_url: "https://github.com/stakwork/hive",workspace_id: workspace.id,
         }
       );
 

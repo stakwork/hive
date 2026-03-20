@@ -48,7 +48,7 @@ export async function GET(
     }
 
     // Fetch artifact with task relations
-    const artifact = await db.artifact.findUnique({
+    const artifact = await db.artifacts.findUnique({
       where: { id: artifactId },
       include: {
         message: {

@@ -6,7 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
  * a SourceControlToken for the workspace's SourceControlOrg.
  */
 export async function getWorkspaceAdminGithubToken(workspaceSlug: string): Promise<string | null> {
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { slug: workspaceSlug },
     include: {
       sourceControlOrg: true,
@@ -25,7 +25,7 @@ export async function getWorkspaceAdminGithubToken(workspaceSlug: string): Promi
 
   // Try each admin until we find one with a valid token
   for (const member of workspace.members) {
-    const sourceControlToken = await db.sourceControlToken.findUnique({
+    const sourceControlToken = await db.source_control_tokens.findUnique({
       where: {
         userId_sourceControlOrgId: {
           userId: member.userId,

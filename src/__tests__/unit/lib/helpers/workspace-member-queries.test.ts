@@ -16,17 +16,14 @@ import type { WorkspaceRole } from "@/lib/auth/roles";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspaceMember: {
+  db: {workspace_members: {
       create: vi.fn(),
       update: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
-    },
-    gitHubAuth: {
+    },github_auth: {
       findFirst: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -62,7 +59,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     };
 
     test("should create workspace member successfully", async () => {
-      (db.workspaceMember.create as Mock).mockResolvedValue(mockWorkspaceMember);
+      (db.workspace_members.create as Mock).mockResolvedValue(mockWorkspaceMember);
 
       const result = await createWorkspaceMember(
         "workspace-1",
@@ -70,7 +67,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         "DEVELOPER" as WorkspaceRole
       );
 
-      expect(db.workspaceMember.create).toHaveBeenCalledWith({
+      expect(db.workspace_members.create).toHaveBeenCalledWith({
         data: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -83,13 +80,13 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should handle database errors during creation", async () => {
       const dbError = new Error("Database connection failed");
-      (db.workspaceMember.create as Mock).mockRejectedValue(dbError);
+      (db.workspace_members.create as Mock).mockRejectedValue(dbError);
 
       await expect(
         createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
       ).rejects.toThrow("Database connection failed");
 
-      expect(db.workspaceMember.create).toHaveBeenCalledWith({
+      expect(db.workspace_members.create).toHaveBeenCalledWith({
         data: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -104,7 +101,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         code: "P2002",
         meta: { target: ["workspaceId", "userId"] },
       };
-      (db.workspaceMember.create as Mock).mockRejectedValue(constraintError);
+      (db.workspace_members.create as Mock).mockRejectedValue(constraintError);
 
       await expect(
         createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
@@ -113,7 +110,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should create member with different roles", async () => {
       const adminMember = { ...mockWorkspaceMember, role: "ADMIN" };
-      (db.workspaceMember.create as Mock).mockResolvedValue(adminMember);
+      (db.workspace_members.create as Mock).mockResolvedValue(adminMember);
 
       const result = await createWorkspaceMember(
         "workspace-1",
@@ -121,7 +118,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         "ADMIN" as WorkspaceRole
       );
 
-      expect(db.workspaceMember.create).toHaveBeenCalledWith({
+      expect(db.workspace_members.create).toHaveBeenCalledWith({
         data: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -157,14 +154,14 @@ describe("Workspace Member Queries - Unit Tests", () => {
     };
 
     test("should reactivate workspace member successfully", async () => {
-      (db.workspaceMember.update as Mock).mockResolvedValue(mockReactivatedMember);
+      (db.workspace_members.update as Mock).mockResolvedValue(mockReactivatedMember);
 
       const result = await reactivateWorkspaceMember(
         "member-1",
         "DEVELOPER" as WorkspaceRole
       );
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: {
           role: "DEVELOPER",
@@ -181,7 +178,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         code: "P2025",
         meta: { cause: "Record to update not found." },
       };
-      (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
+      (db.workspace_members.update as Mock).mockRejectedValue(notFoundError);
 
       await expect(
         reactivateWorkspaceMember("non-existent-member", "DEVELOPER" as WorkspaceRole)
@@ -190,14 +187,14 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should reactivate with new role different from previous", async () => {
       const adminReactivated = { ...mockReactivatedMember, role: "ADMIN" };
-      (db.workspaceMember.update as Mock).mockResolvedValue(adminReactivated);
+      (db.workspace_members.update as Mock).mockResolvedValue(adminReactivated);
 
       const result = await reactivateWorkspaceMember(
         "member-1", 
         "ADMIN" as WorkspaceRole
       );
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: {
           role: "ADMIN",
@@ -234,11 +231,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     };
 
     test("should update member role successfully", async () => {
-      (db.workspaceMember.update as Mock).mockResolvedValue(mockUpdatedMember);
+      (db.workspace_members.update as Mock).mockResolvedValue(mockUpdatedMember);
 
       const result = await updateMemberRole("member-1", "ADMIN" as WorkspaceRole);
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: { role: "ADMIN" },
         include: WORKSPACE_MEMBER_INCLUDE,
@@ -251,7 +248,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         code: "P2025", 
         meta: { cause: "Record to update not found." },
       };
-      (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
+      (db.workspace_members.update as Mock).mockRejectedValue(notFoundError);
 
       await expect(
         updateMemberRole("non-existent-member", "ADMIN" as WorkspaceRole)
@@ -260,11 +257,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should update role from DEVELOPER to PM", async () => {
       const pmMember = { ...mockUpdatedMember, role: "PM" };
-      (db.workspaceMember.update as Mock).mockResolvedValue(pmMember);
+      (db.workspace_members.update as Mock).mockResolvedValue(pmMember);
 
       const result = await updateMemberRole("member-1", "PM" as WorkspaceRole);
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: { role: "PM" },
         include: WORKSPACE_MEMBER_INCLUDE,
@@ -284,11 +281,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
         leftAt: new Date("2024-02-01"),
       };
 
-      (db.workspaceMember.update as Mock).mockResolvedValue(mockDeletedMember);
+      (db.workspace_members.update as Mock).mockResolvedValue(mockDeletedMember);
 
       await softDeleteMember("member-1");
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: { leftAt: expect.any(Date) },
       });
@@ -299,7 +296,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         code: "P2025",
         meta: { cause: "Record to update not found." },
       };
-      (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
+      (db.workspace_members.update as Mock).mockRejectedValue(notFoundError);
 
       await expect(softDeleteMember("non-existent-member")).rejects.toEqual(
         notFoundError
@@ -312,7 +309,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
       await softDeleteMember("member-1");
 
-      expect(db.workspaceMember.update).toHaveBeenCalledWith({
+      expect(db.workspace_members.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
         data: { leftAt: now },
       });
@@ -332,11 +329,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
         leftAt: null,
       };
 
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMember);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(mockMember);
 
       const result = await findActiveMember("workspace-1", "user-1");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -348,11 +345,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return null when member not found", async () => {
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null);
 
       const result = await findActiveMember("workspace-1", "nonexistent-user");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "workspace-1",
           userId: "nonexistent-user",
@@ -363,11 +360,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return null for inactive member (leftAt filter)", async () => {
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null);
 
       const result = await findActiveMember("workspace-1", "user-1");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -378,11 +375,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should verify leftAt: null filter is always applied", async () => {
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null);
 
       await findActiveMember("workspace-1", "user-1");
 
-      const callArgs = (db.workspaceMember.findFirst as Mock).mock.calls[0][0];
+      const callArgs = (db.workspace_members.findFirst as Mock).mock.calls[0][0];
       expect(callArgs.where).toHaveProperty("leftAt", null);
     });
   });
@@ -398,11 +395,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
         leftAt: new Date("2024-06-01"),
       };
 
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockPreviousMember);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(mockPreviousMember);
 
       const result = await findPreviousMember("workspace-1", "user-1");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "workspace-1",
           userId: "user-1",
@@ -415,7 +412,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return null when no previous membership found", async () => {
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null);
 
       const result = await findPreviousMember("workspace-1", "user-1");
 
@@ -423,11 +420,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should order by leftAt descending to get most recent", async () => {
-      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+      (db.workspace_members.findFirst as Mock).mockResolvedValue(null);
 
       await findPreviousMember("workspace-1", "user-1");
 
-      const callArgs = (db.workspaceMember.findFirst as Mock).mock.calls[0][0];
+      const callArgs = (db.workspace_members.findFirst as Mock).mock.calls[0][0];
       expect(callArgs.orderBy).toEqual({ leftAt: "desc" });
     });
   });
@@ -479,11 +476,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
     ];
 
     test("should get all active workspace members", async () => {
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+      (db.workspace_members.findMany as Mock).mockResolvedValue(mockMembers);
 
       const result = await getActiveWorkspaceMembers("workspace-1");
 
-      expect(db.workspaceMember.findMany).toHaveBeenCalledWith({
+      expect(db.workspace_members.findMany).toHaveBeenCalledWith({
         where: {
           workspaceId: "workspace-1",
           leftAt: null,
@@ -496,7 +493,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return empty array when no active members found", async () => {
-      (db.workspaceMember.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock).mockResolvedValue([]);
 
       const result = await getActiveWorkspaceMembers("workspace-1");
 
@@ -505,20 +502,20 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should order by joinedAt ascending", async () => {
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+      (db.workspace_members.findMany as Mock).mockResolvedValue(mockMembers);
 
       await getActiveWorkspaceMembers("workspace-1");
 
-      const callArgs = (db.workspaceMember.findMany as Mock).mock.calls[0][0];
+      const callArgs = (db.workspace_members.findMany as Mock).mock.calls[0][0];
       expect(callArgs.orderBy).toEqual({ joinedAt: "asc" });
     });
 
     test("should filter by leftAt: null", async () => {
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+      (db.workspace_members.findMany as Mock).mockResolvedValue(mockMembers);
 
       await getActiveWorkspaceMembers("workspace-1");
 
-      const callArgs = (db.workspaceMember.findMany as Mock).mock.calls[0][0];
+      const callArgs = (db.workspace_members.findMany as Mock).mock.calls[0][0];
       expect(callArgs.where).toHaveProperty("leftAt", null);
     });
   });
@@ -535,11 +532,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
         },
       };
 
-      (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
+      (db.github_auth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
 
       const result = await findUserByGitHubUsername("johndoe");
 
-      expect(db.gitHubAuth.findFirst).toHaveBeenCalledWith({
+      expect(db.github_auth.findFirst).toHaveBeenCalledWith({
         where: { githubUsername: "johndoe" },
         include: { user: true },
       });
@@ -547,7 +544,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return null when user not found", async () => {
-      (db.gitHubAuth.findFirst as Mock).mockResolvedValue(null);
+      (db.github_auth.findFirst as Mock).mockResolvedValue(null);
 
       const result = await findUserByGitHubUsername("nonexistent");
 
@@ -562,11 +559,11 @@ describe("Workspace Member Queries - Unit Tests", () => {
         ownerId: "user-1",
       };
 
-      (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await isWorkspaceOwner("workspace-1", "user-1");
 
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+      expect(db.workspaces.findUnique).toHaveBeenCalledWith({
         where: { id: "workspace-1" },
         select: { ownerId: true },
       });
@@ -579,7 +576,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         ownerId: "different-user",
       };
 
-      (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await isWorkspaceOwner("workspace-1", "user-1");
 
@@ -587,7 +584,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
 
     test("should return false when workspace not found", async () => {
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const result = await isWorkspaceOwner("non-existent", "user-1");
 
@@ -598,7 +595,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
   describe("Database error handling", () => {
     test("should handle connection errors gracefully", async () => {
       const connectionError = new Error("Connection to database failed");
-      (db.workspaceMember.create as Mock).mockRejectedValue(connectionError);
+      (db.workspace_members.create as Mock).mockRejectedValue(connectionError);
 
       await expect(
         createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
@@ -607,7 +604,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should handle timeout errors", async () => {
       const timeoutError = new Error("Query timeout");
-      (db.workspaceMember.update as Mock).mockRejectedValue(timeoutError);
+      (db.workspace_members.update as Mock).mockRejectedValue(timeoutError);
 
       await expect(
         updateMemberRole("member-1", "ADMIN" as WorkspaceRole)
@@ -620,7 +617,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         message: "Unique constraint failed",
         meta: { target: ["workspaceId", "userId"] },
       };
-      (db.workspaceMember.create as Mock).mockRejectedValue(originalError);
+      (db.workspace_members.create as Mock).mockRejectedValue(originalError);
 
       await expect(
         createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)  

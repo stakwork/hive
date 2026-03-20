@@ -5,12 +5,10 @@ import { ChatRole, ChatStatus } from "@prisma/client";
 
 // Mock dependencies for triggerAgentModeFix tests
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -1007,8 +1005,8 @@ describe("PR Monitor - Branch Update Operations", () => {
       // Mock environment variables
       process.env.NEXTAUTH_URL = "http://localhost:3000";
 
-      // Mock db.task.findUnique
-      vi.mocked(db.task.findUnique).mockResolvedValue({
+      // Mock db.tasks.findUnique
+      vi.mocked(db.tasks.findUnique).mockResolvedValue({
         id: mockTaskId,
         agentUrl: mockAgentUrl,
         agentPassword: JSON.stringify({ encrypted: "key" }),
@@ -1017,8 +1015,8 @@ describe("PR Monitor - Branch Update Operations", () => {
         podId: "pod-123",
       } as any);
 
-      // Mock db.task.update
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      // Mock db.tasks.update
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       // Mock fetch for agent session creation
       global.fetch = vi.fn().mockResolvedValue({
@@ -1036,7 +1034,7 @@ describe("PR Monitor - Branch Update Operations", () => {
         status: ChatStatus.SENT,
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockTriggerMessage as any);
 
       // Mock fetch for agent session creation
       global.fetch = vi.fn().mockResolvedValue({
@@ -1047,7 +1045,7 @@ describe("PR Monitor - Branch Update Operations", () => {
       await triggerAgentModeFix(mockTaskId, mockPrompt);
 
       // Verify chat message was created
-      expect(db.chatMessage.create).toHaveBeenCalledWith({
+      expect(db.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           message: `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${mockPrompt}`,
@@ -1070,7 +1068,7 @@ describe("PR Monitor - Branch Update Operations", () => {
         taskId: mockTaskId,
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockTriggerMessage as any);
 
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
@@ -1081,7 +1079,7 @@ describe("PR Monitor - Branch Update Operations", () => {
       await triggerAgentModeFix(mockTaskId, mockPrompt);
 
       // Get call order
-      const chatCreateCallOrder = vi.mocked(db.chatMessage.create).mock.invocationCallOrder[0];
+      const chatCreateCallOrder = vi.mocked(db.chat_messages.create).mock.invocationCallOrder[0];
       const pusherTriggerCallOrder = vi.mocked(pusherServer.trigger).mock.invocationCallOrder[0];
       const fetchCallOrder = fetchMock.mock.invocationCallOrder[0];
 
@@ -1096,7 +1094,7 @@ describe("PR Monitor - Branch Update Operations", () => {
         taskId: mockTaskId,
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockTriggerMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockTriggerMessage as any);
 
       // Mock fetch to fail
       global.fetch = vi.fn().mockResolvedValue({
@@ -1112,7 +1110,7 @@ describe("PR Monitor - Branch Update Operations", () => {
       expect(result.error).toBeDefined();
 
       // Verify message was still created and broadcast before the failure
-      expect(db.chatMessage.create).toHaveBeenCalled();
+      expect(db.chat_messages.create).toHaveBeenCalled();
       expect(pusherServer.trigger).toHaveBeenCalledWith(
         `task-${mockTaskId}`,
         "new-message",
@@ -1123,7 +1121,7 @@ describe("PR Monitor - Branch Update Operations", () => {
     it("should include prompt with logs in trigger message", async () => {
       const promptWithLogs = "Fix CI failure:\n<logs>Error: Test suite failed</logs>";
       
-      vi.mocked(db.chatMessage.create).mockResolvedValue({
+      vi.mocked(db.chat_messages.create).mockResolvedValue({
         id: "msg-4",
         taskId: mockTaskId,
       } as any);
@@ -1135,7 +1133,7 @@ describe("PR Monitor - Branch Update Operations", () => {
 
       await triggerAgentModeFix(mockTaskId, promptWithLogs);
 
-      expect(db.chatMessage.create).toHaveBeenCalledWith({
+      expect(db.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           message: expect.stringContaining("<logs>Error: Test suite failed</logs>"),

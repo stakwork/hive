@@ -10,7 +10,7 @@ import { POD_PORTS } from "./constants";
 export async function getBasicVMDataFromPods(
   swarmId: string
 ): Promise<VMData[]> {
-  const pods = await db.pod.findMany({
+  const pods = await db.pods.findMany({
     where: {
       swarmId,
       deletedAt: null, // Filter out soft-deleted pods

@@ -53,34 +53,28 @@ describe("POST /api/workflow/publish", () => {
     testUser = await createTestUser();
     otherUser = await createTestUser();
 
-    stakworkWorkspace = await createTestWorkspace({
-      ownerId: testUser.id,
+    stakworkWorkspace = await createTestWorkspace({owner_id: testUser.id,
       name: "Stakwork",
       slug: "stakwork",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: stakworkWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: stakworkWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
 
     // Create task and message for artifact relation
-    testTask = await createTestTask({
-      workspaceId: stakworkWorkspace.id,
-      createdById: testUser.id,
+    testTask = await createTestTask({workspace_id: stakworkWorkspace.id,created_by_id: testUser.id,
       status: "TODO",
     });
 
-    testMessage = await createTestChatMessage({
-      taskId: testTask.id,
+    testMessage = await createTestChatMessage({task_id: testTask.id,
       message: "Test message for artifact",
       role: "ASSISTANT",
     });
 
-    artifact = await db.artifact.create({
+    artifact = await db.artifacts.create({
       data: {
         type: "WORKFLOW",
         messageId: testMessage.id,
@@ -206,17 +200,15 @@ describe("POST /api/workflow/publish", () => {
     });
 
     it("allows workspace member (DEVELOPER role) to publish", async () => {
-      const memberUser = await db.user.create({
+      const memberUser = await db.users.create({
         data: {
           email: "developer@example.com",
           name: "Developer User",
         },
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: stakworkWorkspace.id,
-          userId: memberUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: stakworkWorkspace.id,user_id: memberUser.id,
           role: "DEVELOPER",
         },
       });
@@ -484,15 +476,14 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-123",
-          artifactId: artifact.id,
+          workflowId: "wf-123",artifact_id: artifact.id,
         }),
       });
 
       const response = await POST(request);
       await expectSuccess(response, 200);
 
-      const updatedArtifact = await db.artifact.findUnique({
+      const updatedArtifact = await db.artifacts.findUnique({
         where: { id: artifact.id },
       });
 
@@ -520,15 +511,14 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-123",
-          artifactId: artifact.id,
+          workflowId: "wf-123",artifact_id: artifact.id,
         }),
       });
 
       const response = await POST(request);
       await expectSuccess(response, 200);
 
-      const updatedArtifact = await db.artifact.findUnique({
+      const updatedArtifact = await db.artifacts.findUnique({
         where: { id: artifact.id },
       });
 
@@ -563,7 +553,7 @@ describe("POST /api/workflow/publish", () => {
       expect(data.success).toBe(true);
       expect(data.data.workflowVersionId).toBe("v-123");
 
-      const unchangedArtifact = await db.artifact.findUnique({
+      const unchangedArtifact = await db.artifacts.findUnique({
         where: { id: artifact.id },
       });
 
@@ -590,8 +580,7 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-missing-artifact",
-          artifactId: nonExistentArtifactId,
+          workflowId: "wf-missing-artifact",artifact_id: nonExistentArtifactId,
         }),
       });
 
@@ -621,14 +610,13 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-timestamp",
-          artifactId: artifact.id,
+          workflowId: "wf-timestamp",artifact_id: artifact.id,
         }),
       });
 
       await POST(request);
 
-      const updatedArtifact = await db.artifact.findUnique({
+      const updatedArtifact = await db.artifacts.findUnique({
         where: { id: artifact.id },
       });
 
@@ -659,8 +647,7 @@ describe("POST /api/workflow/publish", () => {
         method: "POST",
         body: JSON.stringify({
           workflowId: "wf-complete",
-          workflowRefId: "ref-123",
-          artifactId: artifact.id,
+          workflowRefId: "ref-123",artifact_id: artifact.id,
         }),
       });
 
@@ -749,13 +736,12 @@ describe("POST /api/workflow/publish", () => {
         }),
       } as Response);
 
-      const otherMessage = await createTestChatMessage({
-        taskId: testTask.id,
+      const otherMessage = await createTestChatMessage({task_id: testTask.id,
         message: "Other message for artifact",
         role: "ASSISTANT",
       });
 
-      const otherArtifact = await db.artifact.create({
+      const otherArtifact = await db.artifacts.create({
         data: {
           type: "WORKFLOW",
           messageId: otherMessage.id,
@@ -766,14 +752,13 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-isolated",
-          artifactId: artifact.id,
+          workflowId: "wf-isolated",artifact_id: artifact.id,
         }),
       });
 
       await POST(request);
 
-      const unchangedArtifact = await db.artifact.findUnique({
+      const unchangedArtifact = await db.artifacts.findUnique({
         where: { id: otherArtifact.id },
       });
 
@@ -815,8 +800,7 @@ describe("POST /api/workflow/publish", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/publish", {
         method: "POST",
         body: JSON.stringify({
-          workflowId: "wf-null-data",
-          artifactId: artifact.id,
+          workflowId: "wf-null-data",artifact_id: artifact.id,
         }),
       });
 

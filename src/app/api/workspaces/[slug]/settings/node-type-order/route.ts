@@ -42,7 +42,7 @@ export async function PUT(
     const { nodeTypeOrder } = parseResult.data;
 
     // Check if user has admin access to the workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -69,7 +69,7 @@ export async function PUT(
     }
 
     // Update the workspace with the new node type order
-    const updatedWorkspace = await db.workspace.update({
+    const updatedWorkspace = await db.workspaces.update({
       where: { id: workspace.id },
       data: {
         nodeTypeOrder: nodeTypeOrder,
@@ -115,7 +115,7 @@ export async function GET(
     }
 
     // Check if user has access to the workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,

@@ -14,7 +14,7 @@ import { createTestWorkspace } from "@/__tests__/support/factories/workspace.fac
 
 // Helper to create a whiteboard directly
 async function createTestWhiteboard(workspaceId: string) {
-  return db.whiteboard.create({
+  return db.whiteboards.create({
     data: {
       name: "Test Whiteboard",
       workspaceId,
@@ -27,7 +27,7 @@ async function createTestWhiteboard(workspaceId: string) {
 
 // Helper to create a version directly
 async function createTestVersion(whiteboardId: string, label: string) {
-  return db.whiteboardVersion.create({
+  return db.whiteboard_versions.create({
     data: {
       whiteboardId,
       elements: [{ id: "el1" }],
@@ -46,7 +46,7 @@ describe("GET /api/whiteboards/[whiteboardId]/versions", () => {
 
   beforeEach(async () => {
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
     testWhiteboard = await createTestWhiteboard(testWorkspace.id);
     otherUser = await createTestUser();
   });
@@ -54,10 +54,10 @@ describe("GET /api/whiteboards/[whiteboardId]/versions", () => {
 
 
   afterEach(async () => {
-    await db.whiteboardVersion.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
-    await db.whiteboard.deleteMany({ where: { id: testWhiteboard.id } });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: { in: [testUser.id, otherUser.id] } } });
+    await db.whiteboard_versions.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
+    await db.whiteboards.deleteMany({ where: { id: testWhiteboard.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: { in: [testUser.id, otherUser.id] } } });
   });
 
   it("returns 401 for unauthenticated requests", async () => {
@@ -125,15 +125,15 @@ describe("POST /api/whiteboards/[whiteboardId]/versions", () => {
 
   beforeEach(async () => {
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
     testWhiteboard = await createTestWhiteboard(testWorkspace.id);
   });
 
   afterEach(async () => {
-    await db.whiteboardVersion.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
-    await db.whiteboard.deleteMany({ where: { id: testWhiteboard.id } });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    await db.whiteboard_versions.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
+    await db.whiteboards.deleteMany({ where: { id: testWhiteboard.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: testUser.id } });
   });
 
   it("creates a new version and returns 201", async () => {
@@ -169,9 +169,9 @@ describe("POST /api/whiteboards/[whiteboardId]/versions", () => {
     const res = await POST(req, { params: Promise.resolve({ whiteboardId: testWhiteboard.id }) });
     expect(res.status).toBe(201);
 
-    const remaining = await db.whiteboardVersion.findMany({
+    const remaining = await db.whiteboard_versions.findMany({
       where: { whiteboardId: testWhiteboard.id },
-      orderBy: { createdAt: "asc" },
+      orderBy: {created_at: "asc" },
     });
 
     expect(remaining).toHaveLength(10);
@@ -189,16 +189,16 @@ describe("POST /api/whiteboards/[whiteboardId]/versions/[versionId]/restore", ()
 
   beforeEach(async () => {
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
     testWhiteboard = await createTestWhiteboard(testWorkspace.id);
     targetVersion = await createTestVersion(testWhiteboard.id, "Restore point");
   });
 
   afterEach(async () => {
-    await db.whiteboardVersion.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
-    await db.whiteboard.deleteMany({ where: { id: testWhiteboard.id } });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    await db.whiteboard_versions.deleteMany({ where: { whiteboardId: testWhiteboard.id } });
+    await db.whiteboards.deleteMany({ where: { id: testWhiteboard.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: testUser.id } });
   });
 
   it("returns 401 for unauthenticated requests", async () => {
@@ -234,9 +234,9 @@ describe("POST /api/whiteboards/[whiteboardId]/versions/[versionId]/restore", ()
       params: Promise.resolve({ whiteboardId: testWhiteboard.id, versionId: targetVersion.id }),
     });
 
-    const versions = await db.whiteboardVersion.findMany({
+    const versions = await db.whiteboard_versions.findMany({
       where: { whiteboardId: testWhiteboard.id },
-      orderBy: { createdAt: "desc" },
+      orderBy: {created_at: "desc" },
     });
 
     const preRestoreSnapshot = versions.find((v) => v.label.startsWith("Before restore"));
@@ -261,7 +261,7 @@ describe("POST /api/whiteboards/[whiteboardId]/versions/[versionId]/restore", ()
     expect(body.data.version).toBe(beforeVersion + 1);
 
     // Confirm DB was updated
-    const updated = await db.whiteboard.findUnique({ where: { id: testWhiteboard.id } });
+    const updated = await db.whiteboards.findUnique({ where: { id: testWhiteboard.id } });
     expect(updated?.version).toBe(beforeVersion + 1);
   });
 });

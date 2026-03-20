@@ -49,16 +49,13 @@ async function createTaskTestSetup() {
     const workspace = await tx.workspace.create({
       data: {
         name: "Test Task Workspace",
-        slug: `task-workspace-${generateUniqueId()}`,
-        ownerId: owner.id,
+        slug: `task-workspace-${generateUniqueId()}`,owner_id: owner.id,
       },
     });
 
     // Create workspace membership for member
     await tx.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: member.id,
+      data: {workspace_id: workspace.id,user_id: member.id,
         role: "DEVELOPER",
       },
     });
@@ -66,10 +63,8 @@ async function createTaskTestSetup() {
     // Create repository for workspace
     const repository = await tx.repository.create({
       data: {
-        name: "test-repo",
-        repositoryUrl: "https://github.com/test/repo",
-        branch: "main",
-        workspaceId: workspace.id,
+        name: "test-repo",repository_url: "https://github.com/test/repo",
+        branch: "main",workspace_id: workspace.id,
       },
     });
 
@@ -86,22 +81,15 @@ async function createTaskTestSetup() {
       data: {
         id: generateUniqueId("task"),
         title: "Test Task",
-        description: "Test task description",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        assigneeId: assignee.id,
-        repositoryId: repository.id,
-        status: TaskStatus.IN_PROGRESS,
-        workflowStatus: WorkflowStatus.PENDING,
+        description: "Test task description",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: assignee.id,repository_id: repository.id,
+        status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.PENDING,
         priority: "MEDIUM",
       },
     });
 
     // Create chat messages with artifacts
     const message1 = await tx.chatMessage.create({
-      data: {
-        taskId: task.id,
+      data: {task_id: task.id,
         message: "First message",
         role: "USER",
         timestamp: new Date(),
@@ -121,8 +109,7 @@ async function createTaskTestSetup() {
     });
 
     const message2 = await tx.chatMessage.create({
-      data: {
-        taskId: task.id,
+      data: {task_id: task.id,
         message: "Second message",
         role: "ASSISTANT",
         timestamp: new Date(),
@@ -137,27 +124,21 @@ async function createTaskTestSetup() {
 
 // Helper to create test task
 async function createTestTask(
-  workspaceId: string,
-  ownerId: string,
+workspace_id: string,owner_id: string,
   options?: {
     title?: string;
-    assigneeId?: string | null;
-    repositoryId?: string | null;
+assignee_id?: string | null;
+repository_id?: string | null;
     deleted?: boolean;
   }
 ) {
-  return await db.task.create({
+  return await db.tasks.create({
     data: {
       id: generateUniqueId("task"),
       title: options?.title || "Test Task",
       description: "Test description",
-      workspaceId,
-      createdById: ownerId,
-      updatedById: ownerId,
-      assigneeId: options?.assigneeId,
-      repositoryId: options?.repositoryId,
-      status: TaskStatus.TODO,
-      workflowStatus: WorkflowStatus.PENDING,
+      workspaceId,created_by_id: ownerId,updated_by_id: ownerId,assignee_id: options?.assigneeId,repository_id: options?.repositoryId,
+      status: TaskStatus.TODO,workflow_status: WorkflowStatus.PENDING,
       deleted: options?.deleted || false,
     },
   });
@@ -180,7 +161,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "task-123" }),
+        params: Promise.resolve({task_id: "task-123" }),
       });
 
       await expectUnauthorized(response);
@@ -192,7 +173,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "task-123" }),
+        params: Promise.resolve({task_id: "task-123" }),
       });
 
       await expectUnauthorized(response);
@@ -208,7 +189,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "" }),
+        params: Promise.resolve({task_id: "" }),
       });
 
       await expectError(response, "taskId is required", 400);
@@ -222,7 +203,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "non-existent-task" }),
+        params: Promise.resolve({task_id: "non-existent-task" }),
       });
 
       await expectError(response, "Task not found", 404);
@@ -243,7 +224,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: deletedTask.id }),
+        params: Promise.resolve({task_id: deletedTask.id }),
       });
 
       await expectError(response, "Task not found", 404);
@@ -258,7 +239,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -273,7 +254,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 200);
@@ -288,7 +269,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 200);
@@ -302,9 +283,9 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       const { owner, workspace, task } = await createTaskTestSetup();
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createAuthenticatedGetRequest(
@@ -313,7 +294,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Task not found", 404);
@@ -331,7 +312,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -386,8 +367,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       // Create task with no assignee
       const taskNoAssignee = await createTestTask(workspace.id, owner.id, {
-        title: "Task Without Assignee",
-        assigneeId: null,
+        title: "Task Without Assignee",assignee_id: null,
       });
 
       const request = createAuthenticatedGetRequest(
@@ -396,7 +376,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: taskNoAssignee.id }),
+        params: Promise.resolve({task_id: taskNoAssignee.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -409,8 +389,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       // Create task with no repository
       const taskNoRepo = await createTestTask(workspace.id, owner.id, {
-        title: "Task Without Repository",
-        repositoryId: null,
+        title: "Task Without Repository",repository_id: null,
       });
 
       const request = createAuthenticatedGetRequest(
@@ -419,7 +398,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: taskNoRepo.id }),
+        params: Promise.resolve({task_id: taskNoRepo.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -436,7 +415,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -461,7 +440,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -503,7 +482,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -526,7 +505,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -549,7 +528,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify error handling (generic 500)
@@ -561,9 +540,9 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
     test("returns 500 for database errors", async () => {
       const { owner } = await createTaskTestSetup();
 
-      // Force database error by mocking db.task.findUnique
-      const originalFindUnique = db.task.findUnique;
-      db.task.findUnique = vi.fn().mockRejectedValue(new Error("Database connection error"));
+      // Force database error by mocking db.tasks.findUnique
+      const originalFindUnique = db.tasks.findUnique;
+      db.tasks.findUnique = vi.fn().mockRejectedValue(new Error("Database connection error"));
 
       const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/task/invalid-task-id",
@@ -571,11 +550,11 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "invalid-task-id" }),
+        params: Promise.resolve({task_id: "invalid-task-id" }),
       });
 
       // Restore original function
-      db.task.findUnique = originalFindUnique;
+      db.tasks.findUnique = originalFindUnique;
 
       await expectError(response, "Failed to fetch task", 500);
     });
@@ -589,7 +568,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -623,7 +602,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       expect(response.status).toBe(403);
@@ -651,8 +630,8 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const [response1, response2] = await Promise.all([
-        GET(request1, { params: Promise.resolve({ taskId: task.id }) }),
-        GET(request2, { params: Promise.resolve({ taskId: task.id }) }),
+        GET(request1, { params: Promise.resolve({task_id: task.id }) }),
+        GET(request2, { params: Promise.resolve({task_id: task.id }) }),
       ]);
 
       // Both requests should succeed and return the same data
@@ -673,7 +652,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         title: "Large Task",
       });
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: largeTask.id },
         data: { description: largeDescription },
       });
@@ -684,7 +663,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: largeTask.id }),
+        params: Promise.resolve({task_id: largeTask.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -715,7 +694,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         owner
       );
       const response1 = await GET(request1, {
-        params: Promise.resolve({ taskId: activeTask.id }),
+        params: Promise.resolve({task_id: activeTask.id }),
       });
       await expectSuccess(response1, 200);
 
@@ -725,7 +704,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         owner
       );
       const response2 = await GET(request2, {
-        params: Promise.resolve({ taskId: deletedTask.id }),
+        params: Promise.resolve({task_id: deletedTask.id }),
       });
       await expectError(response2, "Task not found", 404);
     });
@@ -741,7 +720,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         owner
       );
       const response1 = await GET(request1, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       await expectSuccess(response1, 200);
 
@@ -751,7 +730,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         member
       );
       const response2 = await GET(request2, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       await expectSuccess(response2, 200);
 
@@ -761,7 +740,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         nonMember
       );
       const response3 = await GET(request3, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       await expectError(response3, "Access denied", 403);
     });
@@ -774,10 +753,8 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         email: `viewer-${generateUniqueId()}@example.com`,
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: viewer.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: viewer.id,
           role: "VIEWER",
         },
       });
@@ -788,7 +765,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // VIEWER role should have same access as DEVELOPER (no role-based enforcement)

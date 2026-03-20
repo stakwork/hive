@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: {
         id: workspace_id,
       },

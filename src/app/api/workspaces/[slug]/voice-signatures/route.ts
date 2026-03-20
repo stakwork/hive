@@ -24,7 +24,7 @@ export async function GET(
     const { slug } = await params;
 
     // Step 1: Look up workspace by slug
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -54,7 +54,7 @@ export async function GET(
     }
 
     // Step 3: Query active members with voice signatures
-    const members = await db.workspaceMember.findMany({
+    const members = await db.workspace_members.findMany({
       where: {
         workspaceId: workspace.id,
         leftAt: null,

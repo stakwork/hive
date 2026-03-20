@@ -60,31 +60,22 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Sync Test Workspace",
-          slug: generateUniqueSlug("sync-ws"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("sync-ws"),owner_id: user.id,
         },
       });
 
       const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: "sync-swarm",
-          swarmId: generateUniqueId("swarm"),
-          status: "ACTIVE",
-          swarmUrl: "https://sync-swarm.sphinx.chat/api",
-          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          services: [],
-          agentRequestId: null,
-          agentStatus: null,
+        data: {workspace_id: workspace.id,
+          name: "sync-swarm",swarm_id: generateUniqueId("swarm"),
+          status: "ACTIVE",swarm_url: "https://sync-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
+          services: [],agent_request_id: null,agent_status: null,
         },
       });
 
       const repository = await tx.repository.create({
         data: {
           name: "sync-repo",
-          description: "Test sync repository",
-          repositoryUrl: testRepositoryUrl,
-          workspaceId: workspace.id,
+          description: "Test sync repository",repository_url: testRepositoryUrl,workspace_id: workspace.id,
           status: RepositoryStatus.SYNCED,
           branch: "main",
         },
@@ -109,8 +100,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
     it("should reject unauthenticated requests with 401", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -133,8 +123,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         token: "test-token",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -156,8 +145,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         token: "test-token",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -179,8 +167,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         token: "test-token",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        swarmId: testSwarm.swarmId,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {swarm_id: testSwarm.swarmId,
       });
 
       const response = await POST(request);
@@ -205,8 +192,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
   describe("Swarm Configuration Validation", () => {
     it("should reject when swarm not found", async () => {
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: "non-existent-workspace",
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: "non-existent-workspace",
       });
 
       const response = await POST(request);
@@ -218,13 +204,12 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
     });
 
     it("should reject when swarm has no name (empty string)", async () => {
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: testSwarm.id },
         data: { name: "" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -236,13 +221,12 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
     });
 
     it("should reject when swarm has no API key", async () => {
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: testSwarm.id },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -254,12 +238,11 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
     });
 
     it("should reject when repository URL is not set", async () => {
-      await db.repository.deleteMany({
-        where: { workspaceId: testWorkspace.id },
+      await db.repositories.deleteMany({
+        where: {workspace_id: testWorkspace.id },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -284,8 +267,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         data: { request_id: "test-request-789" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -311,8 +293,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         data: { request_id: "test-request-no-creds" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -332,8 +313,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
     it("should handle getGithubUsernameAndPAT errors gracefully", async () => {
       mockGetGithubUsernameAndPAT.mockRejectedValue(new Error("GitHub API unavailable"));
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -358,17 +338,14 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         data: { request_id: "test-request-status" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       await POST(request);
 
-      const updatedRepository = await db.repository.findUnique({
+      const updatedRepository = await db.repositories.findUnique({
         where: {
-          repositoryUrl_workspaceId: {
-            repositoryUrl: testRepositoryUrl,
-            workspaceId: testWorkspace.id,
+          repositoryUrl_workspaceId: {repository_url: testRepositoryUrl,workspace_id: testWorkspace.id,
           },
         },
       });
@@ -388,17 +365,14 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         data: undefined,
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       await POST(request);
 
-      const updatedRepository = await db.repository.findUnique({
+      const updatedRepository = await db.repositories.findUnique({
         where: {
-          repositoryUrl_workspaceId: {
-            repositoryUrl: testRepositoryUrl,
-            workspaceId: testWorkspace.id,
+          repositoryUrl_workspaceId: {repository_url: testRepositoryUrl,workspace_id: testWorkspace.id,
           },
         },
       });
@@ -408,11 +382,9 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
     it("should handle repository not found during status update", async () => {
       // Delete repository to test error handling
-      await db.repository.delete({
+      await db.repositories.delete({
         where: {
-          repositoryUrl_workspaceId: {
-            repositoryUrl: testRepositoryUrl,
-            workspaceId: testWorkspace.id,
+          repositoryUrl_workspaceId: {repository_url: testRepositoryUrl,workspace_id: testWorkspace.id,
           },
         },
       });
@@ -428,8 +400,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         data: { request_id: "test-request-no-repo" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {
-        workspaceId: testWorkspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", {workspace_id: testWorkspace.id,
       });
 
       const response = await POST(request);
@@ -457,7 +428,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -482,7 +453,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -506,7 +477,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -530,7 +501,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -540,11 +511,9 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       expect(data.success).toBe(true);
       
       // Repository should be marked as FAILED due to missing request_id
-      const updatedRepository = await db.repository.findUnique({
+      const updatedRepository = await db.repositories.findUnique({
         where: {
-          repositoryUrl_workspaceId: {
-            repositoryUrl: testRepositoryUrl,
-            workspaceId: testWorkspace.id,
+          repositoryUrl_workspaceId: {repository_url: testRepositoryUrl,workspace_id: testWorkspace.id,
           },
         },
       });
@@ -568,12 +537,12 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       await POST(request);
 
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -593,11 +562,11 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       });
 
       // Mock database error by deleting workspace first - this will make the workspace lookup fail
-      await db.workspace.delete({ where: { id: testWorkspace.id } });
+      await db.workspaces.delete({ where: { id: testWorkspace.id } });
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -623,12 +592,12 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       await POST(request);
 
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -661,7 +630,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       await POST(request);
@@ -689,7 +658,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       await POST(request);
@@ -710,7 +679,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -733,7 +702,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -764,12 +733,12 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request1 = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const request2 = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       // Fire both requests concurrently
@@ -807,17 +776,17 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request1 = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const request2 = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       await Promise.all([POST(request1), POST(request2)]);
 
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
 
@@ -842,7 +811,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/swarm/stakgraph/sync",
-        { workspaceId: testWorkspace.id }
+        {workspace_id: testWorkspace.id }
       );
 
       const response = await POST(request);
@@ -854,18 +823,16 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       expect(data.requestId).toBe(testRequestId);
 
       // Verify repository status updated to PENDING
-      const updatedRepository = await db.repository.findUnique({
+      const updatedRepository = await db.repositories.findUnique({
         where: {
-          repositoryUrl_workspaceId: {
-            repositoryUrl: testRepositoryUrl,
-            workspaceId: testWorkspace.id,
+          repositoryUrl_workspaceId: {repository_url: testRepositoryUrl,workspace_id: testWorkspace.id,
           },
         },
       });
       expect(updatedRepository?.status).toBe(RepositoryStatus.PENDING);
 
       // Verify ingestRefId stored in swarm
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSwarm.id },
       });
       expect(updatedSwarm?.ingestRefId).toBe(testRequestId);

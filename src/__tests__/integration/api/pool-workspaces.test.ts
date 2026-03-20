@@ -42,11 +42,9 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
     workspace = scenario.workspace;
 
     // Create swarm with encrypted API key
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
       name: `test-swarm-${generateUniqueId("swarm")}`,
-      status: "ACTIVE",
-      poolApiKey: "test-pool-api-key",
+      status: "ACTIVE",pool_api_key: "test-pool-api-key",
     });
   });
 
@@ -133,9 +131,9 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
 
   it("should return 404 when poolApiKey is not configured", async () => {
     // Update swarm to have null poolApiKey
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
-      data: { poolApiKey: null },
+      data: {pool_api_key: null },
     });
 
     getMockedRequireAuth.mockReturnValue({
@@ -184,15 +182,13 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
     memberAdmin = scenario.members[2];
 
     // Create swarm with encrypted API key
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
       name: `auth-swarm-${generateUniqueId("swarm")}`,
-      status: "ACTIVE",
-      poolApiKey: "test-pool-api-key-auth",
+      status: "ACTIVE",pool_api_key: "test-pool-api-key-auth",
     });
 
     // Create non-member user
-    nonMember = await db.user.create({
+    nonMember = await db.users.create({
       data: {
         name: "Non Member User",
         email: `non-member-${generateUniqueId("user")}@example.com`,
@@ -347,11 +343,9 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
     owner = scenario.owner;
     workspace = scenario.workspace;
 
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
       name: `service-swarm-${generateUniqueId("swarm")}`,
-      status: "ACTIVE",
-      poolApiKey: "test-pool-api-key-service",
+      status: "ACTIVE",pool_api_key: "test-pool-api-key-service",
     });
 
     getMockedRequireAuth.mockReturnValue({
@@ -540,11 +534,9 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     owner = scenario.owner;
     workspace = scenario.workspace;
 
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
       name: `response-swarm-${generateUniqueId("swarm")}`,
-      status: "ACTIVE",
-      poolApiKey: "test-pool-api-key-response",
+      status: "ACTIVE",pool_api_key: "test-pool-api-key-response",
     });
 
     getMockedRequireAuth.mockReturnValue({
@@ -706,10 +698,8 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
   it("should return basic data when pool-manager times out after 5 seconds", async () => {
     // Create pods in database for fallback data
     const uniqueSuffix = Date.now();
-    const pod1 = await db.pod.create({
-      data: {
-        podId: `timeout-pod-1-${uniqueSuffix}`,
-        swarmId: swarm.id,
+    const pod1 = await db.pods.create({
+      data: {pod_id: `timeout-pod-1-${uniqueSuffix}`,swarm_id: swarm.id,
         status: "RUNNING",
         usageStatus: "UNUSED",
         password: "test-password",
@@ -717,10 +707,8 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
       },
     });
 
-    const pod2 = await db.pod.create({
-      data: {
-        podId: `timeout-pod-2-${uniqueSuffix}`,
-        swarmId: swarm.id,
+    const pod2 = await db.pods.create({
+      data: {pod_id: `timeout-pod-2-${uniqueSuffix}`,swarm_id: swarm.id,
         status: "RUNNING",
         usageStatus: "USED",
         password: "test-password-2",

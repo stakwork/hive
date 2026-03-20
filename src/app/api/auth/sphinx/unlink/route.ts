@@ -13,13 +13,13 @@ export async function DELETE() {
 
     await db.$transaction(async (tx) => {
       // Clear lightningPubkey from user
-      await tx.user.update({
+      await tx.users.update({
         where: { id: session.user.id },
         data: { lightningPubkey: null },
       });
       
       // Delete sphinx account record
-      await tx.account.deleteMany({
+      await tx.accounts.deleteMany({
         where: {
           userId: session.user.id,
           provider: "sphinx",

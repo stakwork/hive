@@ -40,7 +40,7 @@ export async function GET(
     const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     // Get swarm config
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId: workspace.id },
       select: { minimumVms: true },
     });
@@ -84,7 +84,7 @@ export async function PATCH(
 
     // Check if user is super admin
     const { db } = await import("@/lib/db");
-    const githubAuth = await db.gitHubAuth.findUnique({
+    const githubAuth = await db.github_auth.findUnique({
       where: { userId: userOrResponse.id },
     });
 
@@ -121,7 +121,7 @@ export async function PATCH(
     }
 
     // Get swarm including pool details
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId: workspace.id },
       select: {
         id: true,
@@ -145,7 +145,7 @@ export async function PATCH(
     }
 
     // Update DB
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
       data: { minimumVms },
     });

@@ -27,7 +27,7 @@ export async function createTestUserWithGitHubCreds(
   } = options || {};
 
   return await db.$transaction(async (tx) => {
-    const testUser = await tx.user.create({
+    const testUser = await tx.users.create({
       data: {
         id: generateUniqueId("test-user"),
         email: `test-${generateUniqueId()}@example.com`,
@@ -35,11 +35,9 @@ export async function createTestUserWithGitHubCreds(
       },
     });
 
-    await tx.gitHubAuth.create({
+    await tx.github_auth.create({
       data: {
-        id: generateUniqueId("github-auth"),
-        userId: testUser.id,
-        githubUserId: generateUniqueId("github-user-id"),
+        id: generateUniqueId("github-auth"),user_id: testUser.id,github_user_id: generateUniqueId("github-user-id"),
         githubUsername,
       },
     });
@@ -49,13 +47,11 @@ export async function createTestUserWithGitHubCreds(
       accessToken
     );
 
-    const account = await tx.account.create({
+    const account = await tx.accounts.create({
       data: {
-        id: generateUniqueId("account"),
-        userId: testUser.id,
+        id: generateUniqueId("account"),user_id: testUser.id,
         type: "oauth",
-        provider: "github",
-        providerAccountId: generateUniqueId("provider-account"),
+        provider: "github",provider_account_id: generateUniqueId("provider-account"),
         access_token: JSON.stringify(encryptedToken),
       },
     });

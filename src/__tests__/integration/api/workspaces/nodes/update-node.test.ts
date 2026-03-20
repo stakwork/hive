@@ -36,13 +36,11 @@ describe("Node Update API - Integration Tests", () => {
     describe("Success Cases", () => {
       test("allows workspace OWNER to update node", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-123";
         const updateData = {
@@ -89,13 +87,11 @@ describe("Node Update API - Integration Tests", () => {
       test("allows workspace ADMIN to update node", async () => {
         const owner = await createTestUser();
         const admin = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: admin.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: admin.id,
           role: "ADMIN",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-456";
         const updateData = {
@@ -127,13 +123,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles complex nested properties", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-789";
         const updateData = {
@@ -169,13 +163,11 @@ describe("Node Update API - Integration Tests", () => {
       test("allows DEVELOPER role to update nodes (no role restriction)", async () => {
         const owner = await createTestUser();
         const developer = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: developer.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: developer.id,
           role: "DEVELOPER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-dev-123";
         const updateData = {
@@ -201,13 +193,11 @@ describe("Node Update API - Integration Tests", () => {
       test("allows VIEWER role to update nodes (no role restriction)", async () => {
         const owner = await createTestUser();
         const viewer = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: viewer.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: viewer.id,
           role: "VIEWER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-viewer-123";
         const updateData = {
@@ -233,13 +223,11 @@ describe("Node Update API - Integration Tests", () => {
       test("allows PM role to update nodes (no role restriction)", async () => {
         const owner = await createTestUser();
         const pm = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: pm.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: pm.id,
           role: "PM",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-pm-123";
         const updateData = {
@@ -265,8 +253,8 @@ describe("Node Update API - Integration Tests", () => {
       test("rejects non-member from updating nodes", async () => {
         const owner = await createTestUser();
         const nonMember = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-non-member-123";
         const updateData = {
@@ -313,17 +301,15 @@ describe("Node Update API - Integration Tests", () => {
 
       test("returns 404 for soft-deleted workspace", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
 
         // Soft-delete the workspace
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: workspace.id },
-          data: { deleted: true, deletedAt: new Date() },
+          data: { deleted: true,deleted_at: new Date() },
         });
 
         const nodeId = "node-deleted-ws";
@@ -348,14 +334,11 @@ describe("Node Update API - Integration Tests", () => {
       test("rejects member who has left the workspace", async () => {
         const owner = await createTestUser();
         const formerMember = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: formerMember.id,
-          role: "ADMIN",
-          leftAt: new Date(),
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: formerMember.id,
+          role: "ADMIN",left_at: new Date(),
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-left-member";
         const updateData = {
@@ -378,7 +361,7 @@ describe("Node Update API - Integration Tests", () => {
 
       test("rejects unauthenticated requests", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
         const nodeId = "node-unauth";
         const updateData = {
           properties: { name: "Update" },
@@ -401,13 +384,11 @@ describe("Node Update API - Integration Tests", () => {
     describe("Validation Failures", () => {
       test("rejects request with missing properties field", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-no-props";
         const updateData = {}; // Missing properties
@@ -428,13 +409,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("rejects request with properties field as non-object", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-invalid-props-type";
         const updateData = {
@@ -457,13 +436,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("allows array as properties (typeof array === 'object')", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-array-props";
         const updateData = {
@@ -491,10 +468,8 @@ describe("Node Update API - Integration Tests", () => {
     describe("Swarm Configuration", () => {
       test("returns 400 when workspace has no swarm configuration", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
         // No swarm created
@@ -522,13 +497,11 @@ describe("Node Update API - Integration Tests", () => {
     describe("Service Failures", () => {
       test("handles Jarvis API error response", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-error";
         const updateData = {
@@ -558,13 +531,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles unexpected errors", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-exception";
         const updateData = {
@@ -595,13 +566,11 @@ describe("Node Update API - Integration Tests", () => {
     describe("Edge Cases", () => {
       test("handles concurrent updates to same node", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-concurrent";
         const updateData1 = {
@@ -642,13 +611,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles very large property values", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-large-props";
         const largeString = "x".repeat(10000);
@@ -676,13 +643,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles special characters in property names and values", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-special-chars";
         const updateData = {
@@ -713,13 +678,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles null values in properties", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-null-values";
         const updateData = {
@@ -750,13 +713,11 @@ describe("Node Update API - Integration Tests", () => {
 
       test("handles nested object properties", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
         const nodeId = "node-nested";
         const updateData = {
@@ -792,15 +753,13 @@ describe("Node Update API - Integration Tests", () => {
 
       test("preserves workspace state after node update", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id });
+        await createTestMembership({workspace_id: workspace.id,user_id: owner.id,
           role: "OWNER",
         });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
+        await createTestSwarm({workspace_id: workspace.id,swarm_api_key: "test-api-key" });
 
-        const initialWorkspace = await db.workspace.findUnique({
+        const initialWorkspace = await db.workspaces.findUnique({
           where: { id: workspace.id },
         });
 
@@ -821,7 +780,7 @@ describe("Node Update API - Integration Tests", () => {
           params: Promise.resolve({ slug: workspace.slug, nodeId }),
         });
 
-        const updatedWorkspace = await db.workspace.findUnique({
+        const updatedWorkspace = await db.workspaces.findUnique({
           where: { id: workspace.id },
         });
 

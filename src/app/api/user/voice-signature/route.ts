@@ -75,7 +75,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Fetch user's current voice signature key
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { id: session.user.id },
       select: { voiceSignatureKey: true },
     })
@@ -98,7 +98,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Clear the DB reference
-    await db.user.update({
+    await db.users.update({
       where: { id: session.user.id },
       data: { voiceSignatureKey: null },
     })

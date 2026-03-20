@@ -23,14 +23,11 @@ describe("POST /api/features/detect-feature-request - Authentication", () => {
 
     workspace = await createTestWorkspace({
       name: "Detect Feature Workspace",
-      slug: `detect-feature-${generateUniqueId("workspace")}`,
-      ownerId: user.id,
+      slug: `detect-feature-${generateUniqueId("workspace")}`,owner_id: user.id,
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id,
         role: "OWNER",
       },
     });
@@ -88,14 +85,11 @@ describe("POST /api/features/detect-feature-request - Input Validation", () => {
 
     workspace = await createTestWorkspace({
       name: "Validation Workspace",
-      slug: `validation-${generateUniqueId("workspace")}`,
-      ownerId: user.id,
+      slug: `validation-${generateUniqueId("workspace")}`,owner_id: user.id,
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id,
         role: "OWNER",
       },
     });
@@ -202,14 +196,11 @@ describe("POST /api/features/detect-feature-request - Feature Detection", () => 
 
     workspace = await createTestWorkspace({
       name: "Detection Workspace",
-      slug: `detection-${generateUniqueId("workspace")}`,
-      ownerId: user.id,
+      slug: `detection-${generateUniqueId("workspace")}`,owner_id: user.id,
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id,
         role: "OWNER",
       },
     });
@@ -365,14 +356,11 @@ describe("POST /api/features/detect-feature-request - Error Handling", () => {
 
     workspace = await createTestWorkspace({
       name: "Error Workspace",
-      slug: `error-${generateUniqueId("workspace")}`,
-      ownerId: user.id,
+      slug: `error-${generateUniqueId("workspace")}`,owner_id: user.id,
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id,
         role: "OWNER",
       },
     });

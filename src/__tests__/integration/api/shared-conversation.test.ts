@@ -35,8 +35,7 @@ describe("SharedConversation API Integration Tests", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: testUser.id,
+          description: "Test workspace description",owner_id: testUser.id,
         },
       });
 
@@ -70,17 +69,14 @@ describe("SharedConversation API Integration Tests", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: ownerUser.id,
+          description: "Test workspace description",owner_id: ownerUser.id,
         },
       });
 
       // Add member to workspace
       await tx.workspaceMember.create({
         data: {
-          id: generateUniqueId("member"),
-          workspaceId: testWorkspace.id,
-          userId: memberUser.id,
+          id: generateUniqueId("member"),workspace_id: testWorkspace.id,user_id: memberUser.id,
           role: "DEVELOPER",
         },
       });
@@ -139,7 +135,7 @@ describe("SharedConversation API Integration Tests", () => {
         const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
         // Create a different user who is not a member
-        const nonMemberUser = await db.user.create({
+        const nonMemberUser = await db.users.create({
           data: {
             id: generateUniqueId("non-member"),
             email: `nonmember-${generateUniqueId()}@example.com`,
@@ -257,7 +253,7 @@ describe("SharedConversation API Integration Tests", () => {
         expect(data).toHaveProperty("shareId");
 
         // Verify the source was persisted in the database
-        const sharedConversation = await db.sharedConversation.findUnique({
+        const sharedConversation = await db.shared_conversations.findUnique({
           where: { id: data.shareId },
         });
 
@@ -348,7 +344,7 @@ describe("SharedConversation API Integration Tests", () => {
         expect(data).toHaveProperty("shareId");
 
         // Verify data was stored correctly
-        const stored = await db.sharedConversation.findUnique({
+        const stored = await db.shared_conversations.findUnique({
           where: { id: data.shareId },
         });
         expect(stored).toBeTruthy();
@@ -380,17 +376,15 @@ describe("SharedConversation API Integration Tests", () => {
         const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
         // Create shared conversation
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: testUser.id,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: testWorkspace.id,user_id: testUser.id,
             messages: [{ role: "user", content: "Test" }],
             followUpQuestions: ["Q1"],
           },
         });
 
         // Create a different user who is not a member
-        const nonMemberUser = await db.user.create({
+        const nonMemberUser = await db.users.create({
           data: {
             id: generateUniqueId("non-member"),
             email: `nonmember-${generateUniqueId()}@example.com`,
@@ -427,10 +421,8 @@ describe("SharedConversation API Integration Tests", () => {
         ];
         const followUpQuestions = ["Q1", "Q2"];
 
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: testUser.id,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: testWorkspace.id,user_id: testUser.id,
             title: "Test Title",
             messages,
             followUpQuestions,
@@ -464,10 +456,8 @@ describe("SharedConversation API Integration Tests", () => {
         const { ownerUser, memberUser, testWorkspace } =
           await createTestUserWithMembership();
 
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: ownerUser.id,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: testWorkspace.id,user_id: ownerUser.id,
             messages: [{ role: "user", content: "Owner message" }],
             followUpQuestions: ["Q1"],
           },
@@ -496,7 +486,7 @@ describe("SharedConversation API Integration Tests", () => {
 
     describe("Resource Not Found Tests", () => {
       test("should return 404 for non-existent workspace", async () => {
-        const testUser = await db.user.create({
+        const testUser = await db.users.create({
           data: {
             id: generateUniqueId("user"),
             email: `test-${generateUniqueId()}@example.com`,
@@ -549,12 +539,11 @@ describe("SharedConversation API Integration Tests", () => {
 
       test("should return 403 when shared conversation belongs to different workspace", async () => {
         // Create two workspaces
-        const workspace1 = await db.workspace.create({
+        const workspace1 = await db.workspaces.create({
           data: {
             name: "Workspace 1",
-            slug: generateUniqueId("workspace1"),
-            ownerId: (
-              await db.user.create({
+            slug: generateUniqueId("workspace1"),owner_id: (
+              await db.users.create({
                 data: {
                   id: generateUniqueId("user1"),
                   email: `user1-${generateUniqueId()}@example.com`,
@@ -565,7 +554,7 @@ describe("SharedConversation API Integration Tests", () => {
           },
         });
 
-        const workspace2Owner = await db.user.create({
+        const workspace2Owner = await db.users.create({
           data: {
             id: generateUniqueId("user2"),
             email: `user2-${generateUniqueId()}@example.com`,
@@ -573,19 +562,16 @@ describe("SharedConversation API Integration Tests", () => {
           },
         });
 
-        const workspace2 = await db.workspace.create({
+        const workspace2 = await db.workspaces.create({
           data: {
             name: "Workspace 2",
-            slug: generateUniqueId("workspace2"),
-            ownerId: workspace2Owner.id,
+            slug: generateUniqueId("workspace2"),owner_id: workspace2Owner.id,
           },
         });
 
         // Create shared conversation in workspace1
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: workspace1.id,
-            userId: workspace1.ownerId,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: workspace1.id,user_id: workspace1.ownerId,
             messages: [{ role: "user", content: "Test" }],
             followUpQuestions: ["Q1"],
           },
@@ -621,10 +607,8 @@ describe("SharedConversation API Integration Tests", () => {
           codeEntities: [],
         };
 
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: testUser.id,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: testWorkspace.id,user_id: testUser.id,
             title: "Test Title",
             messages: [{ role: "user", content: "Message" }],
             provenanceData,
@@ -672,10 +656,8 @@ describe("SharedConversation API Integration Tests", () => {
       test("should handle null provenanceData correctly", async () => {
         const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
-        const sharedConv = await db.sharedConversation.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: testUser.id,
+        const sharedConv = await db.shared_conversations.create({
+          data: {workspace_id: testWorkspace.id,user_id: testUser.id,
             messages: [{ role: "user", content: "Message" }],
             provenanceData: null,
             followUpQuestions: ["Q1"],

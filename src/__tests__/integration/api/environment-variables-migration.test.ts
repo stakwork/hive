@@ -20,10 +20,7 @@ vi.mock("@/services/pool-manager/sync", () => ({
 vi.mock("@/services/github/WebhookService", () => ({
   WebhookService: vi.fn().mockImplementation(() => ({
     ensureRepoWebhook: vi.fn().mockResolvedValue({ id: 123, secret: "webhook-secret" }),
-    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({
-      repositoryId: "mock-repo-id",
-      defaultBranch: "main",
-      webhookId: 12345,
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({repository_id: "mock-repo-id",default_branch: "main",webhook_id: 12345,
     }),
   })),
 }));
@@ -42,7 +39,7 @@ describe("Environment Variables Migration", () => {
 
   beforeEach(async () => {
     // Create test user
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: generateUniqueId("user"),
         email: `test-user-${generateUniqueId()}@example.com`,
@@ -56,32 +53,29 @@ describe("Environment Variables Migration", () => {
 
     slug = generateUniqueSlug();
 
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug,
-        ownerId: userId,
+        slug,owner_id: userId,
       },
     });
     workspaceId = workspace.id;
 
     // Create repository for the workspace
-    await db.repository.create({
+    await db.repositories.create({
       data: {
-        name: "test-repo",
-        repositoryUrl: "https://github.com/test/repo",
+        name: "test-repo",repository_url: "https://github.com/test/repo",
         branch: "main",
         workspaceId,
       },
     });
 
     // Create swarm with old-style JSON environment variables
-    const swarm = await db.swarm.create({
+    const swarm = await db.swarms.create({
       data: {
         name: "test-swarm",
         workspaceId,
-        status: "ACTIVE",
-        poolName: "test-pool",
+        status: "ACTIVE",pool_name: "test-pool",
         environmentVariables: JSON.stringify(
           encryptEnvVars([
             { name: "API_KEY", value: "secret123" },
@@ -103,7 +97,7 @@ describe("Environment Variables Migration", () => {
 
   it("should migrate environment variables from JSON field to new table on first save", async () => {
     // Verify initial state - no records in new table
-    const initialCount = await db.environmentVariable.count({
+    const initialCount = await db.environment_variables.count({
       where: { swarmId },
     });
     expect(initialCount).toBe(0);
@@ -127,7 +121,7 @@ describe("Environment Variables Migration", () => {
     expectSuccess(response);
 
     // Verify migration - records should now exist in new table
-    const migratedVars = await db.environmentVariable.findMany({
+    const migratedVars = await db.environment_variables.findMany({
       where: { swarmId },
       orderBy: { name: "asc" },
     });
@@ -143,7 +137,7 @@ describe("Environment Variables Migration", () => {
     expect(migratedVars[0].value).toContain('"data"');
 
     // Verify old JSON field is KEPT for backward compatibility (not cleared)
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
@@ -174,7 +168,7 @@ describe("Environment Variables Migration", () => {
       params: Promise.resolve({ slug }),
     });
 
-    const firstCount = await db.environmentVariable.count({
+    const firstCount = await db.environment_variables.count({
       where: { swarmId },
     });
     expect(firstCount).toBe(2);
@@ -197,7 +191,7 @@ describe("Environment Variables Migration", () => {
     expectSuccess(response2);
 
     // Verify updated records
-    const updatedVars = await db.environmentVariable.findMany({
+    const updatedVars = await db.environment_variables.findMany({
       where: { swarmId },
       orderBy: { name: "asc" },
     });
@@ -233,7 +227,7 @@ describe("Environment Variables Migration", () => {
     expectSuccess(response);
 
     // No records should be created for empty array
-    const count = await db.environmentVariable.count({
+    const count = await db.environment_variables.count({
       where: { swarmId },
     });
     expect(count).toBe(0);
@@ -260,7 +254,7 @@ describe("Environment Variables Migration", () => {
     expectSuccess(response);
 
     // No migration should occur if environmentVariables not provided
-    const count = await db.environmentVariable.count({
+    const count = await db.environment_variables.count({
       where: { swarmId },
     });
     expect(count).toBe(0);
@@ -281,7 +275,7 @@ describe("Environment Variables Migration", () => {
       params: Promise.resolve({ slug }),
     });
 
-    const vars = await db.environmentVariable.findMany({
+    const vars = await db.environment_variables.findMany({
       where: { swarmId },
     });
 
@@ -306,7 +300,7 @@ describe("Environment Variables Migration", () => {
     });
     expectSuccess(response);
 
-    const vars = await db.environmentVariable.findMany({
+    const vars = await db.environment_variables.findMany({
       where: { swarmId },
       orderBy: { name: "asc" },
     });
@@ -328,7 +322,7 @@ describe("Environment Variables Migration", () => {
   it("should enforce unique constraint on (swarmId, serviceName, name)", async () => {
     // First create a record
     const encrypted = encryptEnvVars([{ name: "TEST_VAR", value: "value1" }]);
-    await db.environmentVariable.create({
+    await db.environment_variables.create({
       data: {
         swarmId,
         serviceName: "",
@@ -339,7 +333,7 @@ describe("Environment Variables Migration", () => {
 
     // Try to create duplicate (should fail due to unique constraint)
     try {
-      await db.environmentVariable.create({
+      await db.environment_variables.create({
         data: {
           swarmId,
           serviceName: "",
@@ -363,7 +357,7 @@ describe("Environment Variables Migration", () => {
     const encrypted = encryptEnvVars([{ name: "PORT", value: "3000" }]);
 
     // Global scope
-    await db.environmentVariable.create({
+    await db.environment_variables.create({
       data: {
         swarmId,
         serviceName: "",
@@ -374,7 +368,7 @@ describe("Environment Variables Migration", () => {
 
     // Service-specific scope (for future service-level env vars)
     const encrypted2 = encryptEnvVars([{ name: "PORT", value: "4000" }]);
-    await db.environmentVariable.create({
+    await db.environment_variables.create({
       data: {
         swarmId,
         serviceName: "api",
@@ -383,7 +377,7 @@ describe("Environment Variables Migration", () => {
       },
     });
 
-    const vars = await db.environmentVariable.findMany({
+    const vars = await db.environment_variables.findMany({
       where: { swarmId, name: "PORT" },
       orderBy: { serviceName: "asc" },
     });
@@ -395,7 +389,7 @@ describe("Environment Variables Migration", () => {
 
   it("should keep old JSON field for backward compatibility after migration", async () => {
     // Verify swarm has old JSON data
-    const beforeSwarm = await db.swarm.findUnique({
+    const beforeSwarm = await db.swarms.findUnique({
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
@@ -416,7 +410,7 @@ describe("Environment Variables Migration", () => {
     });
 
     // Verify old field is KEPT for backward compatibility
-    const afterSwarm = await db.swarm.findUnique({
+    const afterSwarm = await db.swarms.findUnique({
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
@@ -425,7 +419,7 @@ describe("Environment Variables Migration", () => {
     expect(afterSwarm?.environmentVariables).not.toEqual([]);
     
     // Verify new table also has the data
-    const newTableVars = await db.environmentVariable.findMany({
+    const newTableVars = await db.environment_variables.findMany({
       where: { swarmId },
     });
     expect(newTableVars).toHaveLength(1);
@@ -448,7 +442,7 @@ describe("Environment Variables Migration", () => {
       params: Promise.resolve({ slug }),
     });
 
-    const initialVars = await db.environmentVariable.findMany({
+    const initialVars = await db.environment_variables.findMany({
       where: { swarmId },
     });
     expect(initialVars).toHaveLength(3);
@@ -467,7 +461,7 @@ describe("Environment Variables Migration", () => {
       params: Promise.resolve({ slug }),
     });
 
-    const updatedVars = await db.environmentVariable.findMany({
+    const updatedVars = await db.environment_variables.findMany({
       where: { swarmId },
     });
 

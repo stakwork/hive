@@ -42,23 +42,17 @@ describe("GitHub Users Search API Integration Tests", () => {
       const encryptedToken = encryptionService.encryptField("access_token", "github_pat_test_token");
       const testAccount = await tx.account.create({
         data: {
-          id: generateUniqueId("test-account"),
-          userId: testUser.id,
+          id: generateUniqueId("test-account"),user_id: testUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId(),
+          provider: "github",provider_account_id: generateUniqueId(),
           access_token: JSON.stringify(encryptedToken),
         },
       });
 
       const testGitHubAuth = await tx.gitHubAuth.create({
-        data: {
-          userId: testUser.id,
-          githubUserId: "123456",
-          githubUsername: "testuser",
+        data: {user_id: testUser.id,github_user_id: "123456",github_username: "testuser",
           githubNodeId: "U_test123",
-          name: "Test User",
-          publicRepos: 5,
+          name: "Test User",public_repos: 5,
           followers: 10,
           following: 5,
           accountType: "User",
@@ -131,8 +125,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       );
 
       // Verify real database lookup occurred
-      const accountInDb = await db.account.findFirst({
-        where: { userId: testUser.id, provider: "github" },
+      const accountInDb = await db.accounts.findFirst({
+        where: {user_id: testUser.id, provider: "github" },
       });
       expect(accountInDb).toBeTruthy();
       expect(accountInDb?.access_token).toBe(testAccount.access_token);
@@ -243,8 +237,8 @@ describe("GitHub Users Search API Integration Tests", () => {
       await GET(request);
 
       // Verify the stored token is encrypted
-      const storedAccount = await db.account.findFirst({
-        where: { userId: testUser.id, provider: "github" },
+      const storedAccount = await db.accounts.findFirst({
+        where: {user_id: testUser.id, provider: "github" },
       });
 
       expect(storedAccount?.access_token).toBeDefined();

@@ -16,7 +16,7 @@ export async function createUserStory(
     throw new Error("Missing required field: title");
   }
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
   });
 
@@ -24,9 +24,9 @@ export async function createUserStory(
     throw new Error("User not found");
   }
 
-  const nextOrder = await calculateNextOrder(db.userStory, { featureId });
+  const nextOrder = await calculateNextOrder(db.user_stories, { featureId });
 
-  const userStory = await db.userStory.create({
+  const userStory = await db.user_stories.create({
     data: {
       title: data.title.trim(),
       featureId,
@@ -53,7 +53,7 @@ export async function createUserStory(
   });
 
   // Stamp planUpdatedAt when user creates a story
-  await db.feature.update({
+  await db.features.update({
     where: { id: featureId },
     data: { planUpdatedAt: new Date() },
   });
@@ -100,7 +100,7 @@ export async function updateUserStory(
     updateData.completed = data.completed;
   }
 
-  const updatedStory = await db.userStory.update({
+  const updatedStory = await db.user_stories.update({
     where: { id: storyId },
     data: updateData,
     include: {
@@ -123,7 +123,7 @@ export async function updateUserStory(
   // Stamp planUpdatedAt only when content fields changed (not order-only)
   const isContentEdit = data.title !== undefined || data.completed !== undefined;
   if (isContentEdit) {
-    await db.feature.update({
+    await db.features.update({
       where: { id: story.featureId },
       data: { planUpdatedAt: new Date() },
     });
@@ -141,12 +141,12 @@ export async function deleteUserStory(
 ): Promise<void> {
   const story = await validateUserStoryAccess(storyId, userId);
 
-  await db.userStory.delete({
+  await db.user_stories.delete({
     where: { id: storyId },
   });
 
   // Stamp planUpdatedAt when user deletes a story
-  await db.feature.update({
+  await db.features.update({
     where: { id: story.featureId },
     data: { planUpdatedAt: new Date() },
   });
@@ -168,7 +168,7 @@ export async function reorderUserStories(
 
   await db.$transaction(
     stories.map((story) =>
-      db.userStory.update({
+      db.user_stories.update({
         where: {
           id: story.id,
           featureId: featureId,
@@ -178,7 +178,7 @@ export async function reorderUserStories(
     )
   );
 
-  const updatedStories = await db.userStory.findMany({
+  const updatedStories = await db.user_stories.findMany({
     where: { featureId },
     select: {
       id: true,

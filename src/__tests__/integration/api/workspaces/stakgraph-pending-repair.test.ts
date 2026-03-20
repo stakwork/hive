@@ -16,7 +16,7 @@ vi.mock("@/services/pool-manager/sync", () => ({
 
 vi.mock("@/services/github/WebhookService", () => ({
   WebhookService: vi.fn().mockImplementation(() => ({
-    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({ defaultBranch: "main" }),
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({default_branch: "main" }),
   })),
 }));
 
@@ -34,7 +34,7 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     vi.clearAllMocks();
 
     // Create user first
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: generateUniqueId("user"),
         email: `user-${generateUniqueId()}@example.com`,
@@ -51,17 +51,16 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     workspaceSlug = generateUniqueSlug();
 
     // Create workspace
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: workspaceSlug,
-        ownerId: userId,
+        slug: workspaceSlug,owner_id: userId,
       },
     });
     workspaceId = workspace.id;
 
     // Create workspace member
-    await db.workspaceMember.create({
+    await db.workspace_members.create({
       data: {
         workspaceId,
         userId,
@@ -70,12 +69,11 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     });
 
     // Create initial swarm
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
         workspaceId,
         name: "test-swarm",
-        status: "ACTIVE",
-        podState: PodState.COMPLETED,
+        status: "ACTIVE",pod_state: PodState.COMPLETED,
       },
     });
   });
@@ -85,15 +83,13 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
       {
         repositories: [
-          {
-            repositoryUrl: "https://github.com/test/repo1",
+          {repository_url: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
             triggerPodRepair: true,
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -104,9 +100,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(response.status).toBe(200);
 
     // Verify trigger was set
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm).toBeTruthy();
@@ -129,21 +125,18 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
       {
         repositories: [
-          {
-            repositoryUrl: "https://github.com/test/repo1",
+          {repository_url: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
             triggerPodRepair: true,
           },
-          {
-            repositoryUrl: "https://github.com/test/repo2",
+          {repository_url: "https://github.com/test/repo2",
             branch: "main",
             name: "repo2",
             triggerPodRepair: true,
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -154,9 +147,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(response.status).toBe(200);
 
     // Verify trigger was set with first repo URL and all repo names
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm).toBeTruthy();
@@ -175,21 +168,18 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
 
   it("should NOT set pendingRepairTrigger when updating existing repositories", async () => {
     // First create a repository
-    const repo = await db.repository.create({
+    const repo = await db.repositories.create({
       data: {
-        workspaceId,
-        repositoryUrl: "https://github.com/test/existing",
+        workspaceId,repository_url: "https://github.com/test/existing",
         branch: "main",
         name: "existing",
       },
     });
 
     // Reset swarm state
-    await db.swarm.update({
+    await db.swarms.update({
       where: { workspaceId },
-      data: {
-        pendingRepairTrigger: null,
-        podState: PodState.COMPLETED,
+      data: {pending_repair_trigger: null,pod_state: PodState.COMPLETED,
       },
     });
 
@@ -199,14 +189,12 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       {
         repositories: [
           {
-            id: repo.id,
-            repositoryUrl: "https://github.com/test/existing",
+            id: repo.id,repository_url: "https://github.com/test/existing",
             branch: "develop",
             name: "existing-updated",
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -217,9 +205,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(response.status).toBe(200);
 
     // Verify trigger was NOT set
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm).toBeTruthy();
@@ -229,21 +217,18 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
 
   it("should set pendingRepairTrigger when adding new repo alongside existing repo", async () => {
     // First create an existing repository
-    const existingRepo = await db.repository.create({
+    const existingRepo = await db.repositories.create({
       data: {
-        workspaceId,
-        repositoryUrl: "https://github.com/test/existing",
+        workspaceId,repository_url: "https://github.com/test/existing",
         branch: "main",
         name: "existing",
       },
     });
 
     // Reset swarm state
-    await db.swarm.update({
+    await db.swarms.update({
       where: { workspaceId },
-      data: {
-        pendingRepairTrigger: null,
-        podState: PodState.COMPLETED,
+      data: {pending_repair_trigger: null,pod_state: PodState.COMPLETED,
       },
     });
 
@@ -253,20 +238,17 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       {
         repositories: [
           {
-            id: existingRepo.id,
-            repositoryUrl: "https://github.com/test/existing",
+            id: existingRepo.id,repository_url: "https://github.com/test/existing",
             branch: "main",
             name: "existing",
           },
-          {
-            repositoryUrl: "https://github.com/test/newrepo",
+          {repository_url: "https://github.com/test/newrepo",
             branch: "main",
             name: "newrepo",
             triggerPodRepair: true,
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -277,9 +259,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(response.status).toBe(200);
 
     // Verify trigger was set for the new repo only
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm).toBeTruthy();
@@ -298,19 +280,16 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
 
   it("should NOT set pendingRepairTrigger when no repositories provided", async () => {
     // Reset swarm state
-    await db.swarm.update({
+    await db.swarms.update({
       where: { workspaceId },
-      data: {
-        pendingRepairTrigger: null,
-        podState: PodState.COMPLETED,
+      data: {pending_repair_trigger: null,pod_state: PodState.COMPLETED,
       },
     });
 
     const request = createPutRequest(
       `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
       {
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
         // No repositories provided
       }
     );
@@ -322,9 +301,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
     expect(response.status).toBe(200);
 
     // Verify trigger was NOT set
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm).toBeTruthy();
@@ -337,15 +316,13 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
       {
         repositories: [
-          {
-            repositoryUrl: "https://github.com/test/repo1",
+          {repository_url: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
             // triggerPodRepair omitted (defaults to false)
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -355,9 +332,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
 
     expect(response.status).toBe(200);
 
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm?.pendingRepairTrigger).toBeNull();
@@ -369,15 +346,13 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
       `http://localhost:3000/api/workspaces/${workspaceSlug}/stakgraph`,
       {
         repositories: [
-          {
-            repositoryUrl: "https://github.com/test/repo1",
+          {repository_url: "https://github.com/test/repo1",
             branch: "main",
             name: "repo1",
             triggerPodRepair: true,
           },
         ],
-        name: "test-swarm",
-        poolName: "test-pool",
+        name: "test-swarm",pool_name: "test-pool",
       }
     );
 
@@ -387,9 +362,9 @@ describe("Stakgraph API - Pending Repair Trigger", () => {
 
     expect(response.status).toBe(200);
 
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId },
-      select: { pendingRepairTrigger: true, podState: true },
+      select: {pending_repair_trigger: true,pod_state: true },
     });
 
     expect(swarm?.pendingRepairTrigger).toBeTruthy();

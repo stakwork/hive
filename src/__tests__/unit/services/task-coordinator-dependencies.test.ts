@@ -3,8 +3,7 @@ import type { Task, ChatMessage, Artifact } from "@prisma/client";
 
 // Mock dependencies at module level
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findMany: vi.fn(),
     },
   },
@@ -97,7 +96,7 @@ const TestHelpers = {
   },
 
   setupMockTasksInDatabase: (tasks: Array<Task & { chatMessages: any[] }>) => {
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(tasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(tasks as any);
   },
 };
 
@@ -121,7 +120,7 @@ describe("checkDependencies", () => {
       const result = await checkDependencies([]);
 
       expect(result).toBe("SATISFIED");
-      expect(mockDb.task.findMany).not.toHaveBeenCalled();
+      expect(mockDb.tasks.findMany).not.toHaveBeenCalled();
     });
 
     test("should return SATISFIED for empty array immediately", async () => {
@@ -170,7 +169,7 @@ describe("checkDependencies", () => {
 
       await checkDependencies(["task-1", "task-2"]);
 
-      expect(mockDb.task.findMany).toHaveBeenCalledWith({
+      expect(mockDb.tasks.findMany).toHaveBeenCalledWith({
         where: {
           id: {
             in: ["task-1", "task-2"],
@@ -674,7 +673,7 @@ describe("checkDependencies", () => {
       const result = await checkDependencies(taskIds);
 
       expect(result).toBe("SATISFIED");
-      expect(mockDb.task.findMany).toHaveBeenCalledTimes(1); // Single batch query
+      expect(mockDb.tasks.findMany).toHaveBeenCalledTimes(1); // Single batch query
     });
 
     test("should handle duplicate dependency IDs", async () => {
@@ -695,7 +694,7 @@ describe("checkDependencies", () => {
 
       await checkDependencies(["task-1"]);
 
-      expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect(mockDb.tasks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
             chatMessages: expect.objectContaining({
@@ -717,7 +716,7 @@ describe("checkDependencies", () => {
 
       await checkDependencies(["task-1"]);
 
-      expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect(mockDb.tasks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
             chatMessages: expect.objectContaining({
@@ -735,7 +734,7 @@ describe("checkDependencies", () => {
 
       await checkDependencies(["task-1"]);
 
-      expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect(mockDb.tasks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
             chatMessages: expect.objectContaining({

@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the swarm and verify user has access to the workspace
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: {
         ...(swarmId ? { swarmId } : {}),
         ...(workspaceId ? { workspaceId } : {}),
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch environment variables from database
-    const allEnvVars = await db.environmentVariable.findMany({
+    const allEnvVars = await db.environment_variables.findMany({
       where: { swarmId: swarm.id },
     });
 
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       console.log("Generating container files from database services");
 
       // Get all repository names for multi-repo cwd resolution
-      const allRepos = await db.repository.findMany({
+      const allRepos = await db.repositories.findMany({
         where: { workspaceId: swarm.workspaceId },
         orderBy: { createdAt: "asc" },
       });
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get all repositories for this workspace to support multi-repo
-    const repositories = await db.repository.findMany({
+    const repositories = await db.repositories.findMany({
       where: {
         workspaceId: swarm.workspaceId,
       },

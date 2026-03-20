@@ -9,11 +9,9 @@ vi.mock("@/lib/githubApp", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    artifact: {
+  db: {artifacts: {
       update: vi.fn(),
-    },
-    task: {
+    },tasks: {
       findUnique: vi.fn(),
       update: vi.fn(),
     },
@@ -85,7 +83,7 @@ describe("extractPrArtifact", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(db.task.findUnique).mockResolvedValue(null as any);
+    vi.mocked(db.tasks.findUnique).mockResolvedValue(null as any);
     vi.mocked(releaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: true,
@@ -177,7 +175,7 @@ describe("extractPrArtifact", () => {
       });
       expect(getUserAppTokens).not.toHaveBeenCalled();
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(db.artifact.update).not.toHaveBeenCalled();
+      expect(db.artifacts.update).not.toHaveBeenCalled();
     });
 
     test("releases assigned pod when artifact is already marked DONE", async () => {
@@ -214,8 +212,8 @@ describe("extractPrArtifact", () => {
       // Verify no external calls
       expect(getUserAppTokens).not.toHaveBeenCalled();
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(db.artifact.update).not.toHaveBeenCalled();
-      expect(db.task.update).toHaveBeenCalledWith({
+      expect(db.artifacts.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).toHaveBeenCalledWith({
         where: { id: task.id },
         data: { status: TaskStatus.DONE },
       });
@@ -265,7 +263,7 @@ describe("extractPrArtifact", () => {
           merged_at: null,
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
@@ -285,7 +283,7 @@ describe("extractPrArtifact", () => {
       );
 
       // Verify artifact update
-      expect(db.artifact.update).toHaveBeenCalledWith({
+      expect(db.artifacts.update).toHaveBeenCalledWith({
         where: { id: prArtifact.id },
         data: {
           content: {
@@ -306,7 +304,7 @@ describe("extractPrArtifact", () => {
       });
 
       // Task should NOT be updated (PR still open)
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).not.toHaveBeenCalled();
     });
 
     test("updates artifact and task status when PR is merged", async () => {
@@ -331,13 +329,13 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
       // Verify artifact updated with DONE status
-      expect(db.artifact.update).toHaveBeenCalledWith({
+      expect(db.artifacts.update).toHaveBeenCalledWith({
         where: { id: prArtifact.id },
         data: {
           content: {
@@ -348,7 +346,7 @@ describe("extractPrArtifact", () => {
       });
 
       // Verify task status updated to DONE
-      expect(db.task.update).toHaveBeenCalledWith({
+      expect(db.tasks.update).toHaveBeenCalledWith({
         where: { id: task.id },
         data: { status: TaskStatus.DONE },
       });
@@ -378,16 +376,16 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
-      vi.mocked(db.task.findUnique).mockResolvedValue({
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findUnique).mockResolvedValue({
         workspaceId: "workspace-456",
         podId: "pod-456",
       } as any);
 
       await extractPrArtifact(task, mockUserId);
 
-      expect(db.task.findUnique).toHaveBeenCalledWith({
+      expect(db.tasks.findUnique).toHaveBeenCalledWith({
         where: { id: task.id },
         select: {
           workspaceId: true,
@@ -422,11 +420,11 @@ describe("extractPrArtifact", () => {
           merged_at: null,
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
-      expect(db.artifact.update).toHaveBeenCalledWith({
+      expect(db.artifacts.update).toHaveBeenCalledWith({
         where: { id: prArtifact.id },
         data: {
           content: {
@@ -437,7 +435,7 @@ describe("extractPrArtifact", () => {
       });
 
       expect(result?.content.status).toBe("CANCELLED");
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).not.toHaveBeenCalled();
     });
 
     test("does not update task status when task already DONE", async () => {
@@ -462,14 +460,14 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       await extractPrArtifact(task, mockUserId);
 
       // Artifact should still be updated
-      expect(db.artifact.update).toHaveBeenCalled();
+      expect(db.artifacts.update).toHaveBeenCalled();
       // But task should NOT be updated (already DONE)
-      expect(db.task.update).not.toHaveBeenCalled();
+      expect(db.tasks.update).not.toHaveBeenCalled();
     });
   });
 
@@ -606,7 +604,7 @@ describe("extractPrArtifact", () => {
 
       expect(getUserAppTokens).toHaveBeenCalledWith(mockUserId, "owner");
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(db.artifact.update).not.toHaveBeenCalled();
+      expect(db.artifacts.update).not.toHaveBeenCalled();
       expect(result).toEqual({
         id: prArtifact.id,
         type: prArtifact.type,
@@ -684,7 +682,7 @@ describe("extractPrArtifact", () => {
 
       const result = await extractPrArtifact(task, mockUserId);
 
-      expect(db.artifact.update).not.toHaveBeenCalled();
+      expect(db.artifacts.update).not.toHaveBeenCalled();
       expect(result).toEqual({
         id: prArtifact.id,
         type: prArtifact.type,
@@ -714,7 +712,7 @@ describe("extractPrArtifact", () => {
         "Error checking PR status:",
         expect.any(Error)
       );
-      expect(db.artifact.update).not.toHaveBeenCalled();
+      expect(db.artifacts.update).not.toHaveBeenCalled();
       expect(result).toEqual({
         id: prArtifact.id,
         type: prArtifact.type,
@@ -860,7 +858,7 @@ describe("extractPrArtifact", () => {
   });
 
   describe("Database Operation Edge Cases", () => {
-    test("handles db.artifact.update failure gracefully", async () => {
+    test("handles db.artifacts.update failure gracefully", async () => {
       const prArtifact = createMockPrArtifact({
         url: "https://github.com/owner/repo/pull/42",
       });
@@ -874,7 +872,7 @@ describe("extractPrArtifact", () => {
         ok: true,
         json: async () => ({ state: "open", merged_at: null }),
       });
-      vi.mocked(db.artifact.update).mockRejectedValue(
+      vi.mocked(db.artifacts.update).mockRejectedValue(
         new Error("Database error")
       );
 
@@ -896,7 +894,7 @@ describe("extractPrArtifact", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    test("handles db.task.update failure when PR merged", async () => {
+    test("handles db.tasks.update failure when PR merged", async () => {
       const prArtifact = createMockPrArtifact({
         url: "https://github.com/owner/repo/pull/42",
       });
@@ -916,8 +914,8 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
-      vi.mocked(db.task.update).mockRejectedValue(
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.update).mockRejectedValue(
         new Error("Task update failed")
       );
 
@@ -928,9 +926,9 @@ describe("extractPrArtifact", () => {
       const result = await extractPrArtifact(task, mockUserId);
 
       // Artifact update should succeed
-      expect(db.artifact.update).toHaveBeenCalled();
+      expect(db.artifacts.update).toHaveBeenCalled();
       // Task update attempted but failed
-      expect(db.task.update).toHaveBeenCalled();
+      expect(db.tasks.update).toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalled();
 
       expect(result?.content.status).toBe("DONE");
@@ -954,7 +952,7 @@ describe("extractPrArtifact", () => {
         ok: true,
         json: async () => ({ state: "open", merged_at: null }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
@@ -978,7 +976,7 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
@@ -999,7 +997,7 @@ describe("extractPrArtifact", () => {
         ok: true,
         json: async () => ({ state: "closed", merged_at: null }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 
@@ -1027,7 +1025,7 @@ describe("extractPrArtifact", () => {
           merged_at: "2024-01-15T10:30:00Z",
         }),
       });
-      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.artifacts.update).mockResolvedValue({} as any);
 
       const result = await extractPrArtifact(task, mockUserId);
 

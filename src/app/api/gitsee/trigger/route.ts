@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get workspace slug for GitHub credentials
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: workspaceId },
       select: { slug: true }
     });
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const githubAuth = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
 
     // Get swarm information
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: {
         workspaceId: workspaceId,
       },

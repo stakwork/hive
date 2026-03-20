@@ -20,7 +20,7 @@ export async function PATCH(
     const { runId } = await params;
 
     // Look up the run to get workspaceId for API token auth
-    const runLookup = await db.stakworkRun.findUnique({
+    const runLookup = await db.stakwork_runs.findUnique({
       where: { id: runId },
       select: { workspaceId: true },
     });

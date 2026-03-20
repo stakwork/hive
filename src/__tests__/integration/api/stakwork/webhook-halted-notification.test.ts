@@ -44,7 +44,7 @@ async function waitForNotification(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const record = await db.notificationTrigger.findFirst({ where: where as any });
+    const record = await db.notification_triggers.findFirst({ where: where as any });
     if (record) return record;
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -66,18 +66,17 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    user = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
+    user = await db.users.create({
+      data: { email: "owner@test.com", name: "Owner",lightning_pubkey: "test-pubkey-owner" },
     });
 
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: user.id,
+    workspace = await createTestWorkspace({owner_id: user.id,
       slug: generateUniqueSlug("ws-halted"),
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id, role: "OWNER" },
     });
   });
 
@@ -86,12 +85,9 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
   });
 
   it("creates a WORKFLOW_HALTED notification for task path", async () => {
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Halted Task",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
+        title: "Halted Task",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
@@ -101,8 +97,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     expect(res.status).toBe(200);
 
     const record = await waitForNotification({
-      notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-      taskId: task.id,
+      notificationType: NotificationTriggerType.WORKFLOW_HALTED,task_id: task.id,
     });
 
     expect(record).not.toBeNull();
@@ -116,12 +111,9 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
   });
 
   it("creates a WORKFLOW_HALTED notification for feature (plan mode) path", async () => {
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Halted Feature",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
+        title: "Halted Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
@@ -131,8 +123,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     expect(res.status).toBe(200);
 
     const record = await waitForNotification({
-      notificationType: NotificationTriggerType.WORKFLOW_HALTED,
-      featureId: feature.id,
+      notificationType: NotificationTriggerType.WORKFLOW_HALTED,feature_id: feature.id,
     });
 
     expect(record).not.toBeNull();

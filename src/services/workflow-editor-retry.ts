@@ -26,7 +26,7 @@ interface WorkflowContext {
  */
 export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> {
   // Fetch task with all data needed to reconstruct the workflow context
-  const task = await db.task.findFirst({
+  const task = await db.tasks.findFirst({
     where: { id: taskId, deleted: false },
     select: {
       id: true,
@@ -83,7 +83,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
   if (!lastUserMessage?.message) return false;
 
   // Set haltRetryAttempted = true BEFORE calling Stakwork (race-condition guard)
-  await db.task.update({
+  await db.tasks.update({
     where: { id: taskId },
     data: { haltRetryAttempted: true },
   });
@@ -175,7 +175,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     }
 
     // Retry succeeded — reset task to IN_PROGRESS and clear the retry flag
-    await db.task.update({
+    await db.tasks.update({
       where: { id: taskId },
       data: {
         workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -186,7 +186,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     });
 
     // Create an assistant WORKFLOW artifact message so the frontend can resume polling
-    const newMessage = await db.chatMessage.create({
+    const newMessage = await db.chat_messages.create({
       data: {
         taskId,
         message: "",

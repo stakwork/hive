@@ -91,17 +91,15 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       const data = await response.json();
       expect(data.success).toBe(false);
     } finally {
-      await db.user.delete({ where: { id: user.id } });
+      await db.users.delete({ where: { id: user.id } });
     }
   });
 
   test("returns 403 when user is not admin (VIEWER role)", async () => {
     const owner = await createTestUser();
     const viewer = await createTestUser({ email: `viewer-${Date.now()}@example.com` });
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: viewer.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id });
+    await createTestMembership({workspace_id: workspace.id,user_id: viewer.id,
       role: "VIEWER",
     });
 
@@ -117,18 +115,16 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       expect(data.success).toBe(false);
       expect(data.message).toContain("admin");
     } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
+      await db.workspaces.delete({ where: { id: workspace.id } });
+      await db.users.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
     }
   });
 
   test("returns 403 when user is DEVELOPER (not admin)", async () => {
     const owner = await createTestUser();
     const dev = await createTestUser({ email: `dev-${Date.now()}@example.com` });
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: dev.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id });
+    await createTestMembership({workspace_id: workspace.id,user_id: dev.id,
       role: "DEVELOPER",
     });
 
@@ -141,8 +137,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
 
       expect(response.status).toBe(403);
     } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.deleteMany({ where: { id: { in: [owner.id, dev.id] } } });
+      await db.workspaces.delete({ where: { id: workspace.id } });
+      await db.users.deleteMany({ where: { id: { in: [owner.id, dev.id] } } });
     }
   });
 
@@ -160,7 +156,7 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
   WRITE_QUERIES.forEach((writeQuery) => {
     test(`returns 403 for write query: ${writeQuery.slice(0, 30)}…`, async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -171,8 +167,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
         const data = await response.json();
         expect(data.message).toBe("Write operations are not permitted");
       } finally {
-        await db.workspace.delete({ where: { id: workspace.id } });
-        await db.user.delete({ where: { id: owner.id } });
+        await db.workspaces.delete({ where: { id: workspace.id } });
+        await db.users.delete({ where: { id: owner.id } });
       }
     });
   });
@@ -184,7 +180,7 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
     process.env.USE_MOCKS = "true";
 
     const owner = await createTestUser();
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
+    const workspace = await createTestWorkspace({owner_id: owner.id });
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -199,8 +195,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       expect(data.result.length).toBeGreaterThan(0);
     } finally {
       process.env.USE_MOCKS = originalUseMocks;
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.delete({ where: { id: owner.id } });
+      await db.workspaces.delete({ where: { id: workspace.id } });
+      await db.users.delete({ where: { id: owner.id } });
     }
   });
 
@@ -209,7 +205,7 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
   test("returns 400 when swarm is not configured", async () => {
     const owner = await createTestUser();
     const slug = generateUniqueSlug("no-swarm");
-    const workspace = await createTestWorkspace({ ownerId: owner.id, slug });
+    const workspace = await createTestWorkspace({owner_id: owner.id, slug });
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -222,8 +218,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       const data = await response.json();
       expect(data.message).toContain("not configured");
     } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.delete({ where: { id: owner.id } });
+      await db.workspaces.delete({ where: { id: workspace.id } });
+      await db.users.delete({ where: { id: owner.id } });
     }
   });
 
@@ -231,7 +227,7 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
 
   test("returns 400 when query field is missing", async () => {
     const owner = await createTestUser();
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
+    const workspace = await createTestWorkspace({owner_id: owner.id });
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -242,8 +238,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       const data = await response.json();
       expect(data.message).toContain("query");
     } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.delete({ where: { id: owner.id } });
+      await db.workspaces.delete({ where: { id: workspace.id } });
+      await db.users.delete({ where: { id: owner.id } });
     }
   });
 });

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
+    const stakworkWorkspace = await db.workspaces.findFirst({
       where: {
         slug: "stakwork",
         OR: [{ ownerId: userId }, { members: { some: { userId } } }],
@@ -83,13 +83,13 @@ export async function POST(request: NextRequest) {
     // Update the artifact to mark it as published
     if (artifactId) {
       try {
-        const artifact = await db.artifact.findUnique({
+        const artifact = await db.artifacts.findUnique({
           where: { id: artifactId },
         });
 
         if (artifact) {
           const currentContent = (artifact.content as Record<string, unknown>) || {};
-          await db.artifact.update({
+          await db.artifacts.update({
             where: { id: artifactId },
             data: {
               content: {
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     if (artifactId) {
       try {
         // Get the artifact with its message and task
-        const artifactWithMessage = await db.artifact.findUnique({
+        const artifactWithMessage = await db.artifacts.findUnique({
           where: { id: artifactId },
           include: {
             message: {
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
 
               // Create a new message with the updated WORKFLOW artifact
               // Include both workflowJson (for Editor tab) and projectId (for Stakwork tab)
-              const newMessage = await db.chatMessage.create({
+              const newMessage = await db.chat_messages.create({
                 data: {
                   taskId,
                   message: "",

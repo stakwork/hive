@@ -22,7 +22,7 @@ vi.mock("@/services/s3", () => ({
 describe("Whiteboard Images API", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
-  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboard.create>>;
+  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboards.create>>;
   const createdIds: { users: string[]; workspaces: string[]; whiteboards: string[] } = {
     users: [],
     workspaces: [],
@@ -35,13 +35,12 @@ describe("Whiteboard Images API", () => {
     testUser = await createTestUser();
     createdIds.users.push(testUser.id);
 
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
     createdIds.workspaces.push(testWorkspace.id);
 
-    testWhiteboard = await db.whiteboard.create({
+    testWhiteboard = await db.whiteboards.create({
       data: {
-        name: "Test Whiteboard",
-        workspaceId: testWorkspace.id,
+        name: "Test Whiteboard",workspace_id: testWorkspace.id,
         elements: [],
         appState: {},
         files: {
@@ -75,15 +74,15 @@ describe("Whiteboard Images API", () => {
 
   afterEach(async () => {
     if (createdIds.whiteboards.length) {
-      await db.whiteboard.deleteMany({ where: { id: { in: createdIds.whiteboards } } });
+      await db.whiteboards.deleteMany({ where: { id: { in: createdIds.whiteboards } } });
       createdIds.whiteboards.length = 0;
     }
     if (createdIds.workspaces.length) {
-      await db.workspace.deleteMany({ where: { id: { in: createdIds.workspaces } } });
+      await db.workspaces.deleteMany({ where: { id: { in: createdIds.workspaces } } });
       createdIds.workspaces.length = 0;
     }
     if (createdIds.users.length) {
-      await db.user.deleteMany({ where: { id: { in: createdIds.users } } });
+      await db.users.deleteMany({ where: { id: { in: createdIds.users } } });
       createdIds.users.length = 0;
     }
   });
@@ -151,8 +150,8 @@ describe("Whiteboard Images API", () => {
     it("returns presignedUploadUrl for workspace member", async () => {
       const member = await createTestUser();
       createdIds.users.push(member.id);
-      await db.workspaceMember.create({
-        data: { workspaceId: testWorkspace.id, userId: member.id, role: "DEVELOPER" },
+      await db.workspace_members.create({
+        data: {workspace_id: testWorkspace.id,user_id: member.id, role: "DEVELOPER" },
       });
 
       const request = createAuthenticatedPostRequest(

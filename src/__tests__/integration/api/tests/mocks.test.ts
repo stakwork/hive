@@ -27,15 +27,12 @@ describe("GET /api/tests/mocks", () => {
     // Initialize test user and workspace for tests that need them
     testUser = await createTestUser({ name: "Test User" });
     testWorkspace = await createTestWorkspace({
-      name: "Test Workspace",
-      ownerId: testUser.id,
+      name: "Test Workspace",owner_id: testUser.id,
     });
     
     // Create workspace membership for the test user
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: testWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -108,18 +105,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should fetch mock inventory from stakgraph successfully", async () => {
-    const swarm = await db.swarm.create({
+    const swarm = await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -167,8 +161,7 @@ describe("GET /api/tests/mocks", () => {
     expect(data.message).toBe("Mock inventory retrieved successfully");
 
     expect(swarmApiRequest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        swarmUrl: "https://test-swarm.sphinx.chat:3355",
+      expect.objectContaining({swarm_url: "https://test-swarm.sphinx.chat:3355",
         endpoint: expect.stringContaining("/mocks/inventory"),
         method: "GET",
         apiKey: expect.any(String),
@@ -177,18 +170,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support pagination with limit and offset", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -218,18 +208,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support search filtering", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -259,18 +246,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support mocked filter with 'mocked' value", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -300,18 +284,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support mocked filter with 'unmocked' value", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -341,18 +322,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should not add mocked filter when value is 'all'", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 
@@ -379,18 +357,15 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should handle errors from stakgraph service", async () => {
-    await db.swarm.create({
+    await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: JSON.stringify({
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
           tag: "tag",
           version: "v1",
           encryptedAt: new Date().toISOString(),
-        }),
-        workspaceId: testWorkspace.id,
+        }),workspace_id: testWorkspace.id,
       },
     });
 

@@ -25,7 +25,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         { title: "New Ticket" }
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -41,7 +41,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: "non-existent-id" }) });
 
       await expectError(response, "Feature not found", 404);
     });
@@ -49,18 +49,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -70,31 +66,27 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         nonMember
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Access denied", 403);
     });
 
     test("rejects deleted workspace features", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createAuthenticatedPostRequest(
@@ -103,25 +95,21 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Feature not found", 404);
     });
 
     test("allows workspace owner to create tickets", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -131,7 +119,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         owner
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Owner Ticket");
@@ -140,26 +128,20 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
     test("allows workspace member to create tickets", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -169,7 +151,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         member
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Member Ticket");
@@ -179,18 +161,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Required Field Validation", () => {
     test("validates title is required", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -200,25 +178,21 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Title is required", 400);
     });
 
     test("validates title is non-empty string after trimming", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -228,25 +202,21 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Title is required", 400);
     });
 
     test("trims whitespace from title", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -256,7 +226,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Ticket");
@@ -266,18 +236,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Enum Validation", () => {
     test("validates status enum - accepts valid TODO value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -287,7 +253,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.status).toBe("TODO");
@@ -295,18 +261,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("validates status enum - accepts valid IN_PROGRESS value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -316,7 +278,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.status).toBe("IN_PROGRESS");
@@ -324,18 +286,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("validates status enum - rejects invalid value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -345,25 +303,21 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Invalid status", 400);
     });
 
     test("validates priority enum - accepts valid MEDIUM value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -373,7 +327,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.priority).toBe("MEDIUM");
@@ -381,18 +335,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("validates priority enum - accepts valid CRITICAL value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -402,7 +352,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.priority).toBe("CRITICAL");
@@ -410,18 +360,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("validates priority enum - rejects invalid value", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -431,7 +377,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Invalid priority", 400);
     });
@@ -440,36 +386,31 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Foreign Key Validation", () => {
     test("validates phaseId exists and belongs to feature", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: "Test Phase",
-          featureId: feature.id,
+          name: "Test Phase",feature_id: feature.id,
           order: 0,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", phaseId: phase.id },
+        { title: "Test Ticket",phase_id: phase.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.phaseId).toBe(phase.id);
@@ -479,73 +420,61 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("rejects phaseId that does not belong to feature", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature1 = await db.feature.create({
+      const feature1 = await db.features.create({
         data: {
-          title: "Feature 1",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 1",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const feature2 = await db.feature.create({
+      const feature2 = await db.features.create({
         data: {
-          title: "Feature 2",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 2",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase2 = await db.phase.create({
+      const phase2 = await db.phases.create({
         data: {
-          name: "Phase in Feature 2",
-          featureId: feature2.id,
+          name: "Phase in Feature 2",feature_id: feature2.id,
           order: 0,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature1.id}/tickets`,
-        { title: "Test Ticket", phaseId: phase2.id },
+        { title: "Test Ticket",phase_id: phase2.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature1.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature1.id }) });
 
       await expectError(response, "Phase not found or does not belong to this feature", 404);
     });
 
     test("rejects non-existent phaseId", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", phaseId: "non-existent-phase-id" },
+        { title: "Test Ticket",phase_id: "non-existent-phase-id" },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Phase not found or does not belong to this feature", 404);
     });
@@ -553,28 +482,24 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
     test("validates assigneeId exists for regular user", async () => {
       const user = await createTestUser();
       const assignee = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: assignee.id },
+        { title: "Test Ticket",assignee_id: assignee.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.assignee?.id).toBe(assignee.id);
@@ -582,56 +507,48 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("rejects non-existent assigneeId", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: "non-existent-user-id" },
+        { title: "Test Ticket",assignee_id: "non-existent-user-id" },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Assignee not found", 404);
     });
 
     test("allows null assigneeId", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: null },
+        { title: "Test Ticket",assignee_id: null },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.assignee).toBeNull();
@@ -641,34 +558,30 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("System Assignee Support", () => {
     test("supports system:task-coordinator assignee", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: "system:task-coordinator" },
+        { title: "Test Ticket",assignee_id: "system:task-coordinator" },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.assignee?.id).toBe("system:task-coordinator");
       expect(data.data.assignee?.name).toBe("Task Coordinator");
 
-      const dbTicket = await db.task.findUnique({
+      const dbTicket = await db.tasks.findUnique({
         where: { id: data.data.id },
       });
       expect(dbTicket?.assigneeId).toBeNull();
@@ -677,34 +590,30 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("supports system:bounty-hunter assignee", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: "system:bounty-hunter" },
+        { title: "Test Ticket",assignee_id: "system:bounty-hunter" },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.assignee?.id).toBe("system:bounty-hunter");
       expect(data.data.assignee?.name).toBe("Bounty Hunter");
 
-      const dbTicket = await db.task.findUnique({
+      const dbTicket = await db.tasks.findUnique({
         where: { id: data.data.id },
       });
       expect(dbTicket?.assigneeId).toBeNull();
@@ -715,18 +624,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Auto-increment Order Logic", () => {
     test("creates first ticket with order 0", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -736,7 +641,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.order).toBe(0);
@@ -744,28 +649,20 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("auto-increments order for subsequent tickets in same feature", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "Existing Ticket",
-          featureId: feature.id,
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Existing Ticket",feature_id: feature.id,workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           order: 0,
         },
       });
@@ -776,7 +673,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.order).toBe(1);
@@ -784,48 +681,38 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("auto-increments order within phase context", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: "Test Phase",
-          featureId: feature.id,
+          name: "Test Phase",feature_id: feature.id,
           order: 0,
         },
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "Existing Ticket in Phase",
-          featureId: feature.id,
-          phaseId: phase.id,
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Existing Ticket in Phase",feature_id: feature.id,phase_id: phase.id,workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           order: 0,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Second Ticket in Phase", phaseId: phase.id },
+        { title: "Second Ticket in Phase",phase_id: phase.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.order).toBe(1);
@@ -836,18 +723,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Optional Fields", () => {
     test("handles optional description field", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -857,7 +740,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.description).toBe("Test description");
@@ -865,18 +748,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("creates ticket without optional description", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -886,7 +765,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.description).toBeNull();
@@ -894,158 +773,138 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("creates ticket with runBuild set to true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", runBuild: true },
+        { title: "Test Ticket",run_build: true },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       
       // Verify in database
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: data.data.id },
-        select: { runBuild: true },
+        select: {run_build: true },
       });
       expect(task?.runBuild).toBe(true);
     });
 
     test("creates ticket with runBuild set to false", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", runBuild: false },
+        { title: "Test Ticket",run_build: false },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       
       // Verify in database
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: data.data.id },
-        select: { runBuild: true },
+        select: {run_build: true },
       });
       expect(task?.runBuild).toBe(false);
     });
 
     test("creates ticket with runTestSuite set to true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", runTestSuite: true },
+        { title: "Test Ticket",run_test_suite: true },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       
       // Verify in database
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: data.data.id },
-        select: { runTestSuite: true },
+        select: {run_test_suite: true },
       });
       expect(task?.runTestSuite).toBe(true);
     });
 
     test("creates ticket with runTestSuite set to false", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", runTestSuite: false },
+        { title: "Test Ticket",run_test_suite: false },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       
       // Verify in database
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: data.data.id },
-        select: { runTestSuite: true },
+        select: {run_test_suite: true },
       });
       expect(task?.runTestSuite).toBe(false);
     });
 
     test("defaults runBuild and runTestSuite to true when not provided", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1055,14 +914,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       
       // Verify in database that defaults are applied
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: data.data.id },
-        select: { runBuild: true, runTestSuite: true },
+        select: {run_build: true,run_test_suite: true },
       });
       expect(task?.runBuild).toBe(true);
       expect(task?.runTestSuite).toBe(true);
@@ -1070,18 +929,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("creates ticket without optional phaseId", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1091,7 +946,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.phaseId).toBeNull();
@@ -1102,25 +957,20 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
     test("persists ticket to database with all relationships", async () => {
       const user = await createTestUser();
       const assignee = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: "Test Phase",
-          featureId: feature.id,
+          name: "Test Phase",feature_id: feature.id,
           order: 0,
         },
       });
@@ -1131,18 +981,16 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
           title: "Persisted Ticket",
           description: "Test description",
           status: "IN_PROGRESS",
-          priority: "HIGH",
-          phaseId: phase.id,
-          assigneeId: assignee.id,
+          priority: "HIGH",phase_id: phase.id,assignee_id: assignee.id,
         },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
 
-      const dbTicket = await db.task.findUnique({
+      const dbTicket = await db.tasks.findUnique({
         where: { id: data.data.id },
         include: {
           feature: true,
@@ -1169,18 +1017,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("generates unique bountyCode for each ticket", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1196,8 +1040,8 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response1 = await POST(request1, { params: Promise.resolve({ featureId: feature.id }) });
-      const response2 = await POST(request2, { params: Promise.resolve({ featureId: feature.id }) });
+      const response1 = await POST(request1, { params: Promise.resolve({feature_id: feature.id }) });
+      const response2 = await POST(request2, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data1 = await expectSuccess(response1, 201);
       const data2 = await expectSuccess(response2, 201);
@@ -1211,18 +1055,14 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
   describe("Response Format", () => {
     test("returns 201 status on success", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1232,25 +1072,21 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       expect(response.status).toBe(201);
     });
 
     test("returns TicketResponse format with success and data", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1260,7 +1096,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.success).toBe(true);
@@ -1276,28 +1112,24 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
     test("populates assignee relationship in response", async () => {
       const user = await createTestUser();
       const assignee = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", assigneeId: assignee.id },
+        { title: "Test Ticket",assignee_id: assignee.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.assignee).toBeDefined();
@@ -1308,36 +1140,31 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
     test("populates phase relationship in response", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: "Test Phase",
-          featureId: feature.id,
+          name: "Test Phase",feature_id: feature.id,
           order: 0,
         },
       });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
-        { title: "Test Ticket", phaseId: phase.id },
+        { title: "Test Ticket",phase_id: phase.id },
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.phase).toBeDefined();

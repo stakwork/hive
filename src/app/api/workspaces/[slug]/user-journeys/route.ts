@@ -156,7 +156,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { slug } = await params;
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -206,7 +206,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const repository = workspace.repositories[0] || null;
 
     // 1. Fetch ALL existing tasks (including archived ones for matching)
-    const allTasks = await db.task.findMany({
+    const allTasks = await db.tasks.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
@@ -324,7 +324,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (tasksToUpdate.length > 0) {
       await Promise.all(
         tasksToUpdate.map((task) =>
-          db.task.update({
+          db.tasks.update({
             where: { id: task.id },
             data: {
               status: TaskStatus.DONE,
@@ -340,7 +340,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     // Create new tasks for unmatched graph files (manually added tests)
     for (const { filePath, nodes } of tasksToCreate) {
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: nodes[0].properties.name,
           description: `E2E test file: ${filePath}`,
@@ -363,7 +363,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     // 5. Refresh tasks after sync (exclude archived)
-    const updatedTasks = await db.task.findMany({
+    const updatedTasks = await db.tasks.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
@@ -390,7 +390,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // 6. Check for video artifacts (separate optimized query)
     const taskIds = updatedTasks.map(t => t.id);
     console.log("[user-journeys] Checking videos for task IDs:", taskIds);
-    const tasksWithVideos = await db.task.findMany({
+    const tasksWithVideos = await db.tasks.findMany({
       where: {
         id: { in: taskIds }
       },

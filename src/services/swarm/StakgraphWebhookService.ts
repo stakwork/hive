@@ -82,7 +82,7 @@ export class StakgraphWebhookService {
     id: string;
     workspaceId: string;
   } | null> {
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { ingestRefId: requestId },
       select: {
         id: true,

@@ -15,21 +15,16 @@ vi.mock("next-auth/next", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findUnique: vi.fn(),
-    },
-    swarm: {
+    },swarms: {
       findUnique: vi.fn(),
-    },
-    repository: {
+    },repositories: {
       findFirst: vi.fn(),
-    },
-    task: {
+    },tasks: {
       create: vi.fn(),
       update: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -122,17 +117,17 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     vi.mocked(config).STAKWORK_BASE_URL = "https://test.stakwork.com";
 
     // Mock database operations
-    vi.mocked(db.workspace.findUnique).mockResolvedValue({
+    vi.mocked(db.workspaces.findUnique).mockResolvedValue({
       id: mockWorkspaceId,
       slug: "test-workspace",
     } as any);
 
-    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm as any);
+    vi.mocked(db.swarms.findUnique).mockResolvedValue(mockSwarm as any);
 
-    vi.mocked(db.repository.findFirst).mockResolvedValue(mockRepository as any);
+    vi.mocked(db.repositories.findFirst).mockResolvedValue(mockRepository as any);
 
     // Mock task creation with dynamic return based on input
-    vi.mocked(db.task.create).mockImplementation((args: any) => {
+    vi.mocked(db.tasks.create).mockImplementation((args: any) => {
       return Promise.resolve({
         id: mockTaskId,
         title: args.data.title,
@@ -143,7 +138,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
       }) as any;
     });
     
-    vi.mocked(db.task.update).mockImplementation((args: any) => {
+    vi.mocked(db.tasks.update).mockImplementation((args: any) => {
       return Promise.resolve({
         id: args.where.id,
         title: mockTestName,
@@ -155,7 +150,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     // Mock chat message creation
-    vi.mocked(db.chatMessage.create).mockResolvedValue({
+    vi.mocked(db.chat_messages.create).mockResolvedValue({
       id: "message-id",
       taskId: mockTaskId,
     } as any);
@@ -343,7 +338,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
 
       await POST(request);
 
-      expect(db.task.update).toHaveBeenCalledWith({
+      expect(db.tasks.update).toHaveBeenCalledWith({
         where: { id: mockTaskId },
         data: { stakworkProjectId: 999 },
       });
@@ -522,7 +517,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     it("should default poolName to swarm.id when poolName is null", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValueOnce({
+      vi.mocked(db.swarms.findUnique).mockResolvedValueOnce({
         ...mockSwarm,
         poolName: null,
       } as any);
@@ -559,7 +554,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     it("should handle missing repository gracefully", async () => {
-      vi.mocked(db.repository.findFirst).mockResolvedValueOnce(null);
+      vi.mocked(db.repositories.findFirst).mockResolvedValueOnce(null);
 
       const request = createMockRequest({
         message: mockMessage,
@@ -626,7 +621,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
 
       await POST(request);
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             sourceType: "USER_JOURNEY",
@@ -644,7 +639,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
 
       await POST(request);
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: "TODO",
@@ -663,7 +658,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
 
       await POST(request);
 
-      expect(db.chatMessage.create).toHaveBeenCalledWith(
+      expect(db.chat_messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             taskId: mockTaskId,
@@ -675,7 +670,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     it("should continue if ChatMessage creation fails (non-fatal)", async () => {
-      vi.mocked(db.chatMessage.create).mockRejectedValueOnce(
+      vi.mocked(db.chat_messages.create).mockRejectedValueOnce(
         new Error("Database error")
       );
 
@@ -694,7 +689,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     it("should continue if task update with stakworkProjectId fails (non-fatal)", async () => {
-      vi.mocked(db.task.update).mockRejectedValueOnce(
+      vi.mocked(db.tasks.update).mockRejectedValueOnce(
         new Error("Database error")
       );
 
@@ -761,7 +756,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
     });
 
     it("should return 404 when swarm not found", async () => {
-      vi.mocked(db.swarm.findUnique).mockResolvedValueOnce(null);
+      vi.mocked(db.swarms.findUnique).mockResolvedValueOnce(null);
 
       const request = createMockRequest({
         message: mockMessage,

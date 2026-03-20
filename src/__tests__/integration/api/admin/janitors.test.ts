@@ -25,11 +25,10 @@ describe("Admin Janitors API", () => {
     });
 
     // Create test workspace
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: regularUser.id,
+        slug: "test-workspace",owner_id: regularUser.id,
       },
       select: {
         id: true,
@@ -110,8 +109,8 @@ describe("Admin Janitors API", () => {
       expect(typeof data.config.prUseRebaseForUpdates).toBe("boolean");
 
       // Verify config was created in database
-      const dbConfig = await db.janitorConfig.findUnique({
-        where: { workspaceId: testWorkspace.id },
+      const dbConfig = await db.janitor_configs.findUnique({
+        where: {workspace_id: testWorkspace.id },
       });
       expect(dbConfig).toBeDefined();
       expect(dbConfig?.workspaceId).toBe(testWorkspace.id);
@@ -119,11 +118,8 @@ describe("Admin Janitors API", () => {
 
     it("should return existing janitor config if already created", async () => {
       // Create config first
-      await db.janitorConfig.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          unitTestsEnabled: true,
-          prMonitorEnabled: true,
+      await db.janitor_configs.create({
+        data: {workspace_id: testWorkspace.id,unit_tests_enabled: true,pr_monitor_enabled: true,
         },
       });
 
@@ -148,9 +144,8 @@ describe("Admin Janitors API", () => {
   describe("PUT /api/admin/workspaces/[id]/janitors", () => {
     beforeEach(async () => {
       // Ensure config exists for PUT tests
-      await db.janitorConfig.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.janitor_configs.create({
+        data: {workspace_id: testWorkspace.id,
         },
       });
     });
@@ -159,7 +154,7 @@ describe("Admin Janitors API", () => {
       const request = createAuthenticatedPutRequest(
         `/api/admin/workspaces/${testWorkspace.id}/janitors`,
         regularUser,
-        { unitTestsEnabled: true }
+        {unit_tests_enabled: true }
       );
       const { PUT } = await import(
         "@/app/api/admin/workspaces/[id]/janitors/route"
@@ -177,7 +172,7 @@ describe("Admin Janitors API", () => {
       const request = createAuthenticatedPutRequest(
         `/api/admin/workspaces/${testWorkspace.id}/janitors`,
         superAdminUser,
-        { unitTestsEnabled: true }
+        {unit_tests_enabled: true }
       );
       const { PUT } = await import(
         "@/app/api/admin/workspaces/[id]/janitors/route"
@@ -192,8 +187,8 @@ describe("Admin Janitors API", () => {
       expect(data.config.unitTestsEnabled).toBe(true);
 
       // Verify database was updated
-      const dbConfig = await db.janitorConfig.findUnique({
-        where: { workspaceId: testWorkspace.id },
+      const dbConfig = await db.janitor_configs.findUnique({
+        where: {workspace_id: testWorkspace.id },
       });
       expect(dbConfig?.unitTestsEnabled).toBe(true);
     });
@@ -202,10 +197,8 @@ describe("Admin Janitors API", () => {
       const request = createAuthenticatedPutRequest(
         `/api/admin/workspaces/${testWorkspace.id}/janitors`,
         superAdminUser,
-        {
-          unitTestsEnabled: true,
-          integrationTestsEnabled: true,
-          prMonitorEnabled: false,
+        {unit_tests_enabled: true,
+          integrationTestsEnabled: true,pr_monitor_enabled: false,
         }
       );
       const { PUT } = await import(
@@ -222,8 +215,8 @@ describe("Admin Janitors API", () => {
       expect(data.config.prMonitorEnabled).toBe(false);
 
       // Verify database was updated
-      const dbConfig = await db.janitorConfig.findUnique({
-        where: { workspaceId: testWorkspace.id },
+      const dbConfig = await db.janitor_configs.findUnique({
+        where: {workspace_id: testWorkspace.id },
       });
       expect(dbConfig?.unitTestsEnabled).toBe(true);
       expect(dbConfig?.integrationTestsEnabled).toBe(true);
@@ -231,17 +224,14 @@ describe("Admin Janitors API", () => {
     });
 
     it("should update all 15 boolean fields", async () => {
-      const allFields = {
-        unitTestsEnabled: true,
+      const allFields = {unit_tests_enabled: true,
         integrationTestsEnabled: true,
         e2eTestsEnabled: true,
         securityReviewEnabled: true,
         mockGenerationEnabled: true,
         generalRefactoringEnabled: true,
         taskCoordinatorEnabled: true,
-        recommendationSweepEnabled: true,
-        ticketSweepEnabled: true,
-        prMonitorEnabled: true,
+        recommendationSweepEnabled: true,ticket_sweep_enabled: true,pr_monitor_enabled: true,
         prConflictFixEnabled: true,
         prCiFailureFixEnabled: true,
         prOutOfDateFixEnabled: true,
@@ -270,8 +260,8 @@ describe("Admin Janitors API", () => {
       });
 
       // Verify database was updated
-      const dbConfig = await db.janitorConfig.findUnique({
-        where: { workspaceId: testWorkspace.id },
+      const dbConfig = await db.janitor_configs.findUnique({
+        where: {workspace_id: testWorkspace.id },
       });
       Object.entries(allFields).forEach(([key, value]) => {
         expect(dbConfig?.[key as keyof typeof dbConfig]).toBe(value);
@@ -282,7 +272,7 @@ describe("Admin Janitors API", () => {
       const request = createAuthenticatedPutRequest(
         `/api/admin/workspaces/${testWorkspace.id}/janitors`,
         superAdminUser,
-        { unitTestsEnabled: "invalid" } // Should be boolean
+        {unit_tests_enabled: "invalid" } // Should be boolean
       );
       const { PUT } = await import(
         "@/app/api/admin/workspaces/[id]/janitors/route"

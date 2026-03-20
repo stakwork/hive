@@ -16,7 +16,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
   beforeEach(async () => {
     // Clean up any existing test data
     await db.sphinxChallenge.deleteMany({});
-    await db.account.deleteMany({ where: { provider: "sphinx" } });
+    await db.accounts.deleteMany({ where: { provider: "sphinx" } });
   });
 
   describe("Authentication Tests", () => {
@@ -182,7 +182,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should successfully link pubkey to user and return JWT", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -201,7 +201,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should encrypt and store pubkey in user record", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       await invokeRoute(POST, {
         method: "POST",
@@ -212,7 +212,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
         },
       });
 
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUserId },
       });
 
@@ -229,7 +229,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should create Account record with provider sphinx", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       await invokeRoute(POST, {
         method: "POST",
@@ -240,9 +240,8 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
         },
       });
 
-      const account = await db.account.findFirst({
-        where: {
-          userId: testUserId,
+      const account = await db.accounts.findFirst({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });
@@ -254,7 +253,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should return valid JWT that can be decoded", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -296,7 +295,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
         },
       });
 
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -309,7 +308,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
 
       expect(result.status).toBe(200);
 
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUserId },
       });
 
@@ -318,7 +317,7 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should delete used challenge after successful linking", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       await invokeRoute(POST, {
         method: "POST",
@@ -337,15 +336,13 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
     });
 
     it("should update existing account if already linked", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       // Create initial account
-      await db.account.create({
-        data: {
-          userId: testUserId,
+      await db.accounts.create({
+        data: {user_id: testUserId,
           type: "oauth",
-          provider: "sphinx",
-          providerAccountId: "old-pubkey",
+          provider: "sphinx",provider_account_id: "old-pubkey",
         },
       });
 
@@ -358,9 +355,8 @@ describe("POST /api/auth/sphinx/link Integration Tests", () => {
         },
       });
 
-      const accounts = await db.account.findMany({
-        where: {
-          userId: testUserId,
+      const accounts = await db.accounts.findMany({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });

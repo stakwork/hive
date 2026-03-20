@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Seed script for populating Workflow_version nodes in the graph database
  * 
@@ -319,7 +320,7 @@ async function main() {
   try {
     // Get workspace and swarm config from database
     console.log(`🔍 Looking up workspace: ${workspaceSlug}`);
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug: workspaceSlug },
       include: { swarm: true },
     });

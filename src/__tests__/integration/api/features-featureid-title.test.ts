@@ -48,16 +48,13 @@ async function createFeatureTestSetup() {
       data: {
         id: generateUniqueId("workspace"),
         name: "Test Workspace",
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: owner.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: owner.id,
       },
     });
 
     await tx.workspaceMember.create({
       data: {
-        id: generateUniqueId("workspaceMember"),
-        userId: owner.id,
-        workspaceId: workspace.id,
+        id: generateUniqueId("workspaceMember"),user_id: owner.id,workspace_id: workspace.id,
         role: "OWNER",
       },
     });
@@ -66,10 +63,7 @@ async function createFeatureTestSetup() {
       data: {
         id: generateUniqueId("feature"),
         title: "Original Feature Title",
-        brief: "Test feature brief",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        brief: "Test feature brief",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
@@ -125,7 +119,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectUnauthorized(response);
@@ -141,7 +135,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectUnauthorized(response);
@@ -165,7 +159,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -189,7 +183,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -207,7 +201,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(400);
@@ -227,7 +221,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: nonExistentId }),
+        params: Promise.resolve({feature_id: nonExistentId }),
       });
 
       expect(response.status).toBe(404);
@@ -248,7 +242,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -257,7 +251,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       expect(data.data.title).toBe(newTitle);
 
       // Verify database persistence
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
       expect(updatedFeature?.title).toBe(newTitle);
@@ -275,7 +269,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -283,7 +277,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       expect(data.data.title).toBe(expectedTitle);
 
       // Verify database persistence
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
       expect(updatedFeature?.title).toBe(expectedTitle);
@@ -302,7 +296,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -312,7 +306,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       expect(mockPusherTrigger).toHaveBeenCalledWith(
         `feature-${feature.id}`,
         "feature-title-update",
-        { featureId: feature.id, newTitle }
+        {feature_id: feature.id, newTitle }
       );
     });
 
@@ -327,7 +321,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -349,7 +343,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
@@ -374,7 +368,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Should still succeed even if Pusher fails
@@ -384,7 +378,7 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       expect(data.data.title).toBe(newTitle);
 
       // Verify database was updated
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
       expect(updatedFeature?.title).toBe(newTitle);
@@ -405,13 +399,13 @@ describe("PUT /api/features/[featureId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response.status).toBe(200);
 
       // Verify only title changed
-      const updatedFeature = await db.feature.findUnique({
+      const updatedFeature = await db.features.findUnique({
         where: { id: feature.id },
       });
 

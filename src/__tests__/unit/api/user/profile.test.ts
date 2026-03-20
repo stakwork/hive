@@ -9,8 +9,7 @@ vi.mock("next-auth", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: {
+  db: {users: {
       update: vi.fn(),
     },
   },
@@ -47,12 +46,12 @@ describe("PATCH /api/user/profile", () => {
 
     expect(response.status).toBe(401);
     expect(data.error).toBe("Unauthorized");
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   test("updates sphinxAlias successfully", async () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.user.update).mockResolvedValue({
+    vi.mocked(db.users.update).mockResolvedValue({
       id: "test-user-id",
       sphinxAlias: "testalias",
     } as any);
@@ -67,7 +66,7 @@ describe("PATCH /api/user/profile", () => {
 
     expect(response.status).toBe(200);
     expect(data.sphinxAlias).toBe("testalias");
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "test-user-id" },
       data: { sphinxAlias: "testalias" },
       select: { sphinxAlias: true },
@@ -76,7 +75,7 @@ describe("PATCH /api/user/profile", () => {
 
   test("trims whitespace from sphinxAlias", async () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.user.update).mockResolvedValue({
+    vi.mocked(db.users.update).mockResolvedValue({
       id: "test-user-id",
       sphinxAlias: "testalias",
     } as any);
@@ -90,7 +89,7 @@ describe("PATCH /api/user/profile", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "test-user-id" },
       data: { sphinxAlias: "testalias" },
       select: { sphinxAlias: true },
@@ -99,7 +98,7 @@ describe("PATCH /api/user/profile", () => {
 
   test("converts empty string to null", async () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.user.update).mockResolvedValue({
+    vi.mocked(db.users.update).mockResolvedValue({
       id: "test-user-id",
       sphinxAlias: null,
     } as any);
@@ -114,7 +113,7 @@ describe("PATCH /api/user/profile", () => {
 
     expect(response.status).toBe(200);
     expect(data.sphinxAlias).toBeNull();
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "test-user-id" },
       data: { sphinxAlias: null },
       select: { sphinxAlias: true },
@@ -123,7 +122,7 @@ describe("PATCH /api/user/profile", () => {
 
   test("accepts null sphinxAlias", async () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.user.update).mockResolvedValue({
+    vi.mocked(db.users.update).mockResolvedValue({
       id: "test-user-id",
       sphinxAlias: null,
     } as any);
@@ -153,7 +152,7 @@ describe("PATCH /api/user/profile", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe("sphinxAlias must be a string");
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   test("returns 400 for sphinxAlias exceeding 50 characters", async () => {
@@ -170,12 +169,12 @@ describe("PATCH /api/user/profile", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe("sphinxAlias must be 50 characters or less");
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   test("returns 500 on database error", async () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.user.update).mockRejectedValue(new Error("DB error"));
+    vi.mocked(db.users.update).mockRejectedValue(new Error("DB error"));
 
     const request = new NextRequest("http://localhost/api/user/profile", {
       method: "PATCH",

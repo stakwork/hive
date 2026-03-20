@@ -26,7 +26,7 @@ describe('GET /api/github/pr-metrics', () => {
     vi.clearAllMocks();
     
     // Create test user
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: 'test@example.com',
         name: 'Test User',
@@ -34,16 +34,15 @@ describe('GET /api/github/pr-metrics', () => {
     });
 
     // Create test workspace
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: 'Test Workspace',
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: testUser.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: testUser.id,
       },
     });
 
     // Create test task
-    testTask = await db.task.create({
+    testTask = await db.tasks.create({
       data: {
         title: 'Test Task',
         workspace: {
@@ -59,9 +58,8 @@ describe('GET /api/github/pr-metrics', () => {
     });
 
     // Create test chat message
-    testMessage = await db.chatMessage.create({
-      data: {
-        taskId: testTask.id,
+    testMessage = await db.chat_messages.create({
+      data: {task_id: testTask.id,
         message: 'Test message',
         role: 'USER',
       },
@@ -76,8 +74,7 @@ describe('GET /api/github/pr-metrics', () => {
       // Mock unauthenticated session
       mockSessionAs(null);
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -100,8 +97,7 @@ describe('GET /api/github/pr-metrics', () => {
 
   describe('Zero PRs Scenario', () => {
     test('should return null metrics when no PR artifacts exist', async () => {
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -125,7 +121,7 @@ describe('GET /api/github/pr-metrics', () => {
       const mergedTime = new Date(baseTime); // Now (2 hours to merge)
       const expectedMergeTimeHours = 2;
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           id: generateUniqueId(),
           messageId: testMessage.id,
@@ -134,14 +130,11 @@ describe('GET /api/github/pr-metrics', () => {
             repo: 'test/repo',
             url: 'https://github.com/test/repo/pull/1',
             status: 'DONE',
-          },
-          createdAt: createdTime,
-          updatedAt: mergedTime,
+          },created_at: createdTime,updated_at: mergedTime,
         },
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -167,7 +160,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedPrCount = 2; // Two PRs created
       const expectedMergedCount = 1; // Only one is merged
 
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           {
             id: generateUniqueId(),
@@ -177,9 +170,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: pr1Created,
-            updatedAt: pr1Merged,
+            },created_at: pr1Created,updated_at: pr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -189,15 +180,12 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'OPEN',
-            },
-            createdAt: pr2Created,
-            updatedAt: pr2Created,
+            },created_at: pr2Created,updated_at: pr2Created,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -236,7 +224,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedSuccessRate = 100; // 3/3 * 100
       const expectedAvgMergeTime = 4; // (2 + 4 + 6) / 3 = 4
 
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           {
             id: generateUniqueId(),
@@ -246,9 +234,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: pr1Created,
-            updatedAt: pr1Merged,
+            },created_at: pr1Created,updated_at: pr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -258,9 +244,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: pr2Created,
-            updatedAt: pr2Merged,
+            },created_at: pr2Created,updated_at: pr2Merged,
           },
           {
             id: generateUniqueId(),
@@ -270,15 +254,12 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/3',
               status: 'DONE',
-            },
-            createdAt: pr3Created,
-            updatedAt: pr3Merged,
+            },created_at: pr3Created,updated_at: pr3Merged,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -320,7 +301,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedSuccessRate = 40; // 2/5 * 100
       const expectedAvgMergeTime = 2; // (1 + 3) / 2 = 2
 
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           {
             id: generateUniqueId(),
@@ -330,9 +311,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: pr1Created,
-            updatedAt: pr1Merged,
+            },created_at: pr1Created,updated_at: pr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -342,9 +321,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: pr2Created,
-            updatedAt: pr2Merged,
+            },created_at: pr2Created,updated_at: pr2Merged,
           },
           {
             id: generateUniqueId(),
@@ -354,9 +331,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/3',
               status: 'OPEN',
-            },
-            createdAt: pr3Created,
-            updatedAt: pr3Created,
+            },created_at: pr3Created,updated_at: pr3Created,
           },
           {
             id: generateUniqueId(),
@@ -366,9 +341,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/4',
               status: 'OPEN',
-            },
-            createdAt: pr4Created,
-            updatedAt: pr4Created,
+            },created_at: pr4Created,updated_at: pr4Created,
           },
           {
             id: generateUniqueId(),
@@ -378,15 +351,12 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/5',
               status: 'CLOSED',
-            },
-            createdAt: pr5Created,
-            updatedAt: pr5Closed,
+            },created_at: pr5Created,updated_at: pr5Closed,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -431,7 +401,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedSuccessRate = Math.round((expectedMergedInWindow / expectedPrsInWindow) * 100 * 100) / 100; // 2/3 * 100 = 66.67
 
       // Create PRs inside and outside the 72-hour window
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           // Inside window (should be included)
           {
@@ -442,9 +412,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: pr1InsideCreated,
-            updatedAt: pr1InsideMerged,
+            },created_at: pr1InsideCreated,updated_at: pr1InsideMerged,
           },
           {
             id: generateUniqueId(),
@@ -454,9 +422,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: pr2InsideCreated,
-            updatedAt: pr2InsideMerged,
+            },created_at: pr2InsideCreated,updated_at: pr2InsideMerged,
           },
           {
             id: generateUniqueId(),
@@ -466,9 +432,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/3',
               status: 'OPEN',
-            },
-            createdAt: pr3InsideCreated,
-            updatedAt: pr3InsideCreated,
+            },created_at: pr3InsideCreated,updated_at: pr3InsideCreated,
           },
           // Outside window (should be excluded)
           {
@@ -479,9 +443,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/4',
               status: 'DONE',
-            },
-            createdAt: pr4OutsideCreated,
-            updatedAt: pr4OutsideMerged,
+            },created_at: pr4OutsideCreated,updated_at: pr4OutsideMerged,
           },
           {
             id: generateUniqueId(),
@@ -491,15 +453,12 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/5',
               status: 'DONE',
-            },
-            createdAt: pr5OutsideCreated,
-            updatedAt: pr5OutsideMerged,
+            },created_at: pr5OutsideCreated,updated_at: pr5OutsideMerged,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -516,16 +475,15 @@ describe('GET /api/github/pr-metrics', () => {
   describe('Workspace Isolation', () => {
     test('should only return PRs from specified workspace', async () => {
       // Create another workspace
-      const otherWorkspace = await db.workspace.create({
+      const otherWorkspace = await db.workspaces.create({
         data: {
           name: 'Other Workspace',
-          slug: `other-workspace-${Date.now()}`,
-          ownerId: testUser.id,
+          slug: `other-workspace-${Date.now()}`,owner_id: testUser.id,
         },
       });
 
       // Create task in other workspace
-      const otherTask = await db.task.create({
+      const otherTask = await db.tasks.create({
         data: {
           title: 'Other Task',
           workspace: {
@@ -541,9 +499,8 @@ describe('GET /api/github/pr-metrics', () => {
       });
 
       // Create message in other task
-      const otherMessage = await db.chatMessage.create({
-        data: {
-          taskId: otherTask.id,
+      const otherMessage = await db.chat_messages.create({
+        data: {task_id: otherTask.id,
           message: 'Other message',
           role: 'USER',
         },
@@ -572,7 +529,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedSuccessRate = Math.round((expectedMergedCount / expectedPrCount) * 100 * 100) / 100; // 2/3 * 100 = 66.67
 
       // Create PRs in both workspaces
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           // Test workspace PRs
           {
@@ -583,9 +540,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: testPr1Created,
-            updatedAt: testPr1Merged,
+            },created_at: testPr1Created,updated_at: testPr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -595,9 +550,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: testPr2Created,
-            updatedAt: testPr2Merged,
+            },created_at: testPr2Created,updated_at: testPr2Merged,
           },
           {
             id: generateUniqueId(),
@@ -607,9 +560,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/3',
               status: 'OPEN',
-            },
-            createdAt: testPr3Created,
-            updatedAt: testPr3Created,
+            },created_at: testPr3Created,updated_at: testPr3Created,
           },
           // Other workspace PRs (should be excluded)
           {
@@ -620,9 +571,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'other/repo',
               url: 'https://github.com/other/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: otherPr1Created,
-            updatedAt: otherPr1Merged,
+            },created_at: otherPr1Created,updated_at: otherPr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -632,15 +581,12 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'other/repo',
               url: 'https://github.com/other/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: otherPr2Created,
-            updatedAt: otherPr2Merged,
+            },created_at: otherPr2Created,updated_at: otherPr2Merged,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -678,7 +624,7 @@ describe('GET /api/github/pr-metrics', () => {
       const expectedMergedCount = 2; // Only merged PRs
       
       // Create various artifact types
-      await db.artifact.createMany({
+      await db.artifacts.createMany({
         data: [
           // PR artifacts (should be included)
           {
@@ -689,9 +635,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/1',
               status: 'DONE',
-            },
-            createdAt: pr1Created,
-            updatedAt: pr1Merged,
+            },created_at: pr1Created,updated_at: pr1Merged,
           },
           {
             id: generateUniqueId(),
@@ -701,9 +645,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/2',
               status: 'DONE',
-            },
-            createdAt: pr2Created,
-            updatedAt: pr2Merged,
+            },created_at: pr2Created,updated_at: pr2Merged,
           },
           {
             id: generateUniqueId(),
@@ -713,9 +655,7 @@ describe('GET /api/github/pr-metrics', () => {
               repo: 'test/repo',
               url: 'https://github.com/test/repo/pull/3',
               status: 'OPEN',
-            },
-            createdAt: pr3Created,
-            updatedAt: pr3Created,
+            },created_at: pr3Created,updated_at: pr3Created,
           },
           // Other artifact types (should be excluded)
           {
@@ -724,9 +664,7 @@ describe('GET /api/github/pr-metrics', () => {
             type: 'DIFF',
             content: {
               diffs: [],
-            },
-            createdAt: diffCreated,
-            updatedAt: diffCreated,
+            },created_at: diffCreated,updated_at: diffCreated,
           },
           {
             id: generateUniqueId(),
@@ -735,15 +673,12 @@ describe('GET /api/github/pr-metrics', () => {
             content: {
               content: 'const x = 1;',
               language: 'typescript',
-            },
-            createdAt: codeCreated,
-            updatedAt: codeCreated,
+            },created_at: codeCreated,updated_at: codeCreated,
           },
         ],
       });
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -759,13 +694,12 @@ describe('GET /api/github/pr-metrics', () => {
   describe('Error Handling', () => {
     test('should handle database errors gracefully', async () => {
       // Mock database error
-      const originalFindMany = db.artifact.findMany;
+      const originalFindMany = db.artifacts.findMany;
       vi.spyOn(db.artifact, 'findMany').mockRejectedValueOnce(
         new Error('Database connection failed')
       );
 
-      const request = createGetRequest('/api/github/pr-metrics', {
-        workspaceId: testWorkspace.id,
+      const request = createGetRequest('/api/github/pr-metrics', {workspace_id: testWorkspace.id,
       });
 
       const response = await GET(request);
@@ -775,7 +709,7 @@ describe('GET /api/github/pr-metrics', () => {
       expect(data.error).toBe('Internal server error');
 
       // Restore original function
-      db.artifact.findMany = originalFindMany;
+      db.artifacts.findMany = originalFindMany;
     });
   });
 });

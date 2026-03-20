@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const { workspaceId, taskId, featureId, pageUrl, limit = 50, cursor } = validatedData
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         id: workspaceId,
         deleted: false,
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch screenshots
-    const screenshots = await db.screenshot.findMany({
+    const screenshots = await db.screenshots.findMany({
       where,
       orderBy: {
         createdAt: 'desc',
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
           const urlExpiresAt = new Date()
           urlExpiresAt.setDate(urlExpiresAt.getDate() + 7)
 
-          await db.screenshot.update({
+          await db.screenshots.update({
             where: { id: screenshot.id },
             data: {
               s3Url,

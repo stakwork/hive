@@ -63,8 +63,7 @@ const DIAGRAM_RESULT = {
 };
 
 /** New Stakwork artifacts-array format */
-const DIAGRAM_RESULT_ARTIFACTS = {
-  featureId: null,
+const DIAGRAM_RESULT_ARTIFACTS = {feature_id: null,
   message: null,
   artifacts: [
     {
@@ -88,7 +87,7 @@ function makeWebhookPayload(projectId: number, result: unknown = DIAGRAM_RESULT)
 }
 
 async function createUser() {
-  return db.user.create({
+  return db.users.create({
     data: {
       id: generateUniqueId("user"),
       email: `user-${generateUniqueId()}@test.com`,
@@ -98,7 +97,7 @@ async function createUser() {
 }
 
 async function createWorkspace(ownerId: string) {
-  return db.workspace.create({
+  return db.workspaces.create({
     data: {
       name: `Workspace ${generateUniqueId()}`,
       slug: generateUniqueSlug("ws"),
@@ -108,7 +107,7 @@ async function createWorkspace(ownerId: string) {
 }
 
 async function createWhiteboardWithElements(workspaceId: string, elements: unknown[] = [{ id: "el1", type: "rectangle" }]) {
-  return db.whiteboard.create({
+  return db.whiteboards.create({
     data: {
       name: "Test Whiteboard",
       workspaceId,
@@ -119,21 +118,18 @@ async function createWhiteboardWithElements(workspaceId: string, elements: unkno
   });
 }
 
-async function createFeatureWithWhiteboard(workspaceId: string, ownerId: string, elements: unknown[] = [{ id: "el1" }]) {
-  const feature = await db.feature.create({
+async function createFeatureWithWhiteboard(workspaceId: string,owner_id: string, elements: unknown[] = [{ id: "el1" }]) {
+  const feature = await db.features.create({
     data: {
       title: `Feature ${generateUniqueId()}`,
-      workspaceId,
-      createdById: ownerId,
-      updatedById: ownerId,
+      workspaceId,created_by_id: ownerId,updated_by_id: ownerId,
     },
   });
 
-  const whiteboard = await db.whiteboard.create({
+  const whiteboard = await db.whiteboards.create({
     data: {
       name: `${feature.title} - Architecture`,
-      workspaceId,
-      featureId: feature.id,
+      workspaceId,feature_id: feature.id,
       elements: elements as never,
       appState: {},
       files: {},
@@ -144,7 +140,7 @@ async function createFeatureWithWhiteboard(workspaceId: string, ownerId: string,
 }
 
 async function createVersion(whiteboardId: string, label: string) {
-  return db.whiteboardVersion.create({
+  return db.whiteboard_versions.create({
     data: {
       whiteboardId,
       elements: [{ id: "snap-el" }] as never,
@@ -158,14 +154,11 @@ async function createVersion(whiteboardId: string, label: string) {
 /** Creates a StakworkRun and returns it along with its projectId */
 async function createDiagramRun(workspaceId: string, opts: { whiteboardId?: string; featureId?: string } = {}) {
   const projectId = Math.floor(Math.random() * 1_000_000) + 1;
-  const run = await db.stakworkRun.create({
+  const run = await db.stakwork_runs.create({
     data: {
       type: StakworkRunType.DIAGRAM_GENERATION,
-      workspaceId,
-      featureId: opts.featureId ?? null,
-      status: WorkflowStatus.IN_PROGRESS,
-      webhookUrl: `http://localhost/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${workspaceId}${opts.whiteboardId ? `&whiteboard_id=${opts.whiteboardId}` : ""}${opts.featureId ? `&feature_id=${opts.featureId}` : ""}`,
-      dataType: "string",
+      workspaceId,feature_id: opts.featureId ?? null,
+      status: WorkflowStatus.IN_PROGRESS,webhook_url: `http://localhost/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${workspaceId}${opts.whiteboardId ? `&whiteboard_id=${opts.whiteboardId}` : ""}${opts.featureId ? `&feature_id=${opts.featureId}` : ""}`,data_type: "string",
       projectId,
     },
   });
@@ -185,13 +178,13 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
 
   afterEach(async () => {
     // Clean up in dependency order
-    await db.whiteboardVersion.deleteMany({ where: { whiteboard: { workspaceId: workspace.id } } });
-    await db.whiteboardMessage.deleteMany({ where: { whiteboard: { workspaceId: workspace.id } } });
-    await db.stakworkRun.deleteMany({ where: { workspaceId: workspace.id } });
-    await db.whiteboard.deleteMany({ where: { workspaceId: workspace.id } });
-    await db.feature.deleteMany({ where: { workspaceId: workspace.id } });
-    await db.workspace.delete({ where: { id: workspace.id } });
-    await db.user.delete({ where: { id: user.id } });
+    await db.whiteboard_versions.deleteMany({ where: { whiteboard: {workspace_id: workspace.id } } });
+    await db.whiteboard_messages.deleteMany({ where: { whiteboard: {workspace_id: workspace.id } } });
+    await db.stakwork_runs.deleteMany({ where: {workspace_id: workspace.id } });
+    await db.whiteboards.deleteMany({ where: {workspace_id: workspace.id } });
+    await db.features.deleteMany({ where: {workspace_id: workspace.id } });
+    await db.workspaces.delete({ where: { id: workspace.id } });
+    await db.users.delete({ where: { id: user.id } });
   });
 
   // ── Standalone path (whiteboard_id) ────────────────────────────────────────
@@ -207,7 +200,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -226,7 +219,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -249,9 +242,9 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
-        orderBy: { createdAt: "asc" },
+        orderBy: {created_at: "asc" },
       });
 
       // Should still be capped at 10
@@ -274,7 +267,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const version = await db.whiteboardVersion.findFirst({
+      const version = await db.whiteboard_versions.findFirst({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -288,7 +281,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
   describe("feature-linked path (feature_id)", () => {
     it("creates a snapshot when feature whiteboard already exists with elements", async () => {
       const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id);
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await processStakworkRunWebhook(makeWebhookPayload(projectId), {
         type: "DIAGRAM_GENERATION",
@@ -296,7 +289,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         feature_id: feature.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -306,7 +299,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
 
     it("does NOT create a snapshot when feature whiteboard has no elements", async () => {
       const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id, []);
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await processStakworkRunWebhook(makeWebhookPayload(projectId), {
         type: "DIAGRAM_GENERATION",
@@ -314,7 +307,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         feature_id: feature.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -323,15 +316,12 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
 
     it("does NOT create a snapshot when no whiteboard yet exists for the feature (first-time upsert)", async () => {
       // Feature with no linked whiteboard
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: `Feature ${generateUniqueId()}`,
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: `Feature ${generateUniqueId()}`,workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await processStakworkRunWebhook(makeWebhookPayload(projectId), {
         type: "DIAGRAM_GENERATION",
@@ -340,12 +330,12 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
       });
 
       // Whiteboard was created fresh — no versions should exist
-      const createdWhiteboard = await db.whiteboard.findUnique({
-        where: { featureId: feature.id },
+      const createdWhiteboard = await db.whiteboards.findUnique({
+        where: {feature_id: feature.id },
       });
       expect(createdWhiteboard).not.toBeNull();
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: createdWhiteboard!.id },
       });
       expect(versions).toHaveLength(0);
@@ -358,7 +348,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         await createVersion(whiteboard.id, `v${i}`);
       }
 
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await processStakworkRunWebhook(makeWebhookPayload(projectId), {
         type: "DIAGRAM_GENERATION",
@@ -366,9 +356,9 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         feature_id: feature.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
-        orderBy: { createdAt: "asc" },
+        orderBy: {created_at: "asc" },
       });
 
       expect(versions).toHaveLength(10);
@@ -382,7 +372,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         { id: "old-ai-el", type: "rectangle", customData: { source: "ai" } },
       ];
       const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id, mixedElements);
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await processStakworkRunWebhook(makeWebhookPayload(projectId), {
         type: "DIAGRAM_GENERATION",
@@ -390,7 +380,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         feature_id: feature.id,
       });
 
-      const updated = await db.whiteboard.findUnique({
+      const updated = await db.whiteboards.findUnique({
         where: { id: whiteboard.id },
         select: { elements: true },
       });
@@ -426,7 +416,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const updated = await db.whiteboard.findUnique({
+      const updated = await db.whiteboards.findUnique({
         where: { id: whiteboard.id },
         select: { elements: true },
       });
@@ -460,7 +450,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         })
       ).resolves.not.toThrow();
 
-      const updated = await db.whiteboard.findUnique({
+      const updated = await db.whiteboards.findUnique({
         where: { id: whiteboard.id },
         select: { elements: true },
       });
@@ -479,7 +469,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         whiteboard_id: whiteboard.id,
       });
 
-      const versions = await db.whiteboardVersion.findMany({
+      const versions = await db.whiteboard_versions.findMany({
         where: { whiteboardId: whiteboard.id },
       });
 
@@ -491,7 +481,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
 
     it("works via feature-linked path with artifacts format", async () => {
       const { feature, whiteboard } = await createFeatureWithWhiteboard(workspace.id, user.id);
-      const { projectId } = await createDiagramRun(workspace.id, { featureId: feature.id });
+      const { projectId } = await createDiagramRun(workspace.id, {feature_id: feature.id });
 
       await expect(
         processStakworkRunWebhook(makeWebhookPayload(projectId, DIAGRAM_RESULT_ARTIFACTS), {
@@ -501,7 +491,7 @@ describe("DIAGRAM_GENERATION webhook → whiteboard version snapshots", () => {
         })
       ).resolves.not.toThrow();
 
-      const updated = await db.whiteboard.findUnique({
+      const updated = await db.whiteboards.findUnique({
         where: { id: whiteboard.id },
         select: { elements: true },
       });

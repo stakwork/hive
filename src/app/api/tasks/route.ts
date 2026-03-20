@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         id: workspaceId,
         deleted: false,
@@ -242,7 +242,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [tasks, totalCount] = await Promise.all([
-      db.task.findMany({
+      db.tasks.findMany({
         where: whereClause,
         select: {
           id: true,
@@ -341,7 +341,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: limit,
       }),
-      db.task.count({
+      db.tasks.count({
         where: whereClause,
       }),
     ]);
@@ -450,7 +450,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug: workspaceSlug,
         deleted: false,
@@ -476,7 +476,7 @@ export async function POST(request: NextRequest) {
     const workspaceId = workspace.id;
 
     // Verify that the user exists in the database
-    const user = await db.user.findUnique({
+    const user = await db.users.findUnique({
       where: { id: userId },
     });
 
@@ -525,7 +525,7 @@ export async function POST(request: NextRequest) {
 
     // Validate assignee exists if provided
     if (assigneeId) {
-      const assignee = await db.user.findFirst({
+      const assignee = await db.users.findFirst({
         where: {
           id: assigneeId,
           deleted: false,
@@ -539,7 +539,7 @@ export async function POST(request: NextRequest) {
 
     // Validate repository exists and belongs to workspace if provided
     if (repositoryId) {
-      const repository = await db.repository.findFirst({
+      const repository = await db.repositories.findFirst({
         where: {
           id: repositoryId,
         },
@@ -567,7 +567,7 @@ export async function POST(request: NextRequest) {
     const taskModel = model && VALID_MODELS.includes(model) ? model : null;
 
     // Create the task
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         title: title.trim(),
         description: description?.trim() || null,

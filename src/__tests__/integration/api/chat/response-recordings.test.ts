@@ -52,8 +52,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
           id: generateUniqueId('workspace'),
           name: 'Test Workspace',
           slug: generateUniqueId('test-workspace'),
-          description: 'Test workspace description',
-          ownerId: testUser.id,
+          description: 'Test workspace description',owner_id: testUser.id,
         },
       });
 
@@ -62,11 +61,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
           id: generateUniqueId('task'),
           title: 'Test Task',
           description: 'Test task description',
-          status: 'TODO',
-          workspaceId: testWorkspace.id,
-          workflowStatus: 'PENDING',
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: 'TODO',workspace_id: testWorkspace.id,workflow_status: 'PENDING',created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -97,8 +92,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
       arrayBuffer: async () => fakeWebmBuffer.buffer,
     });
 
-    const request = createPostRequest('http://localhost/api/chat/response', {
-      taskId: testTaskId,
+    const request = createPostRequest('http://localhost/api/chat/response', {task_id: testTaskId,
       message: 'Test message with recording',
       recordings: [recordingUrl],
     });
@@ -119,8 +113,8 @@ describe('POST /api/chat/response - recordings integration tests', () => {
     );
 
     // Verify attachment was created in DB
-    const message = await db.chatMessage.findFirst({
-      where: { taskId: testTaskId },
+    const message = await db.chat_messages.findFirst({
+      where: {task_id: testTaskId },
       include: { attachments: true },
     });
 
@@ -151,8 +145,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
         arrayBuffer: async () => fakeWebmBuffer2.buffer,
       });
 
-    const request = createPostRequest('http://localhost/api/chat/response', {
-      taskId: testTaskId,
+    const request = createPostRequest('http://localhost/api/chat/response', {task_id: testTaskId,
       message: 'Test message with multiple recordings',
       recordings: [recordingUrl1, recordingUrl2],
     });
@@ -168,8 +161,8 @@ describe('POST /api/chat/response - recordings integration tests', () => {
     expect(mockS3Service.putObject).toHaveBeenCalledTimes(2);
 
     // Verify two attachments were created
-    const message = await db.chatMessage.findFirst({
-      where: { taskId: testTaskId },
+    const message = await db.chat_messages.findFirst({
+      where: {task_id: testTaskId },
       include: { attachments: true },
     });
 
@@ -196,8 +189,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
         arrayBuffer: async () => fakeWebmBuffer.buffer,
       });
 
-    const request = createPostRequest('http://localhost/api/chat/response', {
-      taskId: testTaskId,
+    const request = createPostRequest('http://localhost/api/chat/response', {task_id: testTaskId,
       message: 'Test message with one failing recording',
       recordings: [failingUrl, successUrl],
     });
@@ -213,8 +205,8 @@ describe('POST /api/chat/response - recordings integration tests', () => {
     expect(mockS3Service.putObject).toHaveBeenCalledTimes(1);
 
     // Verify only one attachment was created
-    const message = await db.chatMessage.findFirst({
-      where: { taskId: testTaskId },
+    const message = await db.chat_messages.findFirst({
+      where: {task_id: testTaskId },
       include: { attachments: true },
     });
 
@@ -224,8 +216,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
   });
 
   it('should not call S3 or create attachments when recordings array is empty', async () => {
-    const request = createPostRequest('http://localhost/api/chat/response', {
-      taskId: testTaskId,
+    const request = createPostRequest('http://localhost/api/chat/response', {task_id: testTaskId,
       message: 'Test message with no recordings',
       recordings: [],
     });
@@ -242,8 +233,8 @@ describe('POST /api/chat/response - recordings integration tests', () => {
     expect(mockFetch).not.toHaveBeenCalled();
 
     // Verify message was created but no attachments
-    const message = await db.chatMessage.findFirst({
-      where: { taskId: testTaskId },
+    const message = await db.chat_messages.findFirst({
+      where: {task_id: testTaskId },
       include: { attachments: true },
     });
 
@@ -283,8 +274,7 @@ describe('POST /api/chat/response - recordings integration tests', () => {
       arrayBuffer: async () => fakeWebmBuffer.buffer,
     });
 
-    const request = createPostRequest('http://localhost/api/chat/response', {
-      taskId: testTaskId,
+    const request = createPostRequest('http://localhost/api/chat/response', {task_id: testTaskId,
       message: 'Test message with both screenshot and recording',
       screenshots: [screenshotDataUrl],
       recordings: [recordingUrl],
@@ -302,8 +292,8 @@ describe('POST /api/chat/response - recordings integration tests', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Verify both attachments were created
-    const message = await db.chatMessage.findFirst({
-      where: { taskId: testTaskId },
+    const message = await db.chat_messages.findFirst({
+      where: {task_id: testTaskId },
       include: { attachments: true },
     });
 

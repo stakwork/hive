@@ -45,30 +45,25 @@ describe("Janitor Service", () => {
     vi.clearAllMocks();
     // Mock database methods manually
     Object.assign(db, {
-      $transaction: vi.fn((callback: any) => callback(mockedDb)),
-      janitorConfig: {
+      $transaction: vi.fn((callback: any) => callback(mockedDb)),janitor_configs: {
         findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
-      },
-      janitorRun: {
+      },janitor_runs: {
         create: vi.fn(),
         update: vi.fn(),
         findMany: vi.fn(),
         count: vi.fn(),
         updateMany: vi.fn(),
         findFirst: vi.fn(),
-      },
-      janitorRecommendation: {
+      },janitor_recommendations: {
         findMany: vi.fn(),
         count: vi.fn(),
         findUnique: vi.fn(),
         update: vi.fn(),
-      },
-      workspaceMember: {
+      },workspace_members: {
         findFirst: vi.fn(),
-      },
-      repository: {
+      },repositories: {
         findFirst: vi.fn(),
       },
     });
@@ -97,10 +92,10 @@ describe("Janitor Service", () => {
       const result = await getOrCreateJanitorConfig("test-workspace", "user-1");
 
       expect(validateWorkspaceAccess).toHaveBeenCalledWith("test-workspace", "user-1");
-      expect(db.janitorConfig.findUnique).toHaveBeenCalledWith({
+      expect(db.janitor_configs.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: "ws-1" },
       });
-      expect(db.janitorConfig.create).not.toHaveBeenCalled();
+      expect(db.janitor_configs.create).not.toHaveBeenCalled();
       expect(result).toEqual(mockConfig);
     });
 
@@ -119,10 +114,10 @@ describe("Janitor Service", () => {
 
       const result = await getOrCreateJanitorConfig("test-workspace", "user-1");
 
-      expect(db.janitorConfig.findUnique).toHaveBeenCalledWith({
+      expect(db.janitor_configs.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: "ws-1" },
       });
-      expect(db.janitorConfig.create).toHaveBeenCalledWith({
+      expect(db.janitor_configs.create).toHaveBeenCalledWith({
         data: { workspaceId: "ws-1" },
       });
       expect(result).toEqual(mockConfig);
@@ -143,7 +138,7 @@ describe("Janitor Service", () => {
 
       const result = await getOrCreateJanitorConfig("test-workspace", "user-1");
 
-      expect(db.janitorConfig.create).toHaveBeenCalledWith({
+      expect(db.janitor_configs.create).toHaveBeenCalledWith({
         data: { workspaceId: "ws-1" },
       });
       expect(result.ticketSweepEnabled).toBe(true);
@@ -163,7 +158,7 @@ describe("Janitor Service", () => {
         JANITOR_ERRORS.WORKSPACE_NOT_FOUND
       );
 
-      expect(db.janitorConfig.findUnique).not.toHaveBeenCalled();
+      expect(db.janitor_configs.findUnique).not.toHaveBeenCalled();
     });
 
     test("should throw error when user lacks read permission", async () => {
@@ -210,7 +205,7 @@ describe("Janitor Service", () => {
       const result = await updateJanitorConfig("test-workspace", "user-1", updateData);
 
       expect(validateWorkspaceAccess).toHaveBeenCalledWith("test-workspace", "user-1");
-      expect(db.janitorConfig.update).toHaveBeenCalledWith({
+      expect(db.janitor_configs.update).toHaveBeenCalledWith({
         where: { id: mockConfig.id },
         data: updateData,
       });
@@ -232,16 +227,16 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigNotFound(mockedDb);
-      vi.mocked(db.janitorConfig.create).mockResolvedValue(mockConfig);
+      vi.mocked(db.janitor_configs.create).mockResolvedValue(mockConfig);
       janitorMockSetup.mockConfigUpdate(mockedDb, updatedConfig);
 
       const updateData = { unitTestsEnabled: true };
       const result = await updateJanitorConfig("test-workspace", "user-1", updateData);
 
-      expect(db.janitorConfig.create).toHaveBeenCalledWith({
+      expect(db.janitor_configs.create).toHaveBeenCalledWith({
         data: { workspaceId: "ws-1" },
       });
-      expect(db.janitorConfig.update).toHaveBeenCalledWith({
+      expect(db.janitor_configs.update).toHaveBeenCalledWith({
         where: { id: mockConfig.id },
         data: updateData,
       });
@@ -263,7 +258,7 @@ describe("Janitor Service", () => {
         updateJanitorConfig("test-workspace", "user-1", { unitTestsEnabled: true })
       ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
 
-      expect(db.janitorConfig.findUnique).not.toHaveBeenCalled();
+      expect(db.janitor_configs.findUnique).not.toHaveBeenCalled();
     });
 
     test("should throw error when workspace not found", async () => {
@@ -299,14 +294,14 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create)
+      vi.mocked(db.janitor_runs.create)
         .mockResolvedValueOnce({
           ...mockRun,
           status: "PENDING",
           stakworkProjectId: null,
         } as any)
         .mockResolvedValueOnce(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue(mockRun as any);
 
       // Mock stakwork service
       const mockStakworkRequest = vi.fn().mockResolvedValue({
@@ -319,11 +314,11 @@ describe("Janitor Service", () => {
       const result = await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS");
 
       expect(validateWorkspaceAccess).toHaveBeenCalledWith("test-workspace", "user-1");
-      expect(db.janitorConfig.findUnique).toHaveBeenCalledWith({
+      expect(db.janitor_configs.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: "ws-1" },
       });
-      expect(db.janitorRun.create).toHaveBeenCalled();
-      expect(db.janitorRun.update).toHaveBeenCalledWith({
+      expect(db.janitor_runs.create).toHaveBeenCalled();
+      expect(db.janitor_runs.update).toHaveBeenCalledWith({
         where: { id: mockRun.id },
         data: {
           stakworkProjectId: 12345,
@@ -370,14 +365,14 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create)
+      vi.mocked(db.janitor_runs.create)
         .mockResolvedValueOnce({
           ...mockRun,
           status: "PENDING",
           stakworkProjectId: null,
         } as any)
         .mockResolvedValueOnce(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue(mockRun as any);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 12345 },
@@ -471,8 +466,8 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue({} as any);
+      vi.mocked(db.janitor_runs.create).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue({} as any);
 
       // Mock stakwork service failure
       vi.mocked(stakworkService).mockReturnValue({
@@ -483,7 +478,7 @@ describe("Janitor Service", () => {
         createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")
       ).rejects.toThrow("Failed to start janitor run: Stakwork API error");
 
-      expect(db.janitorRun.update).toHaveBeenCalledWith({
+      expect(db.janitor_runs.update).toHaveBeenCalledWith({
         where: { id: mockRun.id },
         data: {
           status: "FAILED",
@@ -529,8 +524,8 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRunWithRepos as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue({
+      vi.mocked(db.janitor_runs.create).mockResolvedValue(mockRunWithRepos as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue({
         ...mockRunWithRepos,
         status: "RUNNING",
         stakworkProjectId: 12345,
@@ -546,7 +541,7 @@ describe("Janitor Service", () => {
       await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS", "MANUAL", "repo-2");
 
       // Verify repositoryId is stored on the run
-      expect(db.janitorRun.create).toHaveBeenCalledWith({
+      expect(db.janitor_runs.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           repositoryId: "repo-2",
         }),
@@ -610,7 +605,7 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRunWithRepos as any);
+      vi.mocked(db.janitor_runs.create).mockResolvedValue(mockRunWithRepos as any);
 
       const result = await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS", "MANUAL", "repo-2");
 
@@ -620,7 +615,7 @@ describe("Janitor Service", () => {
       );
 
       // Verify run was created with repositoryId
-      expect(db.janitorRun.create).toHaveBeenCalledWith({
+      expect(db.janitor_runs.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           repositoryId: "repo-2",
         }),
@@ -656,7 +651,7 @@ describe("Janitor Service", () => {
 
       const result = await getJanitorRuns("test-workspace", "user-1");
 
-      expect(db.janitorRun.findMany).toHaveBeenCalledWith({
+      expect(db.janitor_runs.findMany).toHaveBeenCalledWith({
         where: { janitorConfigId: mockConfig.id },
         orderBy: { createdAt: "desc" },
         skip: 0,
@@ -700,7 +695,7 @@ describe("Janitor Service", () => {
         page: 1,
       });
 
-      expect(db.janitorRun.findMany).toHaveBeenCalledWith({
+      expect(db.janitor_runs.findMany).toHaveBeenCalledWith({
         where: {
           janitorConfigId: mockConfig.id,
           janitorType: "UNIT_TESTS",
@@ -734,7 +729,7 @@ describe("Janitor Service", () => {
         page: 2,
       });
 
-      expect(db.janitorRun.findMany).toHaveBeenCalledWith(
+      expect(db.janitor_runs.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 10,
           take: 10,
@@ -788,7 +783,7 @@ describe("Janitor Service", () => {
 
       const result = await getJanitorRecommendations("test-workspace", "user-1");
 
-      expect(db.janitorRecommendation.findMany).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.findMany).toHaveBeenCalledWith({
         where: {
           workspaceId: mockValidation.workspace.id,
           status: "PENDING",
@@ -831,7 +826,7 @@ describe("Janitor Service", () => {
         priority: "HIGH",
       });
 
-      expect(db.janitorRecommendation.findMany).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.findMany).toHaveBeenCalledWith({
         where: {
           workspaceId: mockValidation.workspace.id,
           janitorRun: {
@@ -912,7 +907,7 @@ describe("Janitor Service", () => {
         workspace: mockRecommendation.janitorRun?.janitorConfig?.workspace,
         workspaceId: "ws-1",
       };
-      vi.mocked(mockedDb.janitorRecommendation.findUnique)
+      vi.mocked(mockedDb.janitor_recommendations.findUnique)
         .mockResolvedValueOnce(enrichedMockRecommendation)
         .mockResolvedValueOnce(enrichedUpdatedRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -925,12 +920,12 @@ describe("Janitor Service", () => {
 
       const result = await acceptJanitorRecommendation("rec-1", "user-1");
 
-      expect(db.janitorRecommendation.findUnique).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.findUnique).toHaveBeenCalledWith({
         where: { id: "rec-1" },
         include: expect.any(Object),
       });
       expect(validateWorkspaceAccess).toHaveBeenCalledWith("test-workspace", "user-1");
-      expect(db.janitorRecommendation.update).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.update).toHaveBeenCalledWith({
         where: { id: "rec-1" },
         data: {
           status: "ACCEPTED",
@@ -996,13 +991,13 @@ describe("Janitor Service", () => {
         repositoryId: "repo-1",
       });
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           userId: "assignee-1",
           workspaceId: "ws-1",
         },
       });
-      expect(db.repository.findFirst).toHaveBeenCalledWith({
+      expect(db.repositories.findFirst).toHaveBeenCalledWith({
         where: {
           id: "repo-1",
           workspaceId: "ws-1",
@@ -1245,7 +1240,7 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
-      vi.mocked(mockedDb.janitorRecommendation.findUnique)
+      vi.mocked(mockedDb.janitor_recommendations.findUnique)
         .mockResolvedValueOnce(mockRecommendation)
         .mockResolvedValueOnce(mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -1313,7 +1308,7 @@ describe("Janitor Service", () => {
         repositoryId: "repo-1",
       });
 
-      expect(db.janitorRecommendation.update).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.update).toHaveBeenCalledWith({
         where: { id: "rec-1" },
         data: {
           status: "ACCEPTED",
@@ -1552,13 +1547,13 @@ describe("Janitor Service", () => {
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
-      vi.mocked(db.janitorRecommendation.update).mockResolvedValue(dismissedRecommendation as any);
+      vi.mocked(db.janitor_recommendations.update).mockResolvedValue(dismissedRecommendation as any);
 
       const result = await dismissJanitorRecommendation("rec-1", "user-1", {
         reason: "Not applicable",
       });
 
-      expect(db.janitorRecommendation.update).toHaveBeenCalledWith({
+      expect(db.janitor_recommendations.update).toHaveBeenCalledWith({
         where: { id: "rec-1" },
         data: {
           status: "DISMISSED",
@@ -1673,9 +1668,9 @@ describe("Janitor Service", () => {
         },
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 1 });
-      vi.mocked(db.janitorRun.findFirst).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRecommendation.count).mockResolvedValue(2);
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_recommendations.count).mockResolvedValue(2);
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),
@@ -1685,7 +1680,7 @@ describe("Janitor Service", () => {
 
       const result = await processJanitorWebhook(webhookPayload);
 
-      expect(db.janitorRun.updateMany).toHaveBeenCalledWith({
+      expect(db.janitor_runs.updateMany).toHaveBeenCalledWith({
         where: {
           stakworkProjectId: 12345,
           status: { in: ["PENDING", "RUNNING"] },
@@ -1720,13 +1715,13 @@ describe("Janitor Service", () => {
         error: "Stakwork processing error",
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 1 });
-      vi.mocked(db.janitorRun.findFirst).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue(mockRun as any);
 
       const result = await processJanitorWebhook(webhookPayload);
 
-      expect(db.janitorRun.updateMany).toHaveBeenCalledWith({
+      expect(db.janitor_runs.updateMany).toHaveBeenCalledWith({
         where: {
           stakworkProjectId: 12345,
           status: { in: ["PENDING", "RUNNING"] },
@@ -1751,13 +1746,13 @@ describe("Janitor Service", () => {
         status: "running",
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 1 });
-      vi.mocked(db.janitorRun.findFirst).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_runs.update).mockResolvedValue(mockRun as any);
 
       const result = await processJanitorWebhook(webhookPayload);
 
-      expect(db.janitorRun.updateMany).toHaveBeenCalledWith({
+      expect(db.janitor_runs.updateMany).toHaveBeenCalledWith({
         where: {
           stakworkProjectId: 12345,
           status: { in: ["PENDING", "RUNNING"] },
@@ -1776,7 +1771,7 @@ describe("Janitor Service", () => {
         status: "completed",
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 0 });
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 0 });
 
       await expect(processJanitorWebhook(webhookPayload)).rejects.toThrow(
         JANITOR_ERRORS.RUN_NOT_FOUND
@@ -1796,9 +1791,9 @@ describe("Janitor Service", () => {
         },
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 1 });
-      vi.mocked(db.janitorRun.findFirst).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRecommendation.count).mockResolvedValue(0);
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_recommendations.count).mockResolvedValue(0);
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),
@@ -1831,9 +1826,9 @@ describe("Janitor Service", () => {
         },
       };
 
-      vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 1 });
-      vi.mocked(db.janitorRun.findFirst).mockResolvedValue(mockRun as any);
-      vi.mocked(db.janitorRecommendation.count).mockResolvedValue(1);
+      vi.mocked(db.janitor_runs.updateMany).mockResolvedValue({ count: 1 });
+      vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(mockRun as any);
+      vi.mocked(db.janitor_recommendations.count).mockResolvedValue(1);
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),

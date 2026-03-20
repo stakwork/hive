@@ -33,7 +33,7 @@ async function shouldCancel(
     case NotificationTriggerType.TASK_ASSIGNED:
     case NotificationTriggerType.GRAPH_CHAT_RESPONSE: {
       if (!taskId) return true; // entity deleted — cancel
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: taskId },
         select: { status: true },
       });
@@ -45,7 +45,7 @@ async function shouldCancel(
 
     case NotificationTriggerType.FEATURE_ASSIGNED: {
       if (!featureId) return true;
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: featureId },
         select: { status: true },
       });
@@ -58,7 +58,7 @@ async function shouldCancel(
 
     case NotificationTriggerType.PLAN_AWAITING_CLARIFICATION: {
       if (!featureId) return true;
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: featureId },
         select: { workflowStatus: true },
       });
@@ -70,7 +70,7 @@ async function shouldCancel(
     case NotificationTriggerType.PLAN_AWAITING_APPROVAL:
     case NotificationTriggerType.PLAN_TASKS_GENERATED: {
       if (!featureId) return true;
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: featureId },
         select: { status: true },
       });
@@ -85,7 +85,7 @@ async function shouldCancel(
     case NotificationTriggerType.WORKFLOW_HALTED: {
       // Can be linked to a task OR a feature — use whichever is set
       if (taskId) {
-        const task = await db.task.findUnique({
+        const task = await db.tasks.findUnique({
           where: { id: taskId },
           select: { workflowStatus: true },
         });
@@ -93,7 +93,7 @@ async function shouldCancel(
         return task.workflowStatus !== WorkflowStatus.HALTED;
       }
       if (featureId) {
-        const feature = await db.feature.findUnique({
+        const feature = await db.features.findUnique({
           where: { id: featureId },
           select: { workflowStatus: true },
         });
@@ -156,7 +156,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
     const claimedIdList = claimedIds.map((r) => r.id);
     due = claimedIdList.length === 0
       ? []
-      : await db.notificationTrigger.findMany({
+      : await db.notification_triggers.findMany({
           where: { id: { in: claimedIdList } },
           include: {
             targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
@@ -185,7 +185,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       );
 
       if (cancel) {
-        await db.notificationTrigger.update({
+        await db.notification_triggers.update({
           where: { id: record.id },
           data: { status: NotificationTriggerStatus.CANCELLED },
         });
@@ -203,7 +203,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         ? encryptionService.decryptField("lightningPubkey", record.targetUser.lightningPubkey)
         : null;
       if (!pubkey || !record.message) {
-        await db.notificationTrigger.update({
+        await db.notification_triggers.update({
           where: { id: record.id },
           data: { status: NotificationTriggerStatus.CANCELLED },
         });
@@ -235,7 +235,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         );
       }
 
-      await db.notificationTrigger.update({
+      await db.notification_triggers.update({
         where: { id: record.id },
         data: {
           status: sendResult.success

@@ -13,8 +13,7 @@ describe("Task Layer Type Integration Tests", () => {
     const user = await prisma.user.create({
       data: {
         email: `test-layer-${Date.now()}@example.com`,
-        name: "Layer Test User",
-        emailVerified: new Date(),
+        name: "Layer Test User",email_verified: new Date(),
       },
     });
     testUserId = user.id;
@@ -23,8 +22,7 @@ describe("Task Layer Type Integration Tests", () => {
     const workspace = await prisma.workspace.create({
       data: {
         name: "Layer Test Workspace",
-        slug: `layer-test-${Date.now()}`,
-        ownerId: testUserId,
+        slug: `layer-test-${Date.now()}`,owner_id: testUserId,
       },
     });
     testWorkspaceId = workspace.id;
@@ -39,13 +37,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Create users table",
-        description: "Database schema migration",
-        layerType: TaskLayerType.DATABASE_SCHEMA,
+        description: "Database schema migration",layer_type: TaskLayerType.DATABASE_SCHEMA,
         status: TaskStatus.TODO,
-        priority: Priority.MEDIUM,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -57,13 +51,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Implement REST API",
-        description: "Create API endpoints",
-        layerType: TaskLayerType.BACKEND_API,
+        description: "Create API endpoints",layer_type: TaskLayerType.BACKEND_API,
         status: TaskStatus.TODO,
-        priority: Priority.HIGH,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.HIGH,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -74,13 +64,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Build UI component",
-        description: "Create reusable React component",
-        layerType: TaskLayerType.FRONTEND_COMPONENT,
+        description: "Create reusable React component",layer_type: TaskLayerType.FRONTEND_COMPONENT,
         status: TaskStatus.IN_PROGRESS,
-        priority: Priority.MEDIUM,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -91,13 +77,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Test API integration",
-        description: "Integration test suite",
-        layerType: TaskLayerType.INTEGRATION_TEST,
+        description: "Integration test suite",layer_type: TaskLayerType.INTEGRATION_TEST,
         status: TaskStatus.TODO,
-        priority: Priority.HIGH,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.HIGH,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -108,13 +90,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Write unit tests",
-        description: "Unit test coverage",
-        layerType: TaskLayerType.UNIT_TEST,
+        description: "Unit test coverage",layer_type: TaskLayerType.UNIT_TEST,
         status: TaskStatus.TODO,
-        priority: Priority.MEDIUM,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -125,13 +103,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "E2E testing",
-        description: "End-to-end test scenarios",
-        layerType: TaskLayerType.E2E_TEST,
+        description: "End-to-end test scenarios",layer_type: TaskLayerType.E2E_TEST,
         status: TaskStatus.TODO,
-        priority: Priority.CRITICAL,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.CRITICAL,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -142,13 +116,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Setup CI/CD",
-        description: "Infrastructure configuration",
-        layerType: TaskLayerType.CONFIG_INFRA,
+        description: "Infrastructure configuration",layer_type: TaskLayerType.CONFIG_INFRA,
         status: TaskStatus.IN_PROGRESS,
-        priority: Priority.HIGH,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.HIGH,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -159,13 +129,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Write API docs",
-        description: "API documentation",
-        layerType: TaskLayerType.DOCUMENTATION,
+        description: "API documentation",layer_type: TaskLayerType.DOCUMENTATION,
         status: TaskStatus.TODO,
-        priority: Priority.LOW,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.LOW,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -178,10 +144,7 @@ describe("Task Layer Type Integration Tests", () => {
         title: "Unclassified task",
         description: "Task without layer type",
         status: TaskStatus.TODO,
-        priority: Priority.LOW,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.LOW,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -193,14 +156,9 @@ describe("Task Layer Type Integration Tests", () => {
     const task = await prisma.task.create({
       data: {
         title: "Task with override",
-        description: "Manually overridden layer type",
-        layerType: TaskLayerType.BACKEND_API,
-        manualLayerOverride: true,
+        description: "Manually overridden layer type",layer_type: TaskLayerType.BACKEND_API,manual_layer_override: true,
         status: TaskStatus.TODO,
-        priority: Priority.MEDIUM,
-        workspaceId: testWorkspaceId,
-        createdById: testUserId,
-        updatedById: testUserId,
+        priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
       },
     });
 
@@ -213,43 +171,29 @@ describe("Task Layer Type Integration Tests", () => {
     await Promise.all([
       prisma.task.create({
         data: {
-          title: "Backend task 1",
-          layerType: TaskLayerType.BACKEND_API,
+          title: "Backend task 1",layer_type: TaskLayerType.BACKEND_API,
           status: TaskStatus.TODO,
-          priority: Priority.MEDIUM,
-          workspaceId: testWorkspaceId,
-          createdById: testUserId,
-          updatedById: testUserId,
+          priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
         },
       }),
       prisma.task.create({
         data: {
-          title: "Backend task 2",
-          layerType: TaskLayerType.BACKEND_API,
+          title: "Backend task 2",layer_type: TaskLayerType.BACKEND_API,
           status: TaskStatus.TODO,
-          priority: Priority.MEDIUM,
-          workspaceId: testWorkspaceId,
-          createdById: testUserId,
-          updatedById: testUserId,
+          priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
         },
       }),
       prisma.task.create({
         data: {
-          title: "Frontend task",
-          layerType: TaskLayerType.FRONTEND_COMPONENT,
+          title: "Frontend task",layer_type: TaskLayerType.FRONTEND_COMPONENT,
           status: TaskStatus.TODO,
-          priority: Priority.MEDIUM,
-          workspaceId: testWorkspaceId,
-          createdById: testUserId,
-          updatedById: testUserId,
+          priority: Priority.MEDIUM,workspace_id: testWorkspaceId,created_by_id: testUserId,updated_by_id: testUserId,
         },
       }),
     ]);
 
     const backendTasks = await prisma.task.findMany({
-      where: {
-        workspaceId: testWorkspaceId,
-        layerType: TaskLayerType.BACKEND_API,
+      where: {workspace_id: testWorkspaceId,layer_type: TaskLayerType.BACKEND_API,
       },
     });
 
@@ -267,9 +211,7 @@ describe("Task Layer Type Integration Tests", () => {
     ];
 
     const testTasks = await prisma.task.findMany({
-      where: {
-        workspaceId: testWorkspaceId,
-        layerType: {
+      where: {workspace_id: testWorkspaceId,layer_type: {
           in: testLayerTypes,
         },
       },

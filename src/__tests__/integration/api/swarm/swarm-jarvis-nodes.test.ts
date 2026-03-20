@@ -57,8 +57,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
   // Helper to create authenticated GET request
   const createAuthenticatedGetRequest = async (
-    userId: string,
-    workspaceId: string
+user_id: string,workspace_id: string
   ) => {
     const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
     const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${workspaceId}`;
@@ -96,24 +95,21 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
     // Create test user
     const uniqueId = generateUniqueId();
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         id: `user-${uniqueId}`,
         email: `test-${uniqueId}@example.com`,
-        name: `Test User ${uniqueId}`,
-        emailVerified: new Date(),
+        name: `Test User ${uniqueId}`,email_verified: new Date(),
       },
     });
 
     // Create test workspace
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: `Test Workspace ${uniqueId}`,
-        slug: `test-workspace-${uniqueId}`,
-        ownerId: testUser.id,
+        slug: `test-workspace-${uniqueId}`,owner_id: testUser.id,
         members: {
-          create: {
-            userId: testUser.id,
+          create: {user_id: testUser.id,
             role: WorkspaceRole.OWNER,
           },
         },
@@ -125,12 +121,9 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       "swarmApiKey",
       "test-api-key-123"
     );
-    testSwarm = await db.swarm.create({
+    testSwarm = await db.swarms.create({
       data: {
-        name: `test-swarm-${uniqueId}`,
-        swarmUrl: `https://test-swarm-${uniqueId}.sphinx.chat:8444`,
-        swarmApiKey: JSON.stringify(encryptedApiKey),
-        workspaceId: testWorkspace.id,
+        name: `test-swarm-${uniqueId}`,swarm_url: `https://test-swarm-${uniqueId}.sphinx.chat:8444`,swarm_api_key: JSON.stringify(encryptedApiKey),workspace_id: testWorkspace.id,
       },
     });
 
@@ -147,12 +140,12 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
   afterEach(async () => {
     // Cleanup test data
-    await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspaceMember.deleteMany({
-      where: { workspaceId: testWorkspace.id },
+    await db.swarms.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspace_members.deleteMany({
+      where: {workspace_id: testWorkspace.id },
     });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: testUser.id } });
   });
 
   describe("Authentication", () => {
@@ -200,11 +193,9 @@ describe("GET /api/swarm/jarvis/nodes", () => {
     roles.forEach((role) => {
       test(`allows ${role} to access jarvis nodes`, async () => {
         // Update member role
-        await db.workspaceMember.update({
+        await db.workspace_members.update({
           where: {
-            workspaceId_userId: {
-              workspaceId: testWorkspace.id,
-              userId: testUser.id,
+            workspaceId_userId: {workspace_id: testWorkspace.id,user_id: testUser.id,
             },
           },
           data: { role },
@@ -288,8 +279,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       expect(data.data.nodes).toHaveLength(2);
       expect(data.data.edges).toHaveLength(1);
       expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          swarmUrl: expect.stringContaining(testSwarm.name),
+        expect.objectContaining({swarm_url: expect.stringContaining(testSwarm.name),
           endpoint: expect.stringContaining("graph/search/latest"),
           method: "GET",
           apiKey: expect.any(String),
@@ -661,7 +651,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
     test("falls back to mock endpoint when swarm is not configured", async () => {
       // Delete the swarm (endpoint will fall back to mock API)
-      await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
+      await db.swarms.deleteMany({ where: {workspace_id: testWorkspace.id } });
 
       const response = await createAuthenticatedGetRequest(
         testUser.id,

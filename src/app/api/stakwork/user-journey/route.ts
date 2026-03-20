@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get workspace slug for GitHub credentials
-    const workspaceData = await db.workspace.findUnique({
+    const workspaceData = await db.workspaces.findUnique({
       where: { id: workspaceId },
       select: { slug: true }
     });
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     const username = githubProfile?.username || null;
 
     // Find the swarm associated with this workspace
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
       select: {
         id: true,
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
     // Get workspace's primary repository if available
-    const repository = await db.repository.findFirst({
+    const repository = await db.repositories.findFirst({
       where: { workspaceId: workspace.id },
       select: { id: true, repositoryUrl: true, branch: true },
     });
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
     let task = null;
     try {
       // Create task record (stakworkProjectId will be updated after Stakwork call)
-      task = await db.task.create({
+      task = await db.tasks.create({
         data: {
           title: taskTitle,
           description: description || `User journey test: ${taskTitle}`,
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       // This makes the test code available instantly without waiting for Stakwork processing
       // Using ASSISTANT role since test code is system-generated content
       try {
-        await db.chatMessage.create({
+        await db.chat_messages.create({
           data: {
             taskId: task.id,
             role: "ASSISTANT",
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
         : null;
 
       if (stakworkProjectId) {
-        await db.task.update({
+        await db.tasks.update({
           where: { id: task.id },
           data: {
             stakworkProjectId: parseInt(String(stakworkProjectId)),

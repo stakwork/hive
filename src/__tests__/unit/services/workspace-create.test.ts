@@ -10,8 +10,7 @@ import type { Workspace } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findUnique: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
@@ -69,30 +68,30 @@ describe("createWorkspace - Unit Tests", () => {
   describe("Successful Creation", () => {
     test("should create workspace with valid inputs", async () => {
       // Mock workspace count under limit
-      (db.workspace.count as Mock).mockResolvedValue(0);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
       
       // Mock no existing workspace with same slug
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       // Mock successful creation
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
-      expect(db.workspace.count).toHaveBeenCalledWith({
+      expect(db.workspaces.count).toHaveBeenCalledWith({
         where: {
           ownerId: mockUserId,
           deleted: false,
         },
       });
 
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+      expect(db.workspaces.findUnique).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
         select: { id: true },
       });
 
-      expect(db.workspace.create).toHaveBeenCalledWith({
+      expect(db.workspaces.create).toHaveBeenCalledWith({
         data: {
           name: "Test Workspace",
           slug: "test-workspace",
@@ -114,11 +113,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should create workspace without description (optional field)", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace({ description: null });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test Workspace",
@@ -126,7 +125,7 @@ describe("createWorkspace - Unit Tests", () => {
         ownerId: mockUserId,
       });
 
-      expect(db.workspace.create).toHaveBeenCalledWith({
+      expect(db.workspaces.create).toHaveBeenCalledWith({
         data: {
           name: "Test Workspace",
           slug: "test-workspace",
@@ -139,13 +138,13 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should return workspace with ISO-formatted timestamps", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const createdAt = new Date("2024-01-15T10:30:00.000Z");
       const updatedAt = new Date("2024-01-15T10:30:00.000Z");
       const mockWorkspace = createMockWorkspace({ createdAt, updatedAt });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
@@ -154,11 +153,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should create workspace with repositoryUrl", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace({ repositoryDraft: "https://github.com/test/repo" });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -167,7 +166,7 @@ describe("createWorkspace - Unit Tests", () => {
         repositoryUrl: "https://github.com/test/repo",
       });
 
-      expect(db.workspace.create).toHaveBeenCalledWith({
+      expect(db.workspaces.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           repositoryDraft: "https://github.com/test/repo",
         }),
@@ -200,7 +199,7 @@ describe("createWorkspace - Unit Tests", () => {
         ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_RESERVED);
 
         // Ensure no database calls for reserved slugs
-        expect(db.workspace.create).not.toHaveBeenCalled();
+        expect(db.workspaces.create).not.toHaveBeenCalled();
       }
     });
   });
@@ -267,11 +266,11 @@ describe("createWorkspace - Unit Tests", () => {
       ];
 
       for (const slug of validSlugs) {
-        (db.workspace.count as Mock).mockResolvedValue(0);
-        (db.workspace.findUnique as Mock).mockResolvedValue(null);
+        (db.workspaces.count as Mock).mockResolvedValue(0);
+        (db.workspaces.findUnique as Mock).mockResolvedValue(null);
         
         const mockWorkspace = createMockWorkspace({ slug });
-        (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+        (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
         const result = await createWorkspace({
           name: "Test",
@@ -309,12 +308,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should accept slug at minimum length", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const minSlug = "ab"; // 2 characters
       const mockWorkspace = createMockWorkspace({ slug: minSlug });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -326,12 +325,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should accept slug at maximum length", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const maxSlug = "a".repeat(WORKSPACE_SLUG_PATTERNS.MAX_LENGTH);
       const mockWorkspace = createMockWorkspace({ slug: maxSlug });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -346,7 +345,7 @@ describe("createWorkspace - Unit Tests", () => {
   describe("Workspace Limit Enforcement", () => {
     test("should reject creation when user reaches workspace limit", async () => {
       // Mock count at limit
-      (db.workspace.count as Mock).mockResolvedValue(
+      (db.workspaces.count as Mock).mockResolvedValue(
         WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
       );
 
@@ -358,7 +357,7 @@ describe("createWorkspace - Unit Tests", () => {
         })
       ).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
-      expect(db.workspace.count).toHaveBeenCalledWith({
+      expect(db.workspaces.count).toHaveBeenCalledWith({
         where: {
           ownerId: mockUserId,
           deleted: false,
@@ -366,29 +365,29 @@ describe("createWorkspace - Unit Tests", () => {
       });
 
       // Should not attempt to create or check slug
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(db.workspaces.findUnique).not.toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
     });
 
     test("should allow creation when user is under limit", async () => {
       // Mock count under limit
-      (db.workspace.count as Mock).mockResolvedValue(
+      (db.workspaces.count as Mock).mockResolvedValue(
         WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER - 1
       );
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
       expect(result).toBeDefined();
-      expect(db.workspace.create).toHaveBeenCalled();
+      expect(db.workspaces.create).toHaveBeenCalled();
     });
 
     test("should exclude deleted workspaces from limit count", async () => {
       // The service already filters by deleted: false in the where clause
-      (db.workspace.count as Mock).mockResolvedValue(
+      (db.workspaces.count as Mock).mockResolvedValue(
         WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
       );
 
@@ -401,7 +400,7 @@ describe("createWorkspace - Unit Tests", () => {
       ).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       // Verify query excludes deleted workspaces
-      expect(db.workspace.count).toHaveBeenCalledWith({
+      expect(db.workspaces.count).toHaveBeenCalledWith({
         where: {
           ownerId: mockUserId,
           deleted: false,
@@ -413,7 +412,7 @@ describe("createWorkspace - Unit Tests", () => {
       const user1Id = "user-1";
       const user2Id = "user-2";
 
-      (db.workspace.count as Mock).mockImplementation(({ where }) => {
+      (db.workspaces.count as Mock).mockImplementation(({ where }) => {
         if (where.ownerId === user1Id) {
           return Promise.resolve(WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER);
         }
@@ -430,9 +429,9 @@ describe("createWorkspace - Unit Tests", () => {
       ).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       // User 2 should be allowed
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
       const user2Workspace = createMockWorkspace({ ownerId: user2Id });
-      (db.workspace.create as Mock).mockResolvedValue(user2Workspace);
+      (db.workspaces.create as Mock).mockResolvedValue(user2Workspace);
 
       const result = await createWorkspace({
         name: "User2 Workspace",
@@ -446,10 +445,10 @@ describe("createWorkspace - Unit Tests", () => {
 
   describe("Duplicate Slug Detection", () => {
     test("should reject duplicate slug with pre-check", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
 
       // Mock existing workspace with same slug
-      (db.workspace.findUnique as Mock).mockResolvedValue(
+      (db.workspaces.findUnique as Mock).mockResolvedValue(
         createMockWorkspace({ slug: "duplicate-slug" })
       );
 
@@ -461,24 +460,24 @@ describe("createWorkspace - Unit Tests", () => {
         })
       ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
 
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+      expect(db.workspaces.findUnique).toHaveBeenCalledWith({
         where: { slug: "duplicate-slug", deleted: false },
         select: { id: true },
       });
 
       // Should not attempt to create
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
     });
 
     test("should handle P2002 constraint error from database", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       // Mock P2002 Prisma constraint error with proper meta structure
       const prismaError: any = new Error("Unique constraint failed");
       prismaError.code = "P2002";
       prismaError.meta = { target: ["slug"] };
-      (db.workspace.create as Mock).mockRejectedValue(prismaError);
+      (db.workspaces.create as Mock).mockRejectedValue(prismaError);
 
       await expect(
         createWorkspace({
@@ -490,14 +489,14 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should allow slug reuse after deletion", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
       // Mock findUnique returns null (no active workspace with that slug)
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace({
         slug: "reused-slug",
       });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -514,12 +513,12 @@ describe("createWorkspace - Unit Tests", () => {
       // Note: TypeScript enforces required fields at compile time
       // At runtime, the service will attempt to create with undefined name
       // This is a runtime test showing what happens if TypeScript is bypassed
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
       
       // Database will accept undefined, creating a workspace with null name
       const mockWorkspace = createMockWorkspace({ name: undefined as any });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         slug: "test-workspace",
@@ -540,11 +539,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should accept null description", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace({ description: null });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -557,11 +556,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should accept undefined description", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace({ description: null });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -575,7 +574,7 @@ describe("createWorkspace - Unit Tests", () => {
 
   describe("Error Handling", () => {
     test("should handle database connection errors", async () => {
-      (db.workspace.count as Mock).mockRejectedValue(
+      (db.workspaces.count as Mock).mockRejectedValue(
         new Error("Database connection failed")
       );
 
@@ -585,11 +584,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should handle unknown database errors", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const unknownError = new Error("Unknown database error");
-      (db.workspace.create as Mock).mockRejectedValue(unknownError);
+      (db.workspaces.create as Mock).mockRejectedValue(unknownError);
 
       await expect(
         createWorkspace(createMockWorkspaceData())
@@ -597,12 +596,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should re-throw non-P2002 Prisma errors", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const prismaError: any = new Error("Some other constraint violation");
       prismaError.code = "P2003";
-      (db.workspace.create as Mock).mockRejectedValue(prismaError);
+      (db.workspaces.create as Mock).mockRejectedValue(prismaError);
 
       await expect(
         createWorkspace(createMockWorkspaceData())
@@ -612,11 +611,11 @@ describe("createWorkspace - Unit Tests", () => {
 
   describe("Response Format Validation", () => {
     test("should return workspace with all required fields", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
@@ -630,11 +629,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should format timestamps as ISO strings", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
@@ -646,11 +645,11 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should preserve nodeTypeOrder field structure", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace(createMockWorkspaceData());
 
@@ -663,12 +662,12 @@ describe("createWorkspace - Unit Tests", () => {
 
   describe("Edge Cases", () => {
     test("should handle workspace creation with very long valid name", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const longName = "A".repeat(100); // Max length for name
       const mockWorkspace = createMockWorkspace({ name: longName });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: longName,
@@ -680,14 +679,14 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should handle workspace creation with very long valid description", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const longDescription = "A".repeat(500); // Max length for description
       const mockWorkspace = createMockWorkspace({
         description: longDescription,
       });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -700,12 +699,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should handle special characters in name", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const specialName = "Test & Co.'s Workspace!";
       const mockWorkspace = createMockWorkspace({ name: specialName });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: specialName,
@@ -717,12 +716,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should handle numeric slug", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const numericSlug = "123456";
       const mockWorkspace = createMockWorkspace({ slug: numericSlug });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -734,12 +733,12 @@ describe("createWorkspace - Unit Tests", () => {
     });
 
     test("should handle slug with mixed alphanumeric characters", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mixedSlug = "test123workspace456";
       const mockWorkspace = createMockWorkspace({ slug: mixedSlug });
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       const result = await createWorkspace({
         name: "Test",
@@ -753,20 +752,20 @@ describe("createWorkspace - Unit Tests", () => {
 
   describe("Database Call Verification", () => {
     test("should call database methods in correct order", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(null);
 
       const mockWorkspace = createMockWorkspace();
-      (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspaces.create as Mock).mockResolvedValue(mockWorkspace);
 
       await createWorkspace(createMockWorkspaceData());
 
       // Verify call order
-      expect(db.workspace.count).toHaveBeenCalledBefore(
-        db.workspace.findUnique as Mock
+      expect(db.workspaces.count).toHaveBeenCalledBefore(
+        db.workspaces.findUnique as Mock
       );
-      expect(db.workspace.findUnique).toHaveBeenCalledBefore(
-        db.workspace.create as Mock
+      expect(db.workspaces.findUnique).toHaveBeenCalledBefore(
+        db.workspaces.create as Mock
       );
     });
 
@@ -779,13 +778,13 @@ describe("createWorkspace - Unit Tests", () => {
         })
       ).rejects.toThrow();
 
-      expect(db.workspace.create).not.toHaveBeenCalled();
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.count).not.toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
+      expect(db.workspaces.findUnique).not.toHaveBeenCalled();
+      expect(db.workspaces.count).not.toHaveBeenCalled();
     });
 
     test("should not call create if workspace limit reached", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(
+      (db.workspaces.count as Mock).mockResolvedValue(
         WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
       );
 
@@ -793,14 +792,14 @@ describe("createWorkspace - Unit Tests", () => {
         createWorkspace(createMockWorkspaceData())
       ).rejects.toThrow();
 
-      expect(db.workspace.count).toHaveBeenCalled();
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(db.workspaces.count).toHaveBeenCalled();
+      expect(db.workspaces.findUnique).not.toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
     });
 
     test("should not call create if duplicate slug detected", async () => {
-      (db.workspace.count as Mock).mockResolvedValue(0);
-      (db.workspace.findUnique as Mock).mockResolvedValue(
+      (db.workspaces.count as Mock).mockResolvedValue(0);
+      (db.workspaces.findUnique as Mock).mockResolvedValue(
         createMockWorkspace()
       );
 
@@ -808,9 +807,9 @@ describe("createWorkspace - Unit Tests", () => {
         createWorkspace(createMockWorkspaceData())
       ).rejects.toThrow();
 
-      expect(db.workspace.count).toHaveBeenCalled();
-      expect(db.workspace.findUnique).toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(db.workspaces.count).toHaveBeenCalled();
+      expect(db.workspaces.findUnique).toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
     });
   });
 });

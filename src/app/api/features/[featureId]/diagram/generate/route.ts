@@ -17,7 +17,7 @@ export async function POST(
     const { featureId } = await params;
 
     // Fetch the feature with workspace ID
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: {
         id: featureId,
       },
@@ -132,7 +132,7 @@ export async function POST(
 
     // Update feature with diagram URL and S3 key
     try {
-      await db.feature.update({
+      await db.features.update({
         where: { id: featureId },
         data: {
           diagramUrl: uploadResult.s3Url,

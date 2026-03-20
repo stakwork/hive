@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const bountyCode = await ensureUniqueBountyCode();
 
     // Look up source task to get podId and agentPassword
-    const sourceTask = await db.task.findUnique({
+    const sourceTask = await db.tasks.findUnique({
       where: { id: sourceTaskId },
       select: {
         podId: true,
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       sourceUserId: userId,
     };
 
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId: sourceTaskId,
         message: "Generating bounty workspace...",

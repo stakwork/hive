@@ -9,7 +9,7 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
 
   beforeEach(async () => {
     // Create test user
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: `test-${Date.now()}@example.com`,
         name: 'Test User',
@@ -17,48 +17,42 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
     });
 
     // Create test workspace
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: 'Test Workspace',
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: testUser.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: testUser.id,
       },
     });
 
     // Add user as workspace owner
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: testWorkspace.id,user_id: testUser.id,
         role: 'OWNER',
       },
     });
 
     // Create test feature
-    testFeature = await db.feature.create({
+    testFeature = await db.features.create({
       data: {
-        title: 'Test Feature',
-        workspaceId: testWorkspace.id,
+        title: 'Test Feature',workspace_id: testWorkspace.id,
         status: 'BACKLOG',
-        priority: 'MEDIUM',
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        priority: 'MEDIUM',created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
   });
 
   afterEach(async () => {
     // Cleanup in reverse order of dependencies
-    await db.feature.deleteMany({
-      where: { workspaceId: testWorkspace.id },
+    await db.features.deleteMany({
+      where: {workspace_id: testWorkspace.id },
     });
-    await db.workspaceMember.deleteMany({
-      where: { workspaceId: testWorkspace.id },
+    await db.workspace_members.deleteMany({
+      where: {workspace_id: testWorkspace.id },
     });
-    await db.workspace.deleteMany({
+    await db.workspaces.deleteMany({
       where: { id: testWorkspace.id },
     });
-    await db.user.deleteMany({
+    await db.users.deleteMany({
       where: { id: testUser.id },
     });
   });
@@ -66,7 +60,7 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
   describe('Soft-deleted feature validation', () => {
     it('should throw "Feature not found" when feature is soft-deleted', async () => {
       // Soft delete the feature
-      await db.feature.update({
+      await db.features.update({
         where: { id: testFeature.id },
         data: { deleted: true },
       });
@@ -86,13 +80,13 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
 
     it('should prioritize soft-delete check before permission check', async () => {
       // Soft delete the feature
-      await db.feature.update({
+      await db.features.update({
         where: { id: testFeature.id },
         data: { deleted: true },
       });
 
       // Create a user without permissions
-      const unauthorizedUser = await db.user.create({
+      const unauthorizedUser = await db.users.create({
         data: {
           email: `unauthorized-${Date.now()}@example.com`,
           name: 'Unauthorized User',
@@ -105,14 +99,14 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
       ).rejects.toThrow('Feature not found');
 
       // Cleanup
-      await db.user.delete({
+      await db.users.delete({
         where: { id: unauthorizedUser.id },
       });
     });
 
     it('should handle feature with deleted field set to false', async () => {
       // Explicitly set deleted to false
-      await db.feature.update({
+      await db.features.update({
         where: { id: testFeature.id },
         data: { deleted: false },
       });
@@ -125,7 +119,7 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
 
     it('should throw "Feature not found" for soft-deleted feature even if user is owner', async () => {
       // Soft delete the feature
-      await db.feature.update({
+      await db.features.update({
         where: { id: testFeature.id },
         data: { deleted: true },
       });
@@ -147,17 +141,15 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
 
     it('should allow access for workspace member', async () => {
       // Create a new user and add as member
-      const memberUser = await db.user.create({
+      const memberUser = await db.users.create({
         data: {
           email: `member-${Date.now()}@example.com`,
           name: 'Member User',
         },
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          userId: memberUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: testWorkspace.id,user_id: memberUser.id,
           role: 'DEVELOPER',
         },
       });
@@ -168,17 +160,17 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
       expect(result.id).toBe(testFeature.id);
 
       // Cleanup
-      await db.workspaceMember.deleteMany({
-        where: { userId: memberUser.id },
+      await db.workspace_members.deleteMany({
+        where: {user_id: memberUser.id },
       });
-      await db.user.delete({
+      await db.users.delete({
         where: { id: memberUser.id },
       });
     });
 
     it('should throw "Access denied" for non-member user', async () => {
       // Create a user without workspace membership
-      const outsideUser = await db.user.create({
+      const outsideUser = await db.users.create({
         data: {
           email: `outside-${Date.now()}@example.com`,
           name: 'Outside User',
@@ -190,7 +182,7 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
       ).rejects.toThrow('Access denied');
 
       // Cleanup
-      await db.user.delete({
+      await db.users.delete({
         where: { id: outsideUser.id },
       });
     });
@@ -205,7 +197,7 @@ describe('validateFeatureAccess - Soft Delete Validation', () => {
 
     it('should throw "Feature not found" when workspace is soft-deleted', async () => {
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
         data: { deleted: true },
       });

@@ -12,7 +12,7 @@ import {
  * 
  * BUGS FOUND - TO BE FIXED IN SEPARATE PR:
  * 1. Route throws Prisma error when workspace_id is undefined (line 42-46 in route.ts)
- *    - Should guard the database query: `const workspace = workspace_id ? await db.workspace.findUnique(...) : null;`
+ *    - Should guard the database query: `const workspace = workspace_id ? await db.workspaces.findUnique(...) : null;`
  * 2. Route returns incorrect `broadcasted` flag (line 80 in route.ts)
  *    - Currently: `broadcasted: !!workspace_id` (returns true if ID provided, even if workspace doesn't exist)
  *    - Should be: `broadcasted: !!workspace` (returns true only if workspace exists and broadcast succeeded)
@@ -63,15 +63,12 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${generateUniqueId()}`,
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
+        data: {workspace_id: workspace.id,user_id: user.id,
           role: "OWNER",
         },
       });
@@ -391,11 +388,10 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const { workspace } = await createTestWorkspace();
 
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: {
-          deleted: true,
-          deletedAt: new Date(),
+          deleted: true,deleted_at: new Date(),
         },
       });
 
@@ -447,8 +443,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
         `workspace-${workspace.slug}`,
         "highlight-nodes",
         expect.objectContaining({
-          nodeIds,
-          workspaceId: workspace.slug,
+          nodeIds,workspace_id: workspace.slug,
           timestamp: expect.any(Number),
         })
       );
@@ -585,8 +580,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
         success: true,
         data: {
           received: {
-            nodeIds,
-            workspaceId: undefined,
+            nodeIds,workspace_id: undefined,
           },
           broadcasted: false,
         },
@@ -657,8 +651,8 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const { workspace } = await createTestWorkspace();
 
       // Mock database failure by disconnecting (will cause findUnique to fail)
-      const originalFindUnique = db.workspace.findUnique;
-      db.workspace.findUnique = vi.fn().mockRejectedValue(
+      const originalFindUnique = db.workspaces.findUnique;
+      db.workspaces.findUnique = vi.fn().mockRejectedValue(
         new Error("Database connection lost")
       );
 
@@ -681,7 +675,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(data.error).toBe("Failed to process webhook");
 
       // Restore original method
-      db.workspace.findUnique = originalFindUnique;
+      db.workspaces.findUnique = originalFindUnique;
     });
 
     test("should handle unexpected exceptions in request processing", async () => {

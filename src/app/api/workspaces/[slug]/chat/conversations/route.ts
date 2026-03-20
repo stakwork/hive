@@ -102,7 +102,7 @@ export async function GET(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -127,7 +127,7 @@ export async function GET(
 
     // Get conversations for this user in this workspace
     const [conversations, total] = await Promise.all([
-      db.sharedConversation.findMany({
+      db.shared_conversations.findMany({
         where: {
           workspaceId: workspace.id,
           userId,
@@ -148,7 +148,7 @@ export async function GET(
           updatedAt: true,
         },
       }),
-      db.sharedConversation.count({
+      db.shared_conversations.count({
         where: {
           workspaceId: workspace.id,
           userId,
@@ -211,7 +211,7 @@ export async function POST(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -243,7 +243,7 @@ export async function POST(
     const lastMessageAt = getLastMessageTimestamp(body.messages);
 
     // Create conversation
-    const conversation = await db.sharedConversation.create({
+    const conversation = await db.shared_conversations.create({
       data: {
         workspaceId: workspace.id,
         userId,

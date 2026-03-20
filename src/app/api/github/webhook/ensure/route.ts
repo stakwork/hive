@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     let repositoryUrl = repositoryUrlInput || "";
     if (!repositoryUrl && repositoryId) {
-      const repo = await db.repository.findUnique({
+      const repo = await db.repositories.findUnique({
         where: { id: repositoryId },
         select: { repositoryUrl: true, workspaceId: true },
       });

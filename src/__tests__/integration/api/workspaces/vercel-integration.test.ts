@@ -30,18 +30,16 @@ describe("Vercel Integration API - Integration Tests", () => {
   describe("GET /api/workspaces/[slug]/settings/vercel-integration", () => {
     test("returns vercel settings for workspace owner", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Set up Vercel integration data
       const apiToken = "vercel_test_token_123";
       const teamId = "team_abc123";
       const encrypted = encryptionService.encryptField("vercelApiToken", apiToken);
 
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: {
-          vercelApiToken: JSON.stringify(encrypted),
-          vercelTeamId: teamId,
+        data: {vercel_api_token: JSON.stringify(encrypted),vercel_team_id: teamId,
         },
       });
 
@@ -65,21 +63,18 @@ describe("Vercel Integration API - Integration Tests", () => {
     test("returns vercel settings for workspace admin", async () => {
       const owner = await createTestUser();
       const admin = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: admin.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: admin.id,
         role: "ADMIN",
       });
 
       const apiToken = "vercel_admin_token";
       const encrypted = encryptionService.encryptField("vercelApiToken", apiToken);
 
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: {
-          vercelApiToken: JSON.stringify(encrypted),
+        data: {vercel_api_token: JSON.stringify(encrypted),
         },
       });
 
@@ -100,7 +95,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("returns null for missing vercel settings", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -122,11 +117,9 @@ describe("Vercel Integration API - Integration Tests", () => {
     test("returns 403 for developer role (non-admin)", async () => {
       const owner = await createTestUser();
       const developer = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: developer.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: developer.id,
         role: "DEVELOPER",
       });
 
@@ -148,11 +141,9 @@ describe("Vercel Integration API - Integration Tests", () => {
     test("returns 403 for viewer role", async () => {
       const owner = await createTestUser();
       const viewer = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: viewer.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: viewer.id,
         role: "VIEWER",
       });
 
@@ -187,7 +178,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("returns 401 for unauthenticated request", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
@@ -204,14 +195,13 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("handles corrupted encrypted token gracefully", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Set corrupted encrypted data
       const corruptedData = JSON.stringify({ invalid: "data" });
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: {
-          vercelApiToken: corruptedData,
+        data: {vercel_api_token: corruptedData,
         },
       });
 
@@ -235,7 +225,7 @@ describe("Vercel Integration API - Integration Tests", () => {
   describe("PUT /api/workspaces/[slug]/settings/vercel-integration", () => {
     test("updates vercel settings for workspace owner", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       const apiToken = "vercel_new_token_xyz";
       const teamId = "team_new123";
@@ -244,9 +234,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelApiToken: apiToken,
-          vercelTeamId: teamId,
+        {vercel_api_token: apiToken,vercel_team_id: teamId,
         },
       );
 
@@ -261,9 +249,9 @@ describe("Vercel Integration API - Integration Tests", () => {
       expect(data.webhookUrl).toBeDefined();
 
       // Verify database was updated
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { vercelApiToken: true, vercelTeamId: true },
+        select: {vercel_api_token: true,vercel_team_id: true },
       });
 
       expect(updatedWorkspace?.vercelTeamId).toBe(teamId);
@@ -277,11 +265,9 @@ describe("Vercel Integration API - Integration Tests", () => {
     test("updates vercel settings for workspace admin", async () => {
       const owner = await createTestUser();
       const admin = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: admin.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: admin.id,
         role: "ADMIN",
       });
 
@@ -291,8 +277,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelApiToken: apiToken,
+        {vercel_api_token: apiToken,
         },
       );
 
@@ -305,7 +290,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("allows updating only team ID without token", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       const teamId = "team_only_123";
 
@@ -313,8 +298,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelTeamId: teamId,
+        {vercel_team_id: teamId,
         },
       );
 
@@ -324,9 +308,9 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       expect(response.status).toBe(200);
 
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { vercelTeamId: true, vercelApiToken: true },
+        select: {vercel_team_id: true,vercel_api_token: true },
       });
 
       expect(updatedWorkspace?.vercelTeamId).toBe(teamId);
@@ -335,15 +319,13 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("allows clearing vercel settings with null values", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // First set some values
       const encrypted = encryptionService.encryptField("vercelApiToken", "token");
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: {
-          vercelApiToken: JSON.stringify(encrypted),
-          vercelTeamId: "team123",
+        data: {vercel_api_token: JSON.stringify(encrypted),vercel_team_id: "team123",
         },
       });
 
@@ -352,9 +334,7 @@ describe("Vercel Integration API - Integration Tests", () => {
       // Now clear them
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelApiToken: null,
-          vercelTeamId: null,
+        {vercel_api_token: null,vercel_team_id: null,
         },
       );
 
@@ -364,9 +344,9 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       expect(response.status).toBe(200);
 
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { vercelTeamId: true, vercelApiToken: true },
+        select: {vercel_team_id: true,vercel_api_token: true },
       });
 
       expect(updatedWorkspace?.vercelTeamId).toBeNull();
@@ -376,11 +356,9 @@ describe("Vercel Integration API - Integration Tests", () => {
     test("returns 403 for developer role (non-admin)", async () => {
       const owner = await createTestUser();
       const developer = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: developer.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: developer.id,
         role: "DEVELOPER",
       });
 
@@ -388,8 +366,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelApiToken: "token",
+        {vercel_api_token: "token",
         },
       );
 
@@ -409,8 +386,7 @@ describe("Vercel Integration API - Integration Tests", () => {
 
       const request = createPutRequest(
         "http://localhost:3000/api/workspaces/non-existent/settings/vercel-integration",
-        {
-          vercelApiToken: "token",
+        {vercel_api_token: "token",
         },
       );
 
@@ -423,13 +399,13 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("returns 401 for unauthenticated request", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        { vercelApiToken: "token" },
+        {vercel_api_token: "token" },
       );
 
       const response = await PUT(request, {
@@ -441,14 +417,13 @@ describe("Vercel Integration API - Integration Tests", () => {
 
     test("allows empty string to clear vercelApiToken", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelApiToken: "", // Empty string is allowed (clears the token)
+        {vercel_api_token: "", // Empty string is allowed (clears the token)
         },
       );
 
@@ -468,15 +443,14 @@ describe("Vercel Integration API - Integration Tests", () => {
       // Only update vercelApiToken field if it's explicitly provided in the request
 
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Set initial token
       const initialToken = "vercel_initial_token";
       const encrypted = encryptionService.encryptField("vercelApiToken", initialToken);
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: {
-          vercelApiToken: JSON.stringify(encrypted),
+        data: {vercel_api_token: JSON.stringify(encrypted),
         },
       });
 
@@ -485,8 +459,7 @@ describe("Vercel Integration API - Integration Tests", () => {
       // Update only team ID
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
-        {
-          vercelTeamId: "new_team",
+        {vercel_team_id: "new_team",
         },
       );
 
@@ -495,9 +468,9 @@ describe("Vercel Integration API - Integration Tests", () => {
       });
 
       // Verify token is still there
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { vercelApiToken: true },
+        select: {vercel_api_token: true },
       });
 
       const decrypted = encryptionService.decryptField("vercelApiToken", updatedWorkspace!.vercelApiToken!);

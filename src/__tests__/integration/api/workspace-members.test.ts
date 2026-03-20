@@ -52,16 +52,14 @@ describe("Workspace Members API Integration Tests", () => {
         {
           user: { name: "Member User" },
           role: "DEVELOPER",
-          withGitHubAuth: true,
-          githubUsername: "testuser"
+          withGitHubAuth: true,github_username: "testuser"
         },
       ],
     });
 
     const targetUser = await createTestUser({
       name: "Target User",
-      withGitHubAuth: true,
-      githubUsername: "targetuser",
+      withGitHubAuth: true,github_username: "targetuser",
     });
 
     return {
@@ -97,8 +95,8 @@ describe("Workspace Members API Integration Tests", () => {
       expect(data.owner.user.name).toBe("Owner User");
 
       // Verify data actually exists in database
-      const membersInDb = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id, leftAt: null },
+      const membersInDb = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id,left_at: null },
       });
       expect(membersInDb).toHaveLength(1);
       expect(membersInDb[0].role).toBe(WorkspaceRole.DEVELOPER);
@@ -155,10 +153,8 @@ describe("Workspace Members API Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
 
       // Manually insert owner into WorkspaceMember table
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: ownerUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: ownerUser.id,
           role: "DEVELOPER",
         },
       });
@@ -185,8 +181,8 @@ describe("Workspace Members API Integration Tests", () => {
       expect(data.members[0].role).toBe("DEVELOPER");
 
       // Verify database has 2 WorkspaceMember records (original member + manually inserted owner)
-      const membersInDb = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id, leftAt: null },
+      const membersInDb = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id,left_at: null },
       });
       expect(membersInDb).toHaveLength(2);
     });
@@ -201,13 +197,10 @@ describe("Workspace Members API Integration Tests", () => {
       const encryptedPubkey = JSON.stringify(encryptionService.encryptField("lightningPubkey", plainPubkey));
 
       const memberWithPubkey = await createTestUser({
-        name: "Pubkey Member",
-        lightningPubkey: encryptedPubkey,
+        name: "Pubkey Member",lightning_pubkey: encryptedPubkey,
       });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberWithPubkey.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: memberWithPubkey.id,
           role: "DEVELOPER",
         },
       });
@@ -248,8 +241,7 @@ describe("Workspace Members API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "targetuser",
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {github_username: "targetuser",
         role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -259,8 +251,8 @@ describe("Workspace Members API Integration Tests", () => {
       expect(data.member.user.name).toBe("Target User");
 
       // Verify member was actually added to database
-      const memberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: targetUser.id, leftAt: null },
+      const memberInDb = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: targetUser.id,left_at: null },
       });
       expect(memberInDb).toBeTruthy();
       expect(memberInDb?.role).toBe(WorkspaceRole.DEVELOPER);
@@ -271,8 +263,7 @@ describe("Workspace Members API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "targetuser",
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {github_username: "targetuser",
         // Missing role
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -280,8 +271,8 @@ describe("Workspace Members API Integration Tests", () => {
       await expectError(response, "required", 400);
 
       // Verify no NEW member was added (still just the 1 existing member)
-      const membersInDb = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id },
+      const membersInDb = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id },
       });
       expect(membersInDb).toHaveLength(1);
     });
@@ -294,8 +285,7 @@ describe("Workspace Members API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "targetuser",
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {github_username: "targetuser",
         role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -303,8 +293,8 @@ describe("Workspace Members API Integration Tests", () => {
       await expectForbidden(response, "Admin access required");
 
       // Verify no NEW member was added (still just the 1 existing member)
-      const membersInDb = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id },
+      const membersInDb = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id },
       });
       expect(membersInDb).toHaveLength(1);
     });
@@ -314,8 +304,7 @@ describe("Workspace Members API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "nonexistentuser",
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {github_username: "nonexistentuser",
         role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -323,8 +312,8 @@ describe("Workspace Members API Integration Tests", () => {
       await expectNotFound(response, "not found");
 
       // Verify no NEW member was added (still just the 1 existing member)
-      const membersInDb = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id },
+      const membersInDb = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id },
       });
       expect(membersInDb).toHaveLength(1);
     });
@@ -342,15 +331,15 @@ describe("Workspace Members API Integration Tests", () => {
         role: WorkspaceRole.PM,
       });
       const response = await PATCH(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: memberUser.id })
       });
 
       const data = await expectSuccess(response);
       expect(data.member.role).toBe("PM");
 
       // Verify role was actually updated in database
-      const memberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: memberUser.id },
+      const memberInDb = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: memberUser.id },
       });
       expect(memberInDb?.role).toBe(WorkspaceRole.PM);
     });
@@ -369,14 +358,14 @@ describe("Workspace Members API Integration Tests", () => {
         role: WorkspaceRole.PM,
       });
       const response = await PATCH(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: memberUser.id })
       });
 
       await expectForbidden(response);
 
       // Verify role was not changed in database
-      const memberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: memberUser.id },
+      const memberInDb = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: memberUser.id },
       });
       expect(memberInDb?.role).toBe(WorkspaceRole.DEVELOPER);
     });
@@ -390,7 +379,7 @@ describe("Workspace Members API Integration Tests", () => {
         role: WorkspaceRole.PM,
       });
       const response = await PATCH(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
       });
 
       await expectNotFound(response, "Member not found");
@@ -407,7 +396,7 @@ describe("Workspace Members API Integration Tests", () => {
 
       const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`);
       const response = await DELETE(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: memberUser.id })
       });
 
       const data = await expectSuccess(response);
@@ -429,14 +418,14 @@ describe("Workspace Members API Integration Tests", () => {
 
       const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`);
       const response = await DELETE(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: memberUser.id })
       });
 
       await expectForbidden(response);
 
       // Verify member was not removed from database
-      const memberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: memberUser.id, leftAt: null },
+      const memberInDb = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: memberUser.id,left_at: null },
       });
       expect(memberInDb).toBeTruthy();
     });
@@ -448,13 +437,13 @@ describe("Workspace Members API Integration Tests", () => {
 
       const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${ownerUser.id}`);
       const response = await DELETE(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: ownerUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: ownerUser.id })
       });
 
       await expectError(response, "Cannot remove workspace owner", 400);
 
       // Verify workspace still exists and owner is unchanged
-      const workspaceInDb = await db.workspace.findUnique({
+      const workspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(workspaceInDb?.ownerId).toBe(ownerUser.id);
@@ -467,7 +456,7 @@ describe("Workspace Members API Integration Tests", () => {
 
       const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${targetUser.id}`);
       const response = await DELETE(request, {
-        params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
       });
 
       await expectNotFound(response, "Member not found");

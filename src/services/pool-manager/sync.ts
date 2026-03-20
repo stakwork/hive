@@ -93,7 +93,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     }));
 
     // Fetch environment variables from database
-    const allEnvVars = await db.environmentVariable.findMany({
+    const allEnvVars = await db.environment_variables.findMany({
       where: { swarmId },
     });
 
@@ -118,7 +118,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     }
 
     // Fetch swarm data for services, containerFiles, and repository info
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { id: swarmId },
     });
 
@@ -130,7 +130,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     }
 
     // Get all repository names for multi-repo cwd resolution
-    const allRepos = await db.repository.findMany({
+    const allRepos = await db.repositories.findMany({
       where: { workspaceId: swarm.workspaceId },
       orderBy: { createdAt: "asc" },
     });
@@ -219,7 +219,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       ...existingContainerFiles, // user modifications take precedence
       "pm2.config.js": base64ContainerFiles["pm2.config.js"], // always regenerate pm2
     };
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarmId },
       data: { containerFiles: mergedContainerFiles },
     });
@@ -231,7 +231,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     // Get GitHub credentials - use provided userId or fall back to workspace owner
     let effectiveUserId = userId;
     if (!effectiveUserId) {
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { id: workspaceId },
         select: { ownerId: true },
       });
@@ -244,7 +244,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     const primaryRepo = await getPrimaryRepository(workspaceId);
 
     // Get all repositories for multi-repo support
-    const allRepositories = await db.repository.findMany({
+    const allRepositories = await db.repositories.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "asc" },
     });

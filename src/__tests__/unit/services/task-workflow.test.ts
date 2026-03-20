@@ -3,17 +3,14 @@ import { Priority, TaskStatus, TaskSourceType } from "@prisma/client";
 
 // Mock all dependencies at module level
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       create: vi.fn(),
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -170,15 +167,15 @@ const TestDataFactory = {
 // Test Helpers - Reusable assertion and setup functions
 const TestHelpers = {
   setupValidTask: () => {
-    mockDb.task.findFirst.mockResolvedValue(TestDataFactory.createValidTask() as any);
+    mockDb.tasks.findFirst.mockResolvedValue(TestDataFactory.createValidTask() as any);
   },
 
   setupValidUser: () => {
-    mockDb.user.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
+    mockDb.users.findUnique.mockResolvedValue(TestDataFactory.createValidUser() as any);
   },
 
   setupValidChatMessage: () => {
-    mockDb.chatMessage.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
+    mockDb.chat_messages.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
   },
 
   setupValidGithubProfile: () => {
@@ -189,16 +186,16 @@ const TestHelpers = {
   },
 
   setupTaskUpdate: () => {
-    mockDb.task.update.mockResolvedValue({} as any);
+    mockDb.tasks.update.mockResolvedValue({} as any);
   },
 
   setupTaskStatusCheck: (status: TaskStatus = "TODO") => {
-    mockDb.task.findUnique.mockResolvedValue({ status } as any);
+    mockDb.tasks.findUnique.mockResolvedValue({ status } as any);
   },
 
   setupTaskCreate: () => {
     // Mock task.create to return task with sourceType from actual call
-    mockDb.task.create.mockImplementation((params: any) => {
+    mockDb.tasks.create.mockImplementation((params: any) => {
       const fullTask = {
         id: "test-task-id",
         title: params.data.title || "Test Task",
@@ -244,7 +241,7 @@ const TestHelpers = {
   },
 
   expectChatMessageCreated: () => {
-    expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+    expect(mockDb.chat_messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           role: "USER",
@@ -259,7 +256,7 @@ const TestHelpers = {
   },
 
   expectTaskStatusUpdated: (status: string, additionalData = {}) => {
-    expect(mockDb.task.update).toHaveBeenCalledWith(
+    expect(mockDb.tasks.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "test-task-id" },
         data: expect.objectContaining({
@@ -391,7 +388,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       TestHelpers.expectChatMessageCreated();
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             taskId: "test-task-id",
@@ -418,7 +415,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         contextTags,
       });
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             contextTags: JSON.stringify(contextTags),
@@ -436,7 +433,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             contextTags: "[]",
@@ -450,7 +447,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
     test("should throw error when user not found", async () => {
       TestHelpers.setupValidTask();
       TestHelpers.setupValidChatMessage();
-      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.users.findUnique.mockResolvedValue(null);
 
       await expect(
         sendMessageToStakwork({
@@ -470,7 +467,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      expect(mockDb.user.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.users.findUnique).toHaveBeenCalledWith({
         where: { id: "test-user-id" },
         select: { name: true },
       });
@@ -479,7 +476,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
 
   describe("Task Validation", () => {
     test("should throw error when task not found", async () => {
-      mockDb.task.findFirst.mockResolvedValue(null);
+      mockDb.tasks.findFirst.mockResolvedValue(null);
 
       await expect(
         sendMessageToStakwork({
@@ -499,7 +496,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      expect(mockDb.task.findFirst).toHaveBeenCalledWith({
+      expect(mockDb.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           id: "test-task-id",
           deleted: false,
@@ -625,7 +622,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should include message and contextTags in Stakwork payload", async () => {
@@ -765,7 +762,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       // Non-2xx → no project_id → no status update
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should leave workflowStatus unchanged on Stakwork API exception (network error)", async () => {
@@ -785,7 +782,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       // Network error → no project_id → no status update
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     test("should set workflowStartedAt timestamp on success", async () => {
@@ -799,7 +796,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
       const afterTime = new Date();
 
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             workflowStartedAt: expect.any(Date),
@@ -807,7 +804,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         })
       );
 
-      const updateCall = mockDb.task.update.mock.calls[0][0];
+      const updateCall = mockDb.tasks.update.mock.calls[0][0];
       const startedAt = updateCall.data.workflowStartedAt;
       expect(startedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
       expect(startedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime());
@@ -822,7 +819,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             stakworkProjectId: 789,
@@ -923,7 +920,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         initialMessage: "Initial message",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalled();
+      expect(mockDb.tasks.create).toHaveBeenCalled();
       TestHelpers.expectChatMessageCreated();
       TestHelpers.expectStakworkCalled();
       expect(result.task).toBeDefined();
@@ -942,7 +939,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         userId: "test-user-id",
       });
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             message: "New Task\n\nTask Description",
@@ -963,7 +960,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         status: "IN_PROGRESS" as TaskStatus,
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: "IN_PROGRESS",
@@ -984,7 +981,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         initialMessage: "Initial message",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: "IN_PROGRESS",
@@ -1102,7 +1099,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         userId: "test-user-id",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             sourceType: "USER",
@@ -1130,7 +1127,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         initialMessage: "Initial message",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             assigneeId: "assignee-id",
@@ -1152,7 +1149,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         initialMessage: "Initial message",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             repositoryId: "repo-id",
@@ -1173,7 +1170,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         initialMessage: "Initial message",
       });
 
-      expect(mockDb.task.create).toHaveBeenCalledWith(
+      expect(mockDb.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "New Task",
@@ -1186,7 +1183,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
 
   describe("Error Propagation", () => {
     test("should propagate task creation errors", async () => {
-      mockDb.task.create.mockRejectedValue(new Error("Database error"));
+      mockDb.tasks.create.mockRejectedValue(new Error("Database error"));
 
       await expect(
         createTaskWithStakworkWorkflow({
@@ -1203,7 +1200,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
     test("should handle chat message creation errors", async () => {
       TestHelpers.setupTaskCreate();
       TestHelpers.setupValidUser();
-      mockDb.chatMessage.create.mockRejectedValue(new Error("Chat error"));
+      mockDb.chat_messages.create.mockRejectedValue(new Error("Chat error"));
 
       await expect(
         createTaskWithStakworkWorkflow({
@@ -1219,7 +1216,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
 
     test("should handle user not found error", async () => {
       TestHelpers.setupTaskCreate();
-      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.users.findUnique.mockResolvedValue(null);
       TestHelpers.setupValidChatMessage();
 
       await expect(
@@ -1267,7 +1264,7 @@ describe("Feature Context Integration", () => {
 
       // Setup task with featureId and phaseId
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask({
             featureId: "feature-123",
@@ -1329,7 +1326,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask({
             featureId: "feature-123",
@@ -1375,7 +1372,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask(),
           featureId: null,
@@ -1410,7 +1407,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask(),
           featureId: "feature-123",
@@ -1522,7 +1519,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithRepo as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithRepo as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -1554,7 +1551,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithoutRepo as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithoutRepo as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -1591,7 +1588,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -1629,7 +1626,7 @@ describe("Workspace Configuration Validation", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithNullSwarm as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithNullSwarm as any);
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -1668,7 +1665,7 @@ describe("Workspace Configuration Validation", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -1725,7 +1722,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBeUndefined();
     expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
   });
@@ -1749,7 +1746,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBeUndefined();
   });
 
@@ -1762,7 +1759,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBe("IN_PROGRESS");
     expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
   });
@@ -1788,7 +1785,7 @@ describe("Timestamp and Metadata Handling", () => {
     });
     const afterTime = new Date();
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     const startedAt = updateCall.data.workflowStartedAt;
 
     expect(startedAt).toBeInstanceOf(Date);
@@ -1805,7 +1802,7 @@ describe("Timestamp and Metadata Handling", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.stakworkProjectId).toBe(12345);
   });
 
@@ -1829,7 +1826,7 @@ describe("Timestamp and Metadata Handling", () => {
     });
 
     // No project_id → no status update at all
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
   });
 
   test("should include workspaceId in Stakwork payload", async () => {
@@ -1854,7 +1851,7 @@ describe("Timestamp and Metadata Handling", () => {
       runTestSuite: false,
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithFlags as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithFlags as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -1956,7 +1953,7 @@ describe("Feature Context Integration", () => {
 
       // Setup task with featureId and phaseId
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask({
             featureId: "feature-123",
@@ -2018,7 +2015,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask({
             featureId: "feature-123",
@@ -2064,7 +2061,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask(),
           featureId: null,
@@ -2099,7 +2096,7 @@ describe("Feature Context Integration", () => {
 
 
       TestHelpers.setupTaskCreate();
-      mockDb.task.create.mockImplementation((params: any) => {
+      mockDb.tasks.create.mockImplementation((params: any) => {
         return Promise.resolve({
           ...TestDataFactory.createValidTask(),
           featureId: "feature-123",
@@ -2211,7 +2208,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithRepo as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithRepo as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -2243,7 +2240,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithoutRepo as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithoutRepo as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -2280,7 +2277,7 @@ describe("Repository Configuration Handling", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -2318,7 +2315,7 @@ describe("Workspace Configuration Validation", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithNullSwarm as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithNullSwarm as any);
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -2357,7 +2354,7 @@ describe("Workspace Configuration Validation", () => {
       },
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -2414,7 +2411,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBeUndefined();
     expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
   });
@@ -2438,7 +2435,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBeUndefined();
   });
 
@@ -2451,7 +2448,7 @@ describe("Task Status Consistency", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.status).toBe("IN_PROGRESS");
     expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
   });
@@ -2477,7 +2474,7 @@ describe("Timestamp and Metadata Handling", () => {
     });
     const afterTime = new Date();
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     const startedAt = updateCall.data.workflowStartedAt;
 
     expect(startedAt).toBeInstanceOf(Date);
@@ -2494,7 +2491,7 @@ describe("Timestamp and Metadata Handling", () => {
       userId: "test-user-id",
     });
 
-    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const updateCall = mockDb.tasks.update.mock.calls[0][0];
     expect(updateCall.data.stakworkProjectId).toBe(12345);
   });
 
@@ -2518,7 +2515,7 @@ describe("Timestamp and Metadata Handling", () => {
     });
 
     // No project_id → no status update at all
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
   });
   test("should include workspaceId in Stakwork payload", async () => {
     MockSetup.setupSuccessfulWorkflow();
@@ -2542,7 +2539,7 @@ describe("Timestamp and Metadata Handling", () => {
       runTestSuite: false,
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithFlags as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithFlags as any);
 
     await sendMessageToStakwork({
       taskId: "test-task-id",
@@ -2637,7 +2634,7 @@ describe("Stakwork Configuration Validation", () => {
     });
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
   });
 
   test("should not call Stakwork when STAKWORK_BASE_URL is missing", async () => {
@@ -2655,7 +2652,7 @@ describe("Stakwork Configuration Validation", () => {
     });
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
   });
 
   test("should not call Stakwork when STAKWORK_WORKFLOW_ID is missing", async () => {
@@ -2673,7 +2670,7 @@ describe("Stakwork Configuration Validation", () => {
     });
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
   });
 });
 
@@ -4568,7 +4565,7 @@ describe("startTaskWorkflow with includeHistory", () => {
         agentPassword: null,
       });
 
-      mockDb.task.findFirst.mockResolvedValue(taskWithPodId as any);
+      mockDb.tasks.findFirst.mockResolvedValue(taskWithPodId as any);
       TestHelpers.setupValidUser();
       TestHelpers.setupValidChatMessage();
       TestHelpers.setupValidGithubProfile();
@@ -4598,7 +4595,7 @@ describe("startTaskWorkflow with includeHistory", () => {
         agentPassword: "encrypted-value",
       });
 
-      mockDb.task.findFirst.mockResolvedValue(taskWithPassword as any);
+      mockDb.tasks.findFirst.mockResolvedValue(taskWithPassword as any);
       TestHelpers.setupValidUser();
       TestHelpers.setupValidChatMessage();
       TestHelpers.setupValidGithubProfile();
@@ -4661,7 +4658,7 @@ describe("startTaskWorkflow - featureId forwarding", () => {
       featureId: "feature-123",
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithFeature as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithFeature as any);
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
     TestHelpers.setupValidGithubProfile();
@@ -4692,7 +4689,7 @@ describe("startTaskWorkflow - featureId forwarding", () => {
       featureId: null,
     });
 
-    mockDb.task.findFirst.mockResolvedValue(taskWithoutFeature as any);
+    mockDb.tasks.findFirst.mockResolvedValue(taskWithoutFeature as any);
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
     TestHelpers.setupValidGithubProfile();

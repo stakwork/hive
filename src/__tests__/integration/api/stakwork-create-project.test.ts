@@ -109,25 +109,22 @@ async function setupTestData() {
   const userEmail = `test-${generateUniqueId()}@example.com`;
   const workspaceSlug = generateUniqueSlug("test-workspace");
 
-  const user = await db.user.create({
+  const user = await db.users.create({
     data: {
       email: userEmail,
       name: "Test User",
     },
   });
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: "Test Workspace",
-      slug: workspaceSlug,
-      ownerId: user.id,
+      slug: workspaceSlug,owner_id: user.id,
     },
   });
 
-  await db.workspaceMember.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
+  await db.workspace_members.create({
+    data: {workspace_id: workspace.id,user_id: user.id,
       role: "OWNER",
     },
   });
@@ -210,7 +207,7 @@ describe("POST /api/stakwork/create-project - Integration Tests", () => {
       expect(response.status).toBe(201);
 
       // Verify user actually exists in database
-      const dbUser = await db.user.findUnique({
+      const dbUser = await db.users.findUnique({
         where: { id: testUser.id },
       });
       expect(dbUser).toBeTruthy();
@@ -505,7 +502,7 @@ describe("POST /api/stakwork/create-project - Integration Tests", () => {
       mockCreateProject.mockResolvedValue(mockProject);
 
       // Verify workspace exists
-      const workspaceExists = await db.workspace.findUnique({
+      const workspaceExists = await db.workspaces.findUnique({
         where: { id: testWorkspace.id },
       });
       expect(workspaceExists).toBeTruthy();
@@ -522,10 +519,8 @@ describe("POST /api/stakwork/create-project - Integration Tests", () => {
       const mockProject = TestDataFactory.createMockProjectResponse();
       mockCreateProject.mockResolvedValue(mockProject);
 
-      const membership = await db.workspaceMember.findFirst({
-        where: {
-          userId: testUser.id,
-          workspaceId: testWorkspace.id,
+      const membership = await db.workspace_members.findFirst({
+        where: {user_id: testUser.id,workspace_id: testWorkspace.id,
         },
       });
 
@@ -544,16 +539,16 @@ describe("POST /api/stakwork/create-project - Integration Tests", () => {
       const mockProject = TestDataFactory.createMockProjectResponse();
       mockCreateProject.mockResolvedValue(mockProject);
 
-      const userCountBefore = await db.user.count();
-      const workspaceCountBefore = await db.workspace.count();
+      const userCountBefore = await db.users.count();
+      const workspaceCountBefore = await db.workspaces.count();
 
       const request = createPostRequest("/api/stakwork/create-project",
         TestDataFactory.createValidProjectData()
       );
       await POST(request);
 
-      const userCountAfter = await db.user.count();
-      const workspaceCountAfter = await db.workspace.count();
+      const userCountAfter = await db.users.count();
+      const workspaceCountAfter = await db.workspaces.count();
 
       expect(userCountAfter).toBe(userCountBefore);
       expect(workspaceCountAfter).toBe(workspaceCountBefore);

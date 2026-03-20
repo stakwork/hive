@@ -37,31 +37,31 @@ describe("Workspace CRUD Operations", () => {
 
       const result = await createWorkspace(mockWorkspaceData);
 
-      expect(db.workspace.count).toHaveBeenCalledWith({
+      expect(db.workspaces.count).toHaveBeenCalledWith({
         where: { ownerId: "user1", deleted: false },
       });
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+      expect(db.workspaces.findUnique).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
         select: { id: true },
       });
-      expect(db.workspace.create).toHaveBeenCalledWith({
+      expect(db.workspaces.create).toHaveBeenCalledWith({
         data: mockWorkspaceData,
       });
       expect(result).toEqual(workspaceMocks.serializeDates(mockCreatedWorkspace));
     });
 
     test("should throw error when workspace limit exceeded", async () => {
-      mockedDb.workspace.count.mockResolvedValue(WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER);
+      mockedDb.workspaces.count.mockResolvedValue(WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER);
 
       await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
         WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
       );
 
-      expect(db.workspace.count).toHaveBeenCalledWith({
+      expect(db.workspaces.count).toHaveBeenCalledWith({
         where: { ownerId: "user1", deleted: false },
       });
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(db.workspaces.findUnique).not.toHaveBeenCalled();
+      expect(db.workspaces.create).not.toHaveBeenCalled();
     });
 
     test("should throw error for invalid slug", async () => {
@@ -82,8 +82,8 @@ describe("Workspace CRUD Operations", () => {
     });
 
     test("should handle Prisma unique constraint error", async () => {
-      mockedDb.workspace.count.mockResolvedValue(1);
-      mockedDb.workspace.findUnique.mockResolvedValue(null);
+      mockedDb.workspaces.count.mockResolvedValue(1);
+      mockedDb.workspaces.findUnique.mockResolvedValue(null);
       workspaceMockSetup.mockPrismaError(mockedDb, "create");
 
       await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
@@ -93,9 +93,9 @@ describe("Workspace CRUD Operations", () => {
 
     test("should re-throw non-constraint errors", async () => {
       const error = new Error("Database connection failed");
-      mockedDb.workspace.count.mockResolvedValue(1);
-      mockedDb.workspace.findUnique.mockResolvedValue(null);
-      mockedDb.workspace.create.mockRejectedValue(error);
+      mockedDb.workspaces.count.mockResolvedValue(1);
+      mockedDb.workspaces.findUnique.mockResolvedValue(null);
+      mockedDb.workspaces.create.mockRejectedValue(error);
 
       await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(error);
     });
@@ -120,11 +120,11 @@ describe("Workspace CRUD Operations", () => {
         }),
       ];
 
-      mockedDb.workspace.findMany.mockResolvedValue(mockWorkspaces);
+      mockedDb.workspaces.findMany.mockResolvedValue(mockWorkspaces);
 
       const result = await getWorkspacesByUserId("user1");
 
-      expect(db.workspace.findMany).toHaveBeenCalledWith({
+      expect(db.workspaces.findMany).toHaveBeenCalledWith({
         where: { ownerId: "user1", deleted: false },
       });
       expect(result).toEqual([
@@ -134,7 +134,7 @@ describe("Workspace CRUD Operations", () => {
     });
 
     test("should return empty array when no workspaces found", async () => {
-      mockedDb.workspace.findMany.mockResolvedValue([]);
+      mockedDb.workspaces.findMany.mockResolvedValue([]);
 
       const result = await getWorkspacesByUserId("user1");
 
@@ -150,7 +150,7 @@ describe("Workspace CRUD Operations", () => {
 
       const result = await getWorkspaceBySlug("test-workspace", "owner1");
 
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
@@ -190,7 +190,7 @@ describe("Workspace CRUD Operations", () => {
 
       const result = await getWorkspaceBySlug("test-workspace", "user1");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+      expect(db.workspace_members.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws1",
           userId: "user1",
@@ -210,7 +210,7 @@ describe("Workspace CRUD Operations", () => {
 
     test("should return null for user without access", async () => {
       workspaceMockSetup.mockWorkspaceWithMemberAccess(mockedDb, mockWorkspace, "DEVELOPER");
-      mockedDb.workspaceMember.findFirst.mockResolvedValue(null);
+      mockedDb.workspace_members.findFirst.mockResolvedValue(null);
 
       const result = await getWorkspaceBySlug("test-workspace", "user1");
 
@@ -245,8 +245,8 @@ describe("Workspace CRUD Operations", () => {
         },
       ];
 
-      mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
-      mockedDb.workspaceMember.findMany
+      mockedDb.workspaces.findMany.mockResolvedValue(mockOwnedWorkspaces);
+      mockedDb.workspace_members.findMany
         .mockResolvedValueOnce(mockMemberships) // First call for memberships
         .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
         .mockResolvedValueOnce([ // Third call for member counts
@@ -264,8 +264,8 @@ describe("Workspace CRUD Operations", () => {
     });
 
     test("should handle empty results", async () => {
-      mockedDb.workspace.findMany.mockResolvedValue([]);
-      mockedDb.workspaceMember.findMany.mockResolvedValue([]);
+      mockedDb.workspaces.findMany.mockResolvedValue([]);
+      mockedDb.workspace_members.findMany.mockResolvedValue([]);
 
       const result = await getUserWorkspaces("user1");
 
@@ -325,8 +325,8 @@ describe("Workspace CRUD Operations", () => {
       ];
 
       // Mock getUserWorkspaces calls
-      mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
-      mockedDb.workspaceMember.findMany
+      mockedDb.workspaces.findMany.mockResolvedValue(mockOwnedWorkspaces);
+      mockedDb.workspace_members.findMany
         .mockResolvedValueOnce([]) // First call: memberships
         .mockResolvedValueOnce(mockOwnerMemberships) // Second call: owner lastAccessedAt
         .mockResolvedValueOnce([ // Third call: member counts
@@ -335,7 +335,7 @@ describe("Workspace CRUD Operations", () => {
         ]);
 
       // Mock findUnique to return the most recently accessed workspace
-      mockedDb.workspace.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 
@@ -395,8 +395,8 @@ describe("Workspace CRUD Operations", () => {
       ];
 
       // Mock getUserWorkspaces calls
-      mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
-      mockedDb.workspaceMember.findMany
+      mockedDb.workspaces.findMany.mockResolvedValue(mockOwnedWorkspaces);
+      mockedDb.workspace_members.findMany
         .mockResolvedValueOnce([]) // First call: memberships
         .mockResolvedValueOnce(mockOwnerMemberships) // Second call: owner lastAccessedAt
         .mockResolvedValueOnce([ // Third call: member counts
@@ -405,7 +405,7 @@ describe("Workspace CRUD Operations", () => {
         ]);
 
       // Mock findUnique to return the alphabetically first workspace (Alpha Workspace)
-      mockedDb.workspace.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 
@@ -414,8 +414,8 @@ describe("Workspace CRUD Operations", () => {
 
     test("should return null if no workspaces found", async () => {
       // Mock getUserWorkspaces to return empty array
-      mockedDb.workspace.findMany.mockResolvedValue([]);
-      mockedDb.workspaceMember.findMany.mockResolvedValue([]);
+      mockedDb.workspaces.findMany.mockResolvedValue([]);
+      mockedDb.workspace_members.findMany.mockResolvedValue([]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 
@@ -432,13 +432,13 @@ describe("Workspace CRUD Operations", () => {
       );
 
       workspaceMockSetup.mockWorkspaceWithOwnerAccess(mockedDb, mockWorkspace);
-      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
-      mockedDb.workspace.update.mockResolvedValue({});
-      mockedDb.swarm.findFirst.mockResolvedValue(null);
+      mockedDb.workspaces.findUnique.mockResolvedValue(mockWorkspace);
+      mockedDb.workspaces.update.mockResolvedValue({});
+      mockedDb.swarms.findFirst.mockResolvedValue(null);
 
       await deleteWorkspaceBySlug("test-workspace", "user1");
 
-      expect(db.workspace.update).toHaveBeenCalledWith({
+      expect(db.workspaces.update).toHaveBeenCalledWith({
         where: { id: "ws1" },
         data: {
           deleted: true,
@@ -530,7 +530,7 @@ describe("Workspace CRUD Operations", () => {
         updatedAt: "2023-01-02T00:00:00.000Z",
       });
 
-      expect(db.workspace.update).toHaveBeenCalledWith({
+      expect(db.workspaces.update).toHaveBeenCalledWith({
         where: { id: "workspace1" },
         data: {
           name: "Updated Workspace",
@@ -543,7 +543,7 @@ describe("Workspace CRUD Operations", () => {
 
     test("should throw error if workspace not found", async () => {
       workspaceMockSetup.mockWorkspaceNotFound(mockedDb);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
       const updateData = {
         name: "Updated Workspace",
@@ -581,8 +581,8 @@ describe("Workspace CRUD Operations", () => {
         null
       );
 
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
 
       const updateData = {
         name: "Test Workspace",
@@ -641,7 +641,7 @@ describe("Workspace CRUD Operations", () => {
       const result = await updateWorkspace("test-slug", "user1", updateData);
 
       expect(result.description).toBe("Updated description");
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+      expect(db.workspaces.findUnique).not.toHaveBeenCalled();
     });
 
     test("should handle Prisma unique constraint error", async () => {
@@ -651,9 +651,9 @@ describe("Workspace CRUD Operations", () => {
         null
       );
 
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspace);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(null);
 
       workspaceMockSetup.mockPrismaError(mockedDb, "update");
 

@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the user's session to validate the GitHub state
-    // const userSession = await db.session.findFirst({
+    // const userSession = await db.sessions.findFirst({
     //   where: {
     //     userId: session.user.id as string,
     //     githubState: state,
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
     } else {
       // No installation ID - this is just OAuth for existing installation
       // Look up the workspace to see which SourceControlOrg it's linked to
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { slug: workspaceSlug },
         include: { sourceControlOrg: true },
       });
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
         console.log(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
       } else {
         // Workspace not linked yet - extract GitHub org from repository URL
-        const workspace = await db.workspace.findUnique({
+        const workspace = await db.workspaces.findUnique({
           where: { slug: workspaceSlug },
         });
 
@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
               const repoGithubOwner = githubMatch[1];
               console.log(`Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
 
-              const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+              const existingSourceControlOrg = await db.source_control_orgs.findUnique({
                 where: { githubLogin: repoGithubOwner },
               });
 
@@ -268,13 +268,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Find or create SourceControlOrg
-    let sourceControlOrg = await db.sourceControlOrg.findUnique({
+    let sourceControlOrg = await db.source_control_orgs.findUnique({
       where: { githubLogin: githubOwner },
     });
 
     if (!sourceControlOrg && installationIdNumber) {
       // Create new SourceControlOrg (only if we have installation ID)
-      sourceControlOrg = await db.sourceControlOrg.create({
+      sourceControlOrg = await db.source_control_orgs.create({
         data: {
           type: ownerType === "user" ? "USER" : "ORG",
           githubLogin: githubOwner,
@@ -294,7 +294,7 @@ export async function GET(request: NextRequest) {
       sourceControlOrg.githubInstallationId !== installationIdNumber
     ) {
       // Update installation ID if it changed
-      sourceControlOrg = await db.sourceControlOrg.update({
+      sourceControlOrg = await db.source_control_orgs.update({
         where: { id: sourceControlOrg.id },
         data: { githubInstallationId: installationIdNumber },
       });
@@ -308,7 +308,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Create or update SourceControlToken
-    const existingToken = await db.sourceControlToken.findUnique({
+    const existingToken = await db.source_control_tokens.findUnique({
       where: {
         userId_sourceControlOrgId: {
           userId: session.user.id as string,
@@ -319,7 +319,7 @@ export async function GET(request: NextRequest) {
 
     if (existingToken) {
       // Update existing token
-      await db.sourceControlToken.update({
+      await db.source_control_tokens.update({
         where: { id: existingToken.id },
         data: {
           token: encryptedAccessToken,
@@ -330,7 +330,7 @@ export async function GET(request: NextRequest) {
       console.log(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`);
     } else {
       // Create new token
-      await db.sourceControlToken.create({
+      await db.source_control_tokens.create({
         data: {
           userId: session.user.id as string,
           sourceControlOrgId: sourceControlOrg.id,
@@ -343,7 +343,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Clear the GitHub state from the session after successful validation
-    await db.session.updateMany({
+    await db.sessions.updateMany({
       where: { userId: session.user.id as string },
       data: { githubState: null },
     });
@@ -355,7 +355,7 @@ export async function GET(request: NextRequest) {
       console.log(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`);
 
       // Find the workspace and link it to the source control org
-      const result = await db.workspace.updateMany({
+      const result = await db.workspaces.updateMany({
         where: { slug: workspaceSlug },
         data: { sourceControlOrgId: sourceControlOrg.id },
       });
@@ -363,7 +363,7 @@ export async function GET(request: NextRequest) {
       console.log(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`);
 
       // Check repository access after linking
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { slug: workspaceSlug },
       });
 
@@ -427,7 +427,7 @@ export async function GET(request: NextRequest) {
       console.log(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);
 
       // Unlink the workspace from source control org
-      const result = await db.workspace.updateMany({
+      const result = await db.workspaces.updateMany({
         where: { slug: workspaceSlug },
         data: { sourceControlOrgId: null },
       });

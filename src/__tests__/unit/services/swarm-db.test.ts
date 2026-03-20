@@ -4,8 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 
 // Mock the database with factory function to avoid hoisting issues
 vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
+  db: {swarms: {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -28,7 +27,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
     const testPassword = "TestPassword123!@#";
     
     // Mock no existing swarm (will create new one)
-    (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+    (db.swarms.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
     
     // Mock the created swarm response
     const mockCreatedSwarm = {
@@ -38,7 +37,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       swarmPassword: JSON.stringify(enc.encryptField("swarmPassword", testPassword)),
       instanceType: "XL",
     };
-    (db.swarm.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockCreatedSwarm);
+    (db.swarms.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockCreatedSwarm);
     
     const swarm = await saveOrUpdateSwarm({
       workspaceId,
@@ -73,14 +72,14 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       swarmPassword: JSON.stringify(enc.encryptField("swarmPassword", initialPassword)),
       instanceType: "XL",
     };
-    (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
+    (db.swarms.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
     
     // Mock the updated swarm response
     const mockUpdatedSwarm = {
       ...existingSwarm,
       swarmPassword: JSON.stringify(enc.encryptField("swarmPassword", newPassword)),
     };
-    (db.swarm.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockUpdatedSwarm);
+    (db.swarms.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockUpdatedSwarm);
 
     // Update with new password
     const updated = await saveOrUpdateSwarm({
@@ -105,14 +104,14 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       instanceType: "XL",
       status: "PENDING",
     };
-    (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
+    (db.swarms.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
     
     // Mock the updated swarm response (password unchanged)
     const mockUpdatedSwarm = {
       ...existingSwarm,
       status: "ACTIVE",
     };
-    (db.swarm.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockUpdatedSwarm);
+    (db.swarms.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockUpdatedSwarm);
 
     // Update without password
     const updated = await saveOrUpdateSwarm({

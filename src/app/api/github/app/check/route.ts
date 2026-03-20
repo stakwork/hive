@@ -62,7 +62,7 @@ export async function GET(request: Request) {
     // 4️⃣ Check if SourceControlOrg exists (determines whether GitHub App is installed)
     // Use case-insensitive lookup since GitHub logins are case-insensitive
     console.log("[REPO CHECK] Checking source control org for owner:", owner);
-    const sourceControlOrg = await db.sourceControlOrg.findFirst({
+    const sourceControlOrg = await db.source_control_orgs.findFirst({
       where: { githubLogin: { equals: owner, mode: "insensitive" } },
       select: { githubInstallationId: true },
     });

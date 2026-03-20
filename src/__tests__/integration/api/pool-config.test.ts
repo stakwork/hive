@@ -34,50 +34,41 @@ describe("Pool Config API", () => {
     workspace = scenario.workspace;
 
     // Create swarm with initial minimumVms
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
       name: `config-test-swarm-${generateUniqueId("swarm")}`,
-      status: "ACTIVE",
-      poolName: `pool-${generateUniqueId("pool")}`,
-      poolApiKey: "test-api-key-123",
+      status: "ACTIVE",pool_name: `pool-${generateUniqueId("pool")}`,pool_api_key: "test-api-key-123",
     });
 
     // Update swarm to set minimumVms (not in factory by default)
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
-      data: { minimumVms: 3 },
+      data: {minimum_vms: 3 },
     });
 
     // Create superadmin user
     superadminUser = await createTestUser({
       name: "Super Admin",
       email: "superadmin@test.com",
-      withGitHubAuth: true,
-      githubUsername: "superadmin",
+      withGitHubAuth: true,github_username: "superadmin",
     });
 
     // Create regular user
     regularUser = await createTestUser({
       name: "Regular User",
       email: "regular@test.com",
-      withGitHubAuth: true,
-      githubUsername: "regularuser",
+      withGitHubAuth: true,github_username: "regularuser",
     });
 
     // Add regular user as member
-    await db.workspaceMember.create({
-      data: {
-        userId: regularUser.id,
-        workspaceId: workspace.id,
+    await db.workspace_members.create({
+      data: {user_id: regularUser.id,workspace_id: workspace.id,
         role: "DEVELOPER",
       },
     });
 
     // Add superadmin as member
-    await db.workspaceMember.create({
-      data: {
-        userId: superadminUser.id,
-        workspaceId: workspace.id,
+    await db.workspace_members.create({
+      data: {user_id: superadminUser.id,workspace_id: workspace.id,
         role: "DEVELOPER",
       },
     });
@@ -115,8 +106,7 @@ describe("Pool Config API", () => {
       const data = await response.json();
       expect(data).toEqual({
         success: true,
-        data: {
-          minimumVms: 3,
+        data: {minimum_vms: 3,
           isSuperAdmin: false,
         },
       });
@@ -142,8 +132,7 @@ describe("Pool Config API", () => {
       const data = await response.json();
       expect(data).toEqual({
         success: true,
-        data: {
-          minimumVms: 3,
+        data: {minimum_vms: 3,
           isSuperAdmin: true,
         },
       });
@@ -220,7 +209,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: 5 }),
+          body: JSON.stringify({minimum_vms: 5 }),
         }
       );
 
@@ -246,7 +235,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: 0 }),
+          body: JSON.stringify({minimum_vms: 0 }),
         }
       );
 
@@ -272,7 +261,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: "five" }),
+          body: JSON.stringify({minimum_vms: "five" }),
         }
       );
 
@@ -298,7 +287,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: 5 }),
+          body: JSON.stringify({minimum_vms: 5 }),
         }
       );
 
@@ -311,9 +300,9 @@ describe("Pool Config API", () => {
       expect(data.success).toBe(true);
 
       // Verify DB was updated
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
-        select: { minimumVms: true },
+        select: {minimum_vms: true },
       });
       expect(updatedSwarm?.minimumVms).toBe(5);
 
@@ -350,7 +339,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: 7 }),
+          body: JSON.stringify({minimum_vms: 7 }),
         }
       );
 
@@ -363,9 +352,9 @@ describe("Pool Config API", () => {
       expect(data.success).toBe(true);
 
       // Verify DB was still updated
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
-        select: { minimumVms: true },
+        select: {minimum_vms: true },
       });
       expect(updatedSwarm?.minimumVms).toBe(7);
     });
@@ -382,10 +371,8 @@ describe("Pool Config API", () => {
         owner: { name: "No Pool Owner" },
       });
 
-      await db.workspaceMember.create({
-        data: {
-          userId: superadminUser.id,
-          workspaceId: newScenario.workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: superadminUser.id,workspace_id: newScenario.workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -395,7 +382,7 @@ describe("Pool Config API", () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minimumVms: 5 }),
+          body: JSON.stringify({minimum_vms: 5 }),
         }
       );
 

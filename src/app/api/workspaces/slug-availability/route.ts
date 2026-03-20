@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if workspace with this slug already exists
-    const existingWorkspace = await db.workspace.findUnique({
+    const existingWorkspace = await db.workspaces.findUnique({
       where: { slug: slug.toLowerCase() },
       select: { id: true },
     });

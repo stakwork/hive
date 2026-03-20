@@ -4,20 +4,17 @@ import { db } from "@/lib/db";
 
 // Mock Prisma db client
 vi.mock("@/lib/db", () => ({
-  db: {
-    feature: {
+  db: {features: {
       findUnique: vi.fn(),
-    },
-    phase: {
+    },phases: {
       findUnique: vi.fn(),
     },
   },
 }));
 
 describe("buildFeatureContext", () => {
-  const mockDb = db as unknown as {
-    feature: { findUnique: ReturnType<typeof vi.fn> };
-    phase: { findUnique: ReturnType<typeof vi.fn> };
+  const mockDb = db as unknown as {features: { findUnique: ReturnType<typeof vi.fn> };
+phases: { findUnique: ReturnType<typeof vi.fn> };
   };
 
   beforeEach(() => {
@@ -52,8 +49,8 @@ describe("buildFeatureContext", () => {
         ],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -96,12 +93,12 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       await buildFeatureContext("feature-1", "phase-1");
 
-      expect(mockDb.feature.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-1" },
         include: {
           userStories: {
@@ -110,7 +107,7 @@ describe("buildFeatureContext", () => {
         },
       });
 
-      expect(mockDb.phase.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.phases.findUnique).toHaveBeenCalledWith({
         where: { id: "phase-1" },
         include: {
           tasks: {
@@ -145,8 +142,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-minimal", "phase-minimal");
 
@@ -169,8 +166,8 @@ describe("buildFeatureContext", () => {
 
   describe("Missing Entities", () => {
     test("should throw error when feature not found", async () => {
-      mockDb.feature.findUnique.mockResolvedValue(null);
-      mockDb.phase.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockResolvedValue(null);
+      mockDb.phases.findUnique.mockResolvedValue({
         id: "phase-1",
         name: "Test Phase",
         description: null,
@@ -181,7 +178,7 @@ describe("buildFeatureContext", () => {
         "Feature or Phase not found: invalid-feature-id, phase-1"
       );
 
-      expect(mockDb.feature.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.features.findUnique).toHaveBeenCalledWith({
         where: { id: "invalid-feature-id" },
         include: {
           userStories: {
@@ -192,7 +189,7 @@ describe("buildFeatureContext", () => {
     });
 
     test("should throw error when phase not found", async () => {
-      mockDb.feature.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockResolvedValue({
         id: "feature-1",
         title: "Test Feature",
         brief: null,
@@ -200,13 +197,13 @@ describe("buildFeatureContext", () => {
         architecture: null,
         userStories: [],
       });
-      mockDb.phase.findUnique.mockResolvedValue(null);
+      mockDb.phases.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("feature-1", "invalid-phase-id")).rejects.toThrow(
         "Feature or Phase not found: feature-1, invalid-phase-id"
       );
 
-      expect(mockDb.phase.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.phases.findUnique).toHaveBeenCalledWith({
         where: { id: "invalid-phase-id" },
         include: {
           tasks: {
@@ -225,8 +222,8 @@ describe("buildFeatureContext", () => {
     });
 
     test("should throw error when both feature and phase not found", async () => {
-      mockDb.feature.findUnique.mockResolvedValue(null);
-      mockDb.phase.findUnique.mockResolvedValue(null);
+      mockDb.features.findUnique.mockResolvedValue(null);
+      mockDb.phases.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("invalid-feature", "invalid-phase")).rejects.toThrow(
         "Feature or Phase not found: invalid-feature, invalid-phase"
@@ -234,8 +231,8 @@ describe("buildFeatureContext", () => {
     });
 
     test("should include both IDs in error message", async () => {
-      mockDb.feature.findUnique.mockResolvedValue(null);
-      mockDb.phase.findUnique.mockResolvedValue(null);
+      mockDb.features.findUnique.mockResolvedValue(null);
+      mockDb.phases.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("feature-abc", "phase-xyz")).rejects.toThrow(
         "Feature or Phase not found: feature-abc, phase-xyz"
@@ -261,8 +258,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -288,8 +285,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -315,8 +312,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -342,8 +339,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -368,8 +365,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -399,8 +396,8 @@ describe("buildFeatureContext", () => {
         ],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -429,8 +426,8 @@ describe("buildFeatureContext", () => {
         ],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -457,8 +454,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -483,8 +480,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -515,8 +512,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -550,8 +547,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -583,8 +580,8 @@ describe("buildFeatureContext", () => {
         ],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -621,8 +618,8 @@ describe("buildFeatureContext", () => {
         ],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -648,12 +645,12 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       await buildFeatureContext("feature-1", "phase-1");
 
-      expect(mockDb.phase.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.phases.findUnique).toHaveBeenCalledWith({
         where: { id: "phase-1" },
         include: {
           tasks: {
@@ -674,8 +671,8 @@ describe("buildFeatureContext", () => {
 
   describe("Database Errors", () => {
     test("should propagate database error from feature query", async () => {
-      mockDb.feature.findUnique.mockRejectedValue(new Error("Database connection failed"));
-      mockDb.phase.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockRejectedValue(new Error("Database connection failed"));
+      mockDb.phases.findUnique.mockResolvedValue({
         id: "phase-1",
         name: "Test Phase",
         description: null,
@@ -686,11 +683,11 @@ describe("buildFeatureContext", () => {
         "Database connection failed"
       );
 
-      expect(mockDb.feature.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockDb.features.findUnique).toHaveBeenCalledTimes(1);
     });
 
     test("should propagate database error from phase query", async () => {
-      mockDb.feature.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockResolvedValue({
         id: "feature-1",
         title: "Test Feature",
         brief: null,
@@ -698,16 +695,16 @@ describe("buildFeatureContext", () => {
         architecture: null,
         userStories: [],
       });
-      mockDb.phase.findUnique.mockRejectedValue(new Error("Phase query timeout"));
+      mockDb.phases.findUnique.mockRejectedValue(new Error("Phase query timeout"));
 
       await expect(buildFeatureContext("feature-1", "phase-1")).rejects.toThrow("Phase query timeout");
 
-      expect(mockDb.phase.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockDb.phases.findUnique).toHaveBeenCalledTimes(1);
     });
 
     test("should handle network errors", async () => {
-      mockDb.feature.findUnique.mockRejectedValue(new Error("ECONNREFUSED"));
-      mockDb.phase.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockRejectedValue(new Error("ECONNREFUSED"));
+      mockDb.phases.findUnique.mockResolvedValue({
         id: "phase-1",
         name: "Test Phase",
         description: null,
@@ -718,8 +715,8 @@ describe("buildFeatureContext", () => {
     });
 
     test("should handle generic database errors", async () => {
-      mockDb.feature.findUnique.mockRejectedValue(new Error("Internal database error"));
-      mockDb.phase.findUnique.mockResolvedValue({
+      mockDb.features.findUnique.mockRejectedValue(new Error("Internal database error"));
+      mockDb.phases.findUnique.mockResolvedValue({
         id: "phase-1",
         name: "Test Phase",
         description: null,
@@ -750,8 +747,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -776,8 +773,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -808,8 +805,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -840,8 +837,8 @@ describe("buildFeatureContext", () => {
         })),
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
@@ -870,8 +867,8 @@ describe("buildFeatureContext", () => {
         tasks: [],
       };
 
-      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
-      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+      mockDb.features.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phases.findUnique.mockResolvedValue(mockPhase);
 
       const result = await buildFeatureContext(featureUuid, phaseUuid);
 

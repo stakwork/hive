@@ -49,12 +49,10 @@ vi.mock("@/lib/db", () => {
   const mockSwarmFindFirst = vi.fn();
 
   return {
-    db: {
-      workspace: {
+    db: {workspaces: {
         update: mockWorkspaceUpdate,
         findFirst: mockWorkspaceFindFirst,
-      },
-      swarm: {
+      },swarms: {
         findFirst: mockSwarmFindFirst,
       },
     },

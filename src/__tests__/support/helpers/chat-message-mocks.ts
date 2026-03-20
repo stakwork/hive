@@ -110,12 +110,12 @@ export function setupChatMessageDatabaseMocks(options: {
     chatHistoryMock = [],
   } = options;
 
-  vi.mocked(db.task.findFirst).mockResolvedValue(taskMock as any);
-  vi.mocked(db.user.findUnique).mockResolvedValue(userMock as any);
-  vi.mocked(db.workspace.findUnique).mockResolvedValue(workspaceMock as any);
-  vi.mocked(db.chatMessage.create).mockResolvedValue(chatMessageMock as any);
-  vi.mocked(db.chatMessage.findMany).mockResolvedValue(chatHistoryMock as any);
-  vi.mocked(db.task.update).mockResolvedValue({} as any);
+  vi.mocked(db.tasks.findFirst).mockResolvedValue(taskMock as any);
+  vi.mocked(db.users.findUnique).mockResolvedValue(userMock as any);
+  vi.mocked(db.workspaces.findUnique).mockResolvedValue(workspaceMock as any);
+  vi.mocked(db.chat_messages.create).mockResolvedValue(chatMessageMock as any);
+  vi.mocked(db.chat_messages.findMany).mockResolvedValue(chatHistoryMock as any);
+  vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 }
 
 /**

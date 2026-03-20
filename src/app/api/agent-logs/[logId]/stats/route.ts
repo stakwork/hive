@@ -62,7 +62,7 @@ export async function GET(
       }
 
       // Look up the log to verify workspace membership
-      const log = await db.agentLog.findUnique({
+      const log = await db.agent_logs.findUnique({
         where: { id: logId },
         select: {
           workspaceId: true,
@@ -93,7 +93,7 @@ export async function GET(
     }
 
     // Fetch the blob content
-    const agentLog = await db.agentLog.findUnique({
+    const agentLog = await db.agent_logs.findUnique({
       where: { id: logId },
       select: { blobUrl: true },
     });

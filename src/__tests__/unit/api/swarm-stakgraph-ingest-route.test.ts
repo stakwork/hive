@@ -7,15 +7,12 @@ import { RepositoryStatus } from "@prisma/client";
 // Mock dependencies
 vi.mock("next-auth/next");
 vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
+  db: {swarms: {
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    repository: {
+    },repositories: {
       update: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -152,12 +149,12 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
-    vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarms.findUnique).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarms.update).mockResolvedValue(mockSwarm);
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepositoryInfo);
     vi.mocked(getAllRepositories).mockResolvedValue([mockRepositoryInfo]);
-    vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
-    vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
+    vi.mocked(db.repositories.update).mockResolvedValue(mockRepository);
+    vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace);
     vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
     vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
     vi.mocked(saveOrUpdateSwarm).mockResolvedValue(mockSwarm as any);
@@ -176,7 +173,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 404 when swarm not found", async () => {
-    vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
+    vi.mocked(db.swarms.findUnique).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -200,7 +197,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 409 when ingest request already in progress", async () => {
-    vi.mocked(db.swarm.findUnique).mockResolvedValue({
+    vi.mocked(db.swarms.findUnique).mockResolvedValue({
       ...mockSwarm,
       ingestRequestInProgress: true,
     });
@@ -230,7 +227,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     expect(triggerIngestAsync).toHaveBeenCalled();
 
     // Verify repository status is updated to PENDING
-    expect(db.repository.update).toHaveBeenCalledWith({
+    expect(db.repositories.update).toHaveBeenCalledWith({
       where: {
         repositoryUrl_workspaceId: {
           repositoryUrl: mockRepository.repositoryUrl,
@@ -256,7 +253,7 @@ describe("GET /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarms.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(swarmApiRequest).mockResolvedValue({ ok: true, status: 200, data: {} });
   });
 
@@ -268,7 +265,7 @@ describe("GET /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 404 when swarm not found", async () => {
-    vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
+    vi.mocked(db.swarms.findUnique).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest?id=req-123&workspaceId=workspace-123");
 

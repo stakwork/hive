@@ -21,8 +21,7 @@ describe("DELETE /api/admin/workspaces/[id]", () => {
 
     // Create test workspace
     workspace = await createTestWorkspace({
-      name: "Test Workspace",
-      ownerId: regularUser.id,
+      name: "Test Workspace",owner_id: regularUser.id,
     });
   });
 

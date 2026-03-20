@@ -64,36 +64,22 @@ export async function createTestTask(
 
   // Idempotent: check if exists
   if (options.idempotent) {
-    const existing = await db.task.findFirst({
-      where: {
-        workspaceId: options.workspaceId,
+    const existing = await db.tasks.findFirst({
+      where: {workspace_id: options.workspaceId,
         title,
       },
     });
     if (existing) return existing;
   }
 
-  return db.task.create({
+  return db.tasks.create({
     data: {
       title,
-      description,
-      workspaceId: options.workspaceId,
-      createdById: options.createdById,
-      updatedById: options.createdById,
-      assigneeId: options.assigneeId ?? null,
+      description,workspace_id: options.workspaceId,created_by_id: options.createdById,updated_by_id: options.createdById,assignee_id: options.assigneeId ?? null,
       status,
       priority,
-      sourceType,
-      workflowStatus: options.workflowStatus ?? null,
-      featureId: options.featureId ?? null,
-      phaseId: options.phaseId ?? null,
-      repositoryId: options.repositoryId ?? null,
-      order: options.order ?? 0,
-      dependsOnTaskIds: options.dependsOnTaskIds ?? [],
-      testFilePath: options.testFilePath ?? null,
-      testFileUrl: options.testFileUrl ?? null,
-      stakworkProjectId: options.stakworkProjectId ?? null,
-      autoMerge: options.autoMerge ?? false,
+      sourceType,workflow_status: options.workflowStatus ?? null,feature_id: options.featureId ?? null,phase_id: options.phaseId ?? null,repository_id: options.repositoryId ?? null,
+      order: options.order ?? 0,depends_on_task_ids: options.dependsOnTaskIds ?? [],test_file_path: options.testFilePath ?? null,test_file_url: options.testFileUrl ?? null,stakwork_project_id: options.stakworkProjectId ?? null,auto_merge: options.autoMerge ?? false,
     },
   });
 }
@@ -134,9 +120,8 @@ export async function createTestTasks(
 export async function createTestChatMessage(
   options: CreateTestChatMessageOptions,
 ): Promise<ChatMessage> {
-  return db.chatMessage.create({
-    data: {
-      taskId: options.taskId,
+  return db.chat_messages.create({
+    data: {task_id: options.taskId,
       message: options.message,
       role: options.role || "USER",
     },
@@ -164,18 +149,18 @@ export async function createTestTaskWithMessages(
 }
 
 export async function findTestTask(taskId: string) {
-  return db.task.findUnique({ where: { id: taskId } });
+  return db.tasks.findUnique({ where: { id: taskId } });
 }
 
 export async function updateTestTask(taskId: string, updates: any) {
-  return db.task.update({
+  return db.tasks.update({
     where: { id: taskId },
     data: updates
   });
 }
 
 export async function deleteTestTask(taskId: string) {
-  return db.task.delete({ where: { id: taskId } });
+  return db.tasks.delete({ where: { id: taskId } });
 }
 
 export interface CreateTestUserJourneyTaskOptions {
@@ -194,20 +179,11 @@ export interface CreateTestUserJourneyTaskOptions {
 export async function createTestUserJourneyTask(
   options: CreateTestUserJourneyTaskOptions,
 ): Promise<Task> {
-  return db.task.create({
+  return db.tasks.create({
     data: {
       title: options.title,
-      description: options.description || null,
-      workspaceId: options.workspaceId,
-      repositoryId: options.repositoryId || null,
-      sourceType: "USER_JOURNEY",
-      status: options.status || "TODO",
-      workflowStatus: options.workflowStatus || null,
-      testFilePath: options.testFilePath || null,
-      testFileUrl: options.testFileUrl || null,
-      stakworkProjectId: options.stakworkProjectId || null,
-      createdById: options.createdById,
-      updatedById: options.createdById,
+      description: options.description || null,workspace_id: options.workspaceId,repository_id: options.repositoryId || null,source_type: "USER_JOURNEY",
+      status: options.status || "TODO",workflow_status: options.workflowStatus || null,test_file_path: options.testFilePath || null,test_file_url: options.testFileUrl || null,stakwork_project_id: options.stakworkProjectId || null,created_by_id: options.createdById,updated_by_id: options.createdById,
     },
   });
 }
@@ -237,7 +213,7 @@ export async function createTestArtifact(
     uploadedAt: new Date().toISOString(),
   };
 
-  return db.artifact.create({
+  return db.artifacts.create({
     data: {
       messageId: options.messageId,
       type: options.type || "MEDIA",

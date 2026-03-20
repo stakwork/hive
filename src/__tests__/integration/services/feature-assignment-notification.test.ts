@@ -39,29 +39,25 @@ describe("FEATURE_ASSIGNED notification", () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    owner = await db.user.create({
+    owner = await db.users.create({
       data: { email: "owner@test.com", name: "Owner" },
     });
-    assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
+    assignee = await db.users.create({
+      data: { email: "assignee@test.com", name: "Assignee",lightning_pubkey: "test-pubkey-assignee" },
     });
 
     const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    workspace = await createTestWorkspace({owner_id: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-assign",
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: owner.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: owner.id, role: "OWNER" },
     });
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "My Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "My Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
   });
@@ -73,7 +69,7 @@ describe("FEATURE_ASSIGNED notification", () => {
   it("creates a FEATURE_ASSIGNED notification_trigger row when assigning to another user", async () => {
     const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
 
-    await updateFeature(feature.id, owner.id, { assigneeId: assignee.id });
+    await updateFeature(feature.id, owner.id, {assignee_id: assignee.id });
 
     // Poll for the notification record since fire-and-forget timing is non-deterministic
     let record = null;
@@ -83,11 +79,10 @@ describe("FEATURE_ASSIGNED notification", () => {
 
     while (!record && Date.now() - startTime < maxWaitMs) {
       await new Promise((r) => setTimeout(r, pollIntervalMs));
-      record = await db.notificationTrigger.findFirst({
+      record = await db.notification_triggers.findFirst({
         where: {
           targetUserId: assignee.id,
-          notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
-          featureId: feature.id,
+          notificationType: NotificationTriggerType.FEATURE_ASSIGNED,feature_id: feature.id,
         },
       });
     }
@@ -102,12 +97,12 @@ describe("FEATURE_ASSIGNED notification", () => {
   }, 10000);
 
   it("does NOT create a notification when self-assigning", async () => {
-    await updateFeature(feature.id, owner.id, { assigneeId: owner.id });
+    await updateFeature(feature.id, owner.id, {assignee_id: owner.id });
 
     // Give async fire-and-forget a moment to settle
     await new Promise((r) => setTimeout(r, 500));
 
-    const records = await db.notificationTrigger.findMany({
+    const records = await db.notification_triggers.findMany({
       where: { notificationType: NotificationTriggerType.FEATURE_ASSIGNED },
     });
 

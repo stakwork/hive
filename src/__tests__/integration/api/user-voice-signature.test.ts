@@ -41,7 +41,7 @@ describe('Voice Signature API Integration Tests', () => {
   afterEach(async () => {
     // Cleanup
     if (createdUserIds.length > 0) {
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: { id: { in: createdUserIds } },
       });
       createdUserIds.length = 0;
@@ -49,7 +49,7 @@ describe('Voice Signature API Integration Tests', () => {
   });
 
   async function createTestUser() {
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: generateUniqueId('user'),
         email: `test-${generateUniqueId()}@example.com`,
@@ -250,7 +250,7 @@ describe('Voice Signature API Integration Tests', () => {
         expect(body.success).toBe(true);
 
         // Verify database was updated
-        const user = await db.user.findUnique({
+        const user = await db.users.findUnique({
           where: { id: testUser.id },
         });
         expect(user?.voiceSignatureKey).toBe(s3Path);
@@ -295,7 +295,7 @@ describe('Voice Signature API Integration Tests', () => {
         const s3Path = `voice-signatures/${testUser.id}/signature.wav`;
         
         // Set voice signature key
-        await db.user.update({
+        await db.users.update({
           where: { id: testUser.id },
           data: { voiceSignatureKey: s3Path },
         });
@@ -318,7 +318,7 @@ describe('Voice Signature API Integration Tests', () => {
         expect(mockS3Service.deleteObject).toHaveBeenCalledWith(s3Path);
 
         // Verify database was updated
-        const user = await db.user.findUnique({
+        const user = await db.users.findUnique({
           where: { id: testUser.id },
         });
         expect(user?.voiceSignatureKey).toBeNull();
@@ -328,7 +328,7 @@ describe('Voice Signature API Integration Tests', () => {
         const testUser = await createTestUser();
         const s3Path = `voice-signatures/${testUser.id}/signature.wav`;
         
-        await db.user.update({
+        await db.users.update({
           where: { id: testUser.id },
           data: { voiceSignatureKey: s3Path },
         });
@@ -347,7 +347,7 @@ describe('Voice Signature API Integration Tests', () => {
         // Should still succeed and clear DB even if S3 fails
         expect(response.status).toBe(200);
 
-        const user = await db.user.findUnique({
+        const user = await db.users.findUnique({
           where: { id: testUser.id },
         });
         expect(user?.voiceSignatureKey).toBeNull();

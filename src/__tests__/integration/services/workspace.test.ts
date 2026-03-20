@@ -31,8 +31,7 @@ describe("Workspace Service - Integration Tests", () => {
       const workspaceData = {
         name: "Test Workspace",
         description: "A test workspace for integration testing",
-        slug: slug,
-        ownerId: testUser.id,
+        slug: slug,owner_id: testUser.id,
       };
 
       const result = await createWorkspace(workspaceData);
@@ -40,15 +39,14 @@ describe("Workspace Service - Integration Tests", () => {
       expect(result).toMatchObject({
         name: "Test Workspace",
         description: "A test workspace for integration testing",
-        slug: slug,
-        ownerId: testUser.id,
+        slug: slug,owner_id: testUser.id,
       });
       expect(result.id).toBeDefined();
       expect(result.createdAt).toBeDefined();
       expect(result.updatedAt).toBeDefined();
 
       // Verify in database
-      const workspaceInDb = await db.workspace.findUnique({
+      const workspaceInDb = await db.workspaces.findUnique({
         where: { id: result.id },
       });
       expect(workspaceInDb).toBeTruthy();
@@ -62,8 +60,7 @@ describe("Workspace Service - Integration Tests", () => {
       const slug = generateUniqueSlug("duplicate-slug");
       const workspaceData = {
         name: "Test Workspace",
-        slug: slug,
-        ownerId: testUser1.id,
+        slug: slug,owner_id: testUser1.id,
       };
 
       // Create first workspace
@@ -72,8 +69,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Try to create second workspace with same slug
       const duplicateData = {
         ...workspaceData,
-        name: "Another Workspace",
-        ownerId: testUser2.id,
+        name: "Another Workspace",owner_id: testUser2.id,
       };
 
       await expect(createWorkspace(duplicateData)).rejects.toThrow(
@@ -87,8 +83,7 @@ describe("Workspace Service - Integration Tests", () => {
       const slug = generateUniqueSlug("minimal-workspace");
       const workspaceData = {
         name: "Minimal Workspace",
-        slug: slug,
-        ownerId: testUser.id,
+        slug: slug,owner_id: testUser.id,
       };
 
       const result = await createWorkspace(workspaceData);
@@ -105,16 +100,14 @@ describe("Workspace Service - Integration Tests", () => {
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         await createWorkspace({
           name: `Workspace ${i + 1}`,
-          slug: generateUniqueSlug(`workspace-${i + 1}`),
-          ownerId: testUser1.id,
+          slug: generateUniqueSlug(`workspace-${i + 1}`),owner_id: testUser1.id,
         });
       }
 
       // Try to create one more - should fail
       const extraWorkspaceData = {
         name: "Extra Workspace",
-        slug: generateUniqueSlug("extra-workspace"),
-        ownerId: testUser1.id,
+        slug: generateUniqueSlug("extra-workspace"),owner_id: testUser1.id,
       };
 
       await expect(createWorkspace(extraWorkspaceData)).rejects.toThrow(
@@ -124,8 +117,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Verify user2 can still create workspaces
       const user2WorkspaceData = {
         name: "User2 Workspace",
-        slug: generateUniqueSlug("user2-workspace"),
-        ownerId: testUser2.id,
+        slug: generateUniqueSlug("user2-workspace"),owner_id: testUser2.id,
       };
 
       const result = await createWorkspace(user2WorkspaceData);
@@ -140,8 +132,7 @@ describe("Workspace Service - Integration Tests", () => {
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         const workspace = await createWorkspace({
           name: `Workspace ${i + 1}`,
-          slug: generateUniqueSlug(`workspace-${i + 1}`),
-          ownerId: testUser.id,
+          slug: generateUniqueSlug(`workspace-${i + 1}`),owner_id: testUser.id,
         });
         workspaces.push(workspace);
       }
@@ -149,21 +140,19 @@ describe("Workspace Service - Integration Tests", () => {
       // Try to create another - should fail
       await expect(createWorkspace({
         name: "Extra Workspace",
-        slug: generateUniqueSlug("extra-workspace"),
-        ownerId: testUser.id,
+        slug: generateUniqueSlug("extra-workspace"),owner_id: testUser.id,
       })).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       // Delete one workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspaces[0].id },
-        data: { deleted: true, deletedAt: new Date() }
+        data: { deleted: true,deleted_at: new Date() }
       });
 
       // Now should be able to create new workspace
       const newWorkspaceData = {
         name: "New Workspace",
-        slug: generateUniqueSlug("new-workspace"),
-        ownerId: testUser.id,
+        slug: generateUniqueSlug("new-workspace"),owner_id: testUser.id,
       };
 
       const result = await createWorkspace(newWorkspaceData);
@@ -187,16 +176,14 @@ describe("Workspace Service - Integration Tests", () => {
         await tx.workspace.create({
           data: {
             name: "Workspace 1",
-            slug: slug1,
-            ownerId: testUser1.id,
+            slug: slug1,owner_id: testUser1.id,
           },
         });
 
         await tx.workspace.create({
           data: {
             name: "Workspace 2",
-            slug: slug2,
-            ownerId: testUser1.id,
+            slug: slug2,owner_id: testUser1.id,
           },
         });
 
@@ -204,8 +191,7 @@ describe("Workspace Service - Integration Tests", () => {
         await tx.workspace.create({
           data: {
             name: "Other Workspace",
-            slug: otherSlug,
-            ownerId: testUser2.id,
+            slug: otherSlug,owner_id: testUser2.id,
           },
         });
       });
@@ -228,18 +214,15 @@ describe("Workspace Service - Integration Tests", () => {
         await tx.workspace.create({
           data: {
             name: "Active Workspace",
-            slug: slug1,
-            ownerId: testUser.id,
+            slug: slug1,owner_id: testUser.id,
           },
         });
 
         await tx.workspace.create({
           data: {
             name: "Deleted Workspace",
-            slug: slug2,
-            ownerId: testUser.id,
-            deleted: true,
-            deletedAt: new Date(),
+            slug: slug2,owner_id: testUser.id,
+            deleted: true,deleted_at: new Date(),
           },
         });
       });
@@ -263,18 +246,16 @@ describe("Workspace Service - Integration Tests", () => {
       const slug = generateUniqueSlug("test-workspace");
 
       // Create workspace
-      testWorkspace = await db.workspace.create({
+      testWorkspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
           description: "Test description",
-          slug: slug,
-          ownerId: testUser.id,
+          slug: slug,owner_id: testUser.id,
         },
       });
 
       // Create swarm using the test helper
-      testSwarm = await createTestSwarm({
-        workspaceId: testWorkspace.id,
+      testSwarm = await createTestSwarm({workspace_id: testWorkspace.id,
       });
     });
 
@@ -294,9 +275,9 @@ describe("Workspace Service - Integration Tests", () => {
 
     test("should return null for deleted workspace", async () => {
       // Mark workspace as deleted
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const result = await getWorkspaceBySlug(testWorkspace.slug, testUser.id);
@@ -319,8 +300,7 @@ describe("Workspace Service - Integration Tests", () => {
         const ownedWorkspace = await tx.workspace.create({
           data: {
             name: "Owned Workspace",
-            slug: ownedSlug,
-            ownerId: memberUser.id,
+            slug: ownedSlug,owner_id: memberUser.id,
           },
         });
 
@@ -328,15 +308,12 @@ describe("Workspace Service - Integration Tests", () => {
         const memberWorkspace = await tx.workspace.create({
           data: {
             name: "Member Workspace",
-            slug: memberSlug,
-            ownerId: ownerUser.id,
+            slug: memberSlug,owner_id: ownerUser.id,
           },
         });
 
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: memberWorkspace.id,
-            userId: memberUser.id,
+          data: {workspace_id: memberWorkspace.id,user_id: memberUser.id,
             role: "DEVELOPER",
           },
         });
@@ -345,8 +322,7 @@ describe("Workspace Service - Integration Tests", () => {
         await tx.workspace.create({
           data: {
             name: "Unrelated Workspace",
-            slug: unrelatedSlug,
-            ownerId: ownerUser.id,
+            slug: unrelatedSlug,owner_id: ownerUser.id,
           },
         });
       });
@@ -372,15 +348,12 @@ describe("Workspace Service - Integration Tests", () => {
         const ws = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: slug,
-            ownerId: ownerUser.id,
+            slug: slug,owner_id: ownerUser.id,
           },
         });
 
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: ws.id,
-            userId: memberUser.id,
+          data: {workspace_id: ws.id,user_id: memberUser.id,
             role: "DEVELOPER",
           },
         });
@@ -419,22 +392,20 @@ describe("Workspace Service - Integration Tests", () => {
       const testUser = await createTestUser({ name: "Test User" });
 
       // Create workspaces with different creation times
-      const workspace1 = await db.workspace.create({
+      const workspace1 = await db.workspaces.create({
         data: {
           name: "Workspace 1",
-          slug: generateUniqueSlug("workspace-1"),
-          ownerId: testUser.id,
+          slug: generateUniqueSlug("workspace-1"),owner_id: testUser.id,
         },
       });
 
       // Add a small delay to ensure different timestamps
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      const workspace2 = await db.workspace.create({
+      const workspace2 = await db.workspaces.create({
         data: {
           name: "Workspace 2",
-          slug: generateUniqueSlug("workspace-2"),
-          ownerId: testUser.id,
+          slug: generateUniqueSlug("workspace-2"),owner_id: testUser.id,
         },
       });
 
@@ -443,22 +414,16 @@ describe("Workspace Service - Integration Tests", () => {
       const now = new Date();
 
       // Update lastAccessedAt for workspace1 (older)
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace1.id,
-          userId: testUser.id,
-          role: "OWNER",
-          lastAccessedAt: yesterday,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace1.id,user_id: testUser.id,
+          role: "OWNER",last_accessed_at: yesterday,
         },
       });
 
       // Update lastAccessedAt for workspace2 (most recent)
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace2.id,
-          userId: testUser.id,
-          role: "OWNER",
-          lastAccessedAt: now,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace2.id,user_id: testUser.id,
+          role: "OWNER",last_accessed_at: now,
         },
       });
 
@@ -474,19 +439,17 @@ describe("Workspace Service - Integration Tests", () => {
       const testUser = await createTestUser({ name: "Test User" });
 
       // Create workspaces with names that differ alphabetically
-      const workspaceZ = await db.workspace.create({
+      const workspaceZ = await db.workspaces.create({
         data: {
           name: "Zebra Workspace",
-          slug: generateUniqueSlug("zebra-workspace"),
-          ownerId: testUser.id,
+          slug: generateUniqueSlug("zebra-workspace"),owner_id: testUser.id,
         },
       });
 
-      const workspaceA = await db.workspace.create({
+      const workspaceA = await db.workspaces.create({
         data: {
           name: "Alpha Workspace",
-          slug: generateUniqueSlug("alpha-workspace"),
-          ownerId: testUser.id,
+          slug: generateUniqueSlug("alpha-workspace"),owner_id: testUser.id,
         },
       });
 
@@ -511,17 +474,16 @@ describe("Workspace Service - Integration Tests", () => {
 
       const slug = generateUniqueSlug("test-workspace");
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: slug,
-          ownerId: testUser.id,
+          slug: slug,owner_id: testUser.id,
         },
       });
 
       await deleteWorkspaceBySlug(slug, testUser.id);
 
-      const deletedWorkspace = await db.workspace.findUnique({
+      const deletedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
 

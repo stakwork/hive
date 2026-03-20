@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { taskId } = await params;
 
     // Fetch task with pod, repository, and workspace repositories
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: {
         id: true,
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Mark task DONE and release pod (best-effort — does not block response)
     await Promise.allSettled([
-      db.task.update({
+      db.tasks.update({
         where: { id: taskId },
         data: { status: TaskStatus.DONE },
       }),

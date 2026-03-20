@@ -6,18 +6,15 @@ import { ChatRole, ChatStatus } from "@/lib/chat";
 describe("Feature Chat API - replyId Integration", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
-  let testFeature: Awaited<ReturnType<typeof db.feature.create>>;
+  let testFeature: Awaited<ReturnType<typeof db.features.create>>;
 
   beforeEach(async () => {
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
-    testFeature = await db.feature.create({
+    testFeature = await db.features.create({
       data: {
-        title: "Test Feature for Chat",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Test Feature for Chat",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         phases: {
           create: {
             name: "Phase 1",
@@ -29,23 +26,20 @@ describe("Feature Chat API - replyId Integration", () => {
   });
 
   afterEach(async () => {
-    await db.chatMessage.deleteMany({ where: { featureId: testFeature.id } });
-    await db.phase.deleteMany({ where: { featureId: testFeature.id } });
-    await db.feature.delete({ where: { id: testFeature.id } });
-    await db.workspaceMember.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspace.delete({ where: { id: testWorkspace.id } });
-    await db.user.delete({ where: { id: testUser.id } });
+    await db.chat_messages.deleteMany({ where: {feature_id: testFeature.id } });
+    await db.phases.deleteMany({ where: {feature_id: testFeature.id } });
+    await db.features.delete({ where: { id: testFeature.id } });
+    await db.workspace_members.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspaces.delete({ where: { id: testWorkspace.id } });
+    await db.users.delete({ where: { id: testUser.id } });
   });
 
-  const messageDefaults = () => ({
-    featureId: testFeature.id,
-    userId: testUser.id,
-    status: ChatStatus.SENT,
-    contextTags: "[]",
+  const messageDefaults = () => ({feature_id: testFeature.id,user_id: testUser.id,
+    status: ChatStatus.SENT,context_tags: "[]",
   });
 
   it("should persist replyId when creating a chat message", async () => {
-    const originalMessage = await db.chatMessage.create({
+    const originalMessage = await db.chat_messages.create({
       data: {
         ...messageDefaults(),
         message: "What is your target audience?",
@@ -53,7 +47,7 @@ describe("Feature Chat API - replyId Integration", () => {
       },
     });
 
-    const replyMessage = await db.chatMessage.create({
+    const replyMessage = await db.chat_messages.create({
       data: {
         ...messageDefaults(),
         message: "Our target audience is developers using TypeScript",
@@ -64,14 +58,14 @@ describe("Feature Chat API - replyId Integration", () => {
 
     expect(replyMessage.replyId).toBe(originalMessage.id);
 
-    const fetchedReply = await db.chatMessage.findUnique({
+    const fetchedReply = await db.chat_messages.findUnique({
       where: { id: replyMessage.id },
     });
     expect(fetchedReply!.replyId).toBe(originalMessage.id);
   });
 
   it("should default replyId to null when not provided", async () => {
-    const regularMessage = await db.chatMessage.create({
+    const regularMessage = await db.chat_messages.create({
       data: {
         ...messageDefaults(),
         message: "This is a regular message",
@@ -81,7 +75,7 @@ describe("Feature Chat API - replyId Integration", () => {
 
     expect(regularMessage.replyId).toBeNull();
 
-    const fetchedMessage = await db.chatMessage.findUnique({
+    const fetchedMessage = await db.chat_messages.findUnique({
       where: { id: regularMessage.id },
     });
     expect(fetchedMessage!.replyId).toBeNull();

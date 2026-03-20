@@ -22,24 +22,20 @@ async function createGitHubAuth(userId: string, username: string = 'test-github-
   const encryptionService = EncryptionService.getInstance();
   const encryptedToken = encryptionService.encryptField('access_token', token);
 
-  await db.gitHubAuth.create({
+  await db.github_auth.create({
     data: {
-      userId,
-      githubUserId: generateUniqueId('github'),
-      githubUsername: username,
+      userId,github_user_id: generateUniqueId('github'),github_username: username,
     },
   });
 
   // Create Account record with encrypted token for workspace PAT access
-  await db.account.create({
+  await db.accounts.create({
     data: {
       userId,
       type: 'oauth',
-      provider: 'github',
-      providerAccountId: generateUniqueId('provider'),
+      provider: 'github',provider_account_id: generateUniqueId('provider'),
       access_token: JSON.stringify(encryptedToken),
-      token_type: 'bearer',
-      scope: 'repo,user',
+      token_type: 'bearer',scope: 'repo,user',
     },
   });
 }
@@ -72,46 +68,35 @@ describe('POST /api/learnings/features/create - Authorization', () => {
         'test-feature-create-swarm-api-key'
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-feature-create-swarm-${generateUniqueId('swarm')}`,
         status: 'ACTIVE',
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: 'https://test-feature-create-swarm.sphinx.chat',
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: 'https://test-feature-create-swarm.sphinx.chat',swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
       // Create repository
-      repository = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-owner/test-repo',
+      repository = await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-owner/test-repo',
         branch: 'main',
       });
 
       // Create GitHub auth and Account for owner
       await tx.gitHubAuth.create({
-        data: {
-          userId: owner.id,
-          githubUserId: generateUniqueId('github'),
-          githubUsername: 'test-github-user',
+        data: {user_id: owner.id,github_user_id: generateUniqueId('github'),github_username: 'test-github-user',
         },
       });
 
       const encryptedToken = encryptionService.encryptField('access_token', 'test-owner-pat');
       await tx.account.create({
-        data: {
-          userId: owner.id,
+        data: {user_id: owner.id,
           type: 'oauth',
-          provider: 'github',
-          providerAccountId: generateUniqueId('provider'),
+          provider: 'github',provider_account_id: generateUniqueId('provider'),
           access_token: JSON.stringify(encryptedToken),
-          token_type: 'bearer',
-          scope: 'repo,user',
+          token_type: 'bearer',scope: 'repo,user',
         },
       });
 
@@ -212,9 +197,9 @@ describe('POST /api/learnings/features/create - Authorization', () => {
   });
 
   it('should return 403 for deleted workspace access', async () => {
-    await db.workspace.update({
+    await db.workspaces.update({
       where: { id: workspace.id },
-      data: { deleted: true, deletedAt: new Date() },
+      data: { deleted: true,deleted_at: new Date() },
     });
 
     const request = createAuthenticatedPostRequest(
@@ -375,44 +360,33 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
         'test-infra-swarm-api-key'
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-infra-swarm-${generateUniqueId('swarm')}`,
         status: 'ACTIVE',
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: 'https://test-infra-swarm.sphinx.chat',
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: 'https://test-infra-swarm.sphinx.chat',swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
-      repository = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-owner/test-infra-repo',
+      repository = await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-owner/test-infra-repo',
         branch: 'main',
       });
 
       await tx.gitHubAuth.create({
-        data: {
-          userId: owner.id,
-          githubUserId: generateUniqueId('github'),
-          githubUsername: 'test-infra-github-user',
+        data: {user_id: owner.id,github_user_id: generateUniqueId('github'),github_username: 'test-infra-github-user',
         },
       });
 
       const encryptedInfraToken = encryptionService.encryptField('access_token', 'test-infra-pat');
       await tx.account.create({
-        data: {
-          userId: owner.id,
+        data: {user_id: owner.id,
           type: 'oauth',
-          provider: 'github',
-          providerAccountId: generateUniqueId('provider'),
+          provider: 'github',provider_account_id: generateUniqueId('provider'),
           access_token: JSON.stringify(encryptedInfraToken),
-          token_type: 'bearer',
-          scope: 'repo,user',
+          token_type: 'bearer',scope: 'repo,user',
         },
       });
     });
@@ -428,9 +402,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     });
 
     await createGitHubAuth(newScenario.owner.id, 'no-swarm-github');
-    await createTestRepository({
-      workspaceId: newScenario.workspace.id,
-      repositoryUrl: 'https://github.com/test/no-swarm-repo',
+    await createTestRepository({workspace_id: newScenario.workspace.id,repository_url: 'https://github.com/test/no-swarm-repo',
     });
 
     const request = createAuthenticatedPostRequest(
@@ -457,17 +429,14 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     const encryptionService = EncryptionService.getInstance();
     const encryptedApiKey = encryptionService.encryptField('swarmApiKey', 'test-key');
 
-    const newSwarm = await createTestSwarm({
-      workspaceId: newScenario.workspace.id,
+    const newSwarm = await createTestSwarm({workspace_id: newScenario.workspace.id,
       name: `no-repo-swarm-${generateUniqueId('swarm')}`,
       status: 'ACTIVE',
     });
 
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: newSwarm.id },
-      data: {
-        swarmUrl: 'https://no-repo-swarm.sphinx.chat',
-        swarmApiKey: JSON.stringify(encryptedApiKey),
+      data: {swarm_url: 'https://no-repo-swarm.sphinx.chat',swarm_api_key: JSON.stringify(encryptedApiKey),
       },
     });
 
@@ -497,23 +466,18 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     const encryptionService = EncryptionService.getInstance();
     const encryptedApiKey = encryptionService.encryptField('swarmApiKey', 'test-key');
 
-    const newSwarm = await createTestSwarm({
-      workspaceId: newScenario.workspace.id,
+    const newSwarm = await createTestSwarm({workspace_id: newScenario.workspace.id,
       name: `no-pat-swarm-${generateUniqueId('swarm')}`,
       status: 'ACTIVE',
     });
 
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: newSwarm.id },
-      data: {
-        swarmUrl: 'https://no-pat-swarm.sphinx.chat',
-        swarmApiKey: JSON.stringify(encryptedApiKey),
+      data: {swarm_url: 'https://no-pat-swarm.sphinx.chat',swarm_api_key: JSON.stringify(encryptedApiKey),
       },
     });
 
-    await createTestRepository({
-      workspaceId: newScenario.workspace.id,
-      repositoryUrl: 'https://github.com/test/no-pat-repo',
+    await createTestRepository({workspace_id: newScenario.workspace.id,repository_url: 'https://github.com/test/no-pat-repo',
     });
 
     const request = createAuthenticatedPostRequest(
@@ -533,9 +497,9 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
   });
 
   it('should return 400 for invalid repository URL', async () => {
-    await db.repository.update({
+    await db.repositories.update({
       where: { id: repository.id },
-      data: { repositoryUrl: 'invalid-url' },
+      data: {repository_url: 'invalid-url' },
     });
 
     const request = createAuthenticatedPostRequest(
@@ -576,44 +540,33 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
         'test-swarm-integration-key'
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-swarm-int-${generateUniqueId('swarm')}`,
         status: 'ACTIVE',
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: 'https://test-swarm-integration.sphinx.chat',
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: 'https://test-swarm-integration.sphinx.chat',swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
-      repository = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/swarm-owner/swarm-repo',
+      repository = await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/swarm-owner/swarm-repo',
         branch: 'main',
       });
 
       await tx.gitHubAuth.create({
-        data: {
-          userId: owner.id,
-          githubUserId: generateUniqueId('github'),
-          githubUsername: 'swarm-int-github-user',
+        data: {user_id: owner.id,github_user_id: generateUniqueId('github'),github_username: 'swarm-int-github-user',
         },
       });
 
       const encryptedSwarmToken = encryptionService.encryptField('access_token', 'test-swarm-pat');
       await tx.account.create({
-        data: {
-          userId: owner.id,
+        data: {user_id: owner.id,
           type: 'oauth',
-          provider: 'github',
-          providerAccountId: generateUniqueId('provider'),
+          provider: 'github',provider_account_id: generateUniqueId('provider'),
           access_token: JSON.stringify(encryptedSwarmToken),
-          token_type: 'bearer',
-          scope: 'repo,user',
+          token_type: 'bearer',scope: 'repo,user',
         },
       });
     });

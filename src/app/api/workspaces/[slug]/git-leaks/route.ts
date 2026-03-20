@@ -17,7 +17,7 @@ export async function GET(
 
     const { slug } = await params;
 
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,

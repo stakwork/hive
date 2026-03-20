@@ -3,12 +3,10 @@ import { FeatureStatus, FeaturePriority } from "@prisma/client";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: {
+  db: {users: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
-    },
-    feature: {
+    },features: {
       create: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
@@ -95,8 +93,8 @@ describe("createFeature", () => {
 
     // Default successful mocks
     vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess as any);
-    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-    vi.mocked(db.feature.create).mockResolvedValue(mockCreatedFeature as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+    vi.mocked(db.features.create).mockResolvedValue(mockCreatedFeature as any);
   });
 
   afterEach(() => {
@@ -163,7 +161,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "Valid Title",
@@ -175,7 +173,7 @@ describe("createFeature", () => {
 
   describe("User Existence Validation", () => {
     test("throws error when user does not exist", async () => {
-      vi.mocked(db.user.findUnique).mockResolvedValue(null);
+      vi.mocked(db.users.findUnique).mockResolvedValue(null);
 
       await expect(
         createFeature(mockUserId, {
@@ -184,7 +182,7 @@ describe("createFeature", () => {
         })
       ).rejects.toThrow("User not found");
 
-      expect(db.user.findUnique).toHaveBeenCalledWith({
+      expect(db.users.findUnique).toHaveBeenCalledWith({
         where: { id: mockUserId },
       });
     });
@@ -195,7 +193,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.user.findUnique).toHaveBeenCalledWith({
+      expect(db.users.findUnique).toHaveBeenCalledWith({
         where: { id: mockUserId },
       });
     });
@@ -219,7 +217,7 @@ describe("createFeature", () => {
         status: FeatureStatus.BACKLOG,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.BACKLOG,
@@ -235,7 +233,7 @@ describe("createFeature", () => {
         status: FeatureStatus.PLANNED,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.PLANNED,
@@ -251,7 +249,7 @@ describe("createFeature", () => {
         status: FeatureStatus.IN_PROGRESS,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.IN_PROGRESS,
@@ -267,7 +265,7 @@ describe("createFeature", () => {
         status: FeatureStatus.COMPLETED,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.COMPLETED,
@@ -283,7 +281,7 @@ describe("createFeature", () => {
         status: FeatureStatus.CANCELLED,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.CANCELLED,
@@ -311,7 +309,7 @@ describe("createFeature", () => {
         priority: FeaturePriority.LOW,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.LOW,
@@ -327,7 +325,7 @@ describe("createFeature", () => {
         priority: FeaturePriority.LOW,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.LOW,
@@ -343,7 +341,7 @@ describe("createFeature", () => {
         priority: FeaturePriority.MEDIUM,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.MEDIUM,
@@ -359,7 +357,7 @@ describe("createFeature", () => {
         priority: FeaturePriority.HIGH,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.HIGH,
@@ -375,7 +373,7 @@ describe("createFeature", () => {
         priority: FeaturePriority.CRITICAL,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.CRITICAL,
@@ -387,7 +385,7 @@ describe("createFeature", () => {
 
   describe("Assignee Validation", () => {
     test("throws error when assignee does not exist", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(null);
+      vi.mocked(db.users.findFirst).mockResolvedValue(null);
 
       await expect(
         createFeature(mockUserId, {
@@ -397,7 +395,7 @@ describe("createFeature", () => {
         })
       ).rejects.toThrow("Assignee not found");
 
-      expect(db.user.findFirst).toHaveBeenCalledWith({
+      expect(db.users.findFirst).toHaveBeenCalledWith({
         where: {
           id: mockAssigneeId,
           deleted: false,
@@ -406,7 +404,7 @@ describe("createFeature", () => {
     });
 
     test("throws error when assignee is soft-deleted", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(null);
+      vi.mocked(db.users.findFirst).mockResolvedValue(null);
 
       await expect(
         createFeature(mockUserId, {
@@ -416,7 +414,7 @@ describe("createFeature", () => {
         })
       ).rejects.toThrow("Assignee not found");
 
-      expect(db.user.findFirst).toHaveBeenCalledWith({
+      expect(db.users.findFirst).toHaveBeenCalledWith({
         where: {
           id: mockAssigneeId,
           deleted: false,
@@ -425,7 +423,7 @@ describe("createFeature", () => {
     });
 
     test("accepts valid assignee", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
+      vi.mocked(db.users.findFirst).mockResolvedValue(mockAssignee as any);
 
       await createFeature(mockUserId, {
         title: "Test Feature",
@@ -433,14 +431,14 @@ describe("createFeature", () => {
         assigneeId: mockAssigneeId,
       });
 
-      expect(db.user.findFirst).toHaveBeenCalledWith({
+      expect(db.users.findFirst).toHaveBeenCalledWith({
         where: {
           id: mockAssigneeId,
           deleted: false,
         },
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             assigneeId: mockAssigneeId,
@@ -456,7 +454,7 @@ describe("createFeature", () => {
         assigneeId: null,
       });
 
-      expect(db.user.findFirst).not.toHaveBeenCalled();
+      expect(db.users.findFirst).not.toHaveBeenCalled();
     });
 
     test("does not validate assignee when assigneeId is undefined", async () => {
@@ -465,7 +463,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.user.findFirst).not.toHaveBeenCalled();
+      expect(db.users.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -476,7 +474,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "Title with spaces",
@@ -492,7 +490,7 @@ describe("createFeature", () => {
         brief: "  Brief with spaces  ",
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             brief: "Brief with spaces",
@@ -508,7 +506,7 @@ describe("createFeature", () => {
         requirements: "  Requirements with spaces  ",
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             requirements: "Requirements with spaces",
@@ -524,7 +522,7 @@ describe("createFeature", () => {
         architecture: "  Architecture with spaces  ",
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             architecture: "Architecture with spaces",
@@ -540,7 +538,7 @@ describe("createFeature", () => {
         brief: "",
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             brief: null,
@@ -556,7 +554,7 @@ describe("createFeature", () => {
         brief: "   ",
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             brief: null,
@@ -573,7 +571,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: FeatureStatus.BACKLOG,
@@ -588,7 +586,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             priority: FeaturePriority.LOW,
@@ -603,7 +601,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             assigneeId: null,
@@ -618,7 +616,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             personas: [],
@@ -635,7 +633,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith({
+      expect(db.features.create).toHaveBeenCalledWith({
         data: {
           title: "Test Feature",
           brief: null,
@@ -694,7 +692,7 @@ describe("createFeature", () => {
     });
 
     test("creates feature with all fields provided", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
+      vi.mocked(db.users.findFirst).mockResolvedValue(mockAssignee as any);
 
       const featureData = {
         title: "Complete Feature",
@@ -710,7 +708,7 @@ describe("createFeature", () => {
 
       await createFeature(mockUserId, featureData);
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             title: "Complete Feature",
@@ -727,7 +725,7 @@ describe("createFeature", () => {
     });
 
     test("creates feature with isFastTrack: true", async () => {
-      vi.mocked(db.feature.create).mockResolvedValue({
+      vi.mocked(db.features.create).mockResolvedValue({
         ...mockCreatedFeature,
         isFastTrack: true,
       } as any);
@@ -738,7 +736,7 @@ describe("createFeature", () => {
         isFastTrack: true,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             isFastTrack: true,
@@ -759,7 +757,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             isFastTrack: false,
@@ -790,7 +788,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(db.feature.create).toHaveBeenCalledWith(
+      expect(db.features.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             createdById: mockUserId,
@@ -853,8 +851,8 @@ describe("listFeatures", () => {
     const ownerId = "owner-user-001";
 
     test("uses OR logic: returns features where user is explicit assignee OR creator with no assignee", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -862,7 +860,7 @@ describe("listFeatures", () => {
         assigneeId: ownerId,
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
@@ -877,8 +875,8 @@ describe("listFeatures", () => {
     });
 
     test("does NOT set direct assigneeId on where clause when a specific user is passed", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -886,14 +884,14 @@ describe("listFeatures", () => {
         assigneeId: ownerId,
       });
 
-      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      const callArgs = vi.mocked(db.features.findMany).mock.calls[0]?.[0];
       expect(callArgs?.where).not.toHaveProperty("assigneeId");
       expect(callArgs?.where).toHaveProperty("OR");
     });
 
     test("UNASSIGNED still sets assigneeId = null directly (no OR)", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -901,7 +899,7 @@ describe("listFeatures", () => {
         assigneeId: "UNASSIGNED",
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
@@ -911,27 +909,27 @@ describe("listFeatures", () => {
         })
       );
 
-      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      const callArgs = vi.mocked(db.features.findMany).mock.calls[0]?.[0];
       expect(callArgs?.where).not.toHaveProperty("OR");
     });
 
     test("no assigneeId param → no OR and no assigneeId filter applied", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
       });
 
-      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      const callArgs = vi.mocked(db.features.findMany).mock.calls[0]?.[0];
       expect(callArgs?.where).not.toHaveProperty("OR");
       expect(callArgs?.where).not.toHaveProperty("assigneeId");
     });
 
     test("OR filter combines correctly with status filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -940,7 +938,7 @@ describe("listFeatures", () => {
         statuses: [FeatureStatus.BACKLOG],
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
@@ -956,8 +954,8 @@ describe("listFeatures", () => {
     });
 
     test("OR filter combines correctly with priority filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -966,7 +964,7 @@ describe("listFeatures", () => {
         priorities: [FeaturePriority.HIGH],
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
@@ -982,8 +980,8 @@ describe("listFeatures", () => {
     });
 
     test("OR filter combines correctly with search filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -992,7 +990,7 @@ describe("listFeatures", () => {
         search: "auth",
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
@@ -1008,8 +1006,8 @@ describe("listFeatures", () => {
     });
 
     test("respects pagination with OR owner filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(25);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(25);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -1019,7 +1017,7 @@ describe("listFeatures", () => {
         limit: 10,
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect(db.features.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             OR: [
@@ -1057,8 +1055,8 @@ describe("listFeatures", () => {
     });
 
     test("allows listing when user has workspace access", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
+      vi.mocked(db.features.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.features.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
@@ -1069,7 +1067,7 @@ describe("listFeatures", () => {
         mockWorkspaceId,
         mockUserId
       );
-      expect(db.feature.findMany).toHaveBeenCalled();
+      expect(db.features.findMany).toHaveBeenCalled();
     });
   });
 });
@@ -1132,16 +1130,16 @@ describe("updateFeature - planUpdatedAt", () => {
       canWrite: true,
       canAdmin: false,
     });
-    vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature as any);
+    vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature as any);
   });
 
   describe("plan field updates", () => {
     test("stamps planUpdatedAt when updating brief", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { brief: "Updated brief" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1153,11 +1151,11 @@ describe("updateFeature - planUpdatedAt", () => {
     });
 
     test("stamps planUpdatedAt when updating requirements", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { requirements: "Updated requirements" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1169,11 +1167,11 @@ describe("updateFeature - planUpdatedAt", () => {
     });
 
     test("stamps planUpdatedAt when updating architecture", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { architecture: "Updated architecture" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1185,14 +1183,14 @@ describe("updateFeature - planUpdatedAt", () => {
     });
 
     test("stamps planUpdatedAt when updating multiple plan fields", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, {
         brief: "New brief",
         requirements: "New requirements",
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1207,11 +1205,11 @@ describe("updateFeature - planUpdatedAt", () => {
 
   describe("non-plan field updates", () => {
     test("does NOT stamp planUpdatedAt when updating only title", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { title: "New Title" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1220,16 +1218,16 @@ describe("updateFeature - planUpdatedAt", () => {
         })
       );
 
-      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      const updateCall = vi.mocked(db.features.update).mock.calls[0][0];
       expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
     });
 
     test("does NOT stamp planUpdatedAt when updating only status", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { status: "IN_PROGRESS" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1238,16 +1236,16 @@ describe("updateFeature - planUpdatedAt", () => {
         })
       );
 
-      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      const updateCall = vi.mocked(db.features.update).mock.calls[0][0];
       expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
     });
 
     test("does NOT stamp planUpdatedAt when updating only priority", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { priority: "HIGH" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1256,7 +1254,7 @@ describe("updateFeature - planUpdatedAt", () => {
         })
       );
 
-      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      const updateCall = vi.mocked(db.features.update).mock.calls[0][0];
       expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
     });
 
@@ -1268,25 +1266,25 @@ describe("updateFeature - planUpdatedAt", () => {
         deleted: false,
       };
       
-      vi.mocked(db.user.findFirst).mockResolvedValue(assigneeUser as any);
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.users.findFirst).mockResolvedValue(assigneeUser as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, { assigneeId: "user-456" });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
         })
       );
 
-      const updateCall = vi.mocked(db.feature.update).mock.calls[0][0];
+      const updateCall = vi.mocked(db.features.update).mock.calls[0][0];
       expect(updateCall.data).not.toHaveProperty("planUpdatedAt");
     });
   });
 
   describe("mixed updates", () => {
     test("stamps planUpdatedAt when updating plan field along with non-plan fields", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, {
         brief: "Updated brief",
@@ -1294,7 +1292,7 @@ describe("updateFeature - planUpdatedAt", () => {
         priority: "HIGH",
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({
@@ -1308,14 +1306,14 @@ describe("updateFeature - planUpdatedAt", () => {
     });
 
     test("stamps planUpdatedAt when updating architecture with title", async () => {
-      vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature as any);
+      vi.mocked(db.features.update).mockResolvedValue(mockUpdatedFeature as any);
 
       await updateFeature(mockFeatureId, mockUserId, {
         title: "New Title",
         architecture: "New Architecture",
       });
 
-      expect(db.feature.update).toHaveBeenCalledWith(
+      expect(db.features.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockFeatureId },
           data: expect.objectContaining({

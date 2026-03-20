@@ -50,17 +50,13 @@ describe("GET /api/screenshots - Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: `test-workspace-${Date.now()}`,
-          ownerId: user.id,
+          slug: `test-workspace-${Date.now()}`,owner_id: user.id,
         },
       });
 
       const task = await tx.task.create({
         data: {
-          title: "Test Task",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Task",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -84,21 +80,21 @@ describe("GET /api/screenshots - Integration Tests", () => {
     // Cleanup test data in reverse dependency order
     try {
       if (testWorkspace?.id) {
-        await db.screenshot.deleteMany({
-          where: { workspaceId: testWorkspace.id },
+        await db.screenshots.deleteMany({
+          where: {workspace_id: testWorkspace.id },
         });
-        await db.task.deleteMany({
-          where: { workspaceId: testWorkspace.id },
+        await db.tasks.deleteMany({
+          where: {workspace_id: testWorkspace.id },
         });
-        await db.workspaceMember.deleteMany({
-          where: { workspaceId: testWorkspace.id },
+        await db.workspace_members.deleteMany({
+          where: {workspace_id: testWorkspace.id },
         });
-        await db.workspace.deleteMany({
+        await db.workspaces.deleteMany({
           where: { id: testWorkspace.id },
         });
       }
       if (testUser?.id || otherUser?.id) {
-        await db.user.deleteMany({
+        await db.users.deleteMany({
           where: {
             OR: [
               ...(testUser?.id ? [{ id: testUser.id }] : []),
@@ -117,8 +113,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     test("returns 401 for unauthenticated requests", async () => {
       mockGetServerSession.mockResolvedValue(null);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -130,8 +125,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     test("requires valid session with user object", async () => {
       mockGetServerSession.mockResolvedValue({ user: null } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -145,8 +139,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: otherUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -160,8 +153,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: testUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -174,12 +166,9 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
     test("allows active member access", async () => {
       // Add otherUser as active member
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          userId: otherUser.id,
-          role: "DEVELOPER",
-          leftAt: null,
+      await db.workspace_members.create({
+        data: {workspace_id: testWorkspace.id,user_id: otherUser.id,
+          role: "DEVELOPER",left_at: null,
         },
       });
 
@@ -187,8 +176,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: otherUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -199,12 +187,9 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
     test("returns 404 for former members (leftAt !== null)", async () => {
       // Add otherUser as former member (left the workspace)
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          userId: otherUser.id,
-          role: "DEVELOPER",
-          leftAt: new Date(),
+      await db.workspace_members.create({
+        data: {workspace_id: testWorkspace.id,user_id: otherUser.id,
+          role: "DEVELOPER",left_at: new Date(),
         },
       });
 
@@ -212,8 +197,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: otherUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -223,17 +207,16 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("returns 404 for soft-deleted workspaces", async () => {
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       mockGetServerSession.mockResolvedValue({
         user: { id: testUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -261,8 +244,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: testUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         limit: "-5",
       });
       const response = await GET(request);
@@ -277,9 +259,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: testUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
-        taskId: testTask.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,task_id: testTask.id,
         pageUrl: "https://example.com",
         limit: "10",
       });
@@ -295,20 +275,15 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
     beforeEach(async () => {
       // Create second task and screenshots
-      task2 = await db.task.create({
+      task2 = await db.tasks.create({
         data: {
-          title: "Test Task 2",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Test Task 2",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
       screenshots = await Promise.all([
-        db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            taskId: testTask.id,
+        db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,task_id: testTask.id,
             pageUrl: "https://example.com/page1",
             s3Key: "key1",
             s3Url: "https://s3.example.com/key1",
@@ -318,10 +293,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
             hash: "hash1",
           },
         }),
-        db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            taskId: task2.id,
+        db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,task_id: task2.id,
             pageUrl: "https://example.com/page2",
             s3Key: "key2",
             s3Url: "https://s3.example.com/key2",
@@ -331,10 +304,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
             hash: "hash2",
           },
         }),
-        db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            taskId: testTask.id,
+        db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,task_id: testTask.id,
             pageUrl: "https://other.com/page3",
             s3Key: "key3",
             s3Url: "https://s3.example.com/key3",
@@ -352,9 +323,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("filters by taskId", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
-        taskId: testTask.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,task_id: testTask.id,
       });
       const response = await GET(request);
 
@@ -365,8 +334,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("filters by pageUrl", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         pageUrl: "https://example.com/page1",
       });
       const response = await GET(request);
@@ -378,9 +346,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("filters by combined taskId and pageUrl", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
-        taskId: testTask.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,task_id: testTask.id,
         pageUrl: "https://example.com/page1",
       });
       const response = await GET(request);
@@ -393,8 +359,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("returns empty array when no screenshots match filters", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         pageUrl: "https://nonexistent.com",
       });
       const response = await GET(request);
@@ -416,10 +381,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
       // Create 12 screenshots for pagination testing
       const screenshotPromises = Array.from({ length: 12 }, (_, i) =>
-        db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            taskId: testTask.id,
+        db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,task_id: testTask.id,
             pageUrl: `https://example.com/page${i}`,
             s3Key: `key${i}`,
             s3Url: `https://s3.example.com/key${i}`,
@@ -434,8 +397,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("respects limit parameter", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         limit: "5",
       });
       const response = await GET(request);
@@ -447,8 +409,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("sets hasMore flag correctly when more results exist", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         limit: "5",
       });
       const response = await GET(request);
@@ -459,8 +420,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("sets hasMore flag to false when no more results", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         limit: "20",
       });
       const response = await GET(request);
@@ -471,8 +431,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("uses default limit of 50 when not specified", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -481,8 +440,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("orders results by createdAt descending", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -503,10 +461,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
       } as any);
 
       // Create screenshot with expired URL
-      expiredScreenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      expiredScreenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           pageUrl: "https://example.com/expired",
           s3Key: "expired-key",
           s3Url: "https://s3.example.com/expired",
@@ -518,10 +474,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
       });
 
       // Create screenshot with valid URL
-      validScreenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      validScreenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           pageUrl: "https://example.com/valid",
           s3Key: "valid-key",
           s3Url: "https://s3.example.com/valid",
@@ -534,8 +488,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("regenerates expired presigned URLs", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -549,13 +502,12 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("updates database with new URL and expiration", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       await GET(request);
 
       // Verify database was updated
-      const updated = await db.screenshot.findUnique({
+      const updated = await db.screenshots.findUnique({
         where: { id: expiredScreenshot.id },
       });
 
@@ -569,8 +521,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
       const originalUrl = validScreenshot.s3Url;
       const originalExpiration = validScreenshot.urlExpiresAt;
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -583,7 +534,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
       expect(validResult.s3Url).toBe(originalUrl);
 
       // Verify database was not updated
-      const updated = await db.screenshot.findUnique({
+      const updated = await db.screenshots.findUnique({
         where: { id: validScreenshot.id },
       });
       expect(updated?.s3Url).toBe(originalUrl);
@@ -594,10 +545,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
     test("handles missing URL by regenerating", async () => {
       // Create screenshot without URL
-      const noUrlScreenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      const noUrlScreenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           pageUrl: "https://example.com/nourl",
           s3Key: "nourl-key",
           s3Url: "", // Empty URL
@@ -608,8 +557,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -628,10 +576,8 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: testUser.id },
       } as any);
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           pageUrl: "https://example.com",
           s3Key: "test-key",
           s3Url: "https://s3.example.com/test",
@@ -646,8 +592,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("returns correct response structure", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -663,8 +608,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("includes all required screenshot fields", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -687,8 +631,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
     });
 
     test("converts BigInt timestamp to number", async () => {
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
       });
       const response = await GET(request);
 
@@ -708,8 +651,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
 
       // Use invalid workspace ID - invalid UUID format will result in a 404
       // because the workspace lookup doesn't find it (treated as not found rather than error)
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: "invalid-uuid-format",
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: "invalid-uuid-format",
       });
       const response = await GET(request);
 
@@ -724,8 +666,7 @@ describe("GET /api/screenshots - Integration Tests", () => {
         user: { id: testUser.id },
       } as any);
 
-      const request = createAuthenticatedGetRequest("/api/screenshots", {
-        workspaceId: testWorkspace.id,
+      const request = createAuthenticatedGetRequest("/api/screenshots", {workspace_id: testWorkspace.id,
         limit: "invalid",
       });
       const response = await GET(request);

@@ -342,14 +342,14 @@ async function buildWorkspaceConfigs(
       throw forbiddenError(`Access denied for workspace: ${slug}`);
     }
 
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId: access.workspace.id },
     });
     if (!swarm?.swarmUrl) {
       throw notFoundError(`Swarm not configured for workspace: ${slug}`);
     }
 
-    const repositories = await db.repository.findMany({
+    const repositories = await db.repositories.findMany({
       where: { workspaceId: access.workspace.id },
       orderBy: { createdAt: "asc" },
     });

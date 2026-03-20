@@ -26,9 +26,9 @@ describe("GET /api/workspaces/[slug]/settings/sphinx-integration", () => {
   });
 
   afterEach(async () => {
-    await db.workspaceMember.deleteMany({ where: { workspaceId } });
-    await db.workspace.deleteMany({ where: { id: workspaceId } });
-    await db.user.deleteMany({ where: { id: ownerId } });
+    await db.workspace_members.deleteMany({ where: { workspaceId } });
+    await db.workspaces.deleteMany({ where: { id: workspaceId } });
+    await db.users.deleteMany({ where: { id: ownerId } });
   });
 
   it("returns 401 for unauthenticated requests", async () => {
@@ -44,7 +44,7 @@ describe("GET /api/workspaces/[slug]/settings/sphinx-integration", () => {
 
   it("returns 200 with sphinx config for ADMIN user (no raw secret)", async () => {
     const admin = await createTestUser({ idempotent: false });
-    await createTestMembership({ workspaceId, userId: admin.id, role: "ADMIN" });
+    await createTestMembership({ workspaceId,user_id: admin.id, role: "ADMIN" });
 
     const result = await invokeRoute(GET, {
       session: { user: { id: admin.id, email: admin.email, name: admin.name }, expires: "" },
@@ -60,13 +60,13 @@ describe("GET /api/workspaces/[slug]/settings/sphinx-integration", () => {
     // Raw secret must never be returned
     expect(data).not.toHaveProperty("sphinxBotSecret");
 
-    await db.workspaceMember.deleteMany({ where: { userId: admin.id } });
-    await db.user.delete({ where: { id: admin.id } });
+    await db.workspace_members.deleteMany({ where: {user_id: admin.id } });
+    await db.users.delete({ where: { id: admin.id } });
   });
 
   it("returns 200 for DEVELOPER member (no longer 403)", async () => {
     const developer = await createTestUser({ idempotent: false });
-    await createTestMembership({ workspaceId, userId: developer.id, role: "DEVELOPER" });
+    await createTestMembership({ workspaceId,user_id: developer.id, role: "DEVELOPER" });
 
     const result = await invokeRoute(GET, {
       session: { user: { id: developer.id, email: developer.email, name: developer.name }, expires: "" },
@@ -78,13 +78,13 @@ describe("GET /api/workspaces/[slug]/settings/sphinx-integration", () => {
     expect(data).toHaveProperty("hasBotSecret", true);
     expect(data).not.toHaveProperty("sphinxBotSecret");
 
-    await db.workspaceMember.deleteMany({ where: { userId: developer.id } });
-    await db.user.delete({ where: { id: developer.id } });
+    await db.workspace_members.deleteMany({ where: {user_id: developer.id } });
+    await db.users.delete({ where: { id: developer.id } });
   });
 
   it("returns 200 for VIEWER member (no longer 403)", async () => {
     const viewer = await createTestUser({ idempotent: false });
-    await createTestMembership({ workspaceId, userId: viewer.id, role: "VIEWER" });
+    await createTestMembership({ workspaceId,user_id: viewer.id, role: "VIEWER" });
 
     const result = await invokeRoute(GET, {
       session: { user: { id: viewer.id, email: viewer.email, name: viewer.name }, expires: "" },
@@ -96,8 +96,8 @@ describe("GET /api/workspaces/[slug]/settings/sphinx-integration", () => {
     expect(data).toHaveProperty("hasBotSecret", true);
     expect(data).not.toHaveProperty("sphinxBotSecret");
 
-    await db.workspaceMember.deleteMany({ where: { userId: viewer.id } });
-    await db.user.delete({ where: { id: viewer.id } });
+    await db.workspace_members.deleteMany({ where: {user_id: viewer.id } });
+    await db.users.delete({ where: { id: viewer.id } });
   });
 });
 
@@ -118,41 +118,37 @@ describe("PUT /api/workspaces/[slug]/settings/sphinx-integration", () => {
   });
 
   afterEach(async () => {
-    await db.workspaceMember.deleteMany({ where: { workspaceId } });
-    await db.workspace.deleteMany({ where: { id: workspaceId } });
-    await db.user.deleteMany({ where: { id: ownerId } });
+    await db.workspace_members.deleteMany({ where: { workspaceId } });
+    await db.workspaces.deleteMany({ where: { id: workspaceId } });
+    await db.users.deleteMany({ where: { id: ownerId } });
   });
 
   it("returns 403 for non-admin member (PUT guard unchanged)", async () => {
     const developer = await createTestUser({ idempotent: false });
-    await createTestMembership({ workspaceId, userId: developer.id, role: "DEVELOPER" });
+    await createTestMembership({ workspaceId,user_id: developer.id, role: "DEVELOPER" });
 
     const result = await invokeRoute(PUT, {
       method: "PUT",
       session: { user: { id: developer.id, email: developer.email, name: developer.name }, expires: "" },
       params: { slug: workspaceSlug },
-      body: { sphinxEnabled: true, sphinxChatPubkey: "pubkey", sphinxBotId: "botid" },
+      body: {sphinx_enabled: true,sphinx_chat_pubkey: "pubkey",sphinx_bot_id: "botid" },
     });
 
     expect(result.status).toBe(403);
 
-    await db.workspaceMember.deleteMany({ where: { userId: developer.id } });
-    await db.user.delete({ where: { id: developer.id } });
+    await db.workspace_members.deleteMany({ where: {user_id: developer.id } });
+    await db.users.delete({ where: { id: developer.id } });
   });
 
   it("returns 200 for ADMIN member (no regression)", async () => {
     const admin = await createTestUser({ idempotent: false });
-    await createTestMembership({ workspaceId, userId: admin.id, role: "ADMIN" });
+    await createTestMembership({ workspaceId,user_id: admin.id, role: "ADMIN" });
 
     const result = await invokeRoute(PUT, {
       method: "PUT",
       session: { user: { id: admin.id, email: admin.email, name: admin.name }, expires: "" },
       params: { slug: workspaceSlug },
-      body: {
-        sphinxEnabled: true,
-        sphinxChatPubkey: "test-pubkey",
-        sphinxBotId: "test-bot-id",
-        sphinxBotSecret: "test-secret",
+      body: {sphinx_enabled: true,sphinx_chat_pubkey: "test-pubkey",sphinx_bot_id: "test-bot-id",sphinx_bot_secret: "test-secret",
       },
     });
 
@@ -160,7 +156,7 @@ describe("PUT /api/workspaces/[slug]/settings/sphinx-integration", () => {
     const data = await result.json<Record<string, unknown>>();
     expect(data).toMatchObject({ success: true });
 
-    await db.workspaceMember.deleteMany({ where: { userId: admin.id } });
-    await db.user.delete({ where: { id: admin.id } });
+    await db.workspace_members.deleteMany({ where: {user_id: admin.id } });
+    await db.users.delete({ where: { id: admin.id } });
   });
 });

@@ -68,7 +68,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -82,7 +82,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -96,7 +96,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -112,7 +112,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "" }),
+        params: Promise.resolve({workspace_id: "" }),
       });
 
       await expectError(response, "Missing required field: workspaceId", 400);
@@ -128,7 +128,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "nonexistent-workspace-id" }),
+        params: Promise.resolve({workspace_id: "nonexistent-workspace-id" }),
       });
 
       await expectNotFound(response, "Workspace not found");
@@ -140,7 +140,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       });
 
       // Delete swarm if it exists
-      await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
+      await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`,
@@ -149,7 +149,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectNotFound(response, "No swarm found for this workspace");
@@ -158,8 +158,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
     test("returns 500 when no pods available to claim", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
+      await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
         status: "ACTIVE",
       });
@@ -172,7 +171,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       // Should return 503 when no pods are available
@@ -192,7 +191,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectForbidden(response, "Access denied");
@@ -212,7 +211,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -237,7 +236,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -261,7 +260,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -288,7 +287,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       // Should succeed — API token callers are trusted system actors
@@ -305,7 +304,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -319,7 +318,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -334,15 +333,13 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         podCount: 1,
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
       });
 
       // Simulate task already having a pod assigned
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
-        data: { podId: pods[0].podId },
+        data: {pod_id: pods[0].podId },
       });
 
       const request = createAuthenticatedPostRequest(
@@ -352,7 +349,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectError(response, "Task already has a pod assigned", 409);

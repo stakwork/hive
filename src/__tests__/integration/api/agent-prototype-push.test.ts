@@ -55,7 +55,7 @@ const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
 describe("POST /api/agent/prototype-push/[taskId]", () => {
   const encryptionService = EncryptionService.getInstance();
 
-  async function createTestData(options: { podId?: string } = {}) {
+  async function createTestData(options: {pod_id?: string } = {}) {
     return await db.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -65,9 +65,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       });
 
       const sourceControlOrg = await tx.sourceControlOrg.create({
-        data: {
-          githubLogin: "test-org",
-          githubInstallationId: Math.floor(Math.random() * 1_000_000),
+        data: {github_login: "test-org",github_installation_id: Math.floor(Math.random() * 1_000_000),
           type: "ORG",
           name: "Test Organization",
         },
@@ -78,9 +76,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
         "github_pat_test_token",
       );
       await tx.sourceControlToken.create({
-        data: {
-          userId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+        data: {user_id: user.id,source_control_org_id: sourceControlOrg.id,
           token: JSON.stringify(encryptedToken),
           scopes: ["repo", "write:org"],
         },
@@ -89,9 +85,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-ws"),
-          ownerId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: generateUniqueSlug("test-ws"),owner_id: user.id,source_control_org_id: sourceControlOrg.id,
         },
       });
 
@@ -101,26 +95,16 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       );
       const swarm = await tx.swarm.create({
         data: {
-          name: `test-swarm-${Date.now()}`,
-          swarmId: `swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-          poolName: "test-pool",
-          poolApiKey: JSON.stringify(encryptedPoolApiKey),
-          swarmApiKey: "test-swarm-api-key",
-          swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
+          name: `test-swarm-${Date.now()}`,swarm_id: `swarm-${Date.now()}`,
+          status: "ACTIVE",instance_type: "XL",workspace_id: workspace.id,pool_state: "COMPLETE",pool_name: "test-pool",pool_api_key: JSON.stringify(encryptedPoolApiKey),swarm_api_key: "test-swarm-api-key",swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",
         },
       });
 
       const repository = await tx.repository.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",
           branch: "main",
-          status: "SYNCED",
-          workspaceId: workspace.id,
+          status: "SYNCED",workspace_id: workspace.id,
         },
       });
 
@@ -128,9 +112,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       if (options.podId) {
         const encryptedPassword = encryptionService.encryptField("password" as any, "test-password");
         pod = await tx.pod.create({
-          data: {
-            podId: options.podId,
-            swarmId: swarm.id,
+          data: {pod_id: options.podId,swarm_id: swarm.id,
             password: JSON.stringify(encryptedPassword),
             portMappings: [3000, 3010, 15551, 15552],
             status: "RUNNING",
@@ -140,17 +122,11 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       }
 
       const task = await tx.task.create({
-        data: {
-          workspaceId: workspace.id,
+        data: {workspace_id: workspace.id,
           title: "Prototype Task",
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          sourceType: "PROTOTYPE",
-          createdById: user.id,
-          updatedById: user.id,
-          podId: options.podId ?? null,
-          repositoryId: repository.id,
+          order: 1,source_type: "PROTOTYPE",created_by_id: user.id,updated_by_id: user.id,pod_id: options.podId ?? null,repository_id: repository.id,
         },
       });
 
@@ -255,8 +231,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       mockFetch.mockResolvedValueOnce({
@@ -301,8 +276,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       mockFetch.mockResolvedValueOnce({
@@ -352,8 +326,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       mockFetch.mockResolvedValueOnce({
@@ -389,8 +362,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       const { releaseTaskPod } = await import("@/lib/pods/utils");
@@ -404,13 +376,12 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       expect(response.status).toBe(200);
 
       // Task should be marked DONE in DB
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.status).toBe(TaskStatus.DONE);
 
       // releaseTaskPod should have been called
       expect(vi.mocked(releaseTaskPod)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          taskId: task.id,
+        expect.objectContaining({task_id: task.id,
           podId,
           verifyOwnership: false,
           clearTaskFields: true,
@@ -438,8 +409,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Simulate releaseTaskPod failure — route uses Promise.allSettled so response must still succeed
@@ -477,8 +447,7 @@ describe("POST /api/agent/prototype-push/[taskId]", () => {
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       mockFetch.mockResolvedValueOnce({

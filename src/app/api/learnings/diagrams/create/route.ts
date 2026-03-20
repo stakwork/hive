@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No mermaid diagram found in response" }, { status: 422 });
     }
 
-    const diagram = await db.diagram.create({
+    const diagram = await db.diagrams.create({
       data: {
         name,
         body: extractedBody,
@@ -75,9 +75,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Set groupId = id so this diagram is its own group (versioning root)
-    await db.diagram.update({ where: { id: diagram.id }, data: { groupId: diagram.id } });
+    await db.diagrams.update({ where: { id: diagram.id }, data: { groupId: diagram.id } });
 
-    await db.diagramWorkspace.create({
+    await db.diagram_workspaces.create({
       data: {
         diagramId: diagram.id,
         workspaceId: workspaceAccess.workspace.id,

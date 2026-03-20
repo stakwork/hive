@@ -3,8 +3,7 @@ import { createTestTask } from "@/__tests__/support/factories/task.factory";
 import { db } from "@/lib/db";
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       create: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -21,13 +20,13 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
       const mockTask = {
         id: "task-1",
         title: "Test task",
-        autoMerge: false,
+        auto_merge: false,
         workspaceId: "ws-1",
         createdById: "user-1",
       };
 
-      vi.mocked(db.task.findUnique).mockResolvedValue(null);
-      vi.mocked(db.task.create).mockResolvedValue(mockTask as any);
+      vi.mocked(db.tasks.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.create).mockResolvedValue(mockTask as any);
 
       const task = await createTestTask({
         workspaceId: "ws-1",
@@ -35,27 +34,27 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
         title: "Test task",
       });
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            autoMerge: false,
+            auto_merge: false,
           }),
         })
       );
-      expect(task.autoMerge).toBe(false);
+      expect(task.auto_merge).toBe(false);
     });
 
     it("should pass autoMerge: true when explicitly set", async () => {
       const mockTask = {
         id: "task-2",
         title: "Test task with autoMerge",
-        autoMerge: true,
+        auto_merge: true,
         workspaceId: "ws-1",
         createdById: "user-1",
       };
 
-      vi.mocked(db.task.findUnique).mockResolvedValue(null);
-      vi.mocked(db.task.create).mockResolvedValue(mockTask as any);
+      vi.mocked(db.tasks.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.create).mockResolvedValue(mockTask as any);
 
       await createTestTask({
         workspaceId: "ws-1",
@@ -64,10 +63,10 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
         autoMerge: true,
       });
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            autoMerge: true,
+            auto_merge: true,
           }),
         })
       );
@@ -77,13 +76,13 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
       const mockTask = {
         id: "task-3",
         title: "Test task without autoMerge",
-        autoMerge: false,
+        auto_merge: false,
         workspaceId: "ws-1",
         createdById: "user-1",
       };
 
-      vi.mocked(db.task.findUnique).mockResolvedValue(null);
-      vi.mocked(db.task.create).mockResolvedValue(mockTask as any);
+      vi.mocked(db.tasks.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.create).mockResolvedValue(mockTask as any);
 
       await createTestTask({
         workspaceId: "ws-1",
@@ -92,10 +91,10 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
         autoMerge: false,
       });
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            autoMerge: false,
+            auto_merge: false,
           }),
         })
       );
@@ -105,14 +104,14 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
       const mockTask = {
         id: "task-4",
         title: "Dependent task",
-        autoMerge: true,
-        dependsOnTaskIds: ["task-1"],
+        auto_merge: true,
+        depends_on_task_ids: ["task-1"],
         workspaceId: "ws-1",
         createdById: "user-1",
       };
 
-      vi.mocked(db.task.findUnique).mockResolvedValue(null);
-      vi.mocked(db.task.create).mockResolvedValue(mockTask as any);
+      vi.mocked(db.tasks.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.create).mockResolvedValue(mockTask as any);
 
       await createTestTask({
         workspaceId: "ws-1",
@@ -122,11 +121,11 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
         dependsOnTaskIds: ["task-1"],
       });
 
-      expect(db.task.create).toHaveBeenCalledWith(
+      expect(db.tasks.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            autoMerge: true,
-            dependsOnTaskIds: ["task-1"],
+            auto_merge: true,
+            depends_on_task_ids: ["task-1"],
           }),
         })
       );

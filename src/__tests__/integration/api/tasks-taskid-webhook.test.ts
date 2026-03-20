@@ -10,10 +10,10 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
     process.env.API_TOKEN = API_TOKEN;
 
     // Clean up test data
-    await db.task.deleteMany({});
-    await db.workspaceMember.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.tasks.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
   });
 
   describe("Authentication", () => {
@@ -25,7 +25,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: "feature/test" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -43,7 +43,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: "feature/test" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -65,7 +65,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: 123 }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -85,7 +85,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: 123 }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -105,7 +105,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: { text: "invalid" } }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -125,7 +125,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: ["invalid"] }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -145,7 +145,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         {}
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -165,7 +165,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: "feature/test" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "non-existent-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "non-existent-task-id" }) });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -185,7 +185,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: "feature/test" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -208,7 +208,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: newBranch }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -218,7 +218,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
       expect(data.data.workspaceId).toBe(testData.workspace.id);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.branch).toBe(newBranch);
@@ -238,14 +238,14 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { branch: branchWithWhitespace }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.branch).toBe("feature/test-branch");
 
       // Verify trimmed branch in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.branch).toBe("feature/test-branch");
@@ -267,7 +267,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -276,7 +276,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
       expect(data.data.id).toBe(testData.task.id);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.summary).toBe(summary);
@@ -296,14 +296,14 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: summaryWithWhitespace }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.summary).toBe("Task completed successfully");
 
       // Verify trimmed summary in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.summary).toBe("Task completed successfully");
@@ -323,7 +323,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: null }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -331,7 +331,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
       expect(data.data.summary).toBeNull();
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.summary).toBeNull();
@@ -351,7 +351,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
         { summary: "" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -359,7 +359,7 @@ describe("PUT /api/tasks/[taskId]/webhook", () => {
       expect(data.data.summary).toBeNull();
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.summary).toBeNull();
@@ -406,14 +406,14 @@ This task involved implementing a new feature for the application.
         { summary: longSummary }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.summary).toBe(longSummary);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.summary).toBe(longSummary);
@@ -437,7 +437,7 @@ This task involved implementing a new feature for the application.
         { branch: newBranch, summary: newSummary }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -446,7 +446,7 @@ This task involved implementing a new feature for the application.
       expect(data.data.summary).toBe(newSummary);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.branch).toBe(newBranch);
@@ -468,7 +468,7 @@ This task involved implementing a new feature for the application.
         { branch: newBranch, summary: null }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -476,7 +476,7 @@ This task involved implementing a new feature for the application.
       expect(data.data.summary).toBeNull();
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.branch).toBe(newBranch);
@@ -499,7 +499,7 @@ This task involved implementing a new feature for the application.
         { summary }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -526,7 +526,7 @@ This task involved implementing a new feature for the application.
         { branch: "feature/test" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -554,12 +554,12 @@ This task involved implementing a new feature for the application.
         { branch: "feature/test", summary: "New summary" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
       // Verify only branch and summary were changed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.title).toBe("Original Title");
@@ -587,12 +587,12 @@ This task involved implementing a new feature for the application.
         { summary: "New summary" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
       // Verify updatedAt was changed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.updatedAt.getTime()).toBeGreaterThan(
@@ -622,11 +622,9 @@ async function createTestTask(overrides: {
     const workspace = await tx.workspace.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: user.id,
+        slug: "test-workspace",owner_id: user.id,
         members: {
-          create: {
-            userId: user.id,
+          create: {user_id: user.id,
             role: "OWNER",
           },
         },
@@ -636,10 +634,7 @@ async function createTestTask(overrides: {
     const task = await tx.task.create({
       data: {
         title: overrides.title || "Test Task",
-        description: overrides.description !== undefined ? overrides.description : "Test description",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
+        description: overrides.description !== undefined ? overrides.description : "Test description",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         deleted: overrides.deleted || false,
         summary: overrides.summary !== undefined ? overrides.summary : null,
         status: (overrides.status as any) || "TODO",

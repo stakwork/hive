@@ -90,23 +90,18 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       const sourceControlOrg = await tx.sourceControlOrg.create({
-        data: {
-          githubLogin: `test-org-${generateUniqueId()}`,
-          githubInstallationId: Math.floor(Math.random() * 1000000),
+        data: {github_login: `test-org-${generateUniqueId()}`,github_installation_id: Math.floor(Math.random() * 1000000),
           type: "ORG",
         },
       });
 
       await tx.sourceControlToken.create({
-        data: {
-          userId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+        data: {user_id: user.id,source_control_org_id: sourceControlOrg.id,
           token: JSON.stringify(enc.encryptField("source_control_token", PLAINTEXT_GITHUB_PAT)),
           scopes: ["repo", "read:org"],
         },
@@ -114,36 +109,24 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
       await tx.workspace.update({
         where: { id: workspace.id },
-        data: { sourceControlOrgId: sourceControlOrg.id },
+        data: {source_control_org_id: sourceControlOrg.id },
       });
 
       await tx.gitHubAuth.create({
-        data: {
-          userId: user.id,
-          githubUserId: "123456",
-          githubUsername: "testuser",
+        data: {user_id: user.id,github_user_id: "123456",github_username: "testuser",
         },
       });
 
       const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: `test-swarm-${generateUniqueId()}`,
-          swarmId: generateUniqueId("swarm"),
-          status: "ACTIVE",
-          swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
-          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          agentRequestId: null,
-          agentStatus: null,
-          ingestRequestInProgress: false,
+        data: {workspace_id: workspace.id,
+          name: `test-swarm-${generateUniqueId()}`,swarm_id: generateUniqueId("swarm"),
+          status: "ACTIVE",swarm_url: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,swarm_api_key: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),agent_request_id: null,agent_status: null,ingest_request_in_progress: false,
         },
       });
 
       await tx.repository.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
-          workspaceId: workspace.id,
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",workspace_id: workspace.id,
           status: RepositoryStatus.PENDING,
           branch: "main",
         },
@@ -173,9 +156,8 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify repository status was updated to PENDING
-      const repository = await db.repository.findFirst({
-        where: {
-          repositoryUrl: "https://github.com/test-org/test-repo",
+      const repository = await db.repositories.findFirst({
+        where: {repository_url: "https://github.com/test-org/test-repo",
           workspaceId,
         },
       });
@@ -188,18 +170,16 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
     it("should update repository status to PENDING on re-ingestion", async () => {
       // Delete the repository from beforeEach first
-      await db.repository.deleteMany({
-        where: {
-          repositoryUrl: "https://github.com/test-org/test-repo",
+      await db.repositories.deleteMany({
+        where: {repository_url: "https://github.com/test-org/test-repo",
           workspaceId,
         },
       });
 
       // Create initial repository with SYNCED status
-      await db.repository.create({
+      await db.repositories.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",
           workspaceId,
           status: RepositoryStatus.SYNCED,
           branch: "main",
@@ -218,9 +198,8 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify repository status was updated to PENDING
-      const repository = await db.repository.findFirst({
-        where: {
-          repositoryUrl: "https://github.com/test-org/test-repo",
+      const repository = await db.repositories.findFirst({
+        where: {repository_url: "https://github.com/test-org/test-repo",
           workspaceId,
         },
       });
@@ -231,20 +210,17 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
     it("should enforce composite unique constraint (repositoryUrl_workspaceId)", async () => {
       // The beforeEach already created a repository, so this test should still work
       // Create another workspace
-      const workspace2 = await db.workspace.create({
+      const workspace2 = await db.workspaces.create({
         data: {
           name: "Test Workspace 2",
-          slug: generateUniqueSlug("test-workspace-2"),
-          ownerId: userId,
+          slug: generateUniqueSlug("test-workspace-2"),owner_id: userId,
         },
       });
 
       // Should allow same repositoryUrl in different workspace
-      const repository2 = await db.repository.create({
+      const repository2 = await db.repositories.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
-          workspaceId: workspace2.id,
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",workspace_id: workspace2.id,
           status: RepositoryStatus.PENDING,
           branch: "main",
         },
@@ -254,8 +230,8 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(repository2.workspaceId).toBe(workspace2.id);
 
       // Verify both repositories exist
-      const repositories = await db.repository.findMany({
-        where: { repositoryUrl: "https://github.com/test-org/test-repo" },
+      const repositories = await db.repositories.findMany({
+        where: {repository_url: "https://github.com/test-org/test-repo" },
       });
 
       expect(repositories).toHaveLength(2);
@@ -278,7 +254,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify ingestRefId was stored
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -293,7 +269,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       } as AsyncSyncResult);
 
       // Get initial ingestRefId
-      const initialSwarm = await db.swarm.findUnique({
+      const initialSwarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
       const initialIngestRefId = initialSwarm?.ingestRefId;
@@ -304,7 +280,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify ingestRefId was not changed
-      const finalSwarm = await db.swarm.findUnique({
+      const finalSwarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -313,9 +289,9 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
     it("should overwrite previous ingestRefId on new ingestion", async () => {
       // Set initial ingestRefId
-      await db.swarm.update({
+      await db.swarms.update({
         where: { workspaceId },
-        data: { ingestRefId: "old-ingest-req-123" },
+        data: {ingest_ref_id: "old-ingest-req-123" },
       });
 
       const newRequestId = `ingest-req-${generateUniqueId()}`;
@@ -331,7 +307,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify ingestRefId was updated
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -354,7 +330,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify swarmApiKey is still encrypted
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -399,7 +375,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify operation completed successfully
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -421,7 +397,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify source control token exists
-      const token = await db.sourceControlToken.findUnique({
+      const token = await db.source_control_tokens.findUnique({
         where: {
           userId_sourceControlOrgId: {
             userId,
@@ -442,9 +418,9 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
   describe("Duplicate Request Prevention", () => {
     it("should return 409 when ingest request already in progress", async () => {
       // Set ingestRequestInProgress to true
-      await db.swarm.update({
+      await db.swarms.update({
         where: { workspaceId },
-        data: { ingestRequestInProgress: true },
+        data: {ingest_request_in_progress: true },
       });
 
       const request = createPostRequest({ workspaceId });
@@ -462,9 +438,9 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
     it("should handle sequential requests when flag is already set", async () => {
       // First, manually set the flag to true to simulate an in-progress request
-      await db.swarm.update({
+      await db.swarms.update({
         where: { workspaceId },
-        data: { ingestRequestInProgress: true },
+        data: {ingest_request_in_progress: true },
       });
 
       mockTriggerIngestAsync.mockResolvedValue({
@@ -499,7 +475,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify flag is reset after completion
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -532,23 +508,18 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       const sourceControlOrg = await tx.sourceControlOrg.create({
-        data: {
-          githubLogin: `test-org-${generateUniqueId()}`,
-          githubInstallationId: Math.floor(Math.random() * 1000000),
+        data: {github_login: `test-org-${generateUniqueId()}`,github_installation_id: Math.floor(Math.random() * 1000000),
           type: "ORG",
         },
       });
 
       await tx.sourceControlToken.create({
-        data: {
-          userId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+        data: {user_id: user.id,source_control_org_id: sourceControlOrg.id,
           token: JSON.stringify(enc.encryptField("source_control_token", "github_pat_test")),
           scopes: ["repo", "read:org"],
         },
@@ -556,29 +527,18 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
       await tx.workspace.update({
         where: { id: workspace.id },
-        data: { sourceControlOrgId: sourceControlOrg.id },
+        data: {source_control_org_id: sourceControlOrg.id },
       });
 
       await tx.gitHubAuth.create({
-        data: {
-          userId: user.id,
-          githubUserId: "123456",
-          githubUsername: "testuser",
+        data: {user_id: user.id,github_user_id: "123456",github_username: "testuser",
         },
       });
 
       await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: `test-swarm-${generateUniqueId()}`,
-          swarmId: generateUniqueId("swarm"),
-          status: "ACTIVE",
-          swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
-          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          ingestRefId: "ingest-req-123",
-          agentRequestId: null,
-          agentStatus: null,
-          ingestRequestInProgress: false,
+        data: {workspace_id: workspace.id,
+          name: `test-swarm-${generateUniqueId()}`,swarm_id: generateUniqueId("swarm"),
+          status: "ACTIVE",swarm_url: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,swarm_api_key: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),ingest_ref_id: "ingest-req-123",agent_request_id: null,agent_status: null,ingest_request_in_progress: false,
         },
       });
 
@@ -635,7 +595,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify swarmApiKey is still encrypted
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 
@@ -708,7 +668,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify workspace exists and has slug
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { id: workspaceId },
         select: { slug: true },
       });
@@ -732,7 +692,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(response.status).toBe(200);
 
       // Verify swarm exists for workspace
-      const swarm = await db.swarm.findUnique({
+      const swarm = await db.swarms.findUnique({
         where: { workspaceId },
       });
 

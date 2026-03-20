@@ -10,14 +10,13 @@ import { TaskStatus } from "@prisma/client";
 async function createTestWorkspace(ownerId: string) {
   const slug = generateUniqueSlug("test-workspace");
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: `Test Workspace ${slug}`,
       slug,
       ownerId,
       members: {
-        create: {
-          userId: ownerId,
+        create: {user_id: ownerId,
           role: "OWNER",
         },
       },
@@ -28,23 +27,19 @@ async function createTestWorkspace(ownerId: string) {
 }
 
 async function createTestTask(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options: { title: string; description?: string; archived?: boolean }
 ) {
   const taskId = generateUniqueId("task");
 
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       id: taskId,
       title: options.title,
       description: options.description || null,
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
       status: TaskStatus.IN_PROGRESS, // Use IN_PROGRESS to pass visibility filter
-      archived: options.archived || false,
-      archivedAt: options.archived ? new Date() : null,
+      archived: options.archived || false,archived_at: options.archived ? new Date() : null,
     },
   });
 
@@ -53,16 +48,16 @@ async function createTestTask(
 
 // Cleanup
 async function cleanup(workspaceIds: string[], userIds: string[]) {
-  await db.task.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.tasks.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspaceMember.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.workspace_members.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }

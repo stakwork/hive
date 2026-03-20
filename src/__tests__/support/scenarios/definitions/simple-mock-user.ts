@@ -59,8 +59,8 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     });
 
     // Get GitHub username for repository URL
-    const githubAuth = await db.gitHubAuth.findFirst({
-      where: { userId: owner.id },
+    const githubAuth = await db.github_auth.findFirst({
+      where: {user_id: owner.id },
     });
     const githubUsername = githubAuth?.githubUsername || "example";
 
@@ -68,13 +68,12 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     const repoName = slugify(`${displayName}-app`) || "sample-app";
     const repositoryUrl = `https://github.com/${githubUsername}/${repoName}`;
 
-    const repository = await db.repository.create({
+    const repository = await db.repositories.create({
       data: {
         name: repoName,
         repositoryUrl,
         branch: "main",
-        status: RepositoryStatus.SYNCED,
-        workspaceId: workspace.id,
+        status: RepositoryStatus.SYNCED,workspace_id: workspace.id,
       },
     });
 

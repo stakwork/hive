@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   logger.info("[SPHINX CRON] Starting daily PR summary job");
 
   // Get all workspaces with Sphinx enabled
-  const workspaces = await db.workspace.findMany({
+  const workspaces = await db.workspaces.findMany({
     where: {
       sphinxEnabled: true,
       deleted: false,

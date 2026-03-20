@@ -14,7 +14,7 @@ export async function GET(
 
     const { whiteboardId } = await params;
 
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -74,7 +74,7 @@ export async function PATCH(
     const { whiteboardId } = await params;
     const body = await request.json();
 
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -133,7 +133,7 @@ export async function PATCH(
 
     // Block element saves while diagram generation is active
     if (body.elements !== undefined && whiteboard.featureId) {
-      const activeGeneration = await db.stakworkRun.findFirst({
+      const activeGeneration = await db.stakwork_runs.findFirst({
         where: {
           featureId: whiteboard.featureId,
           type: "DIAGRAM_GENERATION",
@@ -163,7 +163,7 @@ export async function PATCH(
       updateData.version = { increment: 1 };
     }
 
-    const updated = await db.whiteboard.update({
+    const updated = await db.whiteboards.update({
       where: { id: whiteboardId },
       data: updateData,
       include: {
@@ -202,7 +202,7 @@ export async function DELETE(
 
     const { whiteboardId } = await params;
 
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -229,7 +229,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    await db.whiteboard.delete({ where: { id: whiteboardId } });
+    await db.whiteboards.delete({ where: { id: whiteboardId } });
 
     return NextResponse.json({ success: true, message: "Whiteboard deleted" });
   } catch (error) {

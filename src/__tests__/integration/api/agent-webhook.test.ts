@@ -32,7 +32,7 @@ describe("POST /api/agent/webhook", () => {
   // Helper to create test scenario with all required data
   const createTestScenario = async () => {
     // Create test user
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         email: `test-webhook-${Date.now()}@example.com`,
         name: "Test User",
@@ -40,11 +40,10 @@ describe("POST /api/agent/webhook", () => {
     });
     
     // Create test workspace
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: user.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: user.id,
       },
     });
 
@@ -54,17 +53,11 @@ describe("POST /api/agent/webhook", () => {
     const encryptedSecret = encryptionService.encryptField('agentWebhookSecret', mockWebhookSecret);
 
     // Create test task with encrypted webhook secret
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         title: "Test Task",
-        description: "Test task for webhook",
-        workspaceId: workspace.id,
-        status: TaskStatus.IN_PROGRESS,
-        agentWebhookSecret: JSON.stringify(encryptedSecret),
-        agentUrl: "https://agent.example.com",
-        podId: "test-pod-123",
-        createdById: user.id,
-        updatedById: user.id,
+        description: "Test task for webhook",workspace_id: workspace.id,
+        status: TaskStatus.IN_PROGRESS,agent_webhook_secret: JSON.stringify(encryptedSecret),agent_url: "https://agent.example.com",pod_id: "test-pod-123",created_by_id: user.id,updated_by_id: user.id,
       },
     });
 
@@ -102,8 +95,8 @@ describe("POST /api/agent/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify message was created in database
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
       
       expect(messages).toHaveLength(1);
@@ -137,8 +130,8 @@ describe("POST /api/agent/webhook", () => {
       expect(response.status).toBe(200);
       
       // Verify message was created in database
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
       
       expect(messages).toHaveLength(1);
@@ -175,8 +168,8 @@ describe("POST /api/agent/webhook", () => {
       expect(response.status).toBe(200);
       
       // Verify message was created in database
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
       
       expect(messages).toHaveLength(1);
@@ -211,8 +204,8 @@ describe("POST /api/agent/webhook", () => {
       expect(response.status).toBe(200);
       
       // Verify message was created in database
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
       
       expect(messages).toHaveLength(1);
@@ -254,7 +247,7 @@ describe("POST /api/agent/webhook", () => {
 
     test("should return 404 when task not found", async () => {
       const { sessionId } = await createTestScenario();
-      const fakeToken = jwt.sign({ taskId: "fake-task-id" }, mockWebhookSecret, { expiresIn: "1h" });
+      const fakeToken = jwt.sign({task_id: "fake-task-id" }, mockWebhookSecret, { expiresIn: "1h" });
       
       const request = new NextRequest(`http://localhost:3000/api/agent/webhook?token=${fakeToken}`, {
         method: "POST",

@@ -10,8 +10,7 @@ vi.mock("@/services/swarm/stakgraph-status", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
+  db: {swarms: {
       findFirst: vi.fn(),
     },
   },
@@ -28,7 +27,7 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 const mockedUpdateStakgraphStatus = vi.mocked(updateStakgraphStatus);
-const mockedDbSwarm = vi.mocked(db.swarm);
+const mockedDbSwarm = vi.mocked(db.swarms);
 const mockedComputeHmac = vi.mocked(computeHmacSha256Hex);
 const mockedTimingSafeEqual = vi.mocked(timingSafeEqual);
 

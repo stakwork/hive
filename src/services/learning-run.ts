@@ -38,7 +38,7 @@ export async function triggerLearningRun(input: {
   }
 
   // 2. Fetch workspace swarm (swarmUrl + swarmSecretAlias only — no swarmApiKey)
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: {
       swarm: {
@@ -64,7 +64,7 @@ export async function triggerLearningRun(input: {
 
   const rawLogs =
     orConditions.length > 0
-      ? await db.agentLog.findMany({
+      ? await db.agent_logs.findMany({
           where: { OR: orConditions },
           select: { id: true, agent: true, blobUrl: true },
         })
@@ -98,7 +98,7 @@ export async function triggerLearningRun(input: {
   // 6. Build webhook URL and create StakworkRun record
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=LEARNING&workspace_id=${workspaceId}`;
 
-  const run = await db.stakworkRun.create({
+  const run = await db.stakwork_runs.create({
     data: {
       type: StakworkRunType.LEARNING,
       workspaceId,
@@ -142,7 +142,7 @@ export async function triggerLearningRun(input: {
     const projectId = response?.data?.project_id;
 
     // 9. Update run to IN_PROGRESS with projectId
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         projectId,
@@ -152,7 +152,7 @@ export async function triggerLearningRun(input: {
 
     return { runId: run.id, projectId: projectId ?? null };
   } catch (error) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });

@@ -17,11 +17,9 @@ describe("Repository Update API Integration Tests", () => {
     const user = await createTestUser({ name: "Test User" });
     const workspace = await createTestWorkspace({
       name: "Test Workspace",
-      description: "Test workspace",
-      ownerId: user.id,
+      description: "Test workspace",owner_id: user.id,
     });
-    const repository = await createTestRepository({
-      workspaceId: workspace.id,
+    const repository = await createTestRepository({workspace_id: workspace.id,
     });
 
     return { user, workspace, repository };
@@ -61,7 +59,7 @@ describe("Repository Update API Integration Tests", () => {
       expect(data.repositoryUrl).toBe(repository.repositoryUrl);
 
       // Verify changes were persisted in database
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(updatedRepo?.testingFrameworkSetup).toBe(true);
@@ -93,7 +91,7 @@ describe("Repository Update API Integration Tests", () => {
       expect(data.playwrightSetup).toBe(false); // Should remain unchanged
 
       // Verify in database
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(updatedRepo?.testingFrameworkSetup).toBe(true);
@@ -145,7 +143,7 @@ describe("Repository Update API Integration Tests", () => {
       await expectError(response, "Unauthorized - Invalid or missing API key", 401);
 
       // Verify repository was not changed
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.testingFrameworkSetup).toBe(false);
@@ -173,7 +171,7 @@ describe("Repository Update API Integration Tests", () => {
       await expectError(response, "Unauthorized - Invalid or missing API key", 401);
 
       // Verify repository was not changed
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.testingFrameworkSetup).toBe(false);
@@ -226,7 +224,7 @@ describe("Repository Update API Integration Tests", () => {
       expect(data.details).toBeDefined();
 
       // Verify repository was not changed
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.testingFrameworkSetup).toBe(false);
@@ -257,7 +255,7 @@ describe("Repository Update API Integration Tests", () => {
       await expectError(response, "API_KEY not configured on server", 500);
 
       // Verify repository was not changed
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       expect(unchangedRepo?.testingFrameworkSetup).toBe(false);
@@ -325,7 +323,7 @@ describe("Repository Update API Integration Tests", () => {
       }
 
       // Verify final state in database
-      const finalRepo = await db.repository.findUnique({
+      const finalRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
       // Both fields should be updated (last write wins behavior)

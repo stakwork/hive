@@ -61,8 +61,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -115,8 +114,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -142,8 +140,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -169,8 +166,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -215,8 +211,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.octocat,
+          {repository_url: testRepositoryUrls.octocat,
           }
         );
 
@@ -263,8 +258,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.ssh,
+          {repository_url: testRepositoryUrls.ssh,
           }
         );
 
@@ -293,8 +287,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.httpsWithGit,
+          {repository_url: testRepositoryUrls.httpsWithGit,
           }
         );
 
@@ -311,8 +304,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -329,8 +321,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -355,8 +346,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         // Use a URL whose owner has no SourceControlOrg in DB
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/no-org-owner/test-repo",
+          {repository_url: "https://github.com/no-org-owner/test-repo",
           }
         );
 
@@ -385,8 +375,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/installed-org/test-repo",
+          {repository_url: "https://github.com/installed-org/test-repo",
           }
         );
 
@@ -417,8 +406,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/installed-org-2/test-repo",
+          {repository_url: "https://github.com/installed-org-2/test-repo",
           }
         );
 
@@ -460,8 +448,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.invalid,
+          {repository_url: testRepositoryUrls.invalid,
           }
         );
 
@@ -482,8 +469,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.malformed,
+          {repository_url: testRepositoryUrls.malformed,
           }
         );
 
@@ -511,8 +497,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/test-owner/nonexistent-repo",
+          {repository_url: "https://github.com/test-owner/nonexistent-repo",
           }
         );
 
@@ -542,8 +527,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/test-owner/private-repo",
+          {repository_url: "https://github.com/test-owner/private-repo",
           }
         );
 
@@ -570,8 +554,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -598,8 +581,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -626,8 +608,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -657,8 +638,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/specific-owner/scoped-repo",
+          {repository_url: "https://github.com/specific-owner/scoped-repo",
           }
         );
 
@@ -677,8 +657,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle multiple organizations for same user", async () => {
         // Create user with tokens for org1
         const { testUser: user1 } = await createTestUserWithGitHubTokens({
-          githubOwner: "org1",
-          accessToken: "token_for_org1",
+          githubOwner: "org1",access_token: "token_for_org1",
         });
 
         // Add tokens for org2 to same user
@@ -693,16 +672,14 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         );
 
         // Mock getUserAppTokens to return org2 token
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken: "token_for_org2",
+        vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "token_for_org2",
         });
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/org2/repo-in-org2",
+          {repository_url: "https://github.com/org2/repo-in-org2",
           }
         );
 
@@ -736,8 +713,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
+          {repository_url: testRepositoryUrls.https,
           }
         );
 
@@ -791,8 +767,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: testRepositoryUrls.https,
+        {repository_url: testRepositoryUrls.https,
         }
       );
 
@@ -853,8 +828,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: testRepositoryUrls.https,
+        {repository_url: testRepositoryUrls.https,
           workspaceSlug: "my-workspace",
         }
       );
@@ -870,8 +844,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: "https://github.com/test-owner/test-repo",
+        {repository_url: "https://github.com/test-owner/test-repo",
         }
       );
 
@@ -895,24 +868,19 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       const { db } = await import("@/lib/db");
       
       // First create or get the SourceControlOrg
-      const sourceControlOrg = await db.sourceControlOrg.upsert({
-        where: {
-          githubLogin: "acme-test-org-mismatch",
+      const sourceControlOrg = await db.source_control_orgs.upsert({
+        where: {github_login: "acme-test-org-mismatch",
         },
-        create: {
-          githubLogin: "acme-test-org-mismatch",
-          githubInstallationId: 12345,
+        create: {github_login: "acme-test-org-mismatch",github_installation_id: 12345,
         },
         update: {},
       });
 
       // Then create the workspace linked to it
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: "test-workspace",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
         },
         include: {
           sourceControlOrg: true,
@@ -921,8 +889,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: "https://github.com/other-org/test-repo",
+        {repository_url: "https://github.com/other-org/test-repo",
           workspaceSlug: workspace.slug,
         }
       );
@@ -954,24 +921,20 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       const { db } = await import("@/lib/db");
       
       // First create or get the SourceControlOrg with different case
-      const sourceControlOrg = await db.sourceControlOrg.upsert({
-        where: {
-          githubLogin: "acme-test-case-insensitive",
+      const sourceControlOrg = await db.source_control_orgs.upsert({
+        where: {github_login: "acme-test-case-insensitive",
         },
-        create: {
-          githubLogin: "acme-test-case-insensitive", // Will match "Acme-Test-Case-Insensitive" case-insensitively
-          githubInstallationId: 12346,
+        create: {github_login: "acme-test-case-insensitive", // Will match "Acme-Test-Case-Insensitive" case-insensitively
+github_installation_id: 12346,
         },
         update: {},
       });
 
       // Then create the workspace linked to it
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: "test-workspace-2",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace-2",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
         },
         include: {
           sourceControlOrg: true,
@@ -986,8 +949,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: "https://github.com/ACME-Test-Case-Insensitive/test-repo", // Different case
+        {repository_url: "https://github.com/ACME-Test-Case-Insensitive/test-repo", // Different case
           workspaceSlug: workspace.slug,
         }
       );
@@ -1014,11 +976,10 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       // Create workspace WITHOUT linked GitHub organization
       const { db } = await import("@/lib/db");
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace No Org",
-          slug: "test-workspace-no-org",
-          ownerId: testUser.id,
+          slug: "test-workspace-no-org",owner_id: testUser.id,
           // No sourceControlOrg
         },
       });
@@ -1031,8 +992,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: "https://github.com/any-org/test-repo",
+        {repository_url: "https://github.com/any-org/test-repo",
           workspaceSlug: workspace.slug,
         }
       );
@@ -1065,8 +1025,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: testRepositoryUrls.https,
+        {repository_url: testRepositoryUrls.https,
           // No workspaceSlug provided
         }
       );

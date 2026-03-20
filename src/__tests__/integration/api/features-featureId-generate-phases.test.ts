@@ -41,19 +41,15 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       vi.mocked(streamObject).mockReturnValue(mockStreamResponse as any);
 
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
           title: "Voice Command Feature",
-          brief: "Add voice commands to the app",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          brief: "Add voice commands to the app",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -64,7 +60,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       expect(response).toBeDefined();
@@ -89,7 +85,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: "test-feature-id" }),
+        params: Promise.resolve({feature_id: "test-feature-id" }),
       });
 
       await expectUnauthorized(response);
@@ -105,7 +101,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: "non-existent-id" }),
+        params: Promise.resolve({feature_id: "non-existent-id" }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -114,18 +110,14 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -136,7 +128,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -144,18 +136,14 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
 
     test("returns 400 when type parameter is invalid", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -166,7 +154,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Invalid type parameter", 400);
@@ -185,34 +173,27 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       vi.mocked(streamObject).mockReturnValue(mockStreamResponse as any);
 
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
         description: "A test workspace for development",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
           title: "Payment Integration",
           brief: "Add Stripe payment processing",
           requirements: "Must support credit cards and ACH",
           architecture: "Use Stripe SDK with webhook handlers",
-          personas: ["Customer", "Admin"],
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          personas: ["Customer", "Admin"],workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Add user stories
-      await db.userStory.create({
+      await db.user_stories.create({
         data: {
-          title: "Customer can checkout with credit card",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Customer can checkout with credit card",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -223,7 +204,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       );
 
       await POST(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Verify the prompt includes all context

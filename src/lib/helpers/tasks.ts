@@ -65,7 +65,7 @@ async function syncMergedTaskFallback(
 
   if (task.status !== TaskStatus.DONE) {
     try {
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { status: TaskStatus.DONE },
       });
@@ -76,7 +76,7 @@ async function syncMergedTaskFallback(
 
   if (queryTaskForPodContext && (!workspaceId || podId === undefined)) {
     try {
-      const currentTask = await db.task.findUnique({
+      const currentTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: {
           workspaceId: true,
@@ -178,7 +178,7 @@ export async function extractPrArtifact(
                   content.status = newStatus;
 
                   // Update artifact content in database
-                  await db.artifact.update({
+                  await db.artifacts.update({
                     where: { id: prArt.id },
                     data: { content: content },
                   });

@@ -42,7 +42,7 @@ interface PendingRepairTrigger {
  * - Has pool configuration
  */
 export async function getEligibleWorkspaces() {
-  return await db.workspace.findMany({
+  return await db.workspaces.findMany({
     where: {
       deleted: false,
       swarm: {
@@ -143,7 +143,7 @@ export function getFailedProcesses(jlist: JlistProcess[]): string[] {
  * @description Used to prevent duplicate repair triggers.
  */
 export async function isRepairInProgress(workspaceId: string): Promise<boolean> {
-  const inProgressRun = await db.stakworkRun.findFirst({
+  const inProgressRun = await db.stakwork_runs.findFirst({
     where: {
       workspaceId,
       type: StakworkRunType.POD_REPAIR,
@@ -178,12 +178,12 @@ export async function isRepairInProgress(workspaceId: string): Promise<boolean> 
  * Count previous repair attempts for a workspace
  */
 async function getRepairAttemptCount(workspaceId: string): Promise<number> {
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: { podCompletedAt: true },
   });
 
-  return await db.stakworkRun.count({
+  return await db.stakwork_runs.count({
     where: {
       workspaceId,
       type: StakworkRunType.POD_REPAIR,
@@ -196,7 +196,7 @@ async function getRepairAttemptCount(workspaceId: string): Promise<number> {
  * Update podState for a workspace's swarm
  */
 async function updatePodState(swarmId: string, podState: PodState): Promise<void> {
-  await db.swarm.update({
+  await db.swarms.update({
     where: { id: swarmId },
     data: {
       podState,
@@ -287,7 +287,7 @@ async function tryRestartStaklink(
  * Returns result + feedback for each run (similar to getFeatureRunHistory pattern)
  */
 async function getRepairHistory(workspaceId: string) {
-  const previousRuns = await db.stakworkRun.findMany({
+  const previousRuns = await db.stakwork_runs.findMany({
     where: {
       workspaceId,
       type: StakworkRunType.POD_REPAIR,
@@ -336,7 +336,7 @@ export async function triggerPodRepair(
   const containerConfig = await getSwarmContainerConfig(workspaceId);
 
   // Get repositories and build exclusion list
-  const repositories = await db.repository.findMany({
+  const repositories = await db.repositories.findMany({
     where: { workspaceId },
     select: { name: true, triggerPodRepair: true },
   });
@@ -353,7 +353,7 @@ export async function triggerPodRepair(
   }
 
   // Create StakworkRun record
-  const run = await db.stakworkRun.create({
+  const run = await db.stakwork_runs.create({
     data: {
       type: StakworkRunType.POD_REPAIR,
       workspaceId,
@@ -365,7 +365,7 @@ export async function triggerPodRepair(
   // Get pod repair workflow ID
   const workflowId = config.STAKWORK_POD_REPAIR_WORKFLOW_ID;
   if (!workflowId) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
@@ -409,7 +409,7 @@ export async function triggerPodRepair(
 
     const projectId = response?.data?.project_id;
 
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: {
         projectId,
@@ -419,7 +419,7 @@ export async function triggerPodRepair(
 
     return { runId: run.id, projectId: projectId || null };
   } catch (error) {
-    await db.stakworkRun.update({
+    await db.stakwork_runs.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
@@ -520,7 +520,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           );
           
           // Clear the pending trigger
-          await db.swarm.update({
+          await db.swarms.update({
             where: { id: workspace.swarm.id },
             data: { pendingRepairTrigger: Prisma.DbNull },
           });

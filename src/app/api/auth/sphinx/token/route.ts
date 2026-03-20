@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // Get all users with a lightningPubkey set
-      const usersWithPubkey = await db.user.findMany({
+      const usersWithPubkey = await db.users.findMany({
         where: {
           lightningPubkey: { not: null },
         },

@@ -21,8 +21,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate CODE response for 'code' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "write python code",
         artifacts: [],
       });
@@ -34,8 +33,7 @@ describe("POST /api/mock Integration Tests", () => {
       expect(data.message).toContain("response will be generated shortly");
       expect(mockAxios.post).toHaveBeenCalledWith(
         expect.stringContaining("/api/chat/response"),
-        expect.objectContaining({
-          taskId: task.id,
+        expect.objectContaining({task_id: task.id,
           message: expect.stringContaining("connection leak monitor"),
           artifacts: expect.arrayContaining([
             expect.objectContaining({
@@ -54,8 +52,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate FORM response for 'form' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "show me a form",
         artifacts: [],
       });
@@ -88,8 +85,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate BROWSER response for 'browser' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "show browser preview",
         artifacts: [],
       });
@@ -120,8 +116,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate LONGFORM response for 'longform' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "generate longform content",
         artifacts: [],
       });
@@ -153,8 +148,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate BUG_REPORT response when artifacts contain BUG_REPORT with formatted message", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "analyze this bug",
         artifacts: [
           {
@@ -191,8 +185,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle BUG_REPORT without formatted message", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "analyze bug",
         artifacts: [
           {
@@ -228,8 +221,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate chat FORM response for 'chat' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "chat with me",
         artifacts: [],
       });
@@ -264,8 +256,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle confirmation keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "confirmed",
         artifacts: [],
       });
@@ -289,8 +280,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle modify keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "modify the plan",
         artifacts: [],
       });
@@ -314,8 +304,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate markdown response for 'markdown' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "show markdown example",
         artifacts: [],
       });
@@ -339,8 +328,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate default response for unmatched keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "random message without keywords",
         artifacts: [],
       });
@@ -364,8 +352,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should prioritize BUG_REPORT artifact over message keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code browser form", // Has multiple keywords
         artifacts: [
           {
@@ -403,8 +390,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should post response to /api/chat/response with correct payload structure", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -413,10 +399,8 @@ describe("POST /api/mock Integration Tests", () => {
 
       expect(mockAxios.post).toHaveBeenCalledWith(
         "http://localhost:3000/api/chat/response",
-        expect.objectContaining({
-          taskId: task.id,
-          message: expect.any(String),
-          contextTags: expect.any(Array),
+        expect.objectContaining({task_id: task.id,
+          message: expect.any(String),context_tags: expect.any(Array),
           sourceWebsocketID: null, // Mock implementation sets this to null
           artifacts: expect.any(Array),
         }),
@@ -438,8 +422,7 @@ describe("POST /api/mock Integration Tests", () => {
           "Content-Type": "application/json",
           host: "example.com",
         },
-        body: JSON.stringify({
-          taskId: task.id,
+        body: JSON.stringify({task_id: task.id,
           message: "code",
           artifacts: [],
         }),
@@ -463,8 +446,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       mockAxios.post.mockRejectedValueOnce(new Error("Network error"));
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -480,8 +462,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should include contextTags in callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -496,8 +477,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should include sourceWebsocketID in callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -527,8 +507,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle missing message field", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         artifacts: [],
         // message missing
       });
@@ -556,8 +535,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle undefined artifacts array", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         // artifacts missing
       });
@@ -582,8 +560,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle empty artifacts array", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -609,8 +586,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       mockAxios.post.mockRejectedValueOnce(new Error("Callback failed"));
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -626,8 +602,7 @@ describe("POST /api/mock Integration Tests", () => {
   describe("Environment-Based Activation", () => {
     test("should be callable without authentication (mock mode)", async () => {
       // Mock endpoint doesn't require authentication
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: "test-task-id",
         message: "code",
         artifacts: [],
       });
@@ -644,8 +619,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "browser",
         artifacts: [],
       });
@@ -686,8 +660,7 @@ describe("POST /api/mock Integration Tests", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          taskId: task.id,
+        body: JSON.stringify({task_id: task.id,
           message: "browser",
           artifacts: [],
         }),
@@ -711,8 +684,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should map artifacts correctly from response to callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -729,8 +701,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve CODE artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -750,8 +721,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve FORM artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "form",
         artifacts: [],
       });
@@ -771,8 +741,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve BROWSER artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "browser",
         artifacts: [],
       });
@@ -790,8 +759,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve LONGFORM artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "longform",
         artifacts: [],
       });
@@ -809,8 +777,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle multiple artifacts in single response", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -828,12 +795,11 @@ describe("POST /api/mock Integration Tests", () => {
       const { workspace, task } = await createTestData();
 
       // Get initial task state
-      const initialTask = await db.task.findUnique({
+      const initialTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
@@ -841,7 +807,7 @@ describe("POST /api/mock Integration Tests", () => {
       await POST(request);
 
       // Verify task state unchanged
-      const finalTask = await db.task.findUnique({
+      const finalTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -851,20 +817,19 @@ describe("POST /api/mock Integration Tests", () => {
     test("should not create chat messages in database", async () => {
       const { workspace, task } = await createTestData();
 
-      const initialMessageCount = await db.chatMessage.count({
-        where: { taskId: task.id },
+      const initialMessageCount = await db.chat_messages.count({
+        where: {task_id: task.id },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "code",
         artifacts: [],
       });
 
       await POST(request);
 
-      const finalMessageCount = await db.chatMessage.count({
-        where: { taskId: task.id },
+      const finalMessageCount = await db.chat_messages.count({
+        where: {task_id: task.id },
       });
 
       // Mock endpoint should not create chat messages directly
@@ -879,8 +844,7 @@ describe("POST /api/mock Integration Tests", () => {
     });
 
     test("should work with non-existent task IDs", async () => {
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: "non-existent-task-id",
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: "non-existent-task-id",
         message: "code",
         artifacts: [],
       });
@@ -897,8 +861,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should check BUG_REPORT artifacts before keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "browser code form",
         artifacts: [
           {
@@ -927,8 +890,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should match browser before other keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "browser code form",
         artifacts: [],
       });
@@ -956,8 +918,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should match code before form when both present", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "form code",
         artifacts: [],
       });
@@ -985,8 +946,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should be case-insensitive for keyword matching", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {task_id: task.id,
         message: "BROWSER Preview",
         artifacts: [],
       });
@@ -1016,12 +976,9 @@ describe("POST /api/mock Integration Tests", () => {
 // Helper function to create test data
 async function createTestData() {
   const user = await createTestUser();
-  const workspace = await createTestWorkspace({
-    ownerId: user.id,
+  const workspace = await createTestWorkspace({owner_id: user.id,
   });
-  const task = await createTestTask({
-    workspaceId: workspace.id,
-    createdById: user.id,
+  const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
   });
 
   return { user, workspace, task };

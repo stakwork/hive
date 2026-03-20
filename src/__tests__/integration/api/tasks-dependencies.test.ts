@@ -13,19 +13,19 @@ import {
 
 // Cleanup helper
 async function cleanup(workspaceIds: string[], userIds: string[], featureIds: string[]) {
-  await db.task.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.tasks.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.feature.deleteMany({
+  await db.features.deleteMany({
     where: { id: { in: featureIds } },
   });
-  await db.workspaceMember.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.workspace_members.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }
@@ -37,15 +37,12 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   beforeEach(async () => {
     testUser = await createTestUser({ name: "Test User" });
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
     
     // Create a test feature using the factory helper
     testFeature = await createTestFeature({
       title: "Test Feature",
-      brief: "Test feature for dependency testing",
-      workspaceId: testWorkspace.id,
-      createdById: testUser.id,
-      updatedById: testUser.id,
+      brief: "Test feature for dependency testing",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
     });
   });
 
@@ -55,28 +52,21 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("API response includes dependsOnTaskIds array", async () => {
     // Create tasks with dependencies
-    const task1 = await db.task.create({
+    const task1 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
         title: "Task 1",
-        description: "First task",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        description: "First task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.TODO,
       },
     });
 
-    const task2 = await db.task.create({
+    const task2 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
         title: "Task 2",
-        description: "Second task depends on task 1",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
-        status: TaskStatus.TODO,
-        dependsOnTaskIds: [task1.id],
+        description: "Second task depends on task 1",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
+        status: TaskStatus.TODO,depends_on_task_ids: [task1.id],
       },
     });
 
@@ -102,16 +92,12 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("API response includes feature object with id and title", async () => {
     // Create task linked to feature
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
         title: "Task with Feature",
-        description: "Task linked to a feature",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
-        status: TaskStatus.TODO,
-        featureId: testFeature.id,
+        description: "Task linked to a feature",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
+        status: TaskStatus.TODO,feature_id: testFeature.id,
       },
     });
 
@@ -138,14 +124,11 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("task without dependencies returns empty array", async () => {
     // Create task without dependencies
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
         title: "Independent Task",
-        description: "Task with no dependencies",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        description: "Task with no dependencies",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.TODO,
       },
     });
@@ -171,14 +154,11 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("task without feature returns null for feature field", async () => {
     // Create task without feature
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
         title: "Task Without Feature",
-        description: "Task not linked to any feature",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        description: "Task not linked to any feature",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.TODO,
       },
     });
@@ -202,37 +182,27 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("task with multiple dependencies returns all dependency IDs", async () => {
     // Create multiple tasks for dependencies
-    const task1 = await db.task.create({
+    const task1 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
-        title: "Task 1",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Task 1",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.TODO,
       },
     });
 
-    const task2 = await db.task.create({
+    const task2 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
-        title: "Task 2",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Task 2",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.TODO,
       },
     });
 
-    const task3 = await db.task.create({
+    const task3 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
-        title: "Task 3 - Depends on 1 and 2",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
-        status: TaskStatus.TODO,
-        dependsOnTaskIds: [task1.id, task2.id],
+        title: "Task 3 - Depends on 1 and 2",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
+        status: TaskStatus.TODO,depends_on_task_ids: [task1.id, task2.id],
       },
     });
 
@@ -259,28 +229,20 @@ describe("GET /api/tasks - Dependencies and Feature Data", () => {
 
   test("combined test: task with both dependencies and feature", async () => {
     // Create task with dependency
-    const task1 = await db.task.create({
+    const task1 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
-        title: "Task 1",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Task 1",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         status: TaskStatus.DONE,
       },
     });
 
     // Create task with both feature and dependency
-    const task2 = await db.task.create({
+    const task2 = await db.tasks.create({
       data: {
         id: generateUniqueId("task"),
-        title: "Task 2 - With Feature and Dependency",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
-        status: TaskStatus.IN_PROGRESS,
-        featureId: testFeature.id,
-        dependsOnTaskIds: [task1.id],
+        title: "Task 2 - With Feature and Dependency",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
+        status: TaskStatus.IN_PROGRESS,feature_id: testFeature.id,depends_on_task_ids: [task1.id],
       },
     });
 

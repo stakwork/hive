@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
-    const repository = await db.repository.findFirst({
+    const repository = await db.repositories.findFirst({
       where: {
         githubWebhookId: webhookId,
         workspace: {
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Fetch GitHub credentials early for both push and PR events
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: repository.workspaceId },
       select: { ownerId: true, slug: true },
     });
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     //   workspaceId: "123",
     // };
     // const swarm = mockSwarm;
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: repository.workspaceId },
     });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
 
     const swarmHost = swarm.swarmUrl ? new URL(swarm.swarmUrl).host : `${swarm.name}.sphinx.chat`;
     try {
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: { status: RepositoryStatus.PENDING },
       });
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
     try {
       const reqId = apiResult.data?.request_id;
       if (reqId) {
-        await db.swarm.update({
+        await db.swarms.update({
           where: { id: swarm.id },
           data: { ingestRefId: reqId },
         });
