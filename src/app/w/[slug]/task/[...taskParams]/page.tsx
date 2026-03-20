@@ -55,9 +55,8 @@ export default function TaskChatPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { id: workspaceId, workspace } = useWorkspace();
+  const { id: workspaceId, workspace, isSuperAdmin } = useWorkspace();
   const { data: session } = useSession();
-  const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
   const isMobile = useIsMobile();
   const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST) && workspace?.slug === "hive";
 
