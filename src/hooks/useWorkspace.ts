@@ -19,6 +19,7 @@ export function useWorkspace() {
     slug,
     id,
     role,
+    isSuperAdmin,
     workspaces,
     waitingForInputCount,
     notificationsLoading,
@@ -38,6 +39,7 @@ export function useWorkspace() {
     slug,
     id,
     role,
+    isSuperAdmin,
 
     // Available workspaces
     workspaces,
