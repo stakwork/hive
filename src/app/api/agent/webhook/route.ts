@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { decodeWebhookToken, verifyWebhookToken } from "@/lib/auth/agent-jwt";
-import { ChatRole, ChatStatus } from "@prisma/client";
+import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 import { generateAndSaveDiff } from "@/lib/pods/diff";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
     select: {
       agentWebhookSecret: true,
       podId: true,
+      workflowStatus: true,
+      workflowStartedAt: true,
       workspace: {
         select: {
           swarm: {
@@ -111,10 +113,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Session ID mismatch" }, { status: 400 });
   }
 
+  // Helper: set workflowStatus to IN_PROGRESS on first content event (idempotent)
+  const markInProgressIfNeeded = async () => {
+    if (task.workflowStatus !== WorkflowStatus.IN_PROGRESS) {
+      await db.task.update({
+        where: { id: taskId },
+        data: { workflowStatus: WorkflowStatus.IN_PROGRESS, workflowStartedAt: new Date(), updatedAt: new Date() },
+      });
+      await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, {
+        taskId,
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        timestamp: new Date(),
+      });
+    }
+  };
+
   // 6. Persist based on type
   try {
     switch (body.type) {
       case "text": {
+        await markInProgressIfNeeded();
         const msg = await db.chatMessage.create({
           data: {
             taskId,
@@ -128,6 +146,7 @@ export async function POST(request: NextRequest) {
       }
 
       case "tool-call": {
+        await markInProgressIfNeeded();
         const input = JSON.stringify(body.input, null, 2);
         const logContent = `🔧 tool-call: ${body.toolName}\n${input}`;
         const msg = await db.chatMessage.create({
@@ -143,6 +162,7 @@ export async function POST(request: NextRequest) {
       }
 
       case "tool-result": {
+        await markInProgressIfNeeded();
         const output = typeof body.output === "string" ? body.output : JSON.stringify(body.output, null, 2);
         const logContent = `✅ tool-result: ${body.toolName}\n${output}`;
         const msg = await db.chatMessage.create({
@@ -159,6 +179,17 @@ export async function POST(request: NextRequest) {
 
       case "finish":
         console.log(`[Webhook] Finish event received for task ${taskId}`);
+
+        // Update workflowStatus to COMPLETED and notify Pusher
+        await db.task.update({
+          where: { id: taskId },
+          data: { workflowStatus: WorkflowStatus.COMPLETED, workflowCompletedAt: new Date(), updatedAt: new Date() },
+        });
+        await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, {
+          taskId,
+          workflowStatus: WorkflowStatus.COMPLETED,
+          timestamp: new Date(),
+        });
 
         // Generate diff and broadcast via Pusher
         if (task.podId) {

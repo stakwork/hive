@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "@/app/api/agent/webhook/route";
 import { db } from "@/lib/db";
 import { pusherServer } from "@/lib/pusher";
-import { ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
+import { ChatRole, ChatStatus, TaskStatus, WorkflowStatus } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
 import { NextRequest } from "next/server";
@@ -16,6 +16,7 @@ vi.mock("@/lib/pusher", () => ({
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
     DIFF_GENERATED: "diff-generated",
+    WORKFLOW_STATUS_UPDATE: "workflow-status-update",
   },
 }));
 vi.mock("@/services/pod/diff-generator", () => ({
@@ -117,6 +118,56 @@ describe("POST /api/agent/webhook", () => {
         "new-message",
         messages[0].id
       );
+    });
+
+    test("first text event fires WORKFLOW_STATUS_UPDATE with IN_PROGRESS and updates DB", async () => {
+      const { task, sessionId } = await createTestScenario();
+
+      const request = createRequest(task.id, {
+        type: "text",
+        text: "Hello from agent",
+        sessionId,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Verify DB was updated to IN_PROGRESS
+      const updated = await db.task.findUnique({ where: { id: task.id }, select: { workflowStatus: true, workflowStartedAt: true } });
+      expect(updated?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+      expect(updated?.workflowStartedAt).not.toBeNull();
+
+      // Verify WORKFLOW_STATUS_UPDATE was fired
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${task.id}`,
+        "workflow-status-update",
+        expect.objectContaining({ taskId: task.id, workflowStatus: WorkflowStatus.IN_PROGRESS })
+      );
+    });
+
+    test("second text event does NOT re-fire WORKFLOW_STATUS_UPDATE when already IN_PROGRESS", async () => {
+      const { task, sessionId } = await createTestScenario();
+
+      // Pre-set the task to IN_PROGRESS
+      await db.task.update({
+        where: { id: task.id },
+        data: { workflowStatus: WorkflowStatus.IN_PROGRESS, workflowStartedAt: new Date() },
+      });
+
+      const request = createRequest(task.id, {
+        type: "text",
+        text: "Second message",
+        sessionId,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // WORKFLOW_STATUS_UPDATE should NOT have been called (already IN_PROGRESS)
+      const workflowStatusCalls = (pusherServer.trigger as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (call) => call[1] === "workflow-status-update"
+      );
+      expect(workflowStatusCalls).toHaveLength(0);
     });
   });
 
@@ -228,6 +279,43 @@ describe("POST /api/agent/webhook", () => {
         `task-${task.id}`,
         "new-message",
         messages[0].id
+      );
+    });
+  });
+
+  describe("finish event", () => {
+    test("fires WORKFLOW_STATUS_UPDATE with COMPLETED and updates DB workflowStatus and workflowCompletedAt", async () => {
+      const { task, sessionId } = await createTestScenario();
+
+      // Set task to IN_PROGRESS first (normal pre-condition)
+      await db.task.update({
+        where: { id: task.id },
+        data: { workflowStatus: WorkflowStatus.IN_PROGRESS, workflowStartedAt: new Date() },
+      });
+
+      const request = createRequest(task.id, {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: { inputTokens: 100, outputTokens: 50 },
+        sessionId,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Verify DB updated to COMPLETED
+      const updated = await db.task.findUnique({
+        where: { id: task.id },
+        select: { workflowStatus: true, workflowCompletedAt: true },
+      });
+      expect(updated?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+      expect(updated?.workflowCompletedAt).not.toBeNull();
+
+      // Verify WORKFLOW_STATUS_UPDATE fired with COMPLETED
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${task.id}`,
+        "workflow-status-update",
+        expect.objectContaining({ taskId: task.id, workflowStatus: WorkflowStatus.COMPLETED })
       );
     });
   });
