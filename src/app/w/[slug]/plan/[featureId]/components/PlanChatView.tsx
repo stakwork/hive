@@ -102,7 +102,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
   // Project log WebSocket for live thinking logs
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, false);
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {

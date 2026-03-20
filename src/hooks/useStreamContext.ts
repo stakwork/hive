@@ -15,8 +15,10 @@ export function useStreamContext() {
 
   function onMessage(message: ChatMessage) {
     const streamArtifact = message.artifacts?.find((a) => a.type === "STREAM");
+    console.log("[useStreamContext] onMessage", { hasArtifacts: !!message.artifacts?.length, streamArtifactType: streamArtifact?.type, streamContent: streamArtifact?.content });
     if (streamArtifact?.content) {
       const content = streamArtifact.content as StreamContent;
+      console.log("[useStreamContext] setting streamContext", { requestId: content.request_id, baseUrl: content.base_url });
       setStreamContext({
         requestId: content.request_id,
         eventsToken: content.events_token,
@@ -26,7 +28,9 @@ export function useStreamContext() {
   }
 
   function onWorkflowStatusUpdate(update: WorkflowStatusUpdate) {
+    console.log("[useStreamContext] onWorkflowStatusUpdate", update.workflowStatus);
     if (TERMINAL_STATUSES.includes(update.workflowStatus)) {
+      console.log("[useStreamContext] clearing streamContext (terminal status)");
       setStreamContext(null);
     }
   }
