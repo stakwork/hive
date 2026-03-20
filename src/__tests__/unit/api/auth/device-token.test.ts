@@ -9,7 +9,7 @@ vi.mock("@/lib/middleware/utils", () => ({
   requireAuth: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({
-  db: { user: { update: vi.fn() } },
+  db: {users: { update: vi.fn() } },
 }));
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn() },
@@ -53,18 +53,18 @@ describe("POST /api/device-token", () => {
     const res = await POST(makeRequest({ ios_device_token: "abc" }));
 
     expect(res.status).toBe(401);
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("stores the token when ios_device_token is a non-empty string", async () => {
     authenticatedAs();
-    vi.mocked(db.user.update).mockResolvedValue({} as any);
+    vi.mocked(db.users.update).mockResolvedValue({} as any);
 
     const res = await POST(makeRequest({ ios_device_token: "token-abc123" }));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { iosDeviceToken: "token-abc123" },
     });
@@ -72,12 +72,12 @@ describe("POST /api/device-token", () => {
 
   it("clears the token when ios_device_token is an empty string", async () => {
     authenticatedAs();
-    vi.mocked(db.user.update).mockResolvedValue({} as any);
+    vi.mocked(db.users.update).mockResolvedValue({} as any);
 
     const res = await POST(makeRequest({ ios_device_token: "" }));
 
     expect(res.status).toBe(200);
-    expect(db.user.update).toHaveBeenCalledWith({
+    expect(db.users.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { iosDeviceToken: null },
     });
@@ -90,7 +90,7 @@ describe("POST /api/device-token", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("is a no-op and returns 200 when body is empty / non-JSON", async () => {
@@ -102,7 +102,7 @@ describe("POST /api/device-token", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(200);
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("silently ignores unknown fields and does not write to DB", async () => {
@@ -111,12 +111,12 @@ describe("POST /api/device-token", () => {
     const res = await POST(makeRequest({ android_device_token: "android-tok" }));
 
     expect(res.status).toBe(200);
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.users.update).not.toHaveBeenCalled();
   });
 
   it("returns 500 when DB update fails", async () => {
     authenticatedAs();
-    vi.mocked(db.user.update).mockRejectedValue(new Error("DB error"));
+    vi.mocked(db.users.update).mockRejectedValue(new Error("DB error"));
 
     const res = await POST(makeRequest({ ios_device_token: "tok" }));
 

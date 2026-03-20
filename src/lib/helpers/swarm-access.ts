@@ -43,7 +43,7 @@ export async function getWorkspaceSwarmAccess(
   userId: string,
 ): Promise<SwarmAccessResult> {
   // Check if workspace exists first
-  const workspaceExists = await db.workspace.findFirst({
+  const workspaceExists = await db.workspaces.findFirst({
     where: {
       slug,
       deleted: false,
@@ -64,7 +64,7 @@ export async function getWorkspaceSwarmAccess(
   // Check if user has access (owner or member)
   const isOwner = workspaceExists.ownerId === userId;
   const isMember = !isOwner
-    ? await db.workspaceMember.findFirst({
+    ? await db.workspace_members.findFirst({
         where: {
           workspaceId: workspaceExists.id,
           userId,
@@ -81,7 +81,7 @@ export async function getWorkspaceSwarmAccess(
   }
 
   // Fetch swarm configuration
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId: workspaceExists.id },
     select: {
       name: true,
@@ -155,7 +155,7 @@ export async function getWorkspaceSwarmAccess(
 export async function getSwarmAccessByWorkspaceId(
   workspaceId: string,
 ): Promise<SwarmAccessResult> {
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: {
       name: true,

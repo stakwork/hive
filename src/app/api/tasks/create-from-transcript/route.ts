@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get workspace ID from slug
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug: workspaceSlug },
       select: { id: true },
     });

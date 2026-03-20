@@ -12,14 +12,11 @@ vi.mock("@/lib/ai/provider", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       findMany: vi.fn(),
-    },
-    artifact: {
+    },artifacts: {
       findFirst: vi.fn(),
     },
   },
@@ -34,13 +31,13 @@ describe("generateCommitMessage", () => {
     const { db } = await import("@/lib/db");
     const { generateObject } = await import("ai");
 
-    vi.mocked(db.task.findUnique).mockResolvedValue({
+    vi.mocked(db.tasks.findUnique).mockResolvedValue({
       workspace: { slug: "test-workspace" },
     } as any);
 
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([
       { role: "USER", message: "Build a dashboard filter UI", timestamp: new Date() },
       { role: "ASSISTANT", message: "I'll create the filter component", timestamp: new Date() },
     ] as any);
@@ -63,13 +60,13 @@ describe("generateCommitMessage", () => {
     const { db } = await import("@/lib/db");
     const { generateObject } = await import("ai");
 
-    vi.mocked(db.task.findUnique).mockResolvedValue({
+    vi.mocked(db.tasks.findUnique).mockResolvedValue({
       workspace: { slug: "test-workspace" },
     } as any);
 
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([
       { role: "USER", message: "Fix the auth bug", timestamp: new Date() },
       { role: "ASSISTANT", message: "I'll fix the authentication issue", timestamp: new Date() },
     ] as any);
@@ -91,13 +88,13 @@ describe("generateCommitMessage", () => {
     const { db } = await import("@/lib/db");
     const { generateObject } = await import("ai");
 
-    vi.mocked(db.task.findUnique).mockResolvedValue({
+    vi.mocked(db.tasks.findUnique).mockResolvedValue({
       workspace: { slug: "test-workspace" },
     } as any);
 
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([
       { role: "USER", message: "Add login form", timestamp: new Date() },
     ] as any);
 

@@ -53,7 +53,7 @@ const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
 
 describe("POST /api/agent/diff Integration Tests", () => {
   // Helper to create complete test data with all required relationships
-  async function createTestDataWithDiffCapabilities(options: { podId?: string } = {}) {
+  async function createTestDataWithDiffCapabilities(options: {pod_id?: string } = {}) {
     return await db.$transaction(async (tx) => {
       // Create test user
       const user = await tx.user.create({
@@ -67,24 +67,15 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       // Create swarm with encrypted poolApiKey
       const swarm = await tx.swarm.create({
         data: {
-          name: `test-swarm-${Date.now()}`,
-          swarmId: `swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-          poolName: "test-pool",
-          poolApiKey: JSON.stringify({ data: "encrypted-key", iv: "test-iv" }),
-          swarmApiKey: "test-swarm-api-key",
-          swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
+          name: `test-swarm-${Date.now()}`,swarm_id: `swarm-${Date.now()}`,
+          status: "ACTIVE",instance_type: "XL",workspace_id: workspace.id,pool_state: "COMPLETE",pool_name: "test-pool",pool_api_key: JSON.stringify({ data: "encrypted-key", iv: "test-iv" }),swarm_api_key: "test-swarm-api-key",swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",
         },
       });
 
@@ -94,9 +85,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         const encryptionService = EncryptionService.getInstance();
         const encryptedPassword = encryptionService.encryptField("password", "test-password");
         pod = await tx.pod.create({
-          data: {
-            podId: options.podId,
-            swarmId: swarm.id,
+          data: {pod_id: options.podId,swarm_id: swarm.id,
             password: JSON.stringify(encryptedPassword),
             portMappings: [3000, 3010, 15551, 15552],
             status: "RUNNING",
@@ -107,15 +96,11 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
       // Create test task with optional podId
       const task = await tx.task.create({
-        data: {
-          workspaceId: workspace.id,
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: options.podId,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,pod_id: options.podId,
         },
       });
 
@@ -132,9 +117,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
     test("returns 401 when user not authenticated", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: "test-workspace-id",
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: "test-workspace-id",task_id: "test-task-id",
       });
 
       const response = await POST(request);
@@ -146,9 +129,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         user: { email: "test@example.com", name: "Test User" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: "test-workspace-id",
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: "test-workspace-id",task_id: "test-task-id",
       });
 
       const response = await POST(request);
@@ -164,9 +145,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -174,11 +153,10 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("returns 400 when workspaceId is missing", async () => {
-      const { user, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -186,11 +164,10 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("returns 400 when taskId is missing", async () => {
-      const { user, workspace } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -201,13 +178,11 @@ describe("POST /api/agent/diff Integration Tests", () => {
   describe("Authorization Tests", () => {
     test("returns 404 when workspace not found", async () => {
       // Create a task with podId in a workspace the user doesn't have access to
-      const { task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: "non-existent-workspace-id",
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: "non-existent-workspace-id",task_id: task.id,
       });
 
       const response = await POST(request);
@@ -215,14 +190,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("returns 403 when user is not workspace owner or member", async () => {
-      const { workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -230,15 +203,13 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("allows workspace owner to fetch diff", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Set mock mode to bypass pod communication
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -252,14 +223,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("allows workspace member to fetch diff", async () => {
-      const { workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       const memberUser = await createTestUser({ name: "Member User" });
 
       // Add user as workspace member
-      await db.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -269,9 +238,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Set mock mode to bypass pod communication
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -288,33 +255,26 @@ describe("POST /api/agent/diff Integration Tests", () => {
   describe("Configuration Tests", () => {
     test("returns 404 when workspace has no swarm", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       // Create task with podId in the workspace without swarm
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: "test-pod-id",
+          order: 1,created_by_id: user.id,updated_by_id: user.id,pod_id: "test-pod-id",
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -325,13 +285,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
   describe("Pod Communication Tests", () => {
     test("successfully fetches diff from control port", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -349,9 +308,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         ],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -371,13 +328,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("handles empty diffs gracefully", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -388,9 +344,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         json: async () => [],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -401,13 +355,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("handles control port errors", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -419,9 +372,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         text: async () => "Internal pod error",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -432,20 +383,17 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("returns 500 when control port not found in pod mappings", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails with missing control port
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [], // Empty port mappings
       } as any);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -458,13 +406,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
   describe("Database Operations Tests", () => {
     test("creates ChatMessage with DIFF artifact", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -482,17 +429,15 @@ describe("POST /api/agent/diff Integration Tests", () => {
         ],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
       await expectSuccess(response, 200);
 
       // Verify database state
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
         include: { artifacts: true },
       });
 
@@ -504,13 +449,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("artifact contains correct diff structure", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -534,9 +478,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         ],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -553,13 +495,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("does not create message when diffs are empty", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -570,16 +511,14 @@ describe("POST /api/agent/diff Integration Tests", () => {
         json: async () => [],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       await POST(request);
 
       // Verify no message was created
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
       });
 
       expect(messages).toHaveLength(0);
@@ -588,16 +527,14 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
   describe("Error Handling Tests", () => {
     test("handles getPodDetails failure", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails to throw error
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -608,13 +545,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
     });
 
     test("handles network errors during diff fetch", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -622,9 +558,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock network error
       mockFetch.mockRejectedValue(new Error("Network error: ECONNREFUSED"));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -638,15 +572,13 @@ describe("POST /api/agent/diff Integration Tests", () => {
   describe("Mock Mode Tests", () => {
     test("returns mock data when MOCK_BROWSER_URL set", async () => {
       // Mock mode still requires a task with podId to pass validation
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "mock-pod" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "mock-pod" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Set mock mode
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -666,15 +598,13 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
     test("returns mock data when CUSTOM_GOOSE_URL set", async () => {
       // Mock mode still requires a task with podId to pass validation
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "mock-pod" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "mock-pod" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Set custom goose mode
       process.env.CUSTOM_GOOSE_URL = "http://custom-goose.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -693,13 +623,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
   describe("Integration Tests", () => {
     test("completes full diff retrieval workflow with all validations", async () => {
-      const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithDiffCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "secure-password",
         portMappings: [15552],
       } as any);
@@ -723,9 +652,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         ],
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/diff", {workspace_id: workspace.id,task_id: task.id,
       });
 
       const response = await POST(request);
@@ -735,8 +662,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       expect(data).toMatchObject({
         success: true,
         message: expect.objectContaining({
-          id: expect.any(String),
-          taskId: task.id,
+          id: expect.any(String),task_id: task.id,
           role: ChatRole.ASSISTANT,
           status: ChatStatus.SENT,
           artifacts: expect.arrayContaining([
@@ -771,8 +697,8 @@ describe("POST /api/agent/diff Integration Tests", () => {
       );
 
       // Verify database persistence
-      const messages = await db.chatMessage.findMany({
-        where: { taskId: task.id },
+      const messages = await db.chat_messages.findMany({
+        where: {task_id: task.id },
         include: { artifacts: true },
       });
 

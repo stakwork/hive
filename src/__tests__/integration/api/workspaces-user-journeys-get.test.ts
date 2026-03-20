@@ -53,49 +53,49 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
     });
 
     // Create users
-    owner = await db.user.create({
+    owner = await db.users.create({
       data: {
         email: "owner@example.com",
         name: "Owner User",
       },
     });
 
-    admin = await db.user.create({
+    admin = await db.users.create({
       data: {
         email: "admin@example.com",
         name: "Admin User",
       },
     });
 
-    pm = await db.user.create({
+    pm = await db.users.create({
       data: {
         email: "pm@example.com",
         name: "PM User",
       },
     });
 
-    developer = await db.user.create({
+    developer = await db.users.create({
       data: {
         email: "developer@example.com",
         name: "Developer User",
       },
     });
 
-    stakeholder = await db.user.create({
+    stakeholder = await db.users.create({
       data: {
         email: "stakeholder@example.com",
         name: "Stakeholder User",
       },
     });
 
-    viewer = await db.user.create({
+    viewer = await db.users.create({
       data: {
         email: "viewer@example.com",
         name: "Viewer User",
       },
     });
 
-    outsider = await db.user.create({
+    outsider = await db.users.create({
       data: {
         email: "outsider@example.com",
         name: "Outsider User",
@@ -103,62 +103,49 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
     });
 
     // Create workspace
-    workspace = await db.workspace.create({
+    workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: owner.id,
+        slug: "test-workspace",owner_id: owner.id,
       },
     });
 
     // Create workspace members with different roles
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: admin.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: admin.id,
         role: "ADMIN",
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: pm.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: pm.id,
         role: "PM",
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: developer.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: developer.id,
         role: "DEVELOPER",
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: stakeholder.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: stakeholder.id,
         role: "STAKEHOLDER",
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: viewer.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: viewer.id,
         role: "VIEWER",
       },
     });
 
     // Create repository
-    repository = await db.repository.create({
+    repository = await db.repositories.create({
       data: {
-        name: "test-repo",
-        repositoryUrl: "https://github.com/test/repo",
-        branch: "main",
-        workspaceId: workspace.id,
+        name: "test-repo",repository_url: "https://github.com/test/repo",
+        branch: "main",workspace_id: workspace.id,
         status: "SYNCED",
       },
     });
@@ -168,74 +155,40 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
       encryptionService.encryptField("swarmApiKey", "test-swarm-api-key")
     );
     
-    swarm = await db.swarm.create({
+    swarm = await db.swarms.create({
       data: {
-        name: "test-swarm.sphinx.chat",
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
-        swarmApiKey: encryptedApiKey,
-        status: "ACTIVE",
-        workspaceId: workspace.id,
+        name: "test-swarm.sphinx.chat",swarm_url: "https://test-swarm.sphinx.chat/api",swarm_api_key: encryptedApiKey,
+        status: "ACTIVE",workspace_id: workspace.id,
       },
     });
 
     // Create user journey tasks
-    await db.task.createMany({
+    await db.tasks.createMany({
       data: [
         {
           title: "Login User Journey",
-          description: "Test user login flow",
-          workspaceId: workspace.id,
-          repositoryId: repository.id,
-          sourceType: "USER_JOURNEY",
-          status: "DONE",
-          workflowStatus: "COMPLETED",
-          testFilePath: "src/__tests__/e2e/specs/auth/login.spec.ts",
-          testFileUrl: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/auth/login.spec.ts",
-          stakworkProjectId: 12345,
-          createdById: owner.id,
-          updatedById: owner.id,
+          description: "Test user login flow",workspace_id: workspace.id,repository_id: repository.id,source_type: "USER_JOURNEY",
+          status: "DONE",workflow_status: "COMPLETED",test_file_path: "src/__tests__/e2e/specs/auth/login.spec.ts",test_file_url: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/auth/login.spec.ts",stakwork_project_id: 12345,created_by_id: owner.id,updated_by_id: owner.id,
         },
         {
           title: "Dashboard User Journey",
-          description: "Test dashboard navigation",
-          workspaceId: workspace.id,
-          repositoryId: repository.id,
-          sourceType: "USER_JOURNEY",
-          status: "IN_PROGRESS",
-          workflowStatus: "PENDING",
-          testFilePath: "src/__tests__/e2e/specs/dashboard/navigation.spec.ts",
-          testFileUrl: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/dashboard/navigation.spec.ts",
-          stakworkProjectId: 12346,
-          createdById: owner.id,
-          updatedById: owner.id,
+          description: "Test dashboard navigation",workspace_id: workspace.id,repository_id: repository.id,source_type: "USER_JOURNEY",
+          status: "IN_PROGRESS",workflow_status: "PENDING",test_file_path: "src/__tests__/e2e/specs/dashboard/navigation.spec.ts",test_file_url: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/dashboard/navigation.spec.ts",stakwork_project_id: 12346,created_by_id: owner.id,updated_by_id: owner.id,
         },
         {
           title: "Checkout User Journey",
-          description: "Test checkout process",
-          workspaceId: workspace.id,
-          repositoryId: repository.id,
-          sourceType: "USER_JOURNEY",
-          status: "TODO",
-          workflowStatus: "FAILED",
-          testFilePath: "src/__tests__/e2e/specs/checkout/purchase.spec.ts",
-          testFileUrl: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/checkout/purchase.spec.ts",
-          stakworkProjectId: 12347,
-          createdById: owner.id,
-          updatedById: owner.id,
+          description: "Test checkout process",workspace_id: workspace.id,repository_id: repository.id,source_type: "USER_JOURNEY",
+          status: "TODO",workflow_status: "FAILED",test_file_path: "src/__tests__/e2e/specs/checkout/purchase.spec.ts",test_file_url: "https://github.com/test/repo/blob/main/src/__tests__/e2e/specs/checkout/purchase.spec.ts",stakwork_project_id: 12347,created_by_id: owner.id,updated_by_id: owner.id,
         },
       ],
     });
 
     // Create non-user-journey task (should be filtered out)
-    await db.task.create({
+    await db.tasks.create({
       data: {
         title: "Regular Task",
-        description: "Not a user journey",
-        workspaceId: workspace.id,
-        sourceType: "USER",
-        status: "TODO",
-        createdById: owner.id,
-        updatedById: owner.id,
+        description: "Not a user journey",workspace_id: workspace.id,source_type: "USER",
+        status: "TODO",created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
@@ -319,15 +272,12 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
     test("returns 403 for workspace members who have left (leftAt set)", async () => {
       // Mark viewer as having left the workspace
-      await db.workspaceMember.update({
+      await db.workspace_members.update({
         where: {
-          workspaceId_userId: {
-            workspaceId: workspace.id,
-            userId: viewer.id,
+          workspaceId_userId: {workspace_id: workspace.id,user_id: viewer.id,
           },
         },
-        data: {
-          leftAt: new Date(),
+        data: {left_at: new Date(),
         },
       });
 
@@ -522,10 +472,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
     test("excludes deleted user journey tasks", async () => {
       // Mark one task as deleted
-      const tasks = await db.task.findMany({
-        where: { sourceType: "USER_JOURNEY" },
+      const tasks = await db.tasks.findMany({
+        where: {source_type: "USER_JOURNEY" },
       });
-      await db.task.update({
+      await db.tasks.update({
         where: { id: tasks[0].id },
         data: { deleted: true },
       });
@@ -548,10 +498,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
     test("excludes archived user journey tasks", async () => {
       // Mark one task as archived
-      const tasks = await db.task.findMany({
-        where: { sourceType: "USER_JOURNEY" },
+      const tasks = await db.tasks.findMany({
+        where: {source_type: "USER_JOURNEY" },
       });
-      await db.task.update({
+      await db.tasks.update({
         where: { id: tasks[0].id },
         data: { archived: true },
       });
@@ -596,23 +546,18 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
     test("isolates user journeys by workspace", async () => {
       // Create another workspace with user journeys
-      const otherWorkspace = await db.workspace.create({
+      const otherWorkspace = await db.workspaces.create({
         data: {
           name: "Other Workspace",
-          slug: "other-workspace",
-          ownerId: owner.id,
+          slug: "other-workspace",owner_id: owner.id,
         },
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Other Workspace Journey",
-          description: "Should not appear in test workspace",
-          workspaceId: otherWorkspace.id,
-          sourceType: "USER_JOURNEY",
-          status: "TODO",
-          createdById: owner.id,
-          updatedById: owner.id,
+          description: "Should not appear in test workspace",workspace_id: otherWorkspace.id,source_type: "USER_JOURNEY",
+          status: "TODO",created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -714,11 +659,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
   describe("Swarm Configuration Validation", () => {
     test("returns successfully when workspace has no swarm configured", async () => {
       // Create workspace without swarm
-      const noSwarmWorkspace = await db.workspace.create({
+      const noSwarmWorkspace = await db.workspaces.create({
         data: {
           name: "No Swarm Workspace",
-          slug: "no-swarm",
-          ownerId: owner.id,
+          slug: "no-swarm",owner_id: owner.id,
         },
       });
 
@@ -741,9 +685,9 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
     test("returns successfully when swarm API key is missing", async () => {
       // Update swarm to have null API key
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
       getMockedSession().mockResolvedValue({
@@ -767,11 +711,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
   describe("Error Handling", () => {
     test("handles missing repositories gracefully", async () => {
       // Create workspace with no repositories
-      const noRepoWorkspace = await db.workspace.create({
+      const noRepoWorkspace = await db.workspaces.create({
         data: {
           name: "No Repo Workspace",
-          slug: "no-repo",
-          ownerId: owner.id,
+          slug: "no-repo",owner_id: owner.id,
         },
       });
 
@@ -779,13 +722,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         encryptionService.encryptField("swarmApiKey", "test-key")
       );
 
-      await db.swarm.create({
+      await db.swarms.create({
         data: {
-          name: "no-repo-swarm.sphinx.chat",
-          swarmUrl: "https://no-repo-swarm.sphinx.chat/api",
-          swarmApiKey: encryptedApiKey,
-          status: "ACTIVE",
-          workspaceId: noRepoWorkspace.id,
+          name: "no-repo-swarm.sphinx.chat",swarm_url: "https://no-repo-swarm.sphinx.chat/api",swarm_api_key: encryptedApiKey,
+          status: "ACTIVE",workspace_id: noRepoWorkspace.id,
         },
       });
 
@@ -811,11 +751,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
   describe("Empty State", () => {
     test("returns empty array when workspace has no user journeys", async () => {
       // Create workspace with no user journey tasks
-      const emptyWorkspace = await db.workspace.create({
+      const emptyWorkspace = await db.workspaces.create({
         data: {
           name: "Empty Workspace",
-          slug: "empty-workspace",
-          ownerId: owner.id,
+          slug: "empty-workspace",owner_id: owner.id,
         },
       });
 
@@ -823,13 +762,10 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         encryptionService.encryptField("swarmApiKey", "test-key")
       );
 
-      await db.swarm.create({
+      await db.swarms.create({
         data: {
-          name: "empty-swarm.sphinx.chat",
-          swarmUrl: "https://empty-swarm.sphinx.chat/api",
-          swarmApiKey: encryptedApiKey,
-          status: "ACTIVE",
-          workspaceId: emptyWorkspace.id,
+          name: "empty-swarm.sphinx.chat",swarm_url: "https://empty-swarm.sphinx.chat/api",swarm_api_key: encryptedApiKey,
+          status: "ACTIVE",workspace_id: emptyWorkspace.id,
         },
       });
 

@@ -26,25 +26,19 @@ describe('GET /api/tickets/[ticketId]', () => {
   beforeEach(async () => {
     // Create test user and workspace
     user = await createTestUser();
-    workspace = await createTestWorkspace({ ownerId: user.id });
+    workspace = await createTestWorkspace({owner_id: user.id });
 
     // Create feature (required parent for tasks)
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: 'Test Feature',
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id
+        title: 'Test Feature',workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id
       }
     });
 
     // Create test task
     task = await createTestTask({
       title: 'Test Task',
-      description: 'Task to be retrieved',
-      workspaceId: workspace.id,
-      featureId: feature.id,
-      createdById: user.id,
+      description: 'Task to be retrieved',workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,
       status: 'TODO',
       priority: 'HIGH'
     });
@@ -96,15 +90,14 @@ describe('GET /api/tickets/[ticketId]', () => {
 
     test('should include phase details when task has phase', async () => {
       // Create phase and assign task to it
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: 'Test Phase',
-          featureId: feature.id,
+          name: 'Test Phase',feature_id: feature.id,
           status: 'IN_PROGRESS'
         }
       });
       
-      await updateTestTask(task.id, { phaseId: phase.id });
+      await updateTestTask(task.id, {phase_id: phase.id });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -118,7 +111,7 @@ describe('GET /api/tickets/[ticketId]', () => {
 
     test('should include assignee details when task is assigned', async () => {
       const assignee = await createTestUser({ email: 'assignee@test.com', name: 'Test Assignee' });
-      await updateTestTask(task.id, { assigneeId: assignee.id });
+      await updateTestTask(task.id, {assignee_id: assignee.id });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -143,13 +136,10 @@ describe('GET /api/tickets/[ticketId]', () => {
 
     test('should include dependsOnTaskIds array', async () => {
       const dependencyTask = await createTestTask({
-        title: 'Dependency Task',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
+        title: 'Dependency Task',workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id
       });
       
-      await updateTestTask(task.id, { dependsOnTaskIds: [dependencyTask.id] });
+      await updateTestTask(task.id, {depends_on_task_ids: [dependencyTask.id] });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -160,9 +150,7 @@ describe('GET /api/tickets/[ticketId]', () => {
     });
 
     test('should handle system assignee type correctly', async () => {
-      await updateTestTask(task.id, { 
-        assigneeId: null,
-        systemAssigneeType: 'TASK_COORDINATOR' 
+      await updateTestTask(task.id, {assignee_id: null,system_assignee_type: 'TASK_COORDINATOR' 
       });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
@@ -194,10 +182,8 @@ describe('GET /api/tickets/[ticketId]', () => {
 
     test('should allow retrieval if user is workspace admin', async () => {
       const adminUser = await createTestUser({ email: 'admin@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          userId: adminUser.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: adminUser.id,workspace_id: workspace.id,
           role: 'ADMIN'
         }
       });
@@ -210,10 +196,8 @@ describe('GET /api/tickets/[ticketId]', () => {
 
     test('should allow retrieval if user is workspace member with any role', async () => {
       const memberUser = await createTestUser({ email: 'member@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: 'VIEWER'
         }
       });
@@ -234,7 +218,7 @@ describe('GET /api/tickets/[ticketId]', () => {
     });
 
     test('should return 404 for deleted task', async () => {
-      await updateTestTask(task.id, { deleted: true, deletedAt: new Date() });
+      await updateTestTask(task.id, { deleted: true,deleted_at: new Date() });
       
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -256,23 +240,17 @@ describe('GET /api/tickets/[ticketId]', () => {
   describe('Data Consistency', () => {
     test('should not include deleted dependencies in response', async () => {
       const dependency1 = await createTestTask({
-        title: 'Dependency 1',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
+        title: 'Dependency 1',workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id
       });
       
       const dependency2 = await createTestTask({
-        title: 'Dependency 2',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
+        title: 'Dependency 2',workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id
       });
       
-      await updateTestTask(task.id, { dependsOnTaskIds: [dependency1.id, dependency2.id] });
+      await updateTestTask(task.id, {depends_on_task_ids: [dependency1.id, dependency2.id] });
       
       // Soft-delete one dependency
-      await updateTestTask(dependency1.id, { deleted: true, deletedAt: new Date() });
+      await updateTestTask(dependency1.id, { deleted: true,deleted_at: new Date() });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -285,7 +263,7 @@ describe('GET /api/tickets/[ticketId]', () => {
     });
 
     test('should handle null phase gracefully', async () => {
-      await updateTestTask(task.id, { phaseId: null });
+      await updateTestTask(task.id, {phase_id: null });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});
@@ -296,7 +274,7 @@ describe('GET /api/tickets/[ticketId]', () => {
     });
 
     test('should handle null assignee gracefully', async () => {
-      await updateTestTask(task.id, { assigneeId: null, systemAssigneeType: null });
+      await updateTestTask(task.id, {assignee_id: null,system_assignee_type: null });
 
       const request = createAuthenticatedGetRequest(`/api/tickets/${task.id}`, user);
       const response = await GET(request, { params: Promise.resolve({ ticketId: task.id })});

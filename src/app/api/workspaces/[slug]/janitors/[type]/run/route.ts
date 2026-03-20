@@ -20,7 +20,7 @@ export async function POST(
     const { slug, type } = await params;
 
     // Fetch all repositories for the workspace to trigger a run per repo
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug },
       select: {
         repositories: {

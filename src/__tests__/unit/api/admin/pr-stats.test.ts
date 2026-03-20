@@ -7,9 +7,7 @@ import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: { findUnique: vi.fn() },
-    workspace: { findUnique: vi.fn() },
+  db: {users: { findUnique: vi.fn() },workspaces: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -35,9 +33,8 @@ import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getPRCountForRepo } from "@/lib/github/pr-stats";
 
-const mockDb = db as unknown as {
-  user: { findUnique: ReturnType<typeof vi.fn> };
-  workspace: { findUnique: ReturnType<typeof vi.fn> };
+const mockDb = db as unknown as {users: { findUnique: ReturnType<typeof vi.fn> };
+workspaces: { findUnique: ReturnType<typeof vi.fn> };
   $queryRaw: ReturnType<typeof vi.fn>;
 };
 
@@ -90,7 +87,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   });
 
   it("returns 403 for non-super-admin user", async () => {
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "USER" });
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "USER" });
 
     const { GET } = await import("@/app/api/admin/workspaces/[id]/pr-stats/route");
     const req = makeRequest("user-regular", "ws-1");
@@ -99,8 +96,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   });
 
   it("returns 404 when workspace not found", async () => {
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(null);
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(null);
 
     const { GET } = await import("@/app/api/admin/workspaces/[id]/pr-stats/route");
     const req = makeRequest("super-admin-1", "nonexistent");
@@ -114,8 +111,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
     const now = new Date("2026-03-11T21:00:00.000Z");
     vi.setSystemTime(now);
 
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
     mockDb.$queryRaw.mockResolvedValueOnce([]);
     mockGetUserAppTokens.mockResolvedValueOnce(null);
 
@@ -134,8 +131,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   it("only counts DONE artifacts — raw SQL result is bucketed correctly", async () => {
     vi.setSystemTime(new Date("2026-03-11T12:00:00.000Z"));
 
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
 
     // Two DONE artifacts: one 1h ago, one 10d ago
     const now = new Date("2026-03-11T12:00:00.000Z");
@@ -163,8 +160,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   });
 
   it("sets githubTotal to null when getUserAppTokens returns null (no token)", async () => {
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
     mockDb.$queryRaw.mockResolvedValueOnce([]);
     mockGetUserAppTokens.mockResolvedValueOnce(null); // no token available
 
@@ -181,8 +178,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   });
 
   it("sets githubTotal to null when getPRCountForRepo throws (Promise.allSettled failure)", async () => {
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
     mockDb.$queryRaw.mockResolvedValueOnce([]);
     mockGetUserAppTokens.mockResolvedValueOnce({ accessToken: "token-abc" });
     mockGetPRCountForRepo.mockRejectedValueOnce(new Error("GitHub rate limit"));
@@ -203,8 +200,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
     vi.setSystemTime(new Date("2026-03-11T12:00:00.000Z"));
 
     const now = new Date("2026-03-11T12:00:00.000Z");
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
     // 3 hive PRs all within 24h
     mockDb.$queryRaw.mockResolvedValueOnce([
       { repo: "stakwork/hive", created_at: new Date(now.getTime() - 1 * 60 * 60 * 1000) },
@@ -243,8 +240,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
       ],
     });
 
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(workspace);
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(workspace);
 
     // 1 hive PR for stakwork/hive, 2 for stakwork/staklink — both within 24h
     mockDb.$queryRaw.mockResolvedValueOnce([
@@ -285,8 +282,8 @@ describe("GET /api/admin/workspaces/[id]/pr-stats", () => {
   });
 
   it("returns repos and totals with all 5 window keys", async () => {
-    mockDb.user.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
-    mockDb.workspace.findUnique.mockResolvedValueOnce(makeWorkspace());
+    mockDb.users.findUnique.mockResolvedValueOnce({ role: "SUPER_ADMIN" });
+    mockDb.workspaces.findUnique.mockResolvedValueOnce(makeWorkspace());
     mockDb.$queryRaw.mockResolvedValueOnce([]);
     mockGetUserAppTokens.mockResolvedValueOnce(null);
 

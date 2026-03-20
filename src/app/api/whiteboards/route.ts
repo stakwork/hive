@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     // If featureId is provided, get whiteboard by feature
     if (featureId) {
-      const whiteboard = await db.whiteboard.findUnique({
+      const whiteboard = await db.whiteboards.findUnique({
         where: { featureId },
         include: {
           workspace: {
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access to workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         id: workspaceId,
         deleted: false,
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const whiteboards = await db.whiteboard.findMany({
+    const whiteboards = await db.whiteboards.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: "desc" },
       select: {
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         id: workspaceId,
         deleted: false,
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     // If featureId provided, verify feature exists and belongs to workspace
     if (featureId) {
-      const feature = await db.feature.findFirst({
+      const feature = await db.features.findFirst({
         where: { id: featureId, workspaceId, deleted: false },
       });
       if (!feature) {
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const whiteboard = await db.whiteboard.create({
+    const whiteboard = await db.whiteboards.create({
       data: {
         name,
         workspaceId,

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find workspace by slug
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug: workspaceSlug,
         deleted: false,

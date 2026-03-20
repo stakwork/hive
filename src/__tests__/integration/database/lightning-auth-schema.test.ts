@@ -138,8 +138,7 @@ describe("Lightning Authentication Database Schema", () => {
       const user = await prisma.user.create({
         data: {
           email: "test_lightning_user@example.com",
-          name: "Lightning User",
-          lightningPubkey: JSON.stringify(encryptedPubkey),
+          name: "Lightning User",lightning_pubkey: JSON.stringify(encryptedPubkey),
         },
       });
 
@@ -159,8 +158,7 @@ describe("Lightning Authentication Database Schema", () => {
 
       await prisma.user.create({
         data: {
-          email: "test_lightning_user1@example.com",
-          lightningPubkey: JSON.stringify(encryptedPubkey),
+          email: "test_lightning_user1@example.com",lightning_pubkey: JSON.stringify(encryptedPubkey),
         },
       });
 
@@ -168,8 +166,7 @@ describe("Lightning Authentication Database Schema", () => {
       await expect(
         prisma.user.create({
           data: {
-            email: "test_lightning_user2@example.com",
-            lightningPubkey: JSON.stringify(encryptedPubkey),
+            email: "test_lightning_user2@example.com",lightning_pubkey: JSON.stringify(encryptedPubkey),
           },
         })
       ).rejects.toThrow();
@@ -179,8 +176,7 @@ describe("Lightning Authentication Database Schema", () => {
       const user = await prisma.user.create({
         data: {
           email: "test_lightning_github_only@example.com",
-          name: "GitHub Only User",
-          lightningPubkey: null,
+          name: "GitHub Only User",lightning_pubkey: null,
         },
       });
 
@@ -197,13 +193,12 @@ describe("Lightning Authentication Database Schema", () => {
 
       await prisma.user.create({
         data: {
-          email: "test_lightning_findable@example.com",
-          lightningPubkey: JSON.stringify(encryptedPubkey),
+          email: "test_lightning_findable@example.com",lightning_pubkey: JSON.stringify(encryptedPubkey),
         },
       });
 
       const found = await prisma.user.findUnique({
-        where: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        where: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       expect(found).toBeDefined();
@@ -244,14 +239,13 @@ describe("Lightning Authentication Database Schema", () => {
 
       const user = await prisma.user.create({
         data: {
-          email: "test_lightning_flow@example.com",
-          lightningPubkey: JSON.stringify(encryptedPubkey),
+          email: "test_lightning_flow@example.com",lightning_pubkey: JSON.stringify(encryptedPubkey),
         },
       });
 
       // Step 4: Verify user can be found by pubkey
       const foundUser = await prisma.user.findUnique({
-        where: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        where: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       expect(foundUser?.id).toBe(user.id);

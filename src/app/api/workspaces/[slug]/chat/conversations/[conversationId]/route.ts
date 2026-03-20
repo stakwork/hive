@@ -30,7 +30,7 @@ export async function GET(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -48,7 +48,7 @@ export async function GET(
     }
 
     // Get conversation - user must own it
-    const conversation = await db.sharedConversation.findFirst({
+    const conversation = await db.shared_conversations.findFirst({
       where: {
         id: conversationId,
         workspaceId: workspace.id,
@@ -137,7 +137,7 @@ export async function PUT(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -165,7 +165,7 @@ export async function PUT(
     }
 
     // Get existing conversation - user must own it
-    const existing = await db.sharedConversation.findFirst({
+    const existing = await db.shared_conversations.findFirst({
       where: {
         id: conversationId,
         workspaceId: workspace.id,
@@ -193,7 +193,7 @@ export async function PUT(
       : existing.lastMessageAt;
 
     // Update conversation
-    const updated = await db.sharedConversation.update({
+    const updated = await db.shared_conversations.update({
       where: {
         id: conversationId,
       },
@@ -279,7 +279,7 @@ export async function DELETE(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -297,7 +297,7 @@ export async function DELETE(
     }
 
     // Verify conversation exists and user owns it
-    const existing = await db.sharedConversation.findFirst({
+    const existing = await db.shared_conversations.findFirst({
       where: {
         id: conversationId,
         workspaceId: workspace.id,
@@ -313,7 +313,7 @@ export async function DELETE(
     }
 
     // Delete the conversation (hard delete - no soft delete in current schema)
-    await db.sharedConversation.delete({
+    await db.shared_conversations.delete({
       where: {
         id: conversationId,
       },

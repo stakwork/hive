@@ -23,58 +23,42 @@ describe("Tickets Reorder API - Integration Tests", () => {
     test("reorders tasks successfully and persists new order", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create 3 tasks with initial order [0, 1, 2]
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 1",
-          featureId: feature.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 1",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 2",
-          featureId: feature.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 2",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task3 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 3",
-          featureId: feature.id,
+      const task3 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 3",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 2,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 2,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -98,8 +82,8 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.data).toHaveLength(3);
 
       // Verify database state reflects new order
-      const updatedTasks = await db.task.findMany({
-        where: { featureId: feature.id },
+      const updatedTasks = await db.tasks.findMany({
+        where: {feature_id: feature.id },
         orderBy: { order: "asc" },
       });
 
@@ -115,62 +99,46 @@ describe("Tickets Reorder API - Integration Tests", () => {
     test("reorders tasks across phases with phaseId updates", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase1 = await db.phase.create({
+      const phase1 = await db.phases.create({
         data: {
-          name: "Phase 1",
-          featureId: feature.id,
+          name: "Phase 1",feature_id: feature.id,
           order: 0,
         },
       });
 
-      const phase2 = await db.phase.create({
+      const phase2 = await db.phases.create({
         data: {
-          name: "Phase 2",
-          featureId: feature.id,
+          name: "Phase 2",feature_id: feature.id,
           order: 1,
         },
       });
 
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 1",
-          featureId: feature.id,
-          phaseId: phase1.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 1",feature_id: feature.id,phase_id: phase1.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 2",
-          featureId: feature.id,
-          phaseId: phase1.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 2",feature_id: feature.id,phase_id: phase1.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -179,8 +147,8 @@ describe("Tickets Reorder API - Integration Tests", () => {
         "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
-            { id: task2.id, order: 0, phaseId: phase1.id },
-            { id: task1.id, order: 0, phaseId: phase2.id },
+            { id: task2.id, order: 0,phase_id: phase1.id },
+            { id: task1.id, order: 0,phase_id: phase2.id },
           ],
         },
         user
@@ -192,10 +160,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify phaseId and order updates
-      const updatedTask1 = await db.task.findUnique({
+      const updatedTask1 = await db.tasks.findUnique({
         where: { id: task1.id },
       });
-      const updatedTask2 = await db.task.findUnique({
+      const updatedTask2 = await db.tasks.findUnique({
         where: { id: task2.id },
       });
 
@@ -218,31 +186,23 @@ describe("Tickets Reorder API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          featureId: feature.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Test Task",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -310,56 +270,41 @@ describe("Tickets Reorder API - Integration Tests", () => {
     // Production code fix needed in: src/services/roadmap/tasks.ts (reorderTasks function)
     test("prevents cross-feature task reordering", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Create two features in same workspace
-      const feature1 = await db.feature.create({
+      const feature1 = await db.features.create({
         data: {
-          title: "Feature 1",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 1",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const feature2 = await db.feature.create({
+      const feature2 = await db.features.create({
         data: {
-          title: "Feature 2",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 2",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create task in feature 1
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task in Feature 1",
-          featureId: feature1.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task in Feature 1",feature_id: feature1.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create task in feature 2
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task in Feature 2",
-          featureId: feature2.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task in Feature 2",feature_id: feature2.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -381,10 +326,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(response.status).toBeGreaterThanOrEqual(400);
 
       // Verify original order is preserved (transaction rolled back)
-      const task1Check = await db.task.findUnique({
+      const task1Check = await db.tasks.findUnique({
         where: { id: task1.id },
       });
-      const task2Check = await db.task.findUnique({
+      const task2Check = await db.tasks.findUnique({
         where: { id: task2.id },
       });
 
@@ -396,44 +341,32 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
     test("rolls back transaction on partial failure with invalid task ID", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 1",
-          featureId: feature.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 1",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 2",
-          featureId: feature.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 2",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -456,8 +389,8 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(response.status).toBeGreaterThanOrEqual(400);
 
       // Verify original order is preserved (no partial updates)
-      const updatedTasks = await db.task.findMany({
-        where: { featureId: feature.id },
+      const updatedTasks = await db.tasks.findMany({
+        where: {feature_id: feature.id },
         orderBy: { order: "asc" },
       });
 
@@ -470,44 +403,32 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
     test("handles reordering with duplicate order values", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 1",
-          featureId: feature.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 1",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 2",
-          featureId: feature.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Task 2",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -530,8 +451,8 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify both tasks have order 0
-      const updatedTasks = await db.task.findMany({
-        where: { featureId: feature.id },
+      const updatedTasks = await db.tasks.findMany({
+        where: {feature_id: feature.id },
       });
 
       expect(updatedTasks).toHaveLength(2);
@@ -540,38 +461,30 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
     test("rejects deleted workspace features", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          featureId: feature.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Test Task",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createAuthenticatedPostRequest(
@@ -590,31 +503,23 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
     test("allows workspace owner to reorder tasks", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          featureId: feature.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Test Task",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -632,7 +537,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify owner can reorder
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
       expect(updatedTask?.order).toBe(5);
@@ -641,40 +546,30 @@ describe("Tickets Reorder API - Integration Tests", () => {
     test("allows workspace member to reorder tasks", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          featureId: feature.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
+          title: "Test Task",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -692,7 +587,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify member can reorder
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
       expect(updatedTask?.order).toBe(3);
@@ -700,46 +595,34 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
     test("reorders multiple tasks and preserves other task properties", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task1 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task1 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "High Priority Task",
-          description: "Important task",
-          featureId: feature.id,
+          description: "Important task",feature_id: feature.id,
           status: TaskStatus.IN_PROGRESS,
           priority: Priority.HIGH,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const task2 = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task2 = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "Low Priority Task",
-          description: "Less important",
-          featureId: feature.id,
+          description: "Less important",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.LOW,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -761,10 +644,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify order changed but other properties preserved
-      const updatedTask1 = await db.task.findUnique({
+      const updatedTask1 = await db.tasks.findUnique({
         where: { id: task1.id },
       });
-      const updatedTask2 = await db.task.findUnique({
+      const updatedTask2 = await db.tasks.findUnique({
         where: { id: task2.id },
       });
 

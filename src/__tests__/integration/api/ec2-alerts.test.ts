@@ -39,7 +39,7 @@ describe("POST /api/ec2/alerts", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     // Clean up any pre-existing alerts for our test instance
-    await db.ec2Alert.deleteMany({ where: { instanceId } });
+    await db.ec2_alerts.deleteMany({ where: { instanceId } });
   });
 
   it("handles SubscriptionConfirmation — returns 200, does not write to DB", async () => {
@@ -54,7 +54,7 @@ describe("POST /api/ec2/alerts", () => {
     expect(res.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledWith("https://sns.aws.amazon.com/confirm?token=abc");
 
-    const count = await db.ec2Alert.count({ where: { instanceId } });
+    const count = await db.ec2_alerts.count({ where: { instanceId } });
     expect(count).toBe(0);
 
     fetchSpy.mockRestore();
@@ -74,7 +74,7 @@ describe("POST /api/ec2/alerts", () => {
 
     expect(res.status).toBe(200);
 
-    const alert = await db.ec2Alert.findUnique({ where: { instanceId } });
+    const alert = await db.ec2_alerts.findUnique({ where: { instanceId } });
     expect(alert).not.toBeNull();
     expect(alert!.instanceId).toBe(instanceId);
     expect(alert!.alarmName).toBe("high-cpu-alarm");
@@ -103,10 +103,10 @@ describe("POST /api/ec2/alerts", () => {
 
     expect(res.status).toBe(200);
 
-    const count = await db.ec2Alert.count({ where: { instanceId } });
+    const count = await db.ec2_alerts.count({ where: { instanceId } });
     expect(count).toBe(1);
 
-    const alert = await db.ec2Alert.findUnique({ where: { instanceId } });
+    const alert = await db.ec2_alerts.findUnique({ where: { instanceId } });
     expect(alert!.alarmState).toBe("OK");
     expect(alert!.stateReason).toBe("Resolved");
   });

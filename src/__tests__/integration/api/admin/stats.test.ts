@@ -15,8 +15,7 @@ describe("/api/admin/stats", () => {
     // Create test users (beforeEach because resetDatabase runs beforeEach)
     superAdminUser = await createTestUser({ role: "SUPER_ADMIN", email: "superadmin@test.com" });
     regularUser = await createTestUser({ role: "USER", email: "regular@test.com" });
-    const workspace = await createTestWorkspace({
-      ownerId: superAdminUser.id,
+    const workspace = await createTestWorkspace({owner_id: superAdminUser.id,
       name: "Test Workspace",
       slug: "test-workspace",
     });
@@ -42,25 +41,21 @@ describe("/api/admin/stats", () => {
 
     it("should return all six stat fields as numbers for superadmin with window=all", async () => {
       // Create some test data
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Completed Task",
           workspaceId,
-          status: "DONE",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
+          status: "DONE",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,
         },
       });
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "In Progress Task",
           workspaceId,
-          status: "IN_PROGRESS",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
+          status: "IN_PROGRESS",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,
         },
       });
-      await db.user.create({
+      await db.users.create({
         data: {
           email: "newuser@test.com",
           name: "New User",
@@ -100,68 +95,55 @@ describe("/api/admin/stats", () => {
       const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
       // Create tasks with specific timestamps
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Old Completed Task",
           workspaceId,
-          status: "DONE",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
-          createdAt: eightDaysAgo,
+          status: "DONE",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,created_at: eightDaysAgo,
         },
       });
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Recent Completed Task",
           workspaceId,
-          status: "DONE",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
-          createdAt: fiveDaysAgo,
+          status: "DONE",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,created_at: fiveDaysAgo,
         },
       });
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Recent In Progress Task",
           workspaceId,
-          status: "IN_PROGRESS",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
-          createdAt: fiveDaysAgo,
+          status: "IN_PROGRESS",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,created_at: fiveDaysAgo,
         },
       });
 
       // Create a chat message to attach artifacts to
-      const chatMessage = await db.chatMessage.create({
+      const chatMessage = await db.chat_messages.create({
         data: {
           role: "ASSISTANT",
           message: "Test message",
           task: {
             create: {
               title: "Task for artifacts",
-              workspaceId,
-              createdById: superAdminUser.id,
-              updatedById: superAdminUser.id,
+              workspaceId,created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,
             },
           },
         },
       });
 
       // Create artifacts with specific timestamps
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           type: "PULL_REQUEST",
           content: { status: "DONE", url: "https://github.com/test/test/pull/1" },
-          messageId: chatMessage.id,
-          createdAt: eightDaysAgo,
+          messageId: chatMessage.id,created_at: eightDaysAgo,
         },
       });
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           type: "PULL_REQUEST",
           content: { status: "DONE", url: "https://github.com/test/test/pull/2" },
-          messageId: chatMessage.id,
-          createdAt: fiveDaysAgo,
+          messageId: chatMessage.id,created_at: fiveDaysAgo,
         },
       });
 
@@ -186,28 +168,24 @@ describe("/api/admin/stats", () => {
       const oldDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
       // Create a user with old timestamp
-      await db.user.create({
+      await db.users.create({
         data: {
           email: "olduser@test.com",
           name: "Old User",
-          deleted: false,
-          createdAt: oldDate,
+          deleted: false,created_at: oldDate,
         },
       });
 
       // Create swarm and pod
-      const swarm = await db.swarm.create({
+      const swarm = await db.swarms.create({
         data: {
           name: `test-swarm-${Date.now()}`,
           workspaceId,
         },
       });
-      await db.pod.create({
-        data: {
-          podId: `test-pod-${Date.now()}`,
-          swarmId: swarm.id,
-          status: "RUNNING",
-          deletedAt: null,
+      await db.pods.create({
+        data: {pod_id: `test-pod-${Date.now()}`,swarm_id: swarm.id,
+          status: "RUNNING",deleted_at: null,
         },
       });
 
@@ -230,13 +208,11 @@ describe("/api/admin/stats", () => {
     });
 
     it("should default invalid window param to all", async () => {
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Test Task",
           workspaceId,
-          status: "DONE",
-          createdById: superAdminUser.id,
-          updatedById: superAdminUser.id,
+          status: "DONE",created_by_id: superAdminUser.id,updated_by_id: superAdminUser.id,
         },
       });
 

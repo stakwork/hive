@@ -37,14 +37,14 @@ export async function GET(request: NextRequest) {
       queuedCount,
     ] = await Promise.all([
       // Total tasks
-      db.task.count({
+      db.tasks.count({
         where: {
           workspaceId,
           deleted: false,
         },
       }),
       // Tasks with IN_PROGRESS workflow status
-      db.task.count({
+      db.tasks.count({
         where: {
           workspaceId,
           deleted: false,
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       // Tasks waiting for input (have FORM artifacts in latest message AND are active)
-      db.task.count({
+      db.tasks.count({
         where: {
           workspaceId,
           deleted: false,
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       // Coordinator-queued TODO tasks (must match /api/tasks?queue=true filters)
-      db.task.count({
+      db.tasks.count({
         where: {
           workspaceId,
           deleted: false,

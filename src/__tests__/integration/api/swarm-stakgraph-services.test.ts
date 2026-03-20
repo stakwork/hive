@@ -33,24 +33,17 @@ describe("GET /api/swarm/stakgraph/services", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "w1",
-          slug: generateUniqueSlug("w1"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("w1"),owner_id: user.id,
         },
       });
 
       const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: "s1-name",
-          swarmId: generateUniqueId("s1"),
-          status: "ACTIVE",
-          swarmUrl: "https://s1-name.sphinx.chat/api",
-          swarmApiKey: JSON.stringify(
+        data: {workspace_id: workspace.id,
+          name: "s1-name",swarm_id: generateUniqueId("s1"),
+          status: "ACTIVE",swarm_url: "https://s1-name.sphinx.chat/api",swarm_api_key: JSON.stringify(
             enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY),
           ),
-          services: [],
-          agentRequestId: null,
-          agentStatus: null,
+          services: [],agent_request_id: null,agent_status: null,
         },
       });
 
@@ -93,7 +86,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
     expect(Object.values(headers).join(" ")).toContain(PLAINTEXT_SWARM_API_KEY);
 
     // Verify DB is still encrypted (no plaintext present)
-    const swarm = await db.swarm.findFirst({ where: { swarmId } });
+    const swarm = await db.swarms.findFirst({ where: { swarmId } });
     const stored = swarm?.swarmApiKey || "";
     expect(stored).not.toContain(PLAINTEXT_SWARM_API_KEY);
   });

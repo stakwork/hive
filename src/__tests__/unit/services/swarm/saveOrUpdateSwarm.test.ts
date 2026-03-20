@@ -6,8 +6,7 @@ import { SwarmStatus } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
+  db: {swarms: {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -74,8 +73,8 @@ describe("saveOrUpdateSwarm", () => {
 
   describe("when creating a new swarm", () => {
     beforeEach(() => {
-      db.swarm.findUnique.mockResolvedValue(null);
-      db.swarm.create.mockResolvedValue({
+      db.swarms.findUnique.mockResolvedValue(null);
+      db.swarms.create.mockResolvedValue({
         id: "new-swarm-id",
         workspaceId: mockWorkspaceId,
         name: "test-swarm",
@@ -93,11 +92,11 @@ describe("saveOrUpdateSwarm", () => {
 
       const result = await saveOrUpdateSwarm(params);
 
-      expect(db.swarm.findUnique).toHaveBeenCalledWith({
+      expect(db.swarms.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: mockWorkspaceId },
       });
 
-      expect(db.swarm.create).toHaveBeenCalledWith({
+      expect(db.swarms.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           workspaceId: mockWorkspaceId,
           name: "test-swarm",
@@ -129,7 +128,7 @@ describe("saveOrUpdateSwarm", () => {
 
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "secret-api-key");
 
-      expect(db.swarm.create).toHaveBeenCalledWith(
+      expect(db.swarms.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             swarmApiKey: expect.stringContaining("encrypted_secret-api-key"),
@@ -150,7 +149,7 @@ describe("saveOrUpdateSwarm", () => {
 
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "secret-password");
 
-      expect(db.swarm.create).toHaveBeenCalledWith(
+      expect(db.swarms.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             swarmPassword: expect.stringContaining("encrypted_secret-password"),
@@ -178,7 +177,7 @@ describe("saveOrUpdateSwarm", () => {
         { name: "DATABASE_URL", value: "postgresql://..." },
       ]);
 
-      expect(db.swarm.create).toHaveBeenCalledWith({
+      expect(db.swarms.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           environmentVariables: [
             {
@@ -228,7 +227,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(db.swarm.create).toHaveBeenCalledWith({
+      expect(db.swarms.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           services,
         }),
@@ -248,8 +247,8 @@ describe("saveOrUpdateSwarm", () => {
     };
 
     beforeEach(() => {
-      db.swarm.findUnique.mockResolvedValue(existingSwarm);
-      db.swarm.update.mockResolvedValue({
+      db.swarms.findUnique.mockResolvedValue(existingSwarm);
+      db.swarms.update.mockResolvedValue({
         ...existingSwarm,
         updatedAt: new Date(),
       });
@@ -264,11 +263,11 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(db.swarm.findUnique).toHaveBeenCalledWith({
+      expect(db.swarms.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: mockWorkspaceId },
       });
 
-      expect(db.swarm.update).toHaveBeenCalledWith({
+      expect(db.swarms.update).toHaveBeenCalledWith({
         where: { workspaceId: mockWorkspaceId },
         data: expect.objectContaining({
           status: SwarmStatus.ACTIVE,
@@ -291,7 +290,7 @@ describe("saveOrUpdateSwarm", () => {
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "updated-api-key");
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "updated-password");
 
-      expect(db.swarm.update).toHaveBeenCalledWith(
+      expect(db.swarms.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { workspaceId: mockWorkspaceId },
           data: expect.objectContaining({
@@ -313,7 +312,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      const updateCall = db.swarm.update.mock.calls[0][0];
+      const updateCall = db.swarms.update.mock.calls[0][0];
       const dataKeys = Object.keys(updateCall.data);
 
       expect(dataKeys).toContain("status");
@@ -334,7 +333,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      const updateCall = (db.swarm.update as any).mock.calls[0][0];
+      const updateCall = (db.swarms.update as any).mock.calls[0][0];
       const dataKeys = Object.keys(updateCall.data);
 
       // Only defined fields should be in the update
@@ -349,7 +348,7 @@ describe("saveOrUpdateSwarm", () => {
   describe("database operation handling", () => {
     it("should handle database errors gracefully", async () => {
       const dbError = new Error("Database connection failed");
-      (db.swarm.findUnique as any).mockRejectedValue(dbError);
+      (db.swarms.findUnique as any).mockRejectedValue(dbError);
 
       const params = {
         workspaceId: mockWorkspaceId,
@@ -360,9 +359,9 @@ describe("saveOrUpdateSwarm", () => {
     });
 
     it("should handle create operation errors", async () => {
-      (db.swarm.findUnique as any).mockResolvedValue(null);
+      (db.swarms.findUnique as any).mockResolvedValue(null);
       const createError = new Error("Failed to create swarm");
-      (db.swarm.create as any).mockRejectedValue(createError);
+      (db.swarms.create as any).mockRejectedValue(createError);
 
       const params = {
         workspaceId: mockWorkspaceId,
@@ -374,9 +373,9 @@ describe("saveOrUpdateSwarm", () => {
 
     it("should handle update operation errors", async () => {
       const existingSwarm = { id: "existing", workspaceId: mockWorkspaceId };
-      (db.swarm.findUnique as any).mockResolvedValue(existingSwarm);
+      (db.swarms.findUnique as any).mockResolvedValue(existingSwarm);
       const updateError = new Error("Failed to update swarm");
-      (db.swarm.update as any).mockRejectedValue(updateError);
+      (db.swarms.update as any).mockRejectedValue(updateError);
 
       const params = {
         workspaceId: mockWorkspaceId,
@@ -389,7 +388,7 @@ describe("saveOrUpdateSwarm", () => {
 
   describe("encryption service integration", () => {
     it("should handle encryption service errors", async () => {
-      (db.swarm.findUnique as any).mockResolvedValue(null);
+      (db.swarms.findUnique as any).mockResolvedValue(null);
       (mockEncryptionService.encryptField as any).mockImplementation(() => {
         throw new Error("Encryption failed");
       });
@@ -404,8 +403,8 @@ describe("saveOrUpdateSwarm", () => {
     });
 
     it("should not call encryption for fields that are undefined", async () => {
-      (db.swarm.findUnique as any).mockResolvedValue(null);
-      (db.swarm.create as any).mockResolvedValue({
+      (db.swarms.findUnique as any).mockResolvedValue(null);
+      (db.swarms.create as any).mockResolvedValue({
         id: "new-swarm-id",
         workspaceId: mockWorkspaceId,
       });
@@ -425,8 +424,8 @@ describe("saveOrUpdateSwarm", () => {
 
   describe("complex parameter scenarios", () => {
     it("should handle all possible parameters in creation", async () => {
-      (db.swarm.findUnique as any).mockResolvedValue(null);
-      (db.swarm.create as any).mockResolvedValue({
+      (db.swarms.findUnique as any).mockResolvedValue(null);
+      (db.swarms.create as any).mockResolvedValue({
         id: "comprehensive-swarm",
         workspaceId: mockWorkspaceId,
       });
@@ -452,7 +451,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(db.swarm.create).toHaveBeenCalledWith({
+      expect(db.swarms.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           workspaceId: mockWorkspaceId,
           name: "comprehensive-swarm",

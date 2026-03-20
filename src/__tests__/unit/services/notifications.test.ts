@@ -72,10 +72,7 @@ describe("createAndSendNotification", () => {
     userFindUnique = vi.fn();
     workspaceFindUnique = vi.fn();
 
-    Object.assign(db, {
-      notificationTrigger: { findFirst, create, update },
-      user: { findUnique: userFindUnique },
-      workspace: { findUnique: workspaceFindUnique },
+    Object.assign(db, {notification_triggers: { findFirst, create, update },users: { findUnique: userFindUnique },workspaces: { findUnique: workspaceFindUnique },
     });
 
     mockedIsDirectMessageConfigured.mockReturnValue(true);
@@ -252,14 +249,14 @@ describe("createAndSendNotification", () => {
   });
 
   describe("never throws", () => {
-    it("resolves without throwing even when db.notificationTrigger.findFirst throws", async () => {
+    it("resolves without throwing even when db.notification_triggers.findFirst throws", async () => {
       userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockRejectedValue(new Error("DB connection failed"));
 
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
 
-    it("resolves without throwing even when db.notificationTrigger.create throws", async () => {
+    it("resolves without throwing even when db.notification_triggers.create throws", async () => {
       userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(null);
       create.mockRejectedValue(new Error("constraint violation"));
@@ -267,7 +264,7 @@ describe("createAndSendNotification", () => {
       await expect(createAndSendNotification(baseInput)).resolves.toBeUndefined();
     });
 
-    it("resolves without throwing even when db.notificationTrigger.create throws (DM disabled)", async () => {
+    it("resolves without throwing even when db.notification_triggers.create throws (DM disabled)", async () => {
       mockedIsDirectMessageConfigured.mockReturnValue(false);
       userFindUnique.mockResolvedValue(userWithPubkey);
       findFirst.mockResolvedValue(null);

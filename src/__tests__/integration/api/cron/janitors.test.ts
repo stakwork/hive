@@ -179,7 +179,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Verify no database records created
-      const runs = await db.janitorRun.findMany();
+      const runs = await db.janitor_runs.findMany();
       expect(runs).toHaveLength(0);
     });
 
@@ -204,7 +204,7 @@ describe("GET /api/cron/janitors", () => {
       process.env.JANITOR_CRON_ENABLED = "true";
 
       // Create test user and workspace
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-enabled-test",
           email: "enabled@example.com",
@@ -212,15 +212,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-enabled-test",
           slug: "enabled-workspace",
-          name: "Enabled Workspace",
-          ownerId: user.id,
+          name: "Enabled Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
             },
           },
         },
@@ -247,7 +245,7 @@ describe("GET /api/cron/janitors", () => {
       process.env.JANITOR_CRON_ENABLED = "true";
 
       // Create test user
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-multi-ws",
           email: "multi@example.com",
@@ -256,27 +254,24 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create 3 workspaces with different janitor configurations
-      const workspace1 = await db.workspace.create({
+      const workspace1 = await db.workspaces.create({
         data: {
           id: "ws-multi-1",
           slug: "multi-workspace-1",
-          name: "Multi Workspace 1",
-          ownerId: user.id,
+          name: "Multi Workspace 1",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
               integrationTestsEnabled: true,
             },
           },
         },
       });
 
-      const workspace2 = await db.workspace.create({
+      const workspace2 = await db.workspaces.create({
         data: {
           id: "ws-multi-2",
           slug: "multi-workspace-2",
-          name: "Multi Workspace 2",
-          ownerId: user.id,
+          name: "Multi Workspace 2",owner_id: user.id,
           janitorConfig: {
             create: {
               e2eTestsEnabled: true,
@@ -285,12 +280,11 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const workspace3 = await db.workspace.create({
+      const workspace3 = await db.workspaces.create({
         data: {
           id: "ws-multi-3",
           slug: "multi-workspace-3",
-          name: "Multi Workspace 3",
-          ownerId: user.id,
+          name: "Multi Workspace 3",owner_id: user.id,
           janitorConfig: {
             create: {
               securityReviewEnabled: true,
@@ -321,20 +315,18 @@ describe("GET /api/cron/janitors", () => {
       expect(data.errors).toHaveLength(0);
 
       // Verify database state - all runs created with correct metadata
-      const runs = await db.janitorRun.findMany({
+      const runs = await db.janitor_runs.findMany({
         where: {
-          janitorConfig: {
-            workspaceId: { in: [workspace1.id, workspace2.id, workspace3.id] },
+          janitorConfig: {workspace_id: { in: [workspace1.id, workspace2.id, workspace3.id] },
           },
         },
         include: {
           janitorConfig: {
-            select: {
-              workspaceId: true,
+            select: {workspace_id: true,
             },
           },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: {created_at: "asc" },
       });
 
       expect(runs).toHaveLength(4);
@@ -369,7 +361,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-disabled-janitors",
           email: "disabled@example.com",
@@ -378,15 +370,13 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create workspace with all janitors disabled
-      const disabledWorkspace = await db.workspace.create({
+      const disabledWorkspace = await db.workspaces.create({
         data: {
           id: "ws-disabled",
           slug: "disabled-workspace",
-          name: "Disabled Workspace",
-          ownerId: user.id,
+          name: "Disabled Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: false,
+            create: {unit_tests_enabled: false,
               integrationTestsEnabled: false,
               e2eTestsEnabled: false,
               securityReviewEnabled: false,
@@ -396,15 +386,13 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create workspace with at least one enabled
-      const enabledWorkspace = await db.workspace.create({
+      const enabledWorkspace = await db.workspaces.create({
         data: {
           id: "ws-enabled",
           slug: "enabled-workspace",
-          name: "Enabled Workspace",
-          ownerId: user.id,
+          name: "Enabled Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
             },
           },
         },
@@ -420,14 +408,14 @@ describe("GET /api/cron/janitors", () => {
       expect(data.runsCreated).toBe(1);
 
       // Verify no runs for disabled workspace
-      const disabledRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: disabledWorkspace.id } },
+      const disabledRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: disabledWorkspace.id } },
       });
       expect(disabledRuns).toHaveLength(0);
 
       // Verify run created for enabled workspace
-      const enabledRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: enabledWorkspace.id } },
+      const enabledRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: enabledWorkspace.id } },
       });
       expect(enabledRuns).toHaveLength(1);
     });
@@ -439,7 +427,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-error-isolation",
           email: "error@example.com",
@@ -448,24 +436,22 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create two workspaces
-      const workspace1 = await db.workspace.create({
+      const workspace1 = await db.workspaces.create({
         data: {
           id: "ws-error-1",
           slug: "error-workspace-1",
-          name: "Error Workspace 1",
-          ownerId: user.id,
+          name: "Error Workspace 1",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
 
-      const workspace2 = await db.workspace.create({
+      const workspace2 = await db.workspaces.create({
         data: {
           id: "ws-error-2",
           slug: "error-workspace-2",
-          name: "Error Workspace 2",
-          ownerId: user.id,
+          name: "Error Workspace 2",owner_id: user.id,
           janitorConfig: {
             create: { integrationTestsEnabled: true },
           },
@@ -492,22 +478,21 @@ describe("GET /api/cron/janitors", () => {
       
       // Verify error details
       expect(data.errors[0]).toMatchObject({
-        workspaceSlug: workspace1.slug,
-        janitorType: JanitorType.UNIT_TESTS,
+        workspaceSlug: workspace1.slug,janitor_type: JanitorType.UNIT_TESTS,
       });
       expect(data.errors[0].error).toContain("Stakwork API connection timeout");
 
       // Verify successful workspace created run with RUNNING status
-      const successfulRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspace2.id } },
+      const successfulRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspace2.id } },
       });
       expect(successfulRuns).toHaveLength(1);
       expect(successfulRuns[0].status).toBe(JanitorStatus.RUNNING);
       expect(successfulRuns[0].stakworkProjectId).toBe("proj-success-456");
 
       // Verify failed workspace created run but marked as FAILED
-      const failedRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspace1.id } },
+      const failedRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspace1.id } },
       });
       expect(failedRuns).toHaveLength(1);
       expect(failedRuns[0].status).toBe(JanitorStatus.FAILED);
@@ -518,7 +503,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-multi-error",
           email: "multierror@example.com",
@@ -527,36 +512,33 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create three workspaces
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-err-1",
           slug: "error-ws-1",
-          name: "Error WS 1",
-          ownerId: user.id,
+          name: "Error WS 1",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-err-2",
           slug: "error-ws-2",
-          name: "Error WS 2",
-          ownerId: user.id,
+          name: "Error WS 2",owner_id: user.id,
           janitorConfig: {
             create: { integrationTestsEnabled: true },
           },
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-err-3",
           slug: "error-ws-3",
-          name: "Error WS 3",
-          ownerId: user.id,
+          name: "Error WS 3",owner_id: user.id,
           janitorConfig: {
             create: { securityReviewEnabled: true },
           },
@@ -589,7 +571,7 @@ describe("GET /api/cron/janitors", () => {
       expect(errorSlugs).toContain("error-ws-3");
 
       // Verify all runs marked as FAILED
-      const allRuns = await db.janitorRun.findMany();
+      const allRuns = await db.janitor_runs.findMany();
       expect(allRuns).toHaveLength(3);
       expect(allRuns.every((run) => run.status === JanitorStatus.FAILED)).toBe(true);
     });
@@ -600,7 +582,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-response-struct",
           email: "response@example.com",
@@ -608,14 +590,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-response",
           slug: "response-workspace",
-          name: "Response Workspace",
-          ownerId: user.id,
+          name: "Response Workspace",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
@@ -676,7 +657,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-error-details",
           email: "errordetails@example.com",
@@ -684,15 +665,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: "ws-error-details",
           slug: "error-details-workspace",
-          name: "Error Details Workspace",
-          ownerId: user.id,
+          name: "Error Details Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
               integrationTestsEnabled: true,
             },
           },
@@ -729,7 +708,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-data-integrity",
           email: "integrity@example.com",
@@ -737,15 +716,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: "ws-integrity",
           slug: "integrity-workspace",
-          name: "Integrity Workspace",
-          ownerId: user.id,
+          name: "Integrity Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
               securityReviewEnabled: true,
             },
           },
@@ -761,9 +738,9 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: Database state with complete metadata
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspace.id } },
-        orderBy: { createdAt: "asc" },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspace.id } },
+        orderBy: {created_at: "asc" },
       });
 
       expect(runs).toHaveLength(2); // UNIT_TESTS + SECURITY_REVIEW
@@ -792,7 +769,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-backfill",
           email: "backfill@example.com",
@@ -800,14 +777,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-backfill",
           slug: "backfill-workspace",
-          name: "Backfill Workspace",
-          ownerId: user.id,
+          name: "Backfill Workspace",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
@@ -821,8 +797,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: Project ID backfilled correctly
-      const run = await db.janitorRun.findFirst({
-        where: { janitorType: JanitorType.UNIT_TESTS },
+      const run = await db.janitor_runs.findFirst({
+        where: {janitor_type: JanitorType.UNIT_TESTS },
       });
 
       expect(run).not.toBeNull();
@@ -842,7 +818,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-failed-run",
           email: "failed@example.com",
@@ -850,12 +826,11 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-failed",
           slug: "failed-workspace",
-          name: "Failed Workspace",
-          ownerId: user.id,
+          name: "Failed Workspace",owner_id: user.id,
           janitorConfig: {
             create: { e2eTestsEnabled: true },
           },
@@ -870,8 +845,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: Run created but marked as FAILED
-      const run = await db.janitorRun.findFirst({
-        where: { janitorType: JanitorType.E2E_TESTS },
+      const run = await db.janitor_runs.findFirst({
+        where: {janitor_type: JanitorType.E2E_TESTS },
       });
 
       expect(run).not.toBeNull();
@@ -884,7 +859,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-duplicate",
           email: "duplicate@example.com",
@@ -892,14 +867,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-duplicate",
           slug: "duplicate-workspace",
-          name: "Duplicate Workspace",
-          ownerId: user.id,
+          name: "Duplicate Workspace",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
@@ -909,8 +883,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: Multiple runs created (cron allows this - each execution creates new run)
-      const runs = await db.janitorRun.findMany({
-        where: { janitorType: JanitorType.UNIT_TESTS },
+      const runs = await db.janitor_runs.findMany({
+        where: {janitor_type: JanitorType.UNIT_TESTS },
       });
 
       // Note: This is expected behavior - each cron execution creates new runs
@@ -930,7 +904,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-filtering",
           email: "filtering@example.com",
@@ -938,15 +912,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: "ws-filtering",
           slug: "filtering-workspace",
-          name: "Filtering Workspace",
-          ownerId: user.id,
+          name: "Filtering Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
               integrationTestsEnabled: false,
               e2eTestsEnabled: false,
               securityReviewEnabled: true,
@@ -959,8 +931,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: Only enabled types created
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspace.id } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspace.id } },
       });
 
       expect(runs).toHaveLength(2);
@@ -976,7 +948,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-all-enabled",
           email: "allenabled@example.com",
@@ -984,15 +956,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-all-enabled",
           slug: "all-enabled-workspace",
-          name: "All Enabled Workspace",
-          ownerId: user.id,
+          name: "All Enabled Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: true,
+            create: {unit_tests_enabled: true,
               integrationTestsEnabled: true,
               e2eTestsEnabled: true,
               securityReviewEnabled: true,
@@ -1005,8 +975,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: All janitor types created
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: "ws-all-enabled" } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: "ws-all-enabled" } },
       });
 
       expect(runs).toHaveLength(4); // All 4 janitor types
@@ -1022,7 +992,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-all-disabled",
           email: "alldisabled@example.com",
@@ -1030,15 +1000,13 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      await db.workspace.create({
+      await db.workspaces.create({
         data: {
           id: "ws-all-disabled",
           slug: "all-disabled-workspace",
-          name: "All Disabled Workspace",
-          ownerId: user.id,
+          name: "All Disabled Workspace",owner_id: user.id,
           janitorConfig: {
-            create: {
-              unitTestsEnabled: false,
+            create: {unit_tests_enabled: false,
               integrationTestsEnabled: false,
               e2eTestsEnabled: false,
               securityReviewEnabled: false,
@@ -1051,8 +1019,8 @@ describe("GET /api/cron/janitors", () => {
       await GET(createAuthenticatedRequest());
 
       // Assert: No runs created
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: "ws-all-disabled" } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: "ws-all-disabled" } },
       });
 
       expect(runs).toHaveLength(0);
@@ -1065,7 +1033,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-deleted-ws",
           email: "deleted@example.com",
@@ -1074,29 +1042,27 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create active workspace
-      const activeWorkspace = await db.workspace.create({
+      const activeWorkspace = await db.workspaces.create({
         data: {
           id: "ws-active",
           slug: "active-workspace",
-          name: "Active Workspace",
-          ownerId: user.id,
+          name: "Active Workspace",owner_id: user.id,
           deleted: false,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
 
       // Create deleted workspace
-      const deletedWorkspace = await db.workspace.create({
+      const deletedWorkspace = await db.workspaces.create({
         data: {
           id: "ws-deleted",
           slug: "deleted-workspace",
-          name: "Deleted Workspace",
-          ownerId: user.id,
+          name: "Deleted Workspace",owner_id: user.id,
           deleted: true,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
@@ -1109,14 +1075,14 @@ describe("GET /api/cron/janitors", () => {
       expect(data.workspacesProcessed).toBe(1);
 
       // Verify no runs for deleted workspace
-      const deletedRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: deletedWorkspace.id } },
+      const deletedRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: deletedWorkspace.id } },
       });
       expect(deletedRuns).toHaveLength(0);
 
       // Verify run created for active workspace
-      const activeRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: activeWorkspace.id } },
+      const activeRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: activeWorkspace.id } },
       });
       expect(activeRuns).toHaveLength(1);
     });
@@ -1125,7 +1091,7 @@ describe("GET /api/cron/janitors", () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           id: "user-no-config",
           email: "noconfig@example.com",
@@ -1134,24 +1100,22 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Create workspace without janitorConfig
-      const workspaceNoConfig = await db.workspace.create({
+      const workspaceNoConfig = await db.workspaces.create({
         data: {
           id: "ws-no-config",
           slug: "no-config-workspace",
-          name: "No Config Workspace",
-          ownerId: user.id,
+          name: "No Config Workspace",owner_id: user.id,
         },
       });
 
       // Create workspace with config
-      const workspaceWithConfig = await db.workspace.create({
+      const workspaceWithConfig = await db.workspaces.create({
         data: {
           id: "ws-with-config",
           slug: "with-config-workspace",
-          name: "With Config Workspace",
-          ownerId: user.id,
+          name: "With Config Workspace",owner_id: user.id,
           janitorConfig: {
-            create: { unitTestsEnabled: true },
+            create: {unit_tests_enabled: true },
           },
         },
       });
@@ -1164,14 +1128,14 @@ describe("GET /api/cron/janitors", () => {
       expect(data.workspacesProcessed).toBe(1);
 
       // Verify no runs for workspace without config
-      const noConfigRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspaceNoConfig.id } },
+      const noConfigRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspaceNoConfig.id } },
       });
       expect(noConfigRuns).toHaveLength(0);
 
       // Verify run created for workspace with config
-      const withConfigRuns = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: workspaceWithConfig.id } },
+      const withConfigRuns = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: workspaceWithConfig.id } },
       });
       expect(withConfigRuns).toHaveLength(1);
     });
@@ -1195,7 +1159,7 @@ describe("GET /api/cron/janitors", () => {
         data: { project_id: 123456 },
       });
 
-      testUser = await db.user.create({
+      testUser = await db.users.create({
         data: {
           id: "user-multi-repo",
           email: "multirepo@test.com",
@@ -1203,19 +1167,16 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      testWorkspace = await db.workspace.create({
+      testWorkspace = await db.workspaces.create({
         data: {
           id: "ws-multi-repo",
           slug: "multi-repo-workspace",
-          name: "Multi Repo Workspace",
-          ownerId: testUser.id,
+          name: "Multi Repo Workspace",owner_id: testUser.id,
         },
       });
 
-      janitorConfig = await db.janitorConfig.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          unitTestsEnabled: true,
+      janitorConfig = await db.janitor_configs.create({
+        data: {workspace_id: testWorkspace.id,unit_tests_enabled: true,
           integrationTestsEnabled: false,
           e2eTestsEnabled: false,
           securityReviewEnabled: false,
@@ -1227,20 +1188,18 @@ describe("GET /api/cron/janitors", () => {
 
     it("should create runs for all repositories with valid repositoryUrl", async () => {
       // Create two repositories with valid URLs
-      const repo1 = await db.repository.create({
+      const repo1 = await db.repositories.create({
         data: {
           workspace: { connect: { id: testWorkspace.id } },
-          name: "Test Repo 1",
-          repositoryUrl: "https://github.com/test/repo1",
+          name: "Test Repo 1",repository_url: "https://github.com/test/repo1",
           branch: "main",
         },
       });
 
-      const repo2 = await db.repository.create({
+      const repo2 = await db.repositories.create({
         data: {
           workspace: { connect: { id: testWorkspace.id } },
-          name: "Test Repo 2",
-          repositoryUrl: "https://github.com/test/repo2",
+          name: "Test Repo 2",repository_url: "https://github.com/test/repo2",
           branch: "develop",
         },
       });
@@ -1251,8 +1210,8 @@ describe("GET /api/cron/janitors", () => {
       expect(result.runsCreated).toBe(2);
 
       // Verify runs were created for both repos
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: testWorkspace.id } },
       });
       expect(runs).toHaveLength(2);
       expect(runs.map(r => r.repositoryId).sort()).toEqual([repo1.id, repo2.id].sort());
@@ -1260,20 +1219,18 @@ describe("GET /api/cron/janitors", () => {
 
     it("should skip repository with missing repositoryUrl", async () => {
       // Create one repo with URL and one with empty string (simulating missing URL)
-      await db.repository.create({
+      await db.repositories.create({
         data: {
           workspace: { connect: { id: testWorkspace.id } },
-          name: "Test Repo 1",
-          repositoryUrl: "https://github.com/test/repo1",
+          name: "Test Repo 1",repository_url: "https://github.com/test/repo1",
           branch: "main",
         },
       });
 
-      await db.repository.create({
+      await db.repositories.create({
         data: {
           workspace: { connect: { id: testWorkspace.id } },
-          name: "Test Repo 2",
-          repositoryUrl: "",  // Empty string to simulate missing URL
+          name: "Test Repo 2",repository_url: "",  // Empty string to simulate missing URL
           branch: "main",
         },
       });
@@ -1285,8 +1242,8 @@ describe("GET /api/cron/janitors", () => {
       expect(result.skipped).toBeGreaterThanOrEqual(1);
 
       // Verify only one run was created
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: testWorkspace.id } },
       });
       expect(runs).toHaveLength(1);
     });
@@ -1300,8 +1257,8 @@ describe("GET /api/cron/janitors", () => {
       expect(result.skipped).toBeGreaterThanOrEqual(1);
 
       // Verify no runs were created
-      const runs = await db.janitorRun.findMany({
-        where: { janitorConfig: { workspaceId: testWorkspace.id } },
+      const runs = await db.janitor_runs.findMany({
+        where: { janitorConfig: {workspace_id: testWorkspace.id } },
       });
       expect(runs).toHaveLength(0);
     });
@@ -1324,7 +1281,7 @@ describe("GET /api/cron/janitors", () => {
     beforeEach(async () => {
       await resetDatabase();
 
-      testUser = await db.user.create({
+      testUser = await db.users.create({
         data: {
           id: "user-sequential-test",
           email: "sequential@test.com",
@@ -1332,20 +1289,17 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      testWorkspace = await db.workspace.create({
+      testWorkspace = await db.workspaces.create({
         data: {
           id: "ws-sequential-test",
           slug: "sequential-workspace",
-          name: "Sequential Workspace",
-          ownerId: testUser.id,
+          name: "Sequential Workspace",owner_id: testUser.id,
         },
       });
 
-      testRepository = await db.repository.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          name: "Test Repository",
-          repositoryUrl: "https://github.com/test/repo",
+      testRepository = await db.repositories.create({
+        data: {workspace_id: testWorkspace.id,
+          name: "Test Repository",repository_url: "https://github.com/test/repo",
           branch: "main",
         },
       });
@@ -1358,16 +1312,14 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return true when task has no PR and status is IN_PROGRESS", async () => {
       // Create task with janitorType - no PR yet
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
@@ -1377,23 +1329,20 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return false when task has merged PR (status DONE)", async () => {
       // Create task with janitorType
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.DONE,
-          workflowStatus: WorkflowStatus.COMPLETED,
+          status: TaskStatus.DONE,workflow_status: WorkflowStatus.COMPLETED,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
       // Create chat message with merged PR artifact
-      await db.chatMessage.create({
-        data: {
-          taskId: task.id,
+      await db.chat_messages.create({
+        data: {task_id: task.id,
           message: "PR merged",
           role: "ASSISTANT",
           artifacts: {
@@ -1411,23 +1360,20 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return false when task has cancelled PR (closed without merge)", async () => {
       // Create task with janitorType
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.CANCELLED,
-          workflowStatus: WorkflowStatus.COMPLETED,
+          status: TaskStatus.CANCELLED,workflow_status: WorkflowStatus.COMPLETED,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
       // Create chat message with cancelled PR artifact
-      await db.chatMessage.create({
-        data: {
-          taskId: task.id,
+      await db.chat_messages.create({
+        data: {task_id: task.id,
           message: "PR closed",
           role: "ASSISTANT",
           artifacts: {
@@ -1445,16 +1391,14 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return false when task workflowStatus is FAILED", async () => {
       // Create task with failed workflow - should be "discarded"
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.FAILED,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.FAILED,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
@@ -1464,16 +1408,14 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return false when task status is CANCELLED", async () => {
       // Create cancelled task - should be "discarded"
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.CANCELLED,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          status: TaskStatus.CANCELLED,workflow_status: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
@@ -1483,23 +1425,20 @@ describe("GET /api/cron/janitors", () => {
 
     it("should return true when PR has IN_PROGRESS status (not merged yet)", async () => {
       // Create task with janitorType
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
       // Create chat message with open PR artifact
-      await db.chatMessage.create({
-        data: {
-          taskId: task.id,
+      await db.chat_messages.create({
+        data: {task_id: task.id,
           message: "PR created",
           role: "ASSISTANT",
           artifacts: {
@@ -1517,16 +1456,14 @@ describe("GET /api/cron/janitors", () => {
 
     it("should only consider tasks of the specified janitor type", async () => {
       // Create task with UNIT_TESTS janitor type
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Unit Test Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 
@@ -1541,26 +1478,22 @@ describe("GET /api/cron/janitors", () => {
 
     it("should not block repo-B when repo-A has an active run", async () => {
       // Create second repository
-      const testRepositoryB = await db.repository.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          name: "Test Repository B",
-          repositoryUrl: "https://github.com/test/repo-b",
+      const testRepositoryB = await db.repositories.create({
+        data: {workspace_id: testWorkspace.id,
+          name: "Test Repository B",repository_url: "https://github.com/test/repo-b",
           branch: "main",
         },
       });
 
       // Create active task for repo-A
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Repo A Task",
           workspace: { connect: { id: testWorkspace.id } },
           repository: { connect: { id: testRepository.id } },
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.IN_PROGRESS,
           createdBy: { connect: { id: testUser.id } },
-          updatedBy: { connect: { id: testUser.id } },
-          janitorType: JanitorType.UNIT_TESTS,
+          updatedBy: { connect: { id: testUser.id } },janitor_type: JanitorType.UNIT_TESTS,
         },
       });
 

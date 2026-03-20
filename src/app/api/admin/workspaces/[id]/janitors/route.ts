@@ -33,7 +33,7 @@ export async function GET(
   const { id: workspaceId } = await params;
 
   // First verify workspace exists
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: { id: true },
   });
@@ -46,7 +46,7 @@ export async function GET(
   }
 
   // Get or create janitor config
-  const config = await db.janitorConfig.upsert({
+  const config = await db.janitor_configs.upsert({
     where: { workspaceId },
     create: { workspaceId },
     update: {},
@@ -70,7 +70,7 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateJanitorConfigSchema.parse(body);
 
-    const config = await db.janitorConfig.update({
+    const config = await db.janitor_configs.update({
       where: { workspaceId },
       data: validatedData,
     });

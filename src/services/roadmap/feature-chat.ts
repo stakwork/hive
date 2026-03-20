@@ -26,7 +26,7 @@ export async function fetchFeatureChatHistory(
   featureId: string,
   excludeMessageId: string,
 ): Promise<Record<string, unknown>[]> {
-  const chatHistory = await db.chatMessage.findMany({
+  const chatHistory = await db.chat_messages.findMany({
     where: {
       featureId,
       id: { not: excludeMessageId },
@@ -128,7 +128,7 @@ export async function resolveExtraSwarms(
 
   for (const slug of uniqueSlugs) {
     try {
-      const workspace = await db.workspace.findFirst({
+      const workspace = await db.workspaces.findFirst({
         where: {
           slug,
           deleted: false,
@@ -190,7 +190,7 @@ export async function sendFeatureChatMessage({
   isPrototype?: boolean;
   attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
 }) {
-  const feature = await db.feature.findUnique({
+  const feature = await db.features.findUnique({
     where: { id: featureId },
     select: {
       ...FEATURE_SELECT_FOR_CHAT,
@@ -208,7 +208,7 @@ export async function sendFeatureChatMessage({
   }
 
   // Create the chat message linked to feature (no task)
-  const chatMessage = await db.chatMessage.create({
+  const chatMessage = await db.chat_messages.create({
     data: {
       featureId,
       message,
@@ -301,7 +301,7 @@ export async function sendFeatureChatMessage({
     }
 
     // Detect if user has manually edited plan fields since last AI update
-    const lastPlanArtifact = await db.artifact.findFirst({
+    const lastPlanArtifact = await db.artifacts.findFirst({
       where: {
         type: ArtifactType.PLAN,
         message: { featureId },
@@ -348,7 +348,7 @@ export async function sendFeatureChatMessage({
 
     // Only update workflow status when Stakwork confirms a project was created
     if (stakworkData?.projectId) {
-      await db.feature.update({
+      await db.features.update({
         where: { id: featureId },
         data: {
           workflowStatus: WorkflowStatus.IN_PROGRESS,

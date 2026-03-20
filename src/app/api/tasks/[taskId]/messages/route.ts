@@ -26,7 +26,7 @@ export async function GET(
     }
 
     // Verify task exists and user has access through workspace
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -78,7 +78,7 @@ export async function GET(
     }
 
     // Get all chat messages for the task
-    const chatMessages = await db.chatMessage.findMany({
+    const chatMessages = await db.chat_messages.findMany({
       where: {
         taskId: taskId,
       },

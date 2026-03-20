@@ -47,7 +47,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await db.user.update({
+    await db.users.update({
       where: { id: userId },
       data: updateData,
     });

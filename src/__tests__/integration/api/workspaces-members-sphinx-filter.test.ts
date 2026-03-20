@@ -29,9 +29,9 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
 
   afterEach(async () => {
     // Clean up test data
-    await db.workspaceMember.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -50,28 +50,21 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
     // Create workspace owner with Sphinx linked
     const owner = await createTestUser({
       email: `owner-${generateUniqueId()}@example.com`,
-      name: "Workspace Owner",
-      sphinxAlias: "owner_sphinx",
-      lightningPubkey: "owner-pubkey-123",
+      name: "Workspace Owner",sphinx_alias: "owner_sphinx",lightning_pubkey: "owner-pubkey-123",
     });
 
-    const workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id,
       slug: `test-ws-${generateUniqueId()}`,
     });
 
     // Create member with Sphinx linked
     const linkedMember = await createTestUser({
       email: `linked-${generateUniqueId()}@example.com`,
-      name: "Linked Member",
-      sphinxAlias: "linked_sphinx",
-      lightningPubkey: "linked-pubkey-123",
+      name: "Linked Member",sphinx_alias: "linked_sphinx",lightning_pubkey: "linked-pubkey-123",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: linkedMember.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: linkedMember.id,
         role: "DEVELOPER",
       },
     });
@@ -79,14 +72,11 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
     // Create member without Sphinx alias
     const noAliasMember = await createTestUser({
       email: `no-alias-${generateUniqueId()}@example.com`,
-      name: "No Alias Member",
-      lightningPubkey: "no-alias-pubkey",
+      name: "No Alias Member",lightning_pubkey: "no-alias-pubkey",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: noAliasMember.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: noAliasMember.id,
         role: "DEVELOPER",
       },
     });
@@ -94,14 +84,11 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
     // Create member without pubkey
     const noPubkeyMember = await createTestUser({
       email: `no-pubkey-${generateUniqueId()}@example.com`,
-      name: "No Pubkey Member",
-      sphinxAlias: "no_pubkey_sphinx",
+      name: "No Pubkey Member",sphinx_alias: "no_pubkey_sphinx",
     });
 
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: noPubkeyMember.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: noPubkeyMember.id,
         role: "DEVELOPER",
       },
     });
@@ -138,8 +125,7 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
       // No sphinxAlias or lightningPubkey
     });
 
-    const workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id,
       slug: `test-ws-${generateUniqueId()}`,
     });
 
@@ -161,13 +147,10 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
   test("excludes system assignees when sphinxLinkedOnly=true even if includeSystemAssignees=true", async () => {
     const owner = await createTestUser({
       email: `owner-${generateUniqueId()}@example.com`,
-      name: "Workspace Owner",
-      sphinxAlias: "owner_sphinx",
-      lightningPubkey: "owner-pubkey-123",
+      name: "Workspace Owner",sphinx_alias: "owner_sphinx",lightning_pubkey: "owner-pubkey-123",
     });
 
-    const workspace = await createTestWorkspace({
-      ownerId: owner.id,
+    const workspace = await createTestWorkspace({owner_id: owner.id,
       slug: `test-ws-${generateUniqueId()}`,
     });
 

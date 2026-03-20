@@ -27,11 +27,8 @@ async function createTestUserWithGitHubCreds() {
   const testUser = await createTestUser({ name: "Test User" });
 
   // Create GitHubAuth record
-  await db.gitHubAuth.create({
-    data: {
-      userId: testUser.id,
-      githubUserId: "12345",
-      githubUsername: "test-user",
+  await db.github_auth.create({
+    data: {user_id: testUser.id,github_user_id: "12345",github_username: "test-user",
     },
   });
 
@@ -42,21 +39,17 @@ async function createTestUserWithGitHubCreds() {
     "gho_test_oauth_token_123456"
   );
 
-  await db.account.create({
-    data: {
-      userId: testUser.id,
+  await db.accounts.create({
+    data: {user_id: testUser.id,
       type: "oauth",
-      provider: "github",
-      providerAccountId: "12345",
+      provider: "github",provider_account_id: "12345",
       access_token: JSON.stringify(encryptedToken),
-      token_type: "bearer",
-      scope: "repo,user",
+      token_type: "bearer",scope: "repo,user",
     },
   });
 
   return {
-    testUser,
-    accessToken: "gho_test_oauth_token_123456",
+    testUser,access_token: "gho_test_oauth_token_123456",
   };
 }
 
@@ -162,11 +155,8 @@ describe("GitHub Repositories API Integration Tests", () => {
         const testUser = await createTestUser();
 
         // Create GitHubAuth without Account
-        await db.gitHubAuth.create({
-          data: {
-            userId: testUser.id,
-            githubUserId: "12345",
-            githubUsername: "test-user",
+        await db.github_auth.create({
+          data: {user_id: testUser.id,github_user_id: "12345",github_username: "test-user",
           },
         });
 

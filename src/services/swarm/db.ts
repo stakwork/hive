@@ -91,7 +91,7 @@ export const select = {
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
-  let swarm = await db.swarm.findUnique({
+  let swarm = await db.swarms.findUnique({
     where: { workspaceId: params.workspaceId },
   });
 
@@ -130,7 +130,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   data.updatedAt = new Date();
 
   if (swarm) {
-    swarm = await db.swarm.update({
+    swarm = await db.swarms.update({
       where: { workspaceId: params.workspaceId },
       data,
       select,
@@ -173,7 +173,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       webhookUrl: null, // Nullable field
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
-    swarm = await db.swarm.create({
+    swarm = await db.swarms.create({
       data: createData,
       select,
     });
@@ -189,7 +189,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
 export async function getSwarmContainerConfig(
   workspaceId: string
 ): Promise<SwarmContainerConfig | null> {
-  const swarm = await db.swarm.findUnique({
+  const swarm = await db.swarms.findUnique({
     where: { workspaceId },
     select: { containerFiles: true, services: true },
   });

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch podId from task record
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: { podId: true },
     });
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const podId = task.podId;
 
     // Verify user has access to the workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { id: workspaceId },
       include: {
         owner: true,
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get user's GitHub auth info for username
-    const userGithubAuth = await db.gitHubAuth.findUnique({
+    const userGithubAuth = await db.github_auth.findUnique({
       where: { userId },
       select: { githubUsername: true },
     });
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     console.log(">>> Posting to control port:", controlPortUrl);
 
     // Check if task already has a PullRequest artifact in chat history
-    const existingPullRequest = await db.artifact.findFirst({
+    const existingPullRequest = await db.artifacts.findFirst({
       where: {
         message: {
           taskId: taskId,

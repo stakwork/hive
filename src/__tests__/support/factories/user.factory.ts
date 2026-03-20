@@ -44,31 +44,28 @@ export async function createTestUser(
   // Idempotent check (default true for backwards compatibility)
   const idempotent = options.idempotent ?? true;
   if (idempotent) {
-    const existingUser = await db.user.findUnique({ where: { email } });
+    const existingUser = await db.users.findUnique({ where: { email } });
     if (existingUser) return existingUser;
   }
 
-  const user = await db.user.create({
+  const user = await db.users.create({
     data: {
+      id: generateUniqueId("user"),
       name,
       email,
-      role,
-      lightningPubkey: options.lightningPubkey,
-      sphinxAlias: options.sphinxAlias,
+      role,lightning_pubkey: options.lightningPubkey,sphinx_alias: options.sphinxAlias,
+      updated_at: new Date(),
     },
   });
 
   // Create GitHub auth if requested (default true when using valueKey)
   const withGitHubAuth = options.withGitHubAuth ?? (options.valueKey ? true : false);
   if (withGitHubAuth) {
-    await db.gitHubAuth.create({
-      data: {
-        userId: user.id,
-        githubUserId: generateUniqueId("github"),
+    await db.github_auth.create({
+      data: {user_id: user.id,github_user_id: generateUniqueId("github"),
         githubUsername,
         name: user.name || "Test User",
-        bio: "Test bio",
-        publicRepos: 10,
+        bio: "Test bio",public_repos: 10,
         followers: 5,
       },
     });
@@ -80,15 +77,12 @@ export async function createTestUser(
         encryptionService.encryptField("access_token", testAccessToken)
       );
 
-      await db.account.create({
-        data: {
-          userId: user.id,
+      await db.accounts.create({
+        data: {user_id: user.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId("github-account"),
+          provider: "github",provider_account_id: generateUniqueId("github-account"),
           access_token: encryptedToken,
-          token_type: "bearer",
-          scope: "repo,user",
+          token_type: "bearer",scope: "repo,user",
         },
       });
     }

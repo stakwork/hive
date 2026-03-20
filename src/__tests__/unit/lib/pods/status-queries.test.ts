@@ -3,11 +3,9 @@ import { PodStatus, PodUsageStatus } from "@prisma/client";
 
 // Mock db before importing the module under test
 vi.mock("@/lib/db", () => ({
-  db: {
-    pod: {
+  db: {pods: {
       findMany: vi.fn(),
-    },
-    task: {
+    },tasks: {
       count: vi.fn(),
     },
   },
@@ -16,8 +14,8 @@ vi.mock("@/lib/db", () => ({
 import { db } from "@/lib/db";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
-const mockPodFindMany = vi.mocked(db.pod.findMany);
-const mockTaskCount = vi.mocked(db.task.count);
+const mockPodFindMany = vi.mocked(db.pods.findMany);
+const mockTaskCount = vi.mocked(db.tasks.count);
 
 const SWARM_ID = "swarm-test-123";
 const WORKSPACE_ID = "workspace-test-456";

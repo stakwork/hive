@@ -6,18 +6,14 @@ import { TaskStatus, Priority, TaskSourceType } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
-    },
-    repository: {
+    },repositories: {
       findFirst: vi.fn(),
-    },
-    task: {
+    },tasks: {
       create: vi.fn(),
     },
   },
@@ -105,11 +101,11 @@ describe("POST /api/tasks - Unit Tests", () => {
   };
 
   test("should create task successfully with all fields", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.user.findFirst as Mock).mockResolvedValue(mockAssignee);
-    (db.repository.findFirst as Mock).mockResolvedValue(mockRepository);
-    (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.users.findFirst as Mock).mockResolvedValue(mockAssignee);
+    (db.repositories.findFirst as Mock).mockResolvedValue(mockRepository);
+    (db.tasks.create as Mock).mockResolvedValue(mockCreatedTask);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -140,7 +136,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       priority: Priority.MEDIUM,
     });
 
-    expect(db.task.create).toHaveBeenCalledWith({
+    expect(db.tasks.create).toHaveBeenCalledWith({
       data: {
         title: "Test Task",
         description: "Test Description",
@@ -210,9 +206,9 @@ describe("POST /api/tasks - Unit Tests", () => {
       repository: null,
     };
 
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockResolvedValue(minimalTask);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockResolvedValue(minimalTask);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -228,7 +224,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(201);
     expect(data.success).toBe(true);
-    expect(db.task.create).toHaveBeenCalledWith({
+    expect(db.tasks.create).toHaveBeenCalledWith({
       data: {
         title: "Test Task",
         description: null,
@@ -267,7 +263,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(401);
     expect(data.error).toBe("Unauthorized");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 400 for missing required fields", async () => {
@@ -284,11 +280,11 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe("Missing required fields: title, workspaceId");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 404 for non-existent workspace", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(null);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(null);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -304,12 +300,12 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(404);
     expect(data.error).toBe("Workspace not found");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 404 for non-existent user", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(null);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(null);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -325,7 +321,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(404);
     expect(data.error).toBe("User not found");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 403 for user without workspace access", async () => {
@@ -335,8 +331,8 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [], // No members
     };
 
-    (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -352,12 +348,12 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(403);
     expect(data.error).toBe("Access denied");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 400 for invalid status", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -374,12 +370,12 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toContain("Invalid status");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 400 for invalid priority", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -396,13 +392,13 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toContain("Invalid priority");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 400 for non-existent assignee", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.user.findFirst as Mock).mockResolvedValue(null);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.users.findFirst as Mock).mockResolvedValue(null);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -419,7 +415,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe("Assignee not found");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should return 400 for repository not in workspace", async () => {
@@ -429,9 +425,9 @@ describe("POST /api/tasks - Unit Tests", () => {
       workspaceId: "different-workspace",
     };
 
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.repository.findFirst as Mock).mockResolvedValue(repositoryInDifferentWorkspace);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.repositories.findFirst as Mock).mockResolvedValue(repositoryInDifferentWorkspace);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -448,13 +444,13 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe("Repository not found or does not belong to this workspace");
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should handle status mapping from 'active' to IN_PROGRESS", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockResolvedValue({
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockResolvedValue({
       ...mockCreatedTask,
       status: TaskStatus.IN_PROGRESS,
     });
@@ -472,7 +468,7 @@ describe("POST /api/tasks - Unit Tests", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(201);
-    expect(db.task.create).toHaveBeenCalledWith({
+    expect(db.tasks.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: TaskStatus.IN_PROGRESS,
       }),
@@ -481,9 +477,9 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should handle database error gracefully", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockRejectedValue(new Error("Database connection failed"));
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockRejectedValue(new Error("Database connection failed"));
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -508,9 +504,9 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [{ role: "DEVELOPER" }], // User is a member
     };
 
-    (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithMember);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(workspaceWithMember);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockResolvedValue(mockCreatedTask);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -524,13 +520,13 @@ describe("POST /api/tasks - Unit Tests", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(201);
-    expect(db.task.create).toHaveBeenCalled();
+    expect(db.tasks.create).toHaveBeenCalled();
   });
 
   test("should create task with sourceType PROTOTYPE", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockResolvedValue({
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockResolvedValue({
       ...mockCreatedTask,
       sourceType: TaskSourceType.PROTOTYPE,
     });
@@ -550,7 +546,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(201);
     expect(data.success).toBe(true);
-    expect(db.task.create).toHaveBeenCalledWith(
+    expect(db.tasks.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           sourceType: TaskSourceType.PROTOTYPE,
@@ -560,8 +556,8 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for invalid sourceType", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -578,13 +574,13 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toMatch(/Invalid sourceType/);
-    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.tasks.create).not.toHaveBeenCalled();
   });
 
   test("should create task without sourceType defaulting to USER", async () => {
-    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
-    (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
+    (db.workspaces.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.users.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.tasks.create as Mock).mockResolvedValue(mockCreatedTask);
 
     const request = authedRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -599,7 +595,7 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(201);
     // sourceType not passed → not spread into data (Prisma default USER applies)
-    expect(db.task.create).toHaveBeenCalledWith(
+    expect(db.tasks.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.not.objectContaining({ sourceType: expect.anything() }),
       }),

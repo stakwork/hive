@@ -68,10 +68,7 @@ describe("dispatchPendingNotifications", () => {
 
     Object.assign(db, {
       $transaction: transaction,
-      $queryRaw: queryRaw,
-      notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
-      task: { findUnique: taskFindUnique },
-      feature: { findUnique: featureFindUnique },
+      $queryRaw: queryRaw,notification_triggers: { findMany: triggerFindMany, update: triggerUpdate },tasks: { findUnique: taskFindUnique },features: { findUnique: featureFindUnique },
     });
 
     // Default: $queryRaw returns one claimed ID, findMany returns the matching record

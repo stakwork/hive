@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[STAKGRAPH_INGEST] Looking up swarm for workspace: ${workspaceId}`);
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId },
       select: {
         id: true,
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (repositoryId) {
       // Single repository ingestion
       console.log(`[STAKGRAPH_INGEST] Single repository mode - repositoryId: ${repositoryId}`);
-      const repository = await db.repository.findUnique({
+      const repository = await db.repositories.findUnique({
         where: { id: repositoryId },
         select: {
           id: true,
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] Updating ${repositoriesToIngest.length} repository/repositories status to PENDING`);
     await Promise.all(
       repositoriesToIngest.map(repo =>
-        db.repository.update({
+        db.repositories.update({
           where: {
             repositoryUrl_workspaceId: {
               repositoryUrl: repo.repositoryUrl,
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     // Get workspace info to get the slug
     console.log(`[STAKGRAPH_INGEST] Looking up workspace details for ID: ${repoWorkspaceId}`);
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: repoWorkspaceId },
       select: { slug: true },
     });
@@ -334,7 +334,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
       }
 
-      const swarm = await db.swarm.findUnique({ where: { workspaceId } });
+      const swarm = await db.swarms.findUnique({ where: { workspaceId } });
       if (swarm) {
         console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag after error`);
         await saveOrUpdateSwarm({
@@ -375,7 +375,7 @@ export async function GET(request: NextRequest) {
 
     // Get the swarm for the workspace
     console.log(`[STAKGRAPH_STATUS] Looking up swarm for workspace: ${workspaceId}`);
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId },
     });
 

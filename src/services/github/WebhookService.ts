@@ -38,7 +38,7 @@ export class WebhookService extends BaseServiceClass {
     webhookId: number;
   }> {
     // Get workspace slug for GitHub credentials
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: workspaceId },
       select: { slug: true },
     });
@@ -50,7 +50,7 @@ export class WebhookService extends BaseServiceClass {
     const token = await this.getUserGithubAccessToken(userId, workspace.slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
-    const repository = await db.repository.upsert({
+    const repository = await db.repositories.upsert({
       where: {
         repositoryUrl_workspaceId: {
           repositoryUrl,
@@ -68,7 +68,7 @@ export class WebhookService extends BaseServiceClass {
     const defaultBranch = await this.detectRepositoryDefaultBranch(token, owner, repo);
 
     if (defaultBranch) {
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: { branch: defaultBranch },
       });
@@ -136,7 +136,7 @@ export class WebhookService extends BaseServiceClass {
     // Get workspace slug for GitHub credentials if not provided
     let slug = workspaceSlug;
     if (!slug) {
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { id: workspaceId },
         select: { slug: true },
       });
@@ -149,7 +149,7 @@ export class WebhookService extends BaseServiceClass {
     const token = await this.getUserGithubAccessToken(userId, slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
-    const repoRec = await db.repository.findUnique({
+    const repoRec = await db.repositories.findUnique({
       where: {
         repositoryUrl_workspaceId: { repositoryUrl, workspaceId },
       },
@@ -184,7 +184,7 @@ export class WebhookService extends BaseServiceClass {
     });
 
     console.log("=> Creating new webhook for workspace", repoRec.id);
-    await db.repository.update({
+    await db.repositories.update({
       where: { id: repoRec.id },
       data: {
         githubWebhookId: String(created.id),
@@ -197,7 +197,7 @@ export class WebhookService extends BaseServiceClass {
 
   async deleteRepoWebhook({ userId, repositoryUrl, workspaceId }: DeleteWebhookParams): Promise<void> {
     // Get workspace slug for GitHub credentials
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: workspaceId },
       select: { slug: true },
     });
@@ -209,7 +209,7 @@ export class WebhookService extends BaseServiceClass {
     const token = await this.getUserGithubAccessToken(userId, workspace.slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
-    const repoRec = await db.repository.findUnique({
+    const repoRec = await db.repositories.findUnique({
       where: {
         repositoryUrl_workspaceId: { repositoryUrl, workspaceId },
       },
@@ -218,7 +218,7 @@ export class WebhookService extends BaseServiceClass {
     if (!repoRec?.githubWebhookId) return;
 
     await this.deleteHook(token, owner, repo, Number(repoRec.githubWebhookId));
-    await db.repository.update({
+    await db.repositories.update({
       where: {
         repositoryUrl_workspaceId: { repositoryUrl, workspaceId },
       },

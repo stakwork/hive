@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspaceAccess.workspace.id },
       select: { autoLearnEnabled: true },
     });
@@ -64,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspaceAccess.workspace.id },
     });
 
@@ -72,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Swarm not configured for this workspace" }, { status: 404 });
     }
 
-    const updatedSwarm = await db.swarm.update({
+    const updatedSwarm = await db.swarms.update({
       where: { id: swarm.id },
       data: { autoLearnEnabled: validatedData.autoLearnEnabled },
       select: { autoLearnEnabled: true },

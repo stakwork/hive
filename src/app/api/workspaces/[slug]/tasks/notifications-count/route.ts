@@ -21,7 +21,7 @@ export async function GET(
     }
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -57,7 +57,7 @@ export async function GET(
 
     // Count tasks waiting for user input (tasks with FORM artifacts in latest message only)
     // Only count tasks that are IN_PROGRESS or PENDING
-    const tasksWithLatestMessage = await db.task.findMany({
+    const tasksWithLatestMessage = await db.tasks.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,

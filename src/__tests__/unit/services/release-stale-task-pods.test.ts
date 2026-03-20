@@ -2,12 +2,10 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findMany: vi.fn(),
       update: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findFirst: vi.fn(),
     },
   },
@@ -58,7 +56,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
     vi.mocked(mockReleaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: true,
@@ -68,7 +66,7 @@ describe("releaseStaleTaskPods", () => {
     const result = await releaseStaleTaskPods();
 
     // Verify the query was made correctly - queries for tasks with podId OR stale IN_PROGRESS
-    expect(mockDb.task.findMany).toHaveBeenCalledWith({
+    expect(mockDb.tasks.findMany).toHaveBeenCalledWith({
       where: {
         updatedAt: {
           lt: expect.any(Date),
@@ -152,7 +150,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
     vi.mocked(mockReleaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: true,
@@ -187,7 +185,7 @@ describe("releaseStaleTaskPods", () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
 
     const result = await releaseStaleTaskPods();
 
@@ -230,7 +228,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
 
     // First succeeds, second fails
     vi.mocked(mockReleaseTaskPod)
@@ -255,7 +253,7 @@ describe("releaseStaleTaskPods", () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
-    vi.mocked(mockDb.task.findMany).mockRejectedValue(new Error("Database connection failed"));
+    vi.mocked(mockDb.tasks.findMany).mockRejectedValue(new Error("Database connection failed"));
 
     const result = await releaseStaleTaskPods();
 
@@ -275,11 +273,11 @@ describe("releaseStaleTaskPods", () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    const findManyCall = vi.mocked(mockDb.tasks.findMany).mock.calls[0][0];
     // Should use OR clause to find both:
     // 1. Tasks with pods (any status)
     // 2. Stale IN_PROGRESS tasks without pods
@@ -312,16 +310,16 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.update).mockResolvedValue({} as any);
 
     const result = await releaseStaleTaskPods();
 
     // Should NOT call releaseTaskPod (no pod to release)
     expect(mockReleaseTaskPod).not.toHaveBeenCalled();
 
-    // Should call haltTask via db.task.update
-    expect(mockDb.task.update).toHaveBeenCalledWith({
+    // Should call haltTask via db.tasks.update
+    expect(mockDb.tasks.update).toHaveBeenCalledWith({
       where: { id: "task-1" },
       data: {
         workflowStatus: "HALTED",
@@ -347,11 +345,11 @@ describe("releaseStaleTaskPods", () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    const findManyCall = vi.mocked(mockDb.tasks.findMany).mock.calls[0][0];
     expect(findManyCall?.where?.deleted).toBe(false);
 
     vi.useRealTimers();
@@ -361,11 +359,11 @@ describe("releaseStaleTaskPods", () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    const findManyCall = vi.mocked(mockDb.tasks.findMany).mock.calls[0][0];
     expect(findManyCall?.where?.updatedAt).toBeDefined();
     expect(findManyCall?.where?.updatedAt?.lt).toBeInstanceOf(Date);
 
@@ -392,7 +390,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
     vi.mocked(mockReleaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: false,
@@ -417,11 +415,11 @@ describe("releaseStaleTaskPods", () => {
     // Set custom threshold
     vi.stubEnv("STALE_TASK_HOURS", "48");
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    const findManyCall = vi.mocked(mockDb.tasks.findMany).mock.calls[0][0];
     const threshold = findManyCall?.where?.updatedAt?.lt as Date;
 
     // Should be 48 hours ago
@@ -480,7 +478,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
     vi.mocked(mockReleaseTaskPod).mockResolvedValue({
       success: true,
       podDropped: true,
@@ -545,7 +543,7 @@ describe("releaseStaleTaskPods", () => {
       },
     ];
 
-    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue(staleTasks as any);
 
     const result = await releaseStaleTaskPods();
 
@@ -553,7 +551,7 @@ describe("releaseStaleTaskPods", () => {
     expect(mockReleaseTaskPod).not.toHaveBeenCalled();
 
     // Should NOT call haltTask (has open PR)
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    expect(mockDb.tasks.update).not.toHaveBeenCalled();
 
     // Verify result - no pods released, no tasks halted
     expect(result.success).toBe(true);
@@ -570,11 +568,11 @@ describe("haltTask", () => {
   });
 
   test("should update task to HALTED status", async () => {
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.tasks.update).mockResolvedValue({} as any);
 
     await haltTask("task-123");
 
-    expect(mockDb.task.update).toHaveBeenCalledWith({
+    expect(mockDb.tasks.update).toHaveBeenCalledWith({
       where: { id: "task-123" },
       data: {
         workflowStatus: "HALTED",
@@ -590,11 +588,11 @@ describe("haltTask", () => {
   });
 
   test("should clear pod fields when clearPodFields is true", async () => {
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.tasks.update).mockResolvedValue({} as any);
 
     await haltTask("task-123", true);
 
-    expect(mockDb.task.update).toHaveBeenCalledWith({
+    expect(mockDb.tasks.update).toHaveBeenCalledWith({
       where: { id: "task-123" },
       data: {
         workflowStatus: "HALTED",
@@ -613,11 +611,11 @@ describe("haltTask", () => {
   });
 
   test("should not clear pod fields when clearPodFields is false", async () => {
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.tasks.update).mockResolvedValue({} as any);
 
     await haltTask("task-123", false);
 
-    expect(mockDb.task.update).toHaveBeenCalledWith({
+    expect(mockDb.tasks.update).toHaveBeenCalledWith({
       where: { id: "task-123" },
       data: {
         workflowStatus: "HALTED",

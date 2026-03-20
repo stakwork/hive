@@ -420,7 +420,7 @@ async function verifyJwt(
     const payload = jwt.verify(token, jwtSecret) as { slug?: string };
     if (!payload.slug) return undefined;
 
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { slug: payload.slug, deleted: false },
       select: { id: true, slug: true, name: true },
     });

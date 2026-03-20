@@ -183,46 +183,46 @@ export const janitorMocks = {
 
 export const janitorMockSetup = {
   mockConfigNotFound(db: any) {
-    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue(null);
+    vi.mocked(db.janitor_configs.findUnique).mockResolvedValue(null);
   },
 
   mockConfigExists(db: any, config: any) {
-    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue(config);
+    vi.mocked(db.janitor_configs.findUnique).mockResolvedValue(config);
   },
 
   mockConfigCreate(db: any, config: any) {
-    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue(null);
-    vi.mocked(db.janitorConfig.create).mockResolvedValue(config);
+    vi.mocked(db.janitor_configs.findUnique).mockResolvedValue(null);
+    vi.mocked(db.janitor_configs.create).mockResolvedValue(config);
   },
 
   mockConfigUpdate(db: any, updatedConfig: any) {
-    vi.mocked(db.janitorConfig.update).mockResolvedValue(updatedConfig);
+    vi.mocked(db.janitor_configs.update).mockResolvedValue(updatedConfig);
   },
 
   mockRunCreate(db: any, run: any) {
-    vi.mocked(db.janitorRun.create).mockResolvedValue(run);
+    vi.mocked(db.janitor_runs.create).mockResolvedValue(run);
   },
 
   mockRunNotFound(db: any) {
-    vi.mocked(db.janitorRun.findFirst).mockResolvedValue(null);
+    vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(null);
   },
 
   mockRunInProgress(db: any, existingRun: any) {
-    vi.mocked(db.janitorRun.findFirst).mockResolvedValue(existingRun);
+    vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(existingRun);
   },
 
   mockRunFindMany(db: any, runs: any[], total: number) {
-    vi.mocked(db.janitorRun.findMany).mockResolvedValue(runs);
-    vi.mocked(db.janitorRun.count).mockResolvedValue(total);
+    vi.mocked(db.janitor_runs.findMany).mockResolvedValue(runs);
+    vi.mocked(db.janitor_runs.count).mockResolvedValue(total);
   },
 
   mockRecommendationFindMany(db: any, recommendations: any[], total: number) {
-    vi.mocked(db.janitorRecommendation.findMany).mockResolvedValue(recommendations);
-    vi.mocked(db.janitorRecommendation.count).mockResolvedValue(total);
+    vi.mocked(db.janitor_recommendations.findMany).mockResolvedValue(recommendations);
+    vi.mocked(db.janitor_recommendations.count).mockResolvedValue(total);
   },
 
   mockRecommendationNotFound(db: any) {
-    vi.mocked(db.janitorRecommendation.findUnique).mockResolvedValue(null);
+    vi.mocked(db.janitor_recommendations.findUnique).mockResolvedValue(null);
   },
 
   mockRecommendationExists(db: any, recommendation: any) {
@@ -233,21 +233,21 @@ export const janitorMockSetup = {
       workspace: recommendation.janitorRun?.janitorConfig?.workspace || recommendation.workspace,
       workspaceId: recommendation.workspaceId || recommendation.janitorRun?.janitorConfig?.workspace?.id || "ws-1",
     };
-    vi.mocked(db.janitorRecommendation.findUnique).mockResolvedValue(enrichedRecommendation);
+    vi.mocked(db.janitor_recommendations.findUnique).mockResolvedValue(enrichedRecommendation);
   },
 
   mockRecommendationUpdate(db: any, updatedRecommendation: any) {
-    vi.mocked(db.janitorRecommendation.update).mockResolvedValue(updatedRecommendation);
+    vi.mocked(db.janitor_recommendations.update).mockResolvedValue(updatedRecommendation);
   },
 
   mockWorkspaceMemberExists(db: any, exists: boolean) {
-    vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(
+    vi.mocked(db.workspace_members.findFirst).mockResolvedValue(
       exists ? { id: "member-1", userId: "user-1", workspaceId: "ws-1", role: "DEVELOPER" } : null,
     );
   },
 
   mockRepositoryExists(db: any, exists: boolean) {
-    vi.mocked(db.repository.findFirst).mockResolvedValue(
+    vi.mocked(db.repositories.findFirst).mockResolvedValue(
       exists
         ? { id: "repo-1", name: "test-repo", repositoryUrl: "https://github.com/test/repo", workspaceId: "ws-1" }
         : null,
@@ -255,17 +255,17 @@ export const janitorMockSetup = {
   },
 
   mockWebhookProcessing(db: any, updateResult: any, janitorRun: any) {
-    vi.mocked(db.janitorRun.updateMany).mockResolvedValue(updateResult);
-    vi.mocked(db.janitorRun.findFirst).mockResolvedValue(janitorRun);
+    vi.mocked(db.janitor_runs.updateMany).mockResolvedValue(updateResult);
+    vi.mocked(db.janitor_runs.findFirst).mockResolvedValue(janitorRun);
   },
 
   mockTransactionSuccess(db: any, updateFn: any, createManyFn: any) {
     vi.mocked(db.$transaction).mockImplementation(async (callback: any) => {
       return callback({
-        janitorRun: {
+        janitor_runs: {
           update: updateFn,
         },
-        janitorRecommendation: {
+        janitor_recommendations: {
           createMany: createManyFn,
         },
       });

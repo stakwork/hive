@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     } = validatedData
 
     // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         id: workspaceId,
         deleted: false,
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     // If taskId is provided, verify it exists and belongs to the workspace
     if (taskId) {
-      const task = await db.task.findFirst({
+      const task = await db.tasks.findFirst({
         where: {
           id: taskId,
           workspaceId,
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     // If featureId is provided, verify it exists and belongs to the workspace
     if (featureId) {
-      const feature = await db.feature.findFirst({
+      const feature = await db.features.findFirst({
         where: {
           id: featureId,
           workspaceId,
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     urlExpiresAt.setDate(urlExpiresAt.getDate() + 7)
 
     // Check if screenshot with this hash already exists
-    const existingScreenshot = await db.screenshot.findUnique({
+    const existingScreenshot = await db.screenshots.findUnique({
       where: { hash },
     })
 
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
 
       if (!existingScreenshot.urlExpiresAt || existingScreenshot.urlExpiresAt < new Date()) {
         // URL is expired, update it
-        updatedScreenshot = await db.screenshot.update({
+        updatedScreenshot = await db.screenshots.update({
           where: { id: existingScreenshot.id },
           data: {
             s3Url,
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new screenshot record
-    const screenshot = await db.screenshot.create({
+    const screenshot = await db.screenshots.create({
       data: {
         workspaceId,
         taskId,

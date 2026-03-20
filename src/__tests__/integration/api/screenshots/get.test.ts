@@ -36,41 +36,35 @@ describe("GET /api/screenshots Integration Tests", () => {
     );
 
     // Create test fixtures
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: "test@example.com",
         name: "Test User",
       },
     });
 
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: testUser.id,
+        slug: "test-workspace",owner_id: testUser.id,
       },
     });
 
-    testTask = await db.task.create({
+    testTask = await db.tasks.create({
       data: {
-        title: "Test Task",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Test Task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
 
-    otherUser = await db.user.create({
+    otherUser = await db.users.create({
       data: {
         email: "other@example.com",
         name: "Other User",
       },
     });
 
-    testMember = await db.workspaceMember.create({
-      data: {
-        workspaceId: testWorkspace.id,
-        userId: otherUser.id,
+    testMember = await db.workspace_members.create({
+      data: {workspace_id: testWorkspace.id,user_id: otherUser.id,
         role: "DEVELOPER",
       },
     });
@@ -124,9 +118,9 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should return 404 for soft-deleted workspace", async () => {
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue({
@@ -143,7 +137,7 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should return 404 when user is not workspace owner or member", async () => {
-      const outsider = await db.user.create({
+      const outsider = await db.users.create({
         data: {
           email: "outsider@example.com",
           name: "Outsider",
@@ -195,9 +189,9 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should deny access for members who left (leftAt !== null)", async () => {
-      await db.workspaceMember.update({
+      await db.workspace_members.update({
         where: { id: testMember.id },
-        data: { leftAt: new Date() },
+        data: {left_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue({
@@ -278,10 +272,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should validate optional cursor parameter", async () => {
-      const screenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      const screenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           s3Key: "test-key",
           s3Url: "https://example.com/test.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -311,10 +303,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should return correct number of screenshots (respects limit)", async () => {
       // Create 5 screenshots
       for (let i = 0; i < 5; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            taskId: testTask.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,task_id: testTask.id,
             s3Key: `test-key-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),
@@ -345,9 +335,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should return hasMore=true when more results exist", async () => {
       // Create 5 screenshots
       for (let i = 0; i < 5; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),
@@ -379,9 +368,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should return hasMore=false on last page", async () => {
       // Create 2 screenshots
       for (let i = 0; i < 2; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),
@@ -413,9 +401,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should return valid nextCursor for pagination", async () => {
       // Create 3 screenshots
       for (let i = 0; i < 3; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),
@@ -446,9 +433,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should fetch next page using cursor", async () => {
       // Create 5 screenshots
       for (let i = 0; i < 5; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),
@@ -489,31 +475,27 @@ describe("GET /api/screenshots Integration Tests", () => {
 
     test("should order by createdAt descending (newest first)", async () => {
       // Create screenshots with different timestamps
-      const screenshot1 = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      const screenshot1 = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-1",
           s3Url: "https://example.com/test-1.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
           hash: "test-hash-1",
           pageUrl: "https://example.com",
           timestamp: BigInt(Date.now()),
-          actionIndex: 0,
-          createdAt: new Date(Date.now() - 2000),
+          actionIndex: 0,created_at: new Date(Date.now() - 2000),
         },
       });
 
-      const screenshot2 = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      const screenshot2 = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-2",
           s3Url: "https://example.com/test-2.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
           hash: "test-hash-2",
           pageUrl: "https://example.com",
           timestamp: BigInt(Date.now()),
-          actionIndex: 1,
-          createdAt: new Date(Date.now() - 1000),
+          actionIndex: 1,created_at: new Date(Date.now() - 1000),
         },
       });
 
@@ -536,17 +518,15 @@ describe("GET /api/screenshots Integration Tests", () => {
 
   describe("Filtering", () => {
     test("should filter by workspaceId", async () => {
-      const otherWorkspace = await db.workspace.create({
+      const otherWorkspace = await db.workspaces.create({
         data: {
           name: "Other Workspace",
-          slug: "other-workspace",
-          ownerId: testUser.id,
+          slug: "other-workspace",owner_id: testUser.id,
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-1",
           s3Url: "https://example.com/test-1.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -557,9 +537,8 @@ describe("GET /api/screenshots Integration Tests", () => {
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: otherWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: otherWorkspace.id,
           s3Key: "test-key-2",
           s3Url: "https://example.com/test-2.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -587,19 +566,14 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should filter by workspaceId + taskId", async () => {
-      const otherTask = await db.task.create({
+      const otherTask = await db.tasks.create({
         data: {
-          title: "Other Task",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          title: "Other Task",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           s3Key: "test-key-1",
           s3Url: "https://example.com/test-1.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -610,10 +584,8 @@ describe("GET /api/screenshots Integration Tests", () => {
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: otherTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: otherTask.id,
           s3Key: "test-key-2",
           s3Url: "https://example.com/test-2.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -642,9 +614,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should filter by workspaceId + pageUrl", async () => {
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-1",
           s3Url: "https://example.com/test-1.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -655,9 +626,8 @@ describe("GET /api/screenshots Integration Tests", () => {
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-2",
           s3Url: "https://example.com/test-2.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -686,10 +656,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should filter by all parameters combined", async () => {
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           s3Key: "test-key-1",
           s3Url: "https://example.com/test-1.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -700,10 +668,8 @@ describe("GET /api/screenshots Integration Tests", () => {
         },
       });
 
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           s3Key: "test-key-2",
           s3Url: "https://example.com/test-2.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -753,9 +719,8 @@ describe("GET /api/screenshots Integration Tests", () => {
 
   describe("URL Expiration Handling", () => {
     test("should regenerate expired presigned URLs", async () => {
-      const screenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      const screenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-expired",
           s3Url: "https://old-expired-url.com",
           urlExpiresAt: new Date(Date.now() - 1000), // expired 1 second ago
@@ -782,7 +747,7 @@ describe("GET /api/screenshots Integration Tests", () => {
       expect(mockGeneratePresignedDownloadUrl).toHaveBeenCalledWith("test-key-expired", expect.any(Number));
 
       // Verify database was updated
-      const updatedScreenshot = await db.screenshot.findUnique({
+      const updatedScreenshot = await db.screenshots.findUnique({
         where: { id: screenshot.id },
       });
       expect(updatedScreenshot?.s3Url).toBe("https://mock-s3.example.com/test-screenshot.jpg?expires=123456789");
@@ -792,9 +757,8 @@ describe("GET /api/screenshots Integration Tests", () => {
 
     test("should keep valid URLs unchanged", async () => {
       const validUrl = "https://valid-url.com/test.jpg";
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-valid",
           s3Url: validUrl,
           urlExpiresAt: new Date(Date.now() + 86400000), // expires tomorrow
@@ -822,9 +786,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should update urlExpiresAt in database when regenerating", async () => {
-      const screenshot = await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      const screenshot = await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-update",
           s3Url: "https://old-url.com",
           urlExpiresAt: new Date(Date.now() - 1000),
@@ -847,7 +810,7 @@ describe("GET /api/screenshots Integration Tests", () => {
       const request = new Request(url.toString());
       await GET(request);
 
-      const updatedScreenshot = await db.screenshot.findUnique({
+      const updatedScreenshot = await db.screenshots.findUnique({
         where: { id: screenshot.id },
       });
 
@@ -858,9 +821,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should handle multiple expired URLs in batch", async () => {
       // Create 3 screenshots with expired URLs
       for (let i = 0; i < 3; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-batch-${i}`,
             s3Url: `https://old-url-${i}.com`,
             urlExpiresAt: new Date(Date.now() - 1000),
@@ -889,10 +851,8 @@ describe("GET /api/screenshots Integration Tests", () => {
 
   describe("Response Format", () => {
     test("should return correct screenshot fields", async () => {
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
-          taskId: testTask.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,task_id: testTask.id,
           s3Key: "test-key-fields",
           s3Url: "https://example.com/test.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -936,9 +896,8 @@ describe("GET /api/screenshots Integration Tests", () => {
 
     test("should serialize BigInt timestamps correctly", async () => {
       const timestamp = BigInt(Date.now());
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-bigint",
           s3Url: "https://example.com/test.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -985,9 +944,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should return valid presigned URLs", async () => {
-      await db.screenshot.create({
-        data: {
-          workspaceId: testWorkspace.id,
+      await db.screenshots.create({
+        data: {workspace_id: testWorkspace.id,
           s3Key: "test-key-url",
           s3Url: "https://example.com/test.jpg",
           urlExpiresAt: new Date(Date.now() + 86400000),
@@ -1034,11 +992,10 @@ describe("GET /api/screenshots Integration Tests", () => {
     });
 
     test("should handle workspace with no screenshots", async () => {
-      const emptyWorkspace = await db.workspace.create({
+      const emptyWorkspace = await db.workspaces.create({
         data: {
           name: "Empty Workspace",
-          slug: "empty-workspace",
-          ownerId: testUser.id,
+          slug: "empty-workspace",owner_id: testUser.id,
         },
       });
 
@@ -1060,9 +1017,8 @@ describe("GET /api/screenshots Integration Tests", () => {
     test("should handle large result sets", async () => {
       // Create 100 screenshots
       for (let i = 0; i < 100; i++) {
-        await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
+        await db.screenshots.create({
+          data: {workspace_id: testWorkspace.id,
             s3Key: `test-key-large-${i}`,
             s3Url: `https://example.com/test-${i}.jpg`,
             urlExpiresAt: new Date(Date.now() + 86400000),

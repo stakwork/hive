@@ -17,12 +17,10 @@ export async function createTestRepository(
 ): Promise<Repository> {
   const uniqueId = generateUniqueId("repo");
 
-  return db.repository.create({
+  return db.repositories.create({
     data: {
-      name: options.name || `Test Repository ${uniqueId}`,
-      repositoryUrl: options.repositoryUrl || `https://github.com/test/repo-${uniqueId}`,
-      branch: options.branch || "main",
-      workspaceId: options.workspaceId,
+      name: options.name || `Test Repository ${uniqueId}`,repository_url: options.repositoryUrl || `https://github.com/test/repo-${uniqueId}`,
+      branch: options.branch || "main",workspace_id: options.workspaceId,
       status: options.status,
       testingFrameworkSetup: options.testingFrameworkSetup ?? false,
       playwrightSetup: options.playwrightSetup ?? false,

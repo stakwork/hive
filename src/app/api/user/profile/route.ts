@@ -33,7 +33,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update user
-    const updatedUser = await db.user.update({
+    const updatedUser = await db.users.update({
       where: { id: session.user.id },
       data: {
         sphinxAlias: sphinxAlias === null || sphinxAlias === "" ? null : sphinxAlias.trim(),

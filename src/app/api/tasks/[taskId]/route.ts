@@ -21,7 +21,7 @@ export async function PATCH(
     const { startWorkflow, retryWorkflow, mode, status, workflowStatus, archived, runBuild, runTestSuite } = body;
 
     // Verify task exists and user has access
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -69,7 +69,7 @@ export async function PATCH(
       });
 
       // Fetch updated task with workflow status
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: taskId },
         select: {
           id: true,
@@ -103,7 +103,7 @@ export async function PATCH(
       });
 
       // Fetch updated task with workflow status
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: taskId },
         select: {
           id: true,
@@ -160,7 +160,7 @@ export async function PATCH(
       }
 
       // Update task
-      const updatedTask = await db.task.update({
+      const updatedTask = await db.tasks.update({
         where: { id: taskId },
         data: {
           ...(status && { status: status as TaskStatus }),

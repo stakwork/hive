@@ -9,7 +9,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
 
   beforeEach(async () => {
     // Create test user directly
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: `test-seed-${Date.now()}@example.com`,
         name: "Test User",
@@ -17,19 +17,16 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     // Create test workspace directly
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: `test-seed-${Date.now()}`,
-        ownerId: testUser.id,
+        slug: `test-seed-${Date.now()}`,owner_id: testUser.id,
       },
     });
 
     // Add user as workspace owner
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+    await db.workspace_members.create({
+      data: {workspace_id: testWorkspace.id,user_id: testUser.id,
         role: "OWNER",
       },
     });
@@ -37,19 +34,17 @@ describe("Seed Database - Auto-Merge Test Data", () => {
 
   afterEach(async () => {
     // Cleanup in reverse order of dependencies
-    await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.phase.deleteMany({ where: { feature: { workspaceId: testWorkspace.id } } });
-    await db.feature.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspaceMember.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    await db.tasks.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.phases.deleteMany({ where: { feature: {workspace_id: testWorkspace.id } } });
+    await db.features.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspace_members.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: testUser.id } });
   }, 10000); // 10 second timeout for cleanup
 
   describe("createTestTask", () => {
     it("should create task with autoMerge: false by default", async () => {
-      const task = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
+      const task = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
         title: "Test task with default autoMerge",
       });
 
@@ -58,11 +53,8 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create task with autoMerge: true when explicitly set", async () => {
-      const task = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        title: "Test task with autoMerge enabled",
-        autoMerge: true,
+      const task = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
+        title: "Test task with autoMerge enabled",auto_merge: true,
       });
 
       expect(task).toBeDefined();
@@ -70,11 +62,8 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create task with autoMerge: false when explicitly set", async () => {
-      const task = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        title: "Test task with autoMerge disabled",
-        autoMerge: false,
+      const task = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
+        title: "Test task with autoMerge disabled",auto_merge: false,
       });
 
       expect(task).toBeDefined();
@@ -82,19 +71,12 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create task with dependencies and autoMerge", async () => {
-      const task1 = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        title: "First task",
-        autoMerge: true,
+      const task1 = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
+        title: "First task",auto_merge: true,
       });
 
-      const task2 = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        title: "Second task",
-        autoMerge: true,
-        dependsOnTaskIds: [task1.id],
+      const task2 = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
+        title: "Second task",auto_merge: true,depends_on_task_ids: [task1.id],
       });
 
       expect(task2.dependsOnTaskIds).toContain(task1.id);
@@ -104,9 +86,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
 
   describe("createTestFeatureWithAutoMergeTasks", () => {
     it("should create feature with all tasks having autoMerge: true", async () => {
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: true,
         sequential: false,
@@ -121,9 +101,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create feature with mixed autoMerge settings", async () => {
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: false,
         sequential: false,
@@ -136,9 +114,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create sequential dependency chain", async () => {
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: true,
         sequential: true,
@@ -153,9 +129,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
 
     it("should create tasks with custom priorities", async () => {
       const priorities = ["HIGH", "MEDIUM", "LOW"] as const;
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: true,
         sequential: false,
@@ -168,9 +142,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should create tasks with correct order", async () => {
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: true,
         sequential: true,
@@ -182,9 +154,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
     });
 
     it("should associate all tasks with the feature and phase", async () => {
-      const result = await createTestFeatureWithAutoMergeTasks({
-        workspaceId: testWorkspace.id,
-        userId: testUser.id,
+      const result = await createTestFeatureWithAutoMergeTasks({workspace_id: testWorkspace.id,user_id: testUser.id,
         taskCount: 3,
         allAutoMerge: true,
         sequential: false,

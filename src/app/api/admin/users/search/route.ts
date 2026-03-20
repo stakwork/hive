@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const users = await db.user.findMany({
+    const users = await db.users.findMany({
       where,
       select: {
         id: true,

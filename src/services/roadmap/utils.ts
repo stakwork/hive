@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
  * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateFeatureAccess(featureId: string, userId: string) {
-  const feature = await db.feature.findUnique({
+  const feature = await db.features.findUnique({
     where: { id: featureId },
     select: {
       id: true,
@@ -49,7 +49,7 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
  * Throws specific errors for not found vs access denied scenarios
  */
 export async function validatePhaseAccess(phaseId: string, userId: string) {
-  const phase = await db.phase.findUnique({
+  const phase = await db.phases.findUnique({
     where: { id: phaseId },
     select: {
       id: true,
@@ -92,7 +92,7 @@ export async function validatePhaseAccess(phaseId: string, userId: string) {
  * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateRoadmapTaskAccess(taskId: string, userId: string) {
-  const task = await db.task.findUnique({
+  const task = await db.tasks.findUnique({
     where: { id: taskId, deleted: false },
     select: {
       id: true,
@@ -138,7 +138,7 @@ export const validateTicketAccess = validateRoadmapTaskAccess;
  * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateUserStoryAccess(storyId: string, userId: string) {
-  const story = await db.userStory.findUnique({
+  const story = await db.user_stories.findUnique({
     where: { id: storyId },
     select: {
       id: true,

@@ -36,11 +36,11 @@ export async function createAndSendNotification(input: {
 
     // 1. Fetch target user and workspace slug in parallel
     const [targetUser, workspace] = await Promise.all([
-      db.user.findUnique({
+      db.users.findUnique({
         where: { id: input.targetUserId },
         select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true },
       }),
-      db.workspace.findUnique({
+      db.workspaces.findUnique({
         where: { id: input.workspaceId },
         select: { slug: true },
       }),
@@ -49,7 +49,7 @@ export async function createAndSendNotification(input: {
     // 2. Idempotency check — skip if PENDING or FAILED record already exists.
     //    FAILED records block retries so a previous failure for the same trigger
     //    key does not produce a second notification row.
-    const existing = await db.notificationTrigger.findFirst({
+    const existing = await db.notification_triggers.findFirst({
       where: {
         targetUserId: input.targetUserId,
         notificationType: input.notificationType,
@@ -76,7 +76,7 @@ export async function createAndSendNotification(input: {
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
     // 4. Always insert a row — use SKIPPED when DM is not ready
-    const record = await db.notificationTrigger.create({
+    const record = await db.notification_triggers.create({
       data: {
         targetUserId: input.targetUserId,
         originatingUserId: input.originatingUserId ?? null,
@@ -104,7 +104,7 @@ export async function createAndSendNotification(input: {
     // 6. Deferred types: store sendAfter + message, return without sending
     if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
       const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
-      await db.notificationTrigger.update({
+      await db.notification_triggers.update({
         where: { id: record.id },
         data: { sendAfter, message: input.message },
       });
@@ -149,7 +149,7 @@ export async function createAndSendNotification(input: {
     }
 
     // 8. Update record with outcome (persist message for auditability)
-    await db.notificationTrigger.update({
+    await db.notification_triggers.update({
       where: { id: record.id },
       data: {
         status: result.success

@@ -21,7 +21,7 @@ export async function fetchChatHistory(
     whereClause.id = { not: excludeMessageId };
   }
 
-  const chatHistory = await db.chatMessage.findMany({
+  const chatHistory = await db.chat_messages.findMany({
     where: whereClause,
     include: {
       artifacts: {

@@ -20,7 +20,7 @@ function validateApiToken(request: NextRequest): boolean {
 }
 
 async function getWorkspaceById(workspaceId: string) {
-  return db.workspace.findUnique({
+  return db.workspaces.findUnique({
     where: { id: workspaceId, deleted: false },
     select: { id: true, ownerId: true },
   });

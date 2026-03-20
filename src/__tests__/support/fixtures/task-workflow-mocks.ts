@@ -87,23 +87,23 @@ export function setupTaskWorkflowMocks(mocks: {
 
   // Only setup mocks that are provided
   if (mockDb) {
-    if (mockDb.chatMessage?.create) {
-      mockDb.chatMessage.create.mockResolvedValue?.(createMockChatMessage() as any);
+    if (mockDb.chat_messages?.create) {
+      mockDb.chat_messages.create.mockResolvedValue?.(createMockChatMessage() as any);
     }
-    if (mockDb.user?.findUnique) {
-      mockDb.user.findUnique.mockResolvedValue?.(createMockUser() as any);
+    if (mockDb.users?.findUnique) {
+      mockDb.users.findUnique.mockResolvedValue?.(createMockUser() as any);
     }
-    if (mockDb.task?.create) {
-      mockDb.task.create.mockResolvedValue?.(createMockTask() as any);
+    if (mockDb.tasks?.create) {
+      mockDb.tasks.create.mockResolvedValue?.(createMockTask() as any);
     }
-    if (mockDb.task?.update) {
-      mockDb.task.update.mockResolvedValue?.({} as any);
+    if (mockDb.tasks?.update) {
+      mockDb.tasks.update.mockResolvedValue?.({ featureId: null, workflowStartedAt: null, workflowCompletedAt: null, workspace: { slug: 'test-workspace' } } as any);
     }
-    if (mockDb.task?.findFirst) {
-      mockDb.task.findFirst.mockResolvedValue?.(createMockTask() as any);
+    if (mockDb.tasks?.findFirst) {
+      mockDb.tasks.findFirst.mockResolvedValue?.(createMockTask() as any);
     }
-    if (mockDb.task?.findUnique) {
-      mockDb.task.findUnique.mockResolvedValue?.({ status: TaskStatus.TODO } as any);
+    if (mockDb.tasks?.findUnique) {
+      mockDb.tasks.findUnique.mockResolvedValue?.({ status: TaskStatus.TODO } as any);
     }
   }
 

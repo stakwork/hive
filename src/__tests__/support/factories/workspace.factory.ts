@@ -27,7 +27,9 @@ export interface CreateTestWorkspaceOptions {
   name?: string;
   description?: string | null;
   slug?: string;
-  ownerId: string;
+  /** Owner user ID - accepts both ownerId and owner_id for compatibility */
+  ownerId?: string;
+  owner_id?: string;
   stakworkApiKey?: string | null;
   sourceControlOrgId?: string | null;
   repositoryDraft?: string | null;
@@ -60,19 +62,17 @@ export async function createTestWorkspace(
 
   // Idempotent: check if exists
   if (options.idempotent) {
-    const existing = await db.workspace.findUnique({ where: { slug } });
+    const existing = await db.workspaces.findUnique({ where: { slug } });
     if (existing) return existing;
   }
 
-  return db.workspace.create({
+  return db.workspaces.create({
     data: {
+      id: generateUniqueId("workspace"),
       name,
       description,
-      slug,
-      ownerId: options.ownerId,
-      stakworkApiKey: options.stakworkApiKey ?? null,
-      sourceControlOrgId: options.sourceControlOrgId ?? null,
-      repositoryDraft: options.repositoryDraft ?? null,
+      slug,owner_id: (options.ownerId ?? options.owner_id)!,stakwork_api_key: options.stakworkApiKey ?? null,source_control_org_id: options.sourceControlOrgId ?? null,repository_draft: options.repositoryDraft ?? null,
+      updated_at: new Date(),
     },
   });
 }
@@ -82,22 +82,16 @@ export async function createTestMembership(
 ): Promise<WorkspaceMember> {
   // Idempotent: check if exists
   if (options.idempotent) {
-    const existing = await db.workspaceMember.findFirst({
-      where: {
-        workspaceId: options.workspaceId,
-        userId: options.userId,
+    const existing = await db.workspace_members.findFirst({
+      where: {workspace_id: options.workspaceId,user_id: options.userId,
       },
     });
     if (existing) return existing;
   }
 
-  return db.workspaceMember.create({
-    data: {
-      workspaceId: options.workspaceId,
-      userId: options.userId,
-      role: options.role || "VIEWER",
-      leftAt: options.leftAt || null,
-      lastAccessedAt: options.lastAccessedAt || null,
+  return db.workspace_members.create({
+    data: {id: generateUniqueId("member"),workspace_id: options.workspaceId,user_id: options.userId,
+      role: options.role || "VIEWER",left_at: options.leftAt || null,last_accessed_at: options.lastAccessedAt || null,
     },
   });
 }
@@ -257,15 +251,12 @@ export async function createSphinxEnabledWorkspace(options: {
   const encryptedData = encryptionService.encryptField("sphinxBotSecret", botSecret);
   const encryptedSecret = JSON.stringify(encryptedData);
 
-  return db.workspace.create({
+  return db.workspaces.create({
     data: {
+      id: generateUniqueId("workspace"),
       name: options.name ?? `Sphinx Workspace ${uniqueId}`,
-      slug: options.slug ?? `sphinx-ws-${uniqueId}`,
-      ownerId: options.ownerId,
-      sphinxEnabled: true,
-      sphinxChatPubkey: options.sphinxChatPubkey ?? `test-chat-pubkey-${uniqueId}`,
-      sphinxBotId: options.sphinxBotId ?? `test-bot-id-${uniqueId}`,
-      sphinxBotSecret: encryptedSecret,
+      slug: options.slug ?? `sphinx-ws-${uniqueId}`,owner_id: (options.ownerId ?? (options as any).owner_id)!,sphinx_enabled: true,sphinx_chat_pubkey: options.sphinxChatPubkey ?? `test-chat-pubkey-${uniqueId}`,sphinx_bot_id: options.sphinxBotId ?? `test-bot-id-${uniqueId}`,sphinx_bot_secret: encryptedSecret,
+      updated_at: new Date(),
     },
   });
 }

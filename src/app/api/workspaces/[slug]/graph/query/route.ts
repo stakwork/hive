@@ -90,7 +90,7 @@ export async function POST(
     }
 
     // Resolve workspace to get swarm
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: { slug, deleted: false },
       select: { id: true },
     });
@@ -102,7 +102,7 @@ export async function POST(
       );
     }
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
     });
 

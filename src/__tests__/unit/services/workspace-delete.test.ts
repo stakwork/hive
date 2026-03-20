@@ -7,16 +7,13 @@ import { getServiceConfig } from "@/config/services";
 
 // Mock dependencies
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findFirst: vi.fn(),
-    },
-    swarm: {
+    },swarms: {
       findFirst: vi.fn(),
     },
   },
@@ -104,22 +101,22 @@ describe("deleteWorkspaceBySlug", () => {
   describe("Authorization", () => {
     it("should successfully delete workspace when user is OWNER", async () => {
       // Arrange - Mock getWorkspaceBySlug internals
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null); // Not a member, is owner
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null); // No swarm
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null); // Not a member, is owner
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null); // No swarm
       
       // Mock softDeleteWorkspace internals
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith(expect.objectContaining({
         where: { slug: mockSlug, deleted: false },
       }));
-      expect(db.workspace.update).toHaveBeenCalledWith(expect.objectContaining({
+      expect(db.workspaces.update).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: mockWorkspaceId },
         data: expect.objectContaining({
           deleted: true,
@@ -130,7 +127,7 @@ describe("deleteWorkspaceBySlug", () => {
 
     it("should throw error when workspace not found", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(null);
 
       // Act & Assert
       await expect(
@@ -141,8 +138,8 @@ describe("deleteWorkspaceBySlug", () => {
     it("should throw error when user is not OWNER (ADMIN role)", async () => {
       // Arrange - User is ADMIN member
       const adminWorkspace = { ...mockWorkspaceDbRecord, ownerId: "different-user" };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(adminWorkspace);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue({
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(adminWorkspace);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue({
         id: "member-1",
         userId: mockUserId,
         workspaceId: mockWorkspaceId,
@@ -162,17 +159,17 @@ describe("deleteWorkspaceBySlug", () => {
   describe("Cascading Deletes - Workspace without Swarm", () => {
     it("should soft-delete workspace when no swarm exists", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.update).toHaveBeenCalledWith(expect.objectContaining({
+      expect(db.workspaces.update).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: mockWorkspaceId },
         data: expect.objectContaining({
           deleted: true,
@@ -186,11 +183,11 @@ describe("deleteWorkspaceBySlug", () => {
     it("should continue deletion when pool API returns 401 (invalid/expired key)", async () => {
       // Arrange
       const swarmWithPool = { ...mockSwarmWithAllResources, ec2Id: null, name: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithPool);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithPool);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
       
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -208,34 +205,34 @@ describe("deleteWorkspaceBySlug", () => {
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should skip pool deletion when poolApiKey is null", async () => {
       // Arrange
       const swarmWithoutPool = { id: mockSwarmId, name: null, poolApiKey: null, ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithoutPool);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithoutPool);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
       expect(global.fetch).not.toHaveBeenCalled();
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should delete pool user via admin authentication when swarm.name exists", async () => {
       // Arrange
       const swarmWithPoolUser = { ...mockSwarmWithAllResources, ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithPoolUser);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithPoolUser);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -287,17 +284,17 @@ describe("deleteWorkspaceBySlug", () => {
           }),
         })
       );
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should continue deletion when pool user deletion returns 404 (user not found)", async () => {
       // Arrange
       const swarmWithPoolUser = { ...mockSwarmWithAllResources, ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithPoolUser);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithPoolUser);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -329,17 +326,17 @@ describe("deleteWorkspaceBySlug", () => {
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should continue deletion when Pool Manager admin authentication fails", async () => {
       // Arrange
       const swarmWithPoolUser = { ...mockSwarmWithAllResources, ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithPoolUser);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithPoolUser);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -364,17 +361,17 @@ describe("deleteWorkspaceBySlug", () => {
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert - should continue with workspace deletion despite auth failure
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should skip pool user deletion when swarm.name is null", async () => {
       // Arrange
       const swarmWithoutName = { id: mockSwarmId, name: null, poolApiKey: "encrypted-key", ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithoutName);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithoutName);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -394,7 +391,7 @@ describe("deleteWorkspaceBySlug", () => {
 
       // Assert - should not call admin auth or user deletion
       expect(global.fetch).toHaveBeenCalledTimes(1); // Only pool deletion
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
   });
 
@@ -402,11 +399,11 @@ describe("deleteWorkspaceBySlug", () => {
     it("should delete EC2 instance when ec2Id exists and deletion succeeds", async () => {
       // Arrange
       const swarmWithEc2 = { ...mockSwarmWithAllResources, poolApiKey: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithEc2);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithEc2);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const mockSwarmService = {
         stopSwarm: vi.fn().mockResolvedValue({ success: true }),
@@ -423,16 +420,16 @@ describe("deleteWorkspaceBySlug", () => {
       expect(mockSwarmService.stopSwarm).toHaveBeenCalledWith({
         instance_id: mockEc2Id,
       });
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should delete both pool and EC2 instance when workspace has all resources", async () => {
       // Arrange - Workspace with pool, pool user, and EC2 instance
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarmWithAllResources);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(mockSwarmWithAllResources);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const encryptionService = EncryptionService.getInstance();
       // Mock to return decrypted key for poolApiKey field
@@ -486,17 +483,17 @@ describe("deleteWorkspaceBySlug", () => {
       expect(mockSwarmService.stopSwarm).toHaveBeenCalledWith({
         instance_id: mockEc2Id,
       });
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should continue deletion when EC2 deletion fails with error", async () => {
       // Arrange
       const swarmWithEc2 = { ...mockSwarmWithAllResources, poolApiKey: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithEc2);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithEc2);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const mockSwarmService = {
         stopSwarm: vi.fn().mockRejectedValue(new Error("EC2 API error")),
@@ -511,17 +508,17 @@ describe("deleteWorkspaceBySlug", () => {
       expect(mockSwarmService.stopSwarm).toHaveBeenCalledWith({
         instance_id: mockEc2Id,
       });
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should continue deletion even when EC2 deletion returns failure response", async () => {
       // Arrange
       const swarmWithEc2 = { ...mockSwarmWithAllResources, poolApiKey: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithEc2);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithEc2);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       const mockSwarmService = {
         stopSwarm: vi.fn().mockResolvedValue({ success: false }),
@@ -536,41 +533,41 @@ describe("deleteWorkspaceBySlug", () => {
       expect(mockSwarmService.stopSwarm).toHaveBeenCalledWith({
         instance_id: mockEc2Id,
       });
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
 
     it("should skip EC2 deletion when ec2Id is null", async () => {
       // Arrange
       const swarmWithoutEc2 = { id: mockSwarmId, name: null, poolApiKey: null, ec2Id: null };
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(swarmWithoutEc2);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(swarmWithoutEc2);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
       expect(SwarmService).not.toHaveBeenCalled();
-      expect(db.workspace.update).toHaveBeenCalled();
+      expect(db.workspaces.update).toHaveBeenCalled();
     });
   });
 
   describe("Soft-Delete Field Verification", () => {
     it("should set deleted=true, deletedAt, and modify slug with timestamp", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.update).toHaveBeenCalledWith(
+      expect(db.workspaces.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockWorkspaceId },
           data: expect.objectContaining({
@@ -585,17 +582,17 @@ describe("deleteWorkspaceBySlug", () => {
 
     it("should store original slug for recovery when soft-deleting", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert
-      expect(db.workspace.update).toHaveBeenCalledWith(
+      expect(db.workspaces.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             originalSlug: mockSlug,
@@ -606,13 +603,13 @@ describe("deleteWorkspaceBySlug", () => {
 
     it("should modify slug to allow reuse of original slug", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
       
       const updateCall = vi.fn().mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockImplementation(updateCall);
+      vi.mocked(db.workspaces.update).mockImplementation(updateCall);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
@@ -625,18 +622,18 @@ describe("deleteWorkspaceBySlug", () => {
 
     it("should not hard delete workspace records", async () => {
       // Arrange
-      vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
-      vi.mocked(db.workspace.update).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.findFirst).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspaceDbRecord);
+      vi.mocked(db.workspaces.update).mockResolvedValue(mockWorkspaceDbRecord);
 
       // Act
       await deleteWorkspaceBySlug(mockSlug, mockUserId);
 
       // Assert - should use update, not delete
-      expect(db.workspace.update).toHaveBeenCalled();
-      // Verify db.workspace.delete was never called (it's not even mocked)
+      expect(db.workspaces.update).toHaveBeenCalled();
+      // Verify db.workspaces.delete was never called (it's not even mocked)
     });
   });
 });

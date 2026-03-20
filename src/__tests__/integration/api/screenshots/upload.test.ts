@@ -67,8 +67,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
           id: generateUniqueId('workspace'),
           name: 'Test Workspace',
           slug: generateUniqueId('test-workspace'),
-          description: 'Test workspace description',
-          ownerId: testUser.id,
+          description: 'Test workspace description',owner_id: testUser.id,
         },
       });
 
@@ -77,11 +76,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
           id: generateUniqueId('task'),
           title: 'Test Task',
           description: 'Test task description',
-          status: 'TODO',
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: 'TODO',workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -104,15 +99,12 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
           id: generateUniqueId('workspace'),
           name: 'Test Workspace',
           slug: generateUniqueId('test-workspace'),
-          description: 'Test workspace description',
-          ownerId: generateUniqueId('owner'),
+          description: 'Test workspace description',owner_id: generateUniqueId('owner'),
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          userId: testUser.id,
-          workspaceId: testWorkspace.id,
+        data: {user_id: testUser.id,workspace_id: testWorkspace.id,
           role,
         },
       });
@@ -122,11 +114,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
           id: generateUniqueId('task'),
           title: 'Test Task',
           description: 'Test task description',
-          status: 'TODO',
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: 'TODO',workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -153,9 +141,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: 'test-workspace-id',
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: 'test-workspace-id',task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -173,9 +159,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue({ user: null });
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: 'test-workspace-id',
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: 'test-workspace-id',task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -195,9 +179,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: 'non-existent-workspace-id',
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: 'non-existent-workspace-id',task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -215,17 +197,15 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
 
       // Mark workspace as deleted
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: testWorkspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -240,7 +220,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
 
     test('should return 404 for workspace user does not have access to', async () => {
-      const testUser = await db.user.create({
+      const testUser = await db.users.create({
         data: {
           id: generateUniqueId('test-user'),
           email: `test-${generateUniqueId()}@example.com`,
@@ -248,7 +228,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
         },
       });
 
-      const otherUser = await db.user.create({
+      const otherUser = await db.users.create({
         data: {
           id: generateUniqueId('other-user'),
           email: `other-${generateUniqueId()}@example.com`,
@@ -256,22 +236,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
         },
       });
 
-      const testWorkspace = await db.workspace.create({
+      const testWorkspace = await db.workspaces.create({
         data: {
           id: generateUniqueId('workspace'),
           name: 'Other User Workspace',
           slug: generateUniqueId('other-workspace'),
-          description: 'Workspace owned by other user',
-          ownerId: otherUser.id,
+          description: 'Workspace owned by other user',owner_id: otherUser.id,
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -290,9 +267,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: 'non-existent-task-id',
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: 'non-existent-task-id',
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -310,17 +285,15 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const { testUser, testWorkspace, testTask } = await createTestUserWithWorkspaceAndTask();
 
       // Mark task as deleted
-      await db.task.update({
+      await db.tasks.update({
         where: { id: testTask.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: testTask.id,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: testTask.id,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -338,35 +311,28 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
 
       // Create task in different workspace
-      const otherWorkspace = await db.workspace.create({
+      const otherWorkspace = await db.workspaces.create({
         data: {
           id: generateUniqueId('other-workspace'),
           name: 'Other Workspace',
           slug: generateUniqueId('other-workspace'),
-          description: 'Different workspace',
-          ownerId: testUser.id,
+          description: 'Different workspace',owner_id: testUser.id,
         },
       });
 
-      const otherTask = await db.task.create({
+      const otherTask = await db.tasks.create({
         data: {
           id: generateUniqueId('other-task'),
           title: 'Other Task',
           description: 'Task in different workspace',
-          status: 'TODO',
-          workspaceId: otherWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: 'TODO',workspace_id: otherWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: otherTask.id,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: otherTask.id,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -385,9 +351,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -409,9 +373,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -430,8 +392,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
         // dataUrl missing
-        workspaceId: testWorkspace.id,
-        taskId: null,
+workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -450,9 +411,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: '',
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: '',workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -472,7 +431,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
         dataUrl: createTestDataUrl(),
         // workspaceId missing
-        taskId: null,
+task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -491,9 +450,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         // actionIndex missing
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -511,9 +468,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: -1,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -531,9 +486,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         // pageUrl missing
         timestamp: Date.now(),
@@ -551,9 +504,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         // timestamp missing
@@ -571,9 +522,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: -1,
@@ -591,9 +540,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -609,9 +556,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -625,7 +570,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // Verify dimensions stored in database
       const data = await response.json();
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -641,9 +586,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: 'invalid-data-url-format',
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: 'invalid-data-url-format',workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -669,9 +612,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateFileType.mockReturnValue(false);
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('application/pdf'),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl('application/pdf'),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -691,9 +632,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateFileSize.mockReturnValue(false);
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -713,9 +652,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateImageBuffer.mockReturnValue(false);
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -732,9 +669,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('image/jpeg'),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl('image/jpeg'),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -751,9 +686,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('image/png'),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl('image/png'),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -772,9 +705,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       const timestamp = Date.now();
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: testTask.id,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: testTask.id,
         actionIndex: 0,
         pageUrl: 'https://example.com/page',
         timestamp,
@@ -797,7 +728,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledTimes(1);
 
       // Verify database record created
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -816,9 +747,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -841,9 +770,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const beforeUpload = new Date();
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -852,7 +779,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const response = await POST(request);
       const data = await response.json();
 
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -879,9 +806,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // First upload
       const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -907,9 +832,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // Second upload with same data
       const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 1,
         pageUrl: 'https://example.com/different-page',
         timestamp: Date.now(),
@@ -928,7 +851,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(mockS3Service.putObject).not.toHaveBeenCalled();
 
       // Verify only one screenshot record exists
-      const screenshots = await db.screenshot.findMany({
+      const screenshots = await db.screenshots.findMany({
         where: { hash: firstData.hash },
       });
       expect(screenshots.length).toBe(1);
@@ -942,9 +865,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // First upload
       const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -954,7 +875,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const firstData = await firstResponse.json();
 
       // Manually expire the URL
-      await db.screenshot.update({
+      await db.screenshots.update({
         where: { id: firstData.id },
         data: {
           urlExpiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
@@ -974,9 +895,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // Second upload with same data
       const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 1,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -989,7 +908,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(secondData.deduplicated).toBe(true);
 
       // Verify URL was refreshed
-      const updatedScreenshot = await db.screenshot.findUnique({
+      const updatedScreenshot = await db.screenshots.findUnique({
         where: { id: firstData.id },
       });
 
@@ -1007,9 +926,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // First upload
       const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1033,9 +950,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // Second upload with same data
       const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl,
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl,workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 1,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1061,9 +976,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.putObject.mockRejectedValue(new Error('S3 upload failed'));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1087,9 +1000,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       );
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1110,9 +1021,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       // Use invalid workspace ID format to trigger database error
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: 'invalid-workspace-format-!@#$',
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: 'invalid-workspace-format-!@#$',task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1131,9 +1040,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 999999,
         pageUrl: 'https://example.com',
         timestamp: Date.now(),
@@ -1144,7 +1051,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -1158,9 +1065,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const longUrl = 'https://example.com/' + 'a'.repeat(2000);
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: longUrl,
         timestamp: Date.now(),
@@ -1171,7 +1076,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -1185,9 +1090,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const specialUrl = 'https://example.com/page?query=test&foo=bar#anchor';
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: specialUrl,
         timestamp: Date.now(),
@@ -1198,7 +1101,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 
@@ -1212,9 +1115,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       const maxTimestamp = Number.MAX_SAFE_INTEGER;
 
       const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl(),
-        workspaceId: testWorkspace.id,
-        taskId: null,
+        dataUrl: createTestDataUrl(),workspace_id: testWorkspace.id,task_id: null,
         actionIndex: 0,
         pageUrl: 'https://example.com',
         timestamp: maxTimestamp,
@@ -1225,7 +1126,7 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      const screenshot = await db.screenshot.findUnique({
+      const screenshot = await db.screenshots.findUnique({
         where: { id: data.id },
       });
 

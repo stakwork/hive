@@ -13,55 +13,49 @@ import {
 
 // Local helper for creating tasks with filtering-specific fields
 async function createTaskForFiltering(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options: {
     title?: string;
-    workflowStatus?: WorkflowStatus;
-    podId?: string | null;
+workflow_status?: WorkflowStatus;
+pod_id?: string | null;
     status?: TaskStatus;
     archived?: boolean;
     deleted?: boolean;
-    systemAssigneeType?: string | null;
+system_assignee_type?: string | null;
     priority?: string;
-    createdAt?: Date;
+created_at?: Date;
   }
 ) {
   const taskId = generateUniqueId("task");
 
-  return db.task.create({
+  return db.tasks.create({
     data: {
       id: taskId,
       title: options.title || `Test Task ${taskId}`,
       description: "Test description",
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
-      status: options.status || TaskStatus.IN_PROGRESS,
-      workflowStatus: options.workflowStatus || WorkflowStatus.PENDING,
-      podId: options.podId !== undefined ? options.podId : null,
-      archived: options.archived || false,
-      archivedAt: options.archived ? new Date() : null,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
+      status: options.status || TaskStatus.IN_PROGRESS,workflow_status: options.workflowStatus || WorkflowStatus.PENDING,pod_id: options.podId !== undefined ? options.podId : null,
+      archived: options.archived || false,archived_at: options.archived ? new Date() : null,
       deleted: options.deleted || false,
-      ...(options.systemAssigneeType !== undefined && { systemAssigneeType: options.systemAssigneeType as any }),
+      ...(options.systemAssigneeType !== undefined && {system_assignee_type: options.systemAssigneeType as any }),
       ...(options.priority !== undefined && { priority: options.priority as any }),
-      ...(options.createdAt !== undefined && { createdAt: options.createdAt }),
+      ...(options.createdAt !== undefined && {created_at: options.createdAt }),
     },
   });
 }
 
 // Cleanup helper
 async function cleanup(workspaceIds: string[], userIds: string[]) {
-  await db.task.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.tasks.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspaceMember.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.workspace_members.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }
@@ -70,24 +64,20 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Status Filter (status=running)", () => {
     test("filters tasks by status=running (workflowStatus=IN_PROGRESS)", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create tasks with different workflow statuses
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running Task 1",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Running Task 1",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running Task 2",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Running Task 2",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Pending Task",
-        workflowStatus: WorkflowStatus.PENDING,
+        title: "Pending Task",workflow_status: WorkflowStatus.PENDING,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Completed Task",
-        workflowStatus: WorkflowStatus.COMPLETED,
+        title: "Completed Task",workflow_status: WorkflowStatus.COMPLETED,
       });
 
       try {
@@ -109,15 +99,13 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("accepts direct WorkflowStatus enum values for status parameter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Completed Task",
-        workflowStatus: WorkflowStatus.COMPLETED,
+        title: "Completed Task",workflow_status: WorkflowStatus.COMPLETED,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Failed Task",
-        workflowStatus: WorkflowStatus.FAILED,
+        title: "Failed Task",workflow_status: WorkflowStatus.FAILED,
       });
 
       try {
@@ -138,7 +126,7 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns 400 for invalid status parameter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       try {
         const request = createAuthenticatedGetRequest(
@@ -156,11 +144,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns empty array when no tasks match status filter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create only PENDING tasks
-      await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        workflowStatus: WorkflowStatus.PENDING,
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {workflow_status: WorkflowStatus.PENDING,
       });
 
       try {
@@ -182,20 +169,17 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Pod Filter (hasPod=true/false)", () => {
     test("filters tasks with hasPod=true (podId IS NOT NULL)", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create tasks with and without pods
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task with Pod 1",
-        podId: "pod-123",
+        title: "Task with Pod 1",pod_id: "pod-123",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task with Pod 2",
-        podId: "pod-456",
+        title: "Task with Pod 2",pod_id: "pod-456",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task without Pod",
-        podId: null,
+        title: "Task without Pod",pod_id: null,
       });
 
       try {
@@ -216,20 +200,17 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("filters tasks with hasPod=false (podId IS NULL)", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create tasks with and without pods
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task without Pod 1",
-        podId: null,
+        title: "Task without Pod 1",pod_id: null,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task without Pod 2",
-        podId: null,
+        title: "Task without Pod 2",pod_id: null,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task with Pod",
-        podId: "pod-789",
+        title: "Task with Pod",pod_id: "pod-789",
       });
 
       try {
@@ -250,7 +231,7 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns 400 for invalid hasPod parameter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       try {
         const request = createAuthenticatedGetRequest(
@@ -270,28 +251,20 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Combined Filters", () => {
     test("filters by both status=running and hasPod=true", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create tasks with different combinations
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running with Pod",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-123",
+        title: "Running with Pod",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-123",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running without Pod",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: null,
+        title: "Running without Pod",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: null,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Pending with Pod",
-        workflowStatus: WorkflowStatus.PENDING,
-        podId: "pod-456",
+        title: "Pending with Pod",workflow_status: WorkflowStatus.PENDING,pod_id: "pod-456",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Pending without Pod",
-        workflowStatus: WorkflowStatus.PENDING,
-        podId: null,
+        title: "Pending without Pod",workflow_status: WorkflowStatus.PENDING,pod_id: null,
       });
 
       try {
@@ -313,22 +286,16 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("filters by status=running and hasPod=false", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running with Pod",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-123",
+        title: "Running with Pod",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-123",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Running without Pod",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: null,
+        title: "Running without Pod",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: null,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Completed without Pod",
-        workflowStatus: WorkflowStatus.COMPLETED,
-        podId: null,
+        title: "Completed without Pod",workflow_status: WorkflowStatus.COMPLETED,pod_id: null,
       });
 
       try {
@@ -352,14 +319,12 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Integration with Existing Filters", () => {
     test("works with pagination", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create 15 running tasks with pods
       for (let i = 1; i <= 15; i++) {
         await createTaskForFiltering(testWorkspace.id, testUser.id, {
-          title: `Running Task ${i}`,
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          podId: `pod-${i}`,
+          title: `Running Task ${i}`,workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: `pod-${i}`,
         });
       }
 
@@ -395,22 +360,16 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("works with search filter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Bug fix for authentication",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-123",
+        title: "Bug fix for authentication",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-123",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Feature: Add new component",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-456",
+        title: "Feature: Add new component",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-456",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Bug fix for payment",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-789",
+        title: "Bug fix for payment",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-789",
       });
 
       try {
@@ -431,18 +390,14 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("works with archived filter", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Active Running Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-123",
+        title: "Active Running Task",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-123",
         archived: false,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Archived Running Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-456",
+        title: "Archived Running Task",workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-456",
         archived: true,
       });
 
@@ -477,16 +432,14 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Edge Cases", () => {
     test("handles tasks with empty pod strings as null", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Prisma treats empty string as valid value, not null
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task with empty pod",
-        podId: "",
+        title: "Task with empty pod",pod_id: "",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Task with null pod",
-        podId: null,
+        title: "Task with null pod",pod_id: null,
       });
 
       try {
@@ -507,13 +460,11 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns correct pagination metadata with filters", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create 25 running tasks with pods
       for (let i = 1; i <= 25; i++) {
-        await createTaskForFiltering(testWorkspace.id, testUser.id, {
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          podId: `pod-${i}`,
+        await createTaskForFiltering(testWorkspace.id, testUser.id, {workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: `pod-${i}`,
         });
       }
 
@@ -538,7 +489,7 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("handles multiple WorkflowStatus values correctly", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Create tasks with all workflow statuses
       const statuses: WorkflowStatus[] = [
@@ -552,8 +503,7 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
       for (const status of statuses) {
         await createTaskForFiltering(testWorkspace.id, testUser.id, {
-          title: `Task ${status}`,
-          workflowStatus: status,
+          title: `Task ${status}`,workflow_status: status,
         });
       }
 
@@ -582,23 +532,20 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Queue Filter (queue=true)", () => {
     test("returns only TODO + TASK_COORDINATOR tasks", async () => {
       const testUser = await createTestUser({ name: "Queue Filter User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Queued Task 1",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Queued Task 2",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
       });
       // Not queued: wrong status
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "In Progress Task",
-        status: TaskStatus.IN_PROGRESS,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.IN_PROGRESS,system_assignee_type: "TASK_COORDINATOR",
       });
       // Not queued: no systemAssigneeType
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
@@ -623,17 +570,15 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("excludes deleted tasks", async () => {
       const testUser = await createTestUser({ name: "Queue Delete User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Visible Queued Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Deleted Queued Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
         deleted: true,
       });
 
@@ -654,18 +599,16 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("excludes archived tasks", async () => {
       const testUser = await createTestUser({ name: "Queue Archive User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Active Queued Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
         archived: false,
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "Archived Queued Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
         archived: true,
       });
 
@@ -686,45 +629,35 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns results ordered by priority desc then createdAt asc", async () => {
       const testUser = await createTestUser({ name: "Queue Order User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       const now = new Date();
       const t = (offset: number) => new Date(now.getTime() + offset * 1000);
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "LOW old",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "LOW",
-        createdAt: t(0),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "LOW",created_at: t(0),
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "HIGH",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "HIGH",
-        createdAt: t(2),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "HIGH",created_at: t(2),
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "CRITICAL",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "CRITICAL",
-        createdAt: t(4),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "CRITICAL",created_at: t(4),
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "MEDIUM old",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "MEDIUM",
-        createdAt: t(1),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "MEDIUM",created_at: t(1),
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "MEDIUM new",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "MEDIUM",
-        createdAt: t(3),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "MEDIUM",created_at: t(3),
       });
 
       try {
@@ -750,22 +683,18 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("ignores sortBy/sortOrder params and uses fixed queue ordering", async () => {
       const testUser = await createTestUser({ name: "Queue Sort User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       const now = new Date();
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "HIGH Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "HIGH",
-        createdAt: new Date(now.getTime() + 5000),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "HIGH",created_at: new Date(now.getTime() + 5000),
       });
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
         title: "LOW Task",
-        status: TaskStatus.TODO,
-        systemAssigneeType: "TASK_COORDINATOR",
-        priority: "LOW",
-        createdAt: new Date(now.getTime()),
+        status: TaskStatus.TODO,system_assignee_type: "TASK_COORDINATOR",
+        priority: "LOW",created_at: new Date(now.getTime()),
       });
 
       try {
@@ -788,7 +717,7 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("returns empty array when no coordinator-queued tasks exist", async () => {
       const testUser = await createTestUser({ name: "Queue Empty User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       // Only regular tasks, no coordinator-queued ones
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
@@ -814,15 +743,11 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
   describe("Backward Compatibility", () => {
     test("works without any filter parameters (existing behavior)", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
-      await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        podId: "pod-123",
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {workflow_status: WorkflowStatus.IN_PROGRESS,pod_id: "pod-123",
       });
-      await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        workflowStatus: WorkflowStatus.PENDING,
-        podId: null,
+      await createTaskForFiltering(testWorkspace.id, testUser.id, {workflow_status: WorkflowStatus.PENDING,pod_id: null,
       });
 
       try {
@@ -843,11 +768,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
 
     test("existing parameters continue to work without status/hasPod", async () => {
       const testUser = await createTestUser({ name: "Test User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
       await createTaskForFiltering(testWorkspace.id, testUser.id, {
-        title: "Search Test Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Search Test Task",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
 
       try {
@@ -871,23 +795,18 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
     test("returns only tasks created by the specified user", async () => {
       const ownerUser = await createTestUser({ name: "Owner User" });
       const otherUser = await createTestUser({ name: "Other User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: ownerUser.id });
 
       await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
-        title: "Owner Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Owner Task",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
       // Create a task owned by otherUser but in the same workspace
-      await db.task.create({
+      await db.tasks.create({
         data: {
           id: generateUniqueId("task"),
           title: "Other User Task",
-          description: "Test",
-          workspaceId: testWorkspace.id,
-          createdById: otherUser.id,
-          updatedById: otherUser.id,
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.PENDING,
+          description: "Test",workspace_id: testWorkspace.id,created_by_id: otherUser.id,updated_by_id: otherUser.id,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.PENDING,
         },
       });
 
@@ -914,22 +833,17 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
     test("returns all tasks when createdById is omitted", async () => {
       const ownerUser = await createTestUser({ name: "Owner User" });
       const otherUser = await createTestUser({ name: "Other User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: ownerUser.id });
 
       await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
-        title: "Owner Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Owner Task",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
-      await db.task.create({
+      await db.tasks.create({
         data: {
           id: generateUniqueId("task"),
           title: "Other User Task",
-          description: "Test",
-          workspaceId: testWorkspace.id,
-          createdById: otherUser.id,
-          updatedById: otherUser.id,
-          status: TaskStatus.IN_PROGRESS,
-          workflowStatus: WorkflowStatus.PENDING,
+          description: "Test",workspace_id: testWorkspace.id,created_by_id: otherUser.id,updated_by_id: otherUser.id,
+          status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.PENDING,
         },
       });
 
@@ -952,11 +866,10 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
     test("returns empty array when no tasks match the specified creator", async () => {
       const ownerUser = await createTestUser({ name: "Owner User" });
       const otherUser = await createTestUser({ name: "Other User" });
-      const testWorkspace = await createTestWorkspace({ ownerId: ownerUser.id });
+      const testWorkspace = await createTestWorkspace({owner_id: ownerUser.id });
 
       await createTaskForFiltering(testWorkspace.id, ownerUser.id, {
-        title: "Owner Task",
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Owner Task",workflow_status: WorkflowStatus.IN_PROGRESS,
       });
 
       try {

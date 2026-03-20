@@ -41,8 +41,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
@@ -52,10 +51,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
           title: "Test Task",
           description: "Test task description",
           status: "IN_PROGRESS",
-          priority: "MEDIUM",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: "MEDIUM",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -64,9 +60,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
         data: {
           message: "This is a sensitive chat message with user data",
           role: ChatRole.USER,
-          status: ChatStatus.SENT,
-          taskId: task.id,
-          contextTags: JSON.stringify([
+          status: ChatStatus.SENT,task_id: task.id,context_tags: JSON.stringify([
             { type: "file", value: "sensitive-config.env" },
             { type: "api_key", value: "hidden" }
           ]),
@@ -107,8 +101,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const otherWorkspace = await tx.workspace.create({
         data: {
           name: "Other Workspace",
-          slug: `other-workspace-${Date.now()}`,
-          ownerId: otherUser.id,
+          slug: `other-workspace-${Date.now()}`,owner_id: otherUser.id,
         },
       });
 
@@ -122,9 +115,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
       // Add member to workspace
       await tx.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -357,34 +348,28 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const tempUser = await createTestUser({ name: "Temp User" });
 
       const tempWorkspace = await createTestWorkspace({
-        name: "Temp Workspace",
-        ownerId: tempUser.id,
+        name: "Temp Workspace",owner_id: tempUser.id,
       });
       
-      const tempTask = await db.task.create({
+      const tempTask = await db.tasks.create({
         data: {
           title: "Temp Task",
           description: "Temp task description",
           status: "TODO",
-          priority: "MEDIUM",
-          workspaceId: tempWorkspace.id,
-          createdById: tempUser.id,
-          updatedById: tempUser.id,
+          priority: "MEDIUM",workspace_id: tempWorkspace.id,created_by_id: tempUser.id,updated_by_id: tempUser.id,
         },
       });
 
-      const orphanedMessage = await db.chatMessage.create({
+      const orphanedMessage = await db.chat_messages.create({
         data: {
           message: "Orphaned message",
           role: ChatRole.USER,
-          status: ChatStatus.SENT,
-          taskId: tempTask.id,
-          contextTags: JSON.stringify([]),
+          status: ChatStatus.SENT,task_id: tempTask.id,context_tags: JSON.stringify([]),
         },
       });
       
       // Now delete the task to create an orphaned message scenario
-      await db.task.delete({ where: { id: tempTask.id } });
+      await db.tasks.delete({ where: { id: tempTask.id } });
 
       const request = createAuthenticatedGetRequest(`http://localhost:3000/api/chat/messages/${orphanedMessage.id}`, testUser);
 

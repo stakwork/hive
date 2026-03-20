@@ -55,7 +55,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/123");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "123" }),
+        params: Promise.resolve({project_id: "123" }),
       });
 
       await expectUnauthorized(response);
@@ -69,7 +69,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/123");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "123" }),
+        params: Promise.resolve({project_id: "123" }),
       });
 
       await expectUnauthorized(response);
@@ -85,7 +85,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(response.status).toBe(200);
@@ -103,7 +103,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "" }),
+        params: Promise.resolve({project_id: "" }),
       });
 
       await expectError(response, "Missing required parameter: projectId", 400);
@@ -118,7 +118,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -144,7 +144,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest(`http://localhost:3000/api/stakwork/workflow/${testProjectId}`);
       
       await GET(request, {
-        params: Promise.resolve({ projectId: testProjectId }),
+        params: Promise.resolve({project_id: testProjectId }),
       });
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -159,7 +159,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -199,7 +199,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -235,7 +235,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -264,7 +264,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -284,7 +284,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       // Error message includes service name and context prefix
@@ -299,7 +299,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
         message: "Project not found",
         status: 404,
         service: "stakwork",
-        details: { projectId: "12345" }
+        details: {project_id: "12345" }
       };
 
       fetchSpy.mockRejectedValueOnce(apiError);
@@ -307,7 +307,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(response.status).toBe(404);
@@ -315,7 +315,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       // Error message includes service name and context prefix from BaseServiceClass.handleRequest
       expect(data.error).toBe("stakwork stakworkRequest /projects/12345.json: Project not found");
       expect(data.service).toBe("stakwork");
-      expect(data.details).toEqual({ projectId: "12345" });
+      expect(data.details).toEqual({project_id: "12345" });
     });
 
     test("should handle Stakwork API 401 Unauthorized", async () => {
@@ -333,7 +333,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(response.status).toBe(401);
@@ -359,7 +359,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(response.status).toBe(403);
@@ -385,7 +385,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/nonexistent");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "nonexistent" }),
+        params: Promise.resolve({project_id: "nonexistent" }),
       });
 
       expect(response.status).toBe(404);
@@ -410,7 +410,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       expect(response.status).toBe(500);
@@ -444,7 +444,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -476,7 +476,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -508,7 +508,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -540,7 +540,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -569,7 +569,7 @@ describe("GET /api/stakwork/workflow/[projectId] - Integration Tests", () => {
       const request = createGetRequest("http://localhost:3000/api/stakwork/workflow/12345");
       
       const response = await GET(request, {
-        params: Promise.resolve({ projectId: "12345" }),
+        params: Promise.resolve({project_id: "12345" }),
       });
 
       const data = await expectSuccess(response, 200);

@@ -6,8 +6,7 @@ import { db } from "@/lib/db";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: {
+  db: {users: {
       findUnique: vi.fn(),
     },
   },
@@ -35,7 +34,7 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/test");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, "user-123");
 
-    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+    vi.mocked(db.users.findUnique).mockResolvedValue(null);
 
     const result = await requireSuperAdmin(request);
 
@@ -45,7 +44,7 @@ describe("requireSuperAdmin", () => {
       const body = await result.json();
       expect(body).toEqual({ error: "Forbidden" });
     }
-    expect(db.user.findUnique).toHaveBeenCalledWith({
+    expect(db.users.findUnique).toHaveBeenCalledWith({
       where: { id: "user-123" },
       select: { role: true },
     });
@@ -55,7 +54,7 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/test");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, "user-123");
 
-    vi.mocked(db.user.findUnique).mockResolvedValue({ role: "USER" } as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue({ role: "USER" } as any);
 
     const result = await requireSuperAdmin(request);
 
@@ -71,7 +70,7 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/test");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, "user-123");
 
-    vi.mocked(db.user.findUnique).mockResolvedValue({ role: "ADMIN" } as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue({ role: "ADMIN" } as any);
 
     const result = await requireSuperAdmin(request);
 
@@ -87,7 +86,7 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/test");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, "user-123");
 
-    vi.mocked(db.user.findUnique).mockResolvedValue({ role: "MODERATOR" } as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue({ role: "MODERATOR" } as any);
 
     const result = await requireSuperAdmin(request);
 
@@ -103,13 +102,13 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/test");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, "user-123");
 
-    vi.mocked(db.user.findUnique).mockResolvedValue({ role: "SUPER_ADMIN" } as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue({ role: "SUPER_ADMIN" } as any);
 
     const result = await requireSuperAdmin(request);
 
     expect(result).not.toBeInstanceOf(NextResponse);
     expect(result).toEqual({ userId: "user-123" });
-    expect(db.user.findUnique).toHaveBeenCalledWith({
+    expect(db.users.findUnique).toHaveBeenCalledWith({
       where: { id: "user-123" },
       select: { role: true },
     });
@@ -120,12 +119,12 @@ describe("requireSuperAdmin", () => {
     const request = new NextRequest("http://localhost:3000/api/admin/users");
     request.headers.set(MIDDLEWARE_HEADERS.USER_ID, userId);
 
-    vi.mocked(db.user.findUnique).mockResolvedValue({ role: "SUPER_ADMIN" } as any);
+    vi.mocked(db.users.findUnique).mockResolvedValue({ role: "SUPER_ADMIN" } as any);
 
     const result = await requireSuperAdmin(request);
 
     expect(result).toEqual({ userId });
-    expect(db.user.findUnique).toHaveBeenCalledWith({
+    expect(db.users.findUnique).toHaveBeenCalledWith({
       where: { id: userId },
       select: { role: true },
     });

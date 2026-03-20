@@ -34,12 +34,12 @@ export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: st
   }
 
   const workspaceId = validation.workspace!.id;
-  let config = await db.janitorConfig.findUnique({
+  let config = await db.janitor_configs.findUnique({
     where: { workspaceId }
   });
 
   if (!config) {
-    config = await db.janitorConfig.create({
+    config = await db.janitor_configs.create({
       data: { workspaceId }
     });
   }
@@ -61,17 +61,17 @@ export async function updateJanitorConfig(
   }
 
   const workspaceId = validation.workspace!.id;
-  let config = await db.janitorConfig.findUnique({
+  let config = await db.janitor_configs.findUnique({
     where: { workspaceId }
   });
 
   if (!config) {
-    config = await db.janitorConfig.create({
+    config = await db.janitor_configs.create({
       data: { workspaceId }
     });
   }
 
-  return await db.janitorConfig.update({
+  return await db.janitor_configs.update({
     where: { id: config.id },
     data,
   });
@@ -105,7 +105,7 @@ export async function createJanitorRun(
     workspaceId = validation.workspace!.id;
   } else {
     // For SCHEDULED runs, fetch workspace directly
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug: workspaceSlug },
       select: { id: true }
     });
@@ -114,12 +114,12 @@ export async function createJanitorRun(
     }
     workspaceId = workspace.id;
   }
-  let config = await db.janitorConfig.findUnique({
+  let config = await db.janitor_configs.findUnique({
     where: { workspaceId }
   });
 
   if (!config) {
-    config = await db.janitorConfig.create({
+    config = await db.janitor_configs.create({
       data: { workspaceId }
     });
   }
@@ -135,7 +135,7 @@ export async function createJanitorRun(
   // This will be replaced by cron scheduling in the future
 
   // First create the database record without stakwork project ID
-  let janitorRun = await db.janitorRun.create({
+  let janitorRun = await db.janitor_runs.create({
     data: {
       janitorConfigId: config.id,
       janitorType,
@@ -263,7 +263,7 @@ export async function createJanitorRun(
     }
 
     // Update the run with the Stakwork project ID
-    janitorRun = await db.janitorRun.update({
+    janitorRun = await db.janitor_runs.update({
       where: { id: janitorRun.id },
       data: {
         stakworkProjectId: projectId,
@@ -297,7 +297,7 @@ export async function createJanitorRun(
     console.error("Failed to create Stakwork project for janitor run:", stakworkError);
     
     // Update the run status to failed
-    await db.janitorRun.update({
+    await db.janitor_runs.update({
       where: { id: janitorRun.id },
       data: {
         status: "FAILED",
@@ -325,12 +325,12 @@ export async function getJanitorRuns(
   }
 
   const workspaceId = validation.workspace!.id;
-  let config = await db.janitorConfig.findUnique({
+  let config = await db.janitor_configs.findUnique({
     where: { workspaceId }
   });
 
   if (!config) {
-    config = await db.janitorConfig.create({
+    config = await db.janitor_configs.create({
       data: { workspaceId }
     });
   }
@@ -351,7 +351,7 @@ export async function getJanitorRuns(
   }
 
   const [runs, total] = await Promise.all([
-    db.janitorRun.findMany({
+    db.janitor_runs.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
@@ -364,7 +364,7 @@ export async function getJanitorRuns(
         }
       }
     }),
-    db.janitorRun.count({ where })
+    db.janitor_runs.count({ where })
   ]);
 
   return {
@@ -394,7 +394,7 @@ export async function getJanitorRecommendations(
   }
 
   const workspaceId = validation.workspace!.id;
-  const config = await db.janitorConfig.findUnique({
+  const config = await db.janitor_configs.findUnique({
     where: { workspaceId }
   });
 
@@ -431,7 +431,7 @@ export async function getJanitorRecommendations(
   }
 
   const [recommendations, total] = await Promise.all([
-    db.janitorRecommendation.findMany({
+    db.janitor_recommendations.findMany({
       where,
       orderBy: [
         { status: "asc" },
@@ -471,7 +471,7 @@ export async function getJanitorRecommendations(
         }
       }
     }),
-    db.janitorRecommendation.count({ where })
+    db.janitor_recommendations.count({ where })
   ]);
 
   return {
@@ -496,7 +496,7 @@ export async function acceptJanitorRecommendation(
   options: AcceptRecommendationRequest = {},
   sourceType: "JANITOR" | "TASK_COORDINATOR" = "JANITOR"
 ) {
-  const recommendation = await db.janitorRecommendation.findUnique({
+  const recommendation = await db.janitor_recommendations.findUnique({
     where: { id: recommendationId },
     include: {
       workspace: {
@@ -532,7 +532,7 @@ export async function acceptJanitorRecommendation(
 
   // Validate assignee if provided
   if (options.assigneeId) {
-    const assigneeExists = await db.workspaceMember.findFirst({
+    const assigneeExists = await db.workspace_members.findFirst({
       where: {
         userId: options.assigneeId,
         workspaceId: recommendation.workspaceId
@@ -552,7 +552,7 @@ export async function acceptJanitorRecommendation(
 
   // Validate repository if resolved
   if (resolvedRepositoryId) {
-    const repositoryExists = await db.repository.findFirst({
+    const repositoryExists = await db.repositories.findFirst({
       where: {
         id: resolvedRepositoryId,
         workspaceId: recommendation.workspaceId
@@ -565,7 +565,7 @@ export async function acceptJanitorRecommendation(
   }
 
   // Update recommendation status
-  await db.janitorRecommendation.update({
+  await db.janitor_recommendations.update({
     where: { id: recommendationId },
     data: {
       status: "ACCEPTED",
@@ -595,7 +595,7 @@ export async function acceptJanitorRecommendation(
   });
 
   // Refetch updated recommendation (we just updated it, so it must exist)
-  const updatedRecommendation = await db.janitorRecommendation.findUnique({
+  const updatedRecommendation = await db.janitor_recommendations.findUnique({
     where: { id: recommendationId }
   });
 
@@ -614,7 +614,7 @@ export async function dismissJanitorRecommendation(
   userId: string,
   options: DismissRecommendationRequest = {}
 ) {
-  const recommendation = await db.janitorRecommendation.findUnique({
+  const recommendation = await db.janitor_recommendations.findUnique({
     where: { id: recommendationId },
     include: {
       workspace: {
@@ -642,7 +642,7 @@ export async function dismissJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED);
   }
 
-  return await db.janitorRecommendation.update({
+  return await db.janitor_recommendations.update({
     where: { id: recommendationId },
     data: {
       status: "DISMISSED",
@@ -676,7 +676,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
   if (isCompleted) {
     // First, try to find an existing janitor run
-    const existingRun = await db.janitorRun.findFirst({
+    const existingRun = await db.janitor_runs.findFirst({
       where: {
         stakworkProjectId: projectId,
       },
@@ -692,7 +692,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     // If there's an existing run, update it
     if (existingRun) {
       // Use atomic updateMany to prevent race conditions
-      const updateResult = await db.janitorRun.updateMany({
+      const updateResult = await db.janitor_runs.updateMany({
         where: {
           stakworkProjectId: projectId,
           status: { in: ["PENDING", "RUNNING"] }
@@ -708,7 +708,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       }
 
       // Get the updated run for processing recommendations
-      const janitorRun = await db.janitorRun.findFirst({
+      const janitorRun = await db.janitor_runs.findFirst({
         where: {
           stakworkProjectId: projectId,
           status: "COMPLETED"
@@ -744,7 +744,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
       // Update metadata and create recommendations in a transaction
       await db.$transaction(async (tx) => {
-        await tx.janitorRun.update({
+        await tx.janitor_runs.update({
           where: { id: janitorRun.id },
           data: {
             metadata: {
@@ -783,7 +783,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
             };
           });
 
-          await tx.janitorRecommendation.createMany({
+          await tx.janitor_recommendations.createMany({
             data: recommendations
           });
         }
@@ -795,7 +795,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         try {
           const channelName = getWorkspaceChannelName(janitorRun.janitorConfig.workspace.slug);
 
-          const totalCount = await db.janitorRecommendation.count({
+          const totalCount = await db.janitor_recommendations.count({
             where: {
               workspaceId: janitorRun.janitorConfig.workspace.id,
               status: "PENDING"
@@ -828,7 +828,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         sequentialJanitorTypes.includes(janitorRun.janitorType) &&
         results?.recommendations?.length
       ) {
-        const createdRec = await db.janitorRecommendation.findFirst({
+        const createdRec = await db.janitor_recommendations.findFirst({
           where: { janitorRunId: janitorRun.id, status: "PENDING" },
           orderBy: { createdAt: "desc" }
         });
@@ -860,7 +860,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
     } else {
       // No existing run - create standalone recommendations for external workflow
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { id: workspaceId },
         select: {
           id: true,
@@ -900,7 +900,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           };
         });
 
-        await db.janitorRecommendation.createMany({
+        await db.janitor_recommendations.createMany({
           data: recommendations
         });
 
@@ -910,7 +910,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           const channelName = getWorkspaceChannelName(workspace.slug);
 
           // Get total recommendation count for this workspace
-          const totalCount = await db.janitorRecommendation.count({
+          const totalCount = await db.janitor_recommendations.count({
             where: {
               workspaceId: workspace.id,
               status: "PENDING"
@@ -942,7 +942,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     }
   } else if (isFailed) {
     // Use atomic updateMany to prevent race conditions
-    const updateResult = await db.janitorRun.updateMany({
+    const updateResult = await db.janitor_runs.updateMany({
       where: {
         stakworkProjectId: projectId,
         status: { in: ["PENDING", "RUNNING"] }
@@ -959,7 +959,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     }
 
     // Get the updated run for return data
-    const janitorRun = await db.janitorRun.findFirst({
+    const janitorRun = await db.janitor_runs.findFirst({
       where: {
         stakworkProjectId: projectId,
         status: "FAILED"
@@ -981,7 +981,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
     if (janitorRun) {
       // Update metadata separately
-      await db.janitorRun.update({
+      await db.janitor_runs.update({
         where: { id: janitorRun.id },
         data: {
           metadata: {
@@ -1002,7 +1002,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     };
   } else {
     // Use atomic updateMany to prevent race conditions
-    const updateResult = await db.janitorRun.updateMany({
+    const updateResult = await db.janitor_runs.updateMany({
       where: {
         stakworkProjectId: projectId,
         status: { in: ["PENDING", "RUNNING"] }
@@ -1018,7 +1018,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     }
 
     // Get the updated run for metadata update
-    const janitorRun = await db.janitorRun.findFirst({
+    const janitorRun = await db.janitor_runs.findFirst({
       where: {
         stakworkProjectId: projectId,
         status: "RUNNING"
@@ -1028,7 +1028,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
     if (janitorRun) {
       // Update metadata separately
-      await db.janitorRun.update({
+      await db.janitor_runs.update({
         where: { id: janitorRun.id },
         data: {
           metadata: {

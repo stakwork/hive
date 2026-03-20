@@ -71,25 +71,19 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${generateUniqueId()}`,
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
+        data: {workspace_id: workspace.id,user_id: user.id,
           role: "OWNER",
         },
       });
 
       const task = await tx.task.create({
         data: {
-          title: "Test Task for Webhook",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Task for Webhook",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           status: TaskStatus.TODO,
           workflowStatus,
         },
@@ -104,9 +98,8 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
    * so the auto-retry service can recover context.
    */
   async function createWorkflowEditorTask(
-    opts: {
-      workflowStatus?: WorkflowStatus;
-      haltRetryAttempted?: boolean;
+    opts: {workflow_status?: WorkflowStatus;
+halt_retry_attempted?: boolean;
       withWorkflowArtifact?: boolean;
     } = {},
   ) {
@@ -128,17 +121,13 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `WE Workspace ${generateUniqueId()}`,
-          slug: generateUniqueSlug("we-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("we-workspace"),owner_id: user.id,
         },
       });
 
       const task = await tx.task.create({
         data: {
-          title: "Workflow Editor Task",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Workflow Editor Task",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           status: TaskStatus.IN_PROGRESS,
           workflowStatus,
           mode: "workflow_editor",
@@ -149,28 +138,23 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       if (withWorkflowArtifact) {
         // Add a user message then an assistant WORKFLOW artifact
         await tx.chatMessage.create({
-          data: {
-            taskId: task.id,
+          data: {task_id: task.id,
             message: "Make the workflow faster",
             role: ChatRole.USER,
-            status: ChatStatus.SENT,
-            contextTags: JSON.stringify([]),
+            status: ChatStatus.SENT,context_tags: JSON.stringify([]),
           },
         });
 
         await tx.chatMessage.create({
-          data: {
-            taskId: task.id,
+          data: {task_id: task.id,
             message: "",
             role: ChatRole.ASSISTANT,
-            status: ChatStatus.SENT,
-            contextTags: JSON.stringify([]),
+            status: ChatStatus.SENT,context_tags: JSON.stringify([]),
             artifacts: {
               create: [
                 {
                   type: ArtifactType.WORKFLOW,
-                  content: {
-                    projectId: "proj-123",
+                  content: {project_id: "proj-123",
                     workflowId: 42,
                     workflowName: "Test Workflow",
                     workflowRefId: "ref-abc-xyz",
@@ -310,7 +294,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 404 when task is soft-deleted", async () => {
       const { task } = await createTestTask();
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { deleted: true },
       });
@@ -344,7 +328,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(data.success).toBe(true);
       expect(data.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -367,7 +351,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
       expect(data.data.workflowStatus).toBe(WorkflowStatus.COMPLETED);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -387,7 +371,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       expect(response.status).toBe(200);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -407,7 +391,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       expect(response.status).toBe(200);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -432,7 +416,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(data.message).toContain("Unknown status");
       expect(data.data.action).toBe("ignored");
 
-      const taskAfter = await db.task.findUnique({
+      const taskAfter = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -465,7 +449,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         expect(response.status).toBe(200);
         expect(data.data.workflowStatus).toBe(expected);
 
-        const updatedTask = await db.task.findUnique({
+        const updatedTask = await db.tasks.findUnique({
           where: { id: task.id },
         });
 
@@ -488,9 +472,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(pusherServer.trigger).toHaveBeenCalledWith(
         `task-${task.id}`,
         "workflow-status-update",
-        expect.objectContaining({
-          taskId: task.id,
-          workflowStatus: WorkflowStatus.COMPLETED,
+        expect.objectContaining({task_id: task.id,workflow_status: WorkflowStatus.COMPLETED,
           timestamp: expect.any(Date),
         })
       );
@@ -509,9 +491,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(pusherServer.trigger).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        expect.objectContaining({
-          workflowStartedAt: expect.any(Date),
-          workflowCompletedAt: null,
+        expect.objectContaining({workflow_started_at: expect.any(Date),workflow_completed_at: null,
         })
       );
     });
@@ -532,7 +512,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
@@ -556,7 +536,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 500 when database update fails", async () => {
       const { task } = await createTestTask();
 
-      await db.task.delete({
+      await db.tasks.delete({
         where: { id: task.id },
       });
 
@@ -593,7 +573,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(responses[0].status).toBe(200);
       expect(responses[1].status).toBe(200);
 
-      const finalTask = await db.task.findUnique({
+      const finalTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -617,9 +597,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       expect(data).toMatchObject({
         success: true,
-        data: {
-          taskId: task.id,
-          workflowStatus: WorkflowStatus.COMPLETED,
+        data: {task_id: task.id,workflow_status: WorkflowStatus.COMPLETED,
           previousStatus: WorkflowStatus.PENDING,
         },
       });
@@ -636,8 +614,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(data.data).toMatchObject({
-        taskId: task.id,
+      expect(data.data).toMatchObject({task_id: task.id,
         receivedStatus: "unknown",
         action: "ignored",
       });
@@ -676,7 +653,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should preserve task user status when updating workflow status", async () => {
       const { task } = await createTestTask();
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { status: TaskStatus.IN_PROGRESS },
       });
@@ -688,7 +665,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       await POST(request);
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -711,7 +688,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         expect(response.status).toBe(200);
       }
 
-      const finalTask = await db.task.findUnique({
+      const finalTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -726,9 +703,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   // ────────────────────────────────────────────────────────────────────────────
   describe("Auto-retry for workflow_editor terminal states", () => {
     test("first terminal webhook on workflow_editor task triggers retry, task stays IN_PROGRESS", async () => {
-      const { task } = await createWorkflowEditorTask({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        haltRetryAttempted: false,
+      const { task } = await createWorkflowEditorTask({workflow_status: WorkflowStatus.IN_PROGRESS,halt_retry_attempted: false,
         withWorkflowArtifact: true,
       });
 
@@ -750,7 +725,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(body.action).toBe("retried");
 
       // Task should be back to IN_PROGRESS, haltRetryAttempted reset to false
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.haltRetryAttempted).toBe(false);
 
@@ -763,9 +738,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
 
     test("second terminal webhook (haltRetryAttempted=true) writes terminal status and broadcasts", async () => {
-      const { task } = await createWorkflowEditorTask({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        haltRetryAttempted: true,
+      const { task } = await createWorkflowEditorTask({workflow_status: WorkflowStatus.IN_PROGRESS,halt_retry_attempted: true,
         withWorkflowArtifact: true,
       });
 
@@ -778,7 +751,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
 
       // Task should now be HALTED
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
 
       // WORKFLOW_STATUS_UPDATE should have been broadcast
@@ -801,7 +774,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
 
       // Pusher broadcast should have fired for terminal state
@@ -813,20 +786,16 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
 
     test("workflow_editor task with no WORKFLOW artifact in history — terminal status applied directly", async () => {
-      const { task } = await createWorkflowEditorTask({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        haltRetryAttempted: false,
+      const { task } = await createWorkflowEditorTask({workflow_status: WorkflowStatus.IN_PROGRESS,halt_retry_attempted: false,
         withWorkflowArtifact: false, // No WORKFLOW artifact
       });
 
       // Add only a user message (no WORKFLOW artifact)
-      await db.chatMessage.create({
-        data: {
-          taskId: task.id,
+      await db.chat_messages.create({
+        data: {task_id: task.id,
           message: "some message",
           role: ChatRole.USER,
-          status: ChatStatus.SENT,
-          contextTags: JSON.stringify([]),
+          status: ChatStatus.SENT,context_tags: JSON.stringify([]),
         },
       });
 
@@ -839,14 +808,12 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
 
       // No retry possible — task should be HALTED directly
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
     });
 
     test("FAILED terminal status also triggers retry for workflow_editor tasks", async () => {
-      const { task } = await createWorkflowEditorTask({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        haltRetryAttempted: false,
+      const { task } = await createWorkflowEditorTask({workflow_status: WorkflowStatus.IN_PROGRESS,halt_retry_attempted: false,
         withWorkflowArtifact: true,
       });
 
@@ -866,7 +833,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
       expect(body.action).toBe("retried");
 
-      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      const updatedTask = await db.tasks.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.haltRetryAttempted).toBe(false);
     });

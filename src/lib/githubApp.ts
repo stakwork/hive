@@ -59,7 +59,7 @@ export async function getUserAppTokens(
 
   if (githubOwner) {
     // Get tokens for specific GitHub org/user
-    sourceControlToken = await db.sourceControlToken.findFirst({
+    sourceControlToken = await db.source_control_tokens.findFirst({
       where: {
         userId,
         sourceControlOrg: {
@@ -73,7 +73,7 @@ export async function getUserAppTokens(
     });
   } else {
     // Get any token for this user (fallback for checking installation status)
-    sourceControlToken = await db.sourceControlToken.findFirst({
+    sourceControlToken = await db.source_control_tokens.findFirst({
       where: { userId },
       select: {
         token: true,
@@ -126,7 +126,7 @@ async function updateUserAppTokens(
   const expiresAt = expiresIn ? Math.floor(Date.now() / 1000) + expiresIn : undefined;
 
   // Find existing account first
-  const existingAccount = await db.account.findFirst({
+  const existingAccount = await db.accounts.findFirst({
     where: {
       userId,
       provider: "github",
@@ -135,7 +135,7 @@ async function updateUserAppTokens(
 
   if (existingAccount) {
     // Update existing account
-    await db.account.update({
+    await db.accounts.update({
       where: {
         id: existingAccount.id,
       },
@@ -147,7 +147,7 @@ async function updateUserAppTokens(
     });
   } else {
     // Create new account
-    await db.account.create({
+    await db.accounts.create({
       data: {
         userId,
         type: "oauth",
@@ -192,7 +192,7 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
  * Used as a fallback when no GitHub App installation token exists yet.
  */
 export async function getPersonalOAuthToken(userId: string): Promise<string | null> {
-  const account = await db.account.findFirst({
+  const account = await db.accounts.findFirst({
     where: { userId, provider: "github" },
     select: { access_token: true },
   });

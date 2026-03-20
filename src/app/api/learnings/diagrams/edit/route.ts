@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
-    const existingDiagram = await db.diagram.findUnique({ where: { id: diagramId } });
+    const existingDiagram = await db.diagrams.findUnique({ where: { id: diagramId } });
     if (!existingDiagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No mermaid diagram found in response" }, { status: 422 });
     }
 
-    const newDiagram = await db.diagram.create({
+    const newDiagram = await db.diagrams.create({
       data: {
         name: existingDiagram.name,
         body: extractedBody,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await db.diagramWorkspace.create({
+    await db.diagram_workspaces.create({
       data: {
         diagramId: newDiagram.id,
         workspaceId: workspaceAccess.workspace.id,

@@ -13,7 +13,7 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
 
   beforeEach(async () => {
     // Clean up any existing test data
-    await db.account.deleteMany({ where: { provider: "sphinx" } });
+    await db.accounts.deleteMany({ where: { provider: "sphinx" } });
   });
 
   describe("Authentication Tests", () => {
@@ -51,17 +51,15 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       // Set up a linked Sphinx account
       const encrypted = encryptionService.encryptField("lightningPubkey", testPubkey);
       const encryptedPubkey = JSON.stringify(encrypted);
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: encryptedPubkey },
+        data: {lightning_pubkey: encryptedPubkey },
       });
 
-      await db.account.create({
-        data: {
-          userId: testUserId,
+      await db.accounts.create({
+        data: {user_id: testUserId,
           type: "oauth",
-          provider: "sphinx",
-          providerAccountId: testPubkey,
+          provider: "sphinx",provider_account_id: testPubkey,
         },
       });
     });
@@ -80,15 +78,14 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify lightningPubkey was cleared
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUserId },
       });
       expect(updatedUser?.lightningPubkey).toBeNull();
 
       // Verify Sphinx account was deleted
-      const sphinxAccount = await db.account.findFirst({
-        where: {
-          userId: testUserId,
+      const sphinxAccount = await db.accounts.findFirst({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });
@@ -97,9 +94,8 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
 
     it("should work even if no Sphinx account exists", async () => {
       // Delete the Sphinx account first
-      await db.account.deleteMany({
-        where: {
-          userId: testUserId,
+      await db.accounts.deleteMany({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });
@@ -117,7 +113,7 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify lightningPubkey was still cleared
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUserId },
       });
       expect(updatedUser?.lightningPubkey).toBeNull();
@@ -125,12 +121,10 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
 
     it("should only delete Sphinx accounts, not other providers", async () => {
       // Create a GitHub account for the same user
-      await db.account.create({
-        data: {
-          userId: testUserId,
+      await db.accounts.create({
+        data: {user_id: testUserId,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "github123",
+          provider: "github",provider_account_id: "github123",
         },
       });
 
@@ -145,18 +139,16 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       expect(result.status).toBe(200);
 
       // Verify Sphinx account was deleted
-      const sphinxAccount = await db.account.findFirst({
-        where: {
-          userId: testUserId,
+      const sphinxAccount = await db.accounts.findFirst({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });
       expect(sphinxAccount).toBeNull();
 
       // Verify GitHub account still exists
-      const githubAccount = await db.account.findFirst({
-        where: {
-          userId: testUserId,
+      const githubAccount = await db.accounts.findFirst({
+        where: {user_id: testUserId,
           provider: "github",
         },
       });
@@ -172,17 +164,15 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       // Set up a linked Sphinx account
       const encrypted = encryptionService.encryptField("lightningPubkey", testPubkey);
       const encryptedPubkey = JSON.stringify(encrypted);
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: encryptedPubkey },
+        data: {lightning_pubkey: encryptedPubkey },
       });
 
-      await db.account.create({
-        data: {
-          userId: testUserId,
+      await db.accounts.create({
+        data: {user_id: testUserId,
           type: "oauth",
-          provider: "sphinx",
-          providerAccountId: testPubkey,
+          provider: "sphinx",provider_account_id: testPubkey,
         },
       });
     });
@@ -209,14 +199,13 @@ describe("DELETE /api/auth/sphinx/unlink Integration Tests", () => {
       expect(result2.status).toBe(200);
 
       // Verify state is consistent
-      const user = await db.user.findUnique({
+      const user = await db.users.findUnique({
         where: { id: testUserId },
       });
       expect(user?.lightningPubkey).toBeNull();
 
-      const sphinxAccount = await db.account.findFirst({
-        where: {
-          userId: testUserId,
+      const sphinxAccount = await db.accounts.findFirst({
+        where: {user_id: testUserId,
           provider: "sphinx",
         },
       });

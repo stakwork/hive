@@ -46,17 +46,14 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
         "test-feature-swarm-api-key"
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-feature-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: "https://test-feature-swarm.sphinx.chat",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: "https://test-feature-swarm.sphinx.chat",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
@@ -119,9 +116,9 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   });
 
   it("should return 403 for deleted workspace access", async () => {
-    await db.workspace.update({
+    await db.workspaces.update({
       where: { id: workspace.id },
-      data: { deleted: true, deletedAt: new Date() },
+      data: { deleted: true,deleted_at: new Date() },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -238,17 +235,14 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
         "test-api-key-feature-integrity"
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `feature-integrity-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: "https://feature-integrity-swarm.sphinx.chat",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: "https://feature-integrity-swarm.sphinx.chat",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
     });
@@ -275,9 +269,9 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
   });
 
   it("should return 404 when swarmUrl is not configured", async () => {
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
-      data: { swarmUrl: null },
+      data: {swarm_url: null },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -438,9 +432,9 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
   });
 
   it("should handle localhost swarm URL correctly", async () => {
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
-      data: { swarmUrl: "http://localhost:3000" },
+      data: {swarm_url: "http://localhost:3000" },
     });
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(

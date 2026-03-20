@@ -35,7 +35,7 @@ export async function seedMockData(
   }
 
   // Idempotency check - if features exist, skip seeding
-  const existingFeatures = await db.feature.count({
+  const existingFeatures = await db.features.count({
     where: { workspaceId, deleted: false },
   });
 
@@ -115,7 +115,7 @@ async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ 
 
   for (const repo of repositories) {
     // Check if repository already exists for idempotency
-    const existing = await db.repository.findFirst({
+    const existing = await db.repositories.findFirst({
       where: {
         workspaceId,
         repositoryUrl: repo.repositoryUrl,
@@ -128,7 +128,7 @@ async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ 
       continue;
     }
 
-    const created = await db.repository.create({
+    const created = await db.repositories.create({
       data: {
         ...repo,
         workspaceId,
@@ -162,7 +162,7 @@ async function seedTeamMembers(workspaceId: string): Promise<string[]> {
 
   for (const member of fakeMembers) {
     // Create user
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         name: member.name,
         email: member.email,
@@ -172,7 +172,7 @@ async function seedTeamMembers(workspaceId: string): Promise<string[]> {
     userIds.push(user.id);
 
     // Add as workspace member
-    await db.workspaceMember.create({
+    await db.workspace_members.create({
       data: {
         workspaceId,
         userId: user.id,
@@ -252,7 +252,7 @@ async function seedFeatures(
     const data = featureData[index];
     const creatorId = userIds[index % userIds.length];
     
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
         ...data,
         workspaceId,
@@ -307,7 +307,7 @@ async function seedPhases(
   }
 
   // Create the first phase separately to get its ID (tasks go here)
-  const planningPhase = await db.phase.create({
+  const planningPhase = await db.phases.create({
     data: {
       featureId,
       name: "Planning",
@@ -319,7 +319,7 @@ async function seedPhases(
   });
 
   // Create remaining phases
-  await db.phase.createMany({
+  await db.phases.createMany({
     data: [
       {
         featureId,
@@ -349,7 +349,7 @@ async function seedPhases(
 }
 
 async function seedUserStories(userId: string, featureId: string): Promise<void> {
-  await db.userStory.createMany({
+  await db.user_stories.createMany({
     data: [
       {
         featureId,
@@ -629,7 +629,7 @@ async function seedTasks(
       ? repositories[template.linkedRepositoryIndex]
       : null;
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         title: template.title,
         description: template.description,
@@ -679,11 +679,11 @@ async function seedTasks(
     // Scenario 1: Simple chain A→B→C (tasks 0, 1, 2)
     // Task 2 depends on Task 1, Task 1 depends on Task 0
     dependencyUpdates.push(
-      db.task.update({
+      db.tasks.update({
         where: { id: createdTasks[1].id },
         data: { dependsOnTaskIds: [createdTasks[0].id] },
       }),
-      db.task.update({
+      db.tasks.update({
         where: { id: createdTasks[2].id },
         data: { dependsOnTaskIds: [createdTasks[1].id] },
       })
@@ -691,7 +691,7 @@ async function seedTasks(
 
     // Scenario 2: Parallel dependencies - task depends on 2 others (task 5 depends on tasks 3 and 4)
     dependencyUpdates.push(
-      db.task.update({
+      db.tasks.update({
         where: { id: createdTasks[5].id },
         data: { dependsOnTaskIds: [createdTasks[3].id, createdTasks[4].id] },
       })
@@ -700,7 +700,7 @@ async function seedTasks(
     // Scenario 3: Cross-feature dependencies (task 7 depends on task 6)
     // These are from different features due to feature distribution in main loop
     dependencyUpdates.push(
-      db.task.update({
+      db.tasks.update({
         where: { id: createdTasks[7].id },
         data: { dependsOnTaskIds: [createdTasks[6].id] },
       })
@@ -709,7 +709,7 @@ async function seedTasks(
     // Scenario 4: Complex - task depends on multiple, including from a chain (task 9 depends on tasks 2 and 8)
     if (createdTasks.length > 9) {
       dependencyUpdates.push(
-        db.task.update({
+        db.tasks.update({
           where: { id: createdTasks[9].id },
           data: { dependsOnTaskIds: [createdTasks[2].id, createdTasks[8].id] },
         })
@@ -718,7 +718,7 @@ async function seedTasks(
 
     // Scenario 5: Another simple dependency (task 8 depends on task 6)
     dependencyUpdates.push(
-      db.task.update({
+      db.tasks.update({
         where: { id: createdTasks[8].id },
         data: { dependsOnTaskIds: [createdTasks[6].id] },
       })
@@ -742,7 +742,7 @@ async function seedChatMessagesWithArtifacts(
 ): Promise<void> {
   for (const task of tasks) {
     // User starts the conversation
-    await db.chatMessage.create({
+    await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: `I need help with: ${task.title}`,
@@ -751,7 +751,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Assistant responds with browser preview
-    const browserMsg = await db.chatMessage.create({
+    const browserMsg = await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "I've started working on the task. Here's a preview of the changes in the browser:",
@@ -760,7 +760,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Add BROWSER artifact
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: browserMsg.id,
         type: ArtifactType.BROWSER,
@@ -773,7 +773,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // User asks for implementation details
-    await db.chatMessage.create({
+    await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "Looks good! Can you show me what files you're working on?",
@@ -782,7 +782,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Assistant shows IDE artifact
-    const ideMsg = await db.chatMessage.create({
+    const ideMsg = await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "Here are the files I've been editing:",
@@ -791,7 +791,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Add IDE artifact
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: ideMsg.id,
         type: ArtifactType.IDE,
@@ -807,7 +807,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // User asks for diff
-    await db.chatMessage.create({
+    await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "Can you show me the git diff of your changes?",
@@ -816,7 +816,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Assistant shows diff
-    const diffMsg = await db.chatMessage.create({
+    const diffMsg = await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "Here's the diff of all changes made:",
@@ -825,7 +825,7 @@ async function seedChatMessagesWithArtifacts(
     });
 
     // Add DIFF artifact
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: diffMsg.id,
         type: ArtifactType.DIFF,
@@ -882,7 +882,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
     });
 
     // User provides feedback
-    await db.chatMessage.create({
+    await db.chat_messages.create({
       data: {
         taskId: task.id,
         message: "Great progress! Let me review and get back to you.",
@@ -892,7 +892,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 
     // Add GRAPH artifact (for first 2 tasks)
     if (tasks.indexOf(task) < 2) {
-      const graphMsg = await db.chatMessage.create({
+      const graphMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "I've also updated the dependency graph to show the new relationships:",
@@ -900,7 +900,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: graphMsg.id,
           type: ArtifactType.GRAPH,
@@ -921,7 +921,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 
     // Add WORKFLOW artifact (for task index 1 and 3)
     if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 3) {
-      const workflowMsg = await db.chatMessage.create({
+      const workflowMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "Here's the CI/CD workflow status for this task:",
@@ -929,7 +929,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: workflowMsg.id,
           type: ArtifactType.WORKFLOW,
@@ -948,7 +948,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 
     // Add PULL_REQUEST artifact (for done tasks)
     if (task.status === TaskStatus.DONE) {
-      const prMsg = await db.chatMessage.create({
+      const prMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "The pull request has been successfully merged:",
@@ -957,7 +957,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
       });
 
       const prNum = Math.floor(Math.random() * 1000) + 1;
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: prMsg.id,
           type: ArtifactType.PULL_REQUEST,
@@ -977,7 +977,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 
     // Add CODE artifact FIRST for task index 4 (will add FORM later as older message)
     if (tasks.indexOf(task) === 4) {
-      const oldFormMsg = await db.chatMessage.create({
+      const oldFormMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "I need some configuration details. Please fill out this form:",
@@ -986,7 +986,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: oldFormMsg.id,
           type: ArtifactType.FORM,
@@ -1011,7 +1011,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
       });
 
       // Add a newer message AFTER the form (so FORM is NOT the latest)
-      await db.chatMessage.create({
+      await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "Thanks! I've received your configuration and started implementing the caching layer.",
@@ -1023,7 +1023,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 
     // Add CODE artifact (for task index 1 and 4)
     if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 4) {
-      const codeMsg = await db.chatMessage.create({
+      const codeMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "Here's the code snippet I've been working on:",
@@ -1031,7 +1031,7 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: codeMsg.id,
           type: ArtifactType.CODE,
@@ -1056,7 +1056,7 @@ export function useAuth() {
 
     // Add MEDIA artifact (for task index 0 and 3)
     if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 3) {
-      const mediaMsg = await db.chatMessage.create({
+      const mediaMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "Here's a preview of the UI changes:",
@@ -1064,7 +1064,7 @@ export function useAuth() {
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: mediaMsg.id,
           type: ArtifactType.MEDIA,
@@ -1084,7 +1084,7 @@ export function useAuth() {
 
     // Add BUG_REPORT artifact (for task index 2)
     if (tasks.indexOf(task) === 2) {
-      const bugMsg = await db.chatMessage.create({
+      const bugMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "I've identified and documented the bug with a full stack trace:",
@@ -1092,7 +1092,7 @@ export function useAuth() {
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: bugMsg.id,
           type: ArtifactType.BUG_REPORT,
@@ -1116,7 +1116,7 @@ export function useAuth() {
 
     // Add LONGFORM artifact (for task index 1 and 3)
     if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 3) {
-      const longformMsg = await db.chatMessage.create({
+      const longformMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "I've prepared detailed documentation for this feature:",
@@ -1124,7 +1124,7 @@ export function useAuth() {
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: longformMsg.id,
           type: ArtifactType.LONGFORM,
@@ -1166,7 +1166,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
 
     // Add PUBLISH_WORKFLOW artifact (for task index 0 and 4)
     if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 4) {
-      const publishMsg = await db.chatMessage.create({
+      const publishMsg = await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "The deployment workflow has been configured and published:",
@@ -1174,7 +1174,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
         },
       });
 
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: publishMsg.id,
           type: ArtifactType.PUBLISH_WORKFLOW,
@@ -1225,7 +1225,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
 
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
-      await db.chatMessage.create({
+      await db.chat_messages.create({
         data: {
           taskId: task.id,
           message: "All changes have been reviewed and merged. The task is complete!",
@@ -1238,7 +1238,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
   // NOW add FORM artifacts for tasks 0 and 2 as the LATEST messages (to trigger notification)
   // These are created AFTER all other artifacts to ensure they are the most recent
   if (tasks.length > 0) {
-    const formMsg0 = await db.chatMessage.create({
+    const formMsg0 = await db.chat_messages.create({
       data: {
         taskId: tasks[0].id,
         message: "I need your input on the PR review. Please fill out this feedback form:",
@@ -1247,7 +1247,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
       },
     });
 
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: formMsg0.id,
         type: ArtifactType.FORM,
@@ -1275,7 +1275,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
   }
 
   if (tasks.length > 2) {
-    const formMsg2 = await db.chatMessage.create({
+    const formMsg2 = await db.chat_messages.create({
       data: {
         taskId: tasks[2].id,
         message: "I need clarification on the redirect bug fix. Please answer these questions:",
@@ -1284,7 +1284,7 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
       },
     });
 
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: formMsg2.id,
         type: ArtifactType.FORM,
@@ -1533,7 +1533,7 @@ async function seedPullRequestArtifacts(
     }
 
     // Create task
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         title: template.title,
         description: `Implementation of ${template.title.toLowerCase()}. PR #${prNumber} - ${template.prStatus}`,
@@ -1558,7 +1558,7 @@ async function seedPullRequestArtifacts(
     });
 
     // Create chat message
-    const prMsg = await db.chatMessage.create({
+    const prMsg = await db.chat_messages.create({
       data: {
         taskId: task.id,
         message:
@@ -1574,7 +1574,7 @@ async function seedPullRequestArtifacts(
     });
 
     // Create PR artifact with proper PullRequestContent interface
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: prMsg.id,
         type: ArtifactType.PULL_REQUEST,
@@ -1638,7 +1638,7 @@ async function seedJanitorData(
   workspaceId: string
 ): Promise<void> {
   // Create JanitorConfig
-  const janitorConfig = await db.janitorConfig.create({
+  const janitorConfig = await db.janitor_configs.create({
     data: {
       workspaceId,
       unitTestsEnabled: true,
@@ -1652,7 +1652,7 @@ async function seedJanitorData(
   });
 
   // Create a completed JanitorRun
-  const janitorRun = await db.janitorRun.create({
+  const janitorRun = await db.janitor_runs.create({
     data: {
       janitorConfigId: janitorConfig.id,
       janitorType: JanitorType.UNIT_TESTS,
@@ -1690,7 +1690,7 @@ async function seedJanitorData(
   ];
 
   for (const rec of recommendations) {
-    await db.janitorRecommendation.create({
+    await db.janitor_recommendations.create({
       data: {
         janitorRunId: janitorRun.id,
         workspaceId,
@@ -1704,7 +1704,7 @@ async function seedJanitorData(
   }
 
   // Add SECURITY_REVIEW and GENERAL_REFACTORING recommendations
-  const securityRun = await db.janitorRun.create({
+  const securityRun = await db.janitor_runs.create({
     data: {
       janitorConfigId: janitorConfig.id,
       janitorType: JanitorType.SECURITY_REVIEW,
@@ -1716,7 +1716,7 @@ async function seedJanitorData(
     },
   });
 
-  await db.janitorRecommendation.create({
+  await db.janitor_recommendations.create({
     data: {
       janitorRunId: securityRun.id,
       workspaceId,
@@ -1729,7 +1729,7 @@ async function seedJanitorData(
     },
   });
 
-  const refactoringRun = await db.janitorRun.create({
+  const refactoringRun = await db.janitor_runs.create({
     data: {
       janitorConfigId: janitorConfig.id,
       janitorType: JanitorType.GENERAL_REFACTORING,
@@ -1741,7 +1741,7 @@ async function seedJanitorData(
     },
   });
 
-  await db.janitorRecommendation.create({
+  await db.janitor_recommendations.create({
     data: {
       janitorRunId: refactoringRun.id,
       workspaceId,
@@ -1755,7 +1755,7 @@ async function seedJanitorData(
   });
 
   // Add FAILED JanitorRun
-  const failedRun = await db.janitorRun.create({
+  const failedRun = await db.janitor_runs.create({
     data: {
       janitorConfigId: janitorConfig.id,
       janitorType: JanitorType.INTEGRATION_TESTS,
@@ -1768,7 +1768,7 @@ async function seedJanitorData(
   });
 
   // Add RUNNING JanitorRun
-  await db.janitorRun.create({
+  await db.janitor_runs.create({
     data: {
       janitorConfigId: janitorConfig.id,
       janitorType: JanitorType.SECURITY_REVIEW,
@@ -1780,7 +1780,7 @@ async function seedJanitorData(
   });
 
   // Add DISMISSED JanitorRecommendation
-  await db.janitorRecommendation.create({
+  await db.janitor_recommendations.create({
     data: {
       janitorRunId: failedRun.id,
       workspaceId,
@@ -1794,7 +1794,7 @@ async function seedJanitorData(
   });
 
   // Add ACCEPTED JanitorRecommendation with linked task
-  const acceptedRecommendation = await db.janitorRecommendation.create({
+  const acceptedRecommendation = await db.janitor_recommendations.create({
     data: {
       janitorRunId: janitorRun.id,
       workspaceId,
@@ -1808,7 +1808,7 @@ async function seedJanitorData(
   });
 
   // Create linked task for accepted recommendation
-  await db.task.create({
+  await db.tasks.create({
     data: {
       title: acceptedRecommendation.title,
       description: acceptedRecommendation.description,
@@ -1840,7 +1840,7 @@ async function seedStakworkRuns(
     const needsAttention = features.indexOf(feature) < 2;
 
     // Architecture run (completed - needs attention for some features)
-    await db.stakworkRun.create({
+    await db.stakwork_runs.create({
       data: {
         workspaceId,
         featureId: feature.id,
@@ -1861,7 +1861,7 @@ async function seedStakworkRuns(
     });
 
     // Requirements run (completed)
-    await db.stakworkRun.create({
+    await db.stakwork_runs.create({
       data: {
         workspaceId,
         featureId: feature.id,
@@ -1892,7 +1892,7 @@ Non-Functional Requirements:
         ? WorkflowStatus.IN_PROGRESS
         : WorkflowStatus.COMPLETED;
 
-    await db.stakworkRun.create({
+    await db.stakwork_runs.create({
       data: {
         workspaceId,
         featureId: feature.id,
@@ -1925,7 +1925,7 @@ Non-Functional Requirements:
 
     // Task generation run (only for completed features)
     if (feature.title === "User Authentication") {
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           workspaceId,
           featureId: feature.id,
@@ -1962,7 +1962,7 @@ Non-Functional Requirements:
 
     // Pod repair run (for first feature)
     if (features.indexOf(feature) === 0) {
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           workspaceId,
           featureId: feature.id,
@@ -2006,7 +2006,7 @@ Non-Functional Requirements:
 
     // Pod launch failure run (for second feature)
     if (features.indexOf(feature) === 1) {
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           workspaceId,
           featureId: feature.id,
@@ -2059,7 +2059,7 @@ async function seedScreenshots(
 ): Promise<void> {
   for (const task of userJourneyTasks) {
     // Screenshot 1: Initial page load
-    await db.screenshot.create({
+    await db.screenshots.create({
       data: {
         workspaceId,
         taskId: task.id,
@@ -2074,7 +2074,7 @@ async function seedScreenshots(
     });
 
     // Screenshot 2: Form interaction
-    await db.screenshot.create({
+    await db.screenshots.create({
       data: {
         workspaceId,
         taskId: task.id,
@@ -2090,7 +2090,7 @@ async function seedScreenshots(
 
     // Screenshot 3: Success state (only for completed tasks)
     if (task.title.includes("Login")) {
-      await db.screenshot.create({
+      await db.screenshots.create({
         data: {
           workspaceId,
           taskId: task.id,
@@ -2121,7 +2121,7 @@ async function seedAttachments(
   userId: string
 ): Promise<void> {
   // Get chat messages to link attachments to
-  const messagesWithTasks = await db.chatMessage.findMany({
+  const messagesWithTasks = await db.chat_messages.findMany({
     where: {
       taskId: { in: tasks.slice(0, 5).map(t => t.id) },
       role: "ASSISTANT",
@@ -2170,7 +2170,7 @@ async function seedAttachments(
     const template = attachmentTemplates[i];
 
     // Check if attachment already exists for idempotency
-    const exists = await db.attachment.findFirst({
+    const exists = await db.attachments.findFirst({
       where: {
         AND: [
           { messageId: message.id },
@@ -2184,7 +2184,7 @@ async function seedAttachments(
     }
 
     // Create attachment
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: template.filename,
@@ -2201,7 +2201,7 @@ async function seedAttachments(
 
   // Seed image attachments for feature tasks (for Verify tab)
   // Query ASSISTANT chat messages from tasks that belong to features
-  const featureTaskMessages = await db.chatMessage.findMany({
+  const featureTaskMessages = await db.chat_messages.findMany({
     where: {
       role: "ASSISTANT",
       taskId: { not: null },
@@ -2257,7 +2257,7 @@ async function seedAttachments(
 
     for (const template of templates) {
       // Check uniqueness before insert
-      const exists = await db.attachment.findFirst({
+      const exists = await db.attachments.findFirst({
         where: {
           AND: [
             { messageId: message.id },
@@ -2271,7 +2271,7 @@ async function seedAttachments(
       }
 
       // Create image attachment
-      await db.attachment.create({
+      await db.attachments.create({
         data: {
           messageId: message.id,
           filename: template.filename,
@@ -2288,7 +2288,7 @@ async function seedAttachments(
   console.log(`[MockSeed] Created ${imageAttachmentCount} image attachments for feature tasks`);
 
   // Seed mock diagrams
-  const existingDiagrams = await db.diagram.count({
+  const existingDiagrams = await db.diagrams.count({
     where: { workspaces: { some: { workspaceId } } },
   });
 
@@ -2309,10 +2309,10 @@ async function seedAttachments(
     ];
 
     for (const seed of diagramSeeds) {
-      const diagram = await db.diagram.create({
+      const diagram = await db.diagrams.create({
         data: { name: seed.name, body: seed.body, description: null, createdBy: userId },
       });
-      await db.diagramWorkspace.create({
+      await db.diagram_workspaces.create({
         data: { diagramId: diagram.id, workspaceId },
       });
     }

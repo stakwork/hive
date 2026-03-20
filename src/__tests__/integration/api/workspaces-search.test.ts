@@ -23,57 +23,44 @@ describe("Workspace Search API - Integration Tests", () => {
     test("searches across tasks, features, and phases", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Create test data
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Call API integration",
-          description: "Implement call recording API",
-          workspaceId: workspace.id,
+          description: "Implement call recording API",workspace_id: workspace.id,
           status: TaskStatus.TODO,
-          priority: Priority.HIGH,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.HIGH,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
           title: "Call Recording Feature",
-          brief: "Add support for call recordings",
-          workspaceId: workspace.id,
+          brief: "Add support for call recordings",workspace_id: workspace.id,
           status: FeatureStatus.IN_PROGRESS,
-          priority: FeaturePriority.HIGH,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: FeaturePriority.HIGH,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
           name: "Call Storage Phase",
-          description: "Store call recordings",
-          featureId: feature.id,
+          description: "Store call recordings",feature_id: feature.id,
           status: PhaseStatus.IN_PROGRESS,
         },
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Call 4 implementation",
-          description: "Implement call 4 feature",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          phaseId: phase.id,
+          description: "Implement call 4 feature",workspace_id: workspace.id,feature_id: feature.id,phase_id: phase.id,
           status: TaskStatus.TODO,
-          priority: Priority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -139,17 +126,13 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("is case-insensitive", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "CALL API Integration",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "CALL API Integration",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -169,18 +152,14 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("searches in description fields", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Task 1",
-          description: "This task involves call recording",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          description: "This task involves call recording",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -199,19 +178,15 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("limits results to 5 per entity type", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
       // Create 10 tasks with "test" in title
       for (let i = 0; i < 10; i++) {
-        await db.task.create({
+        await db.tasks.create({
           data: {
-            title: `Test task ${i + 1}`,
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: `Test task ${i + 1}`,workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           },
         });
       }
@@ -231,8 +206,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("returns most recently updated results first", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
@@ -240,23 +214,15 @@ describe("Workspace Search API - Integration Tests", () => {
       const olderDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // 2 days ago
       const newerDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
 
-      const oldTask = await db.task.create({
+      const oldTask = await db.tasks.create({
         data: {
-          title: "Old test task",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          updatedAt: olderDate,
+          title: "Old test task",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,updated_at: olderDate,
         },
       });
 
-      const newTask = await db.task.create({
+      const newTask = await db.tasks.create({
         data: {
-          title: "New test task",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          updatedAt: newerDate,
+          title: "New test task",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,updated_at: newerDate,
         },
       });
 
@@ -276,29 +242,21 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("excludes deleted entities", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "Active test task",
-          workspaceId: workspace.id,
-          deleted: false,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Active test task",workspace_id: workspace.id,
+          deleted: false,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "Deleted test task",
-          workspaceId: workspace.id,
-          deleted: true,
-          deletedAt: new Date(),
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Deleted test task",workspace_id: workspace.id,
+          deleted: true,deleted_at: new Date(),created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -361,8 +319,7 @@ describe("Workspace Search API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         slug: "test-workspace",
       });
 
@@ -395,8 +352,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("handles empty results gracefully", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
@@ -418,33 +374,26 @@ describe("Workspace Search API - Integration Tests", () => {
 
     test("searches tasks by branch name", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: "test-workspace",
       });
 
       // Create task with branch field
-      const taskWithBranch = await db.task.create({
+      const taskWithBranch = await db.tasks.create({
         data: {
           title: "Implement feature X",
           description: "Add new feature",
-          branch: "feature/test-branch-search",
-          workspaceId: workspace.id,
+          branch: "feature/test-branch-search",workspace_id: workspace.id,
           status: TaskStatus.IN_PROGRESS,
-          priority: Priority.HIGH,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: Priority.HIGH,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create task without branch
-      await db.task.create({
+      await db.tasks.create({
         data: {
           title: "Other task",
-          description: "Different implementation",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          description: "Different implementation",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 

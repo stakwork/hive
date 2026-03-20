@@ -40,21 +40,18 @@ export async function createTestFeatureWithAutoMergeTasks(
   }
 
   // Create feature
-  const feature = await db.feature.create({
+  const feature = await db.features.create({
     data: {
       title: featureTitle ?? "Test Feature with Auto-Merge Tasks",
       brief: "Feature for testing auto-merge functionality",
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
     },
   });
 
   // Create phase
-  const phase = await db.phase.create({
+  const phase = await db.phases.create({
     data: {
-      name: phaseTitle ?? "Phase 1",
-      featureId: feature.id,
+      name: phaseTitle ?? "Phase 1",feature_id: feature.id,
       order: 0,
     },
   });
@@ -67,18 +64,13 @@ export async function createTestFeatureWithAutoMergeTasks(
     const dependsOnTaskIds = sequential && i > 0 ? [tasks[i - 1].id] : [];
     const priority = priorities ? priorities[i] : Priority.MEDIUM;
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: `Task ${i + 1} - ${autoMerge ? "Auto-merge" : "Manual merge"}`,
+        title: `Task ${i + 1} - ${auto_merge ? "Auto-merge" : "Manual merge"}`,
         description: `Test task ${i + 1} for auto-merge functionality`,
-        workspaceId,
-        featureId: feature.id,
-        phaseId: phase.id,
-        createdById: userId,
-        updatedById: userId,
+        workspaceId,feature_id: feature.id,phase_id: phase.id,created_by_id: userId,updated_by_id: userId,
         status: TaskStatus.TODO,
-        priority,
-        sourceType: "SYSTEM",
+        priority,source_type: "SYSTEM",
         autoMerge,
         dependsOnTaskIds,
         order: i,

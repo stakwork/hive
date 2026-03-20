@@ -87,7 +87,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(401);
@@ -95,7 +95,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       expect(body.success).toBe(false);
 
       // Verify no database changes occurred
-      const repo = await db.repository.findUnique({
+      const repo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
       expect(repo?.status).toBe(RepositoryStatus.SYNCED);
@@ -124,7 +124,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(400);
@@ -160,7 +160,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(400);
@@ -194,7 +194,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(202);
@@ -202,7 +202,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       expect(body.success).toBe(true);
       
       // Verify database status updated
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
       expect(updatedRepo?.status).toBe(RepositoryStatus.PENDING);
@@ -215,8 +215,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     test('should successfully process push to repository default branch', async () => {
       testSetup = await createWebhookTestScenario({
         branch: 'develop',
-        status: RepositoryStatus.SYNCED,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+        status: RepositoryStatus.SYNCED,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       // Push to repository default branch (main)
@@ -238,13 +237,13 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(202);
 
       // Verify processing occurred
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
       expect(updatedRepo?.status).toBe(RepositoryStatus.PENDING);
@@ -275,7 +274,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(202);
@@ -283,7 +282,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       expect(body.success).toBe(true);
       
       // Verify no database changes
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
       expect(updatedRepo?.status).toBe(RepositoryStatus.SYNCED);
@@ -317,13 +316,13 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(202);
 
       // Verify processing occurred
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
       expect(updatedRepo?.status).toBe(RepositoryStatus.PENDING);
@@ -353,7 +352,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: nonExistentWorkspaceId },
+        params: {workspace_id: nonExistentWorkspaceId },
       });
 
       expect(response.status).toBe(404);
@@ -383,7 +382,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(404);
@@ -396,7 +395,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       testSetup = await createWebhookTestScenario();
 
       // Delete the swarm
-      await db.swarm.delete({
+      await db.swarms.delete({
         where: { id: testSetup.swarm!.id },
       });
 
@@ -418,7 +417,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(400);
@@ -455,7 +454,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(500);
@@ -492,7 +491,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(response.status).toBe(500);
@@ -526,10 +525,10 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
 
@@ -560,10 +559,10 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: testSetup.repository.id },
       });
 
@@ -601,10 +600,10 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: testSetup.swarm!.id },
       });
 
@@ -637,7 +636,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(triggerAsyncSync).toHaveBeenCalledWith(
@@ -683,7 +682,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       expect(pusherServer.trigger).toHaveBeenCalledWith(
@@ -736,7 +735,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       // Should return 202 (acknowledged) but not process
@@ -775,7 +774,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       const response = await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       // Should succeed (signature verification passed)
@@ -806,7 +805,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       );
 
       await POST(request, {
-        params: { workspaceId: testSetup.workspace.id },
+        params: {workspace_id: testSetup.workspace.id },
       });
 
       // Verify triggerAsyncSync was called (meaning API key was successfully decrypted)

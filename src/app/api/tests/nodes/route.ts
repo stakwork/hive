@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
         if (!ignoreDirsParam) {
           finalIgnoreDirs = primaryRepo.ignoreDirs || "";
         } else if (ignoreDirsParam !== primaryRepo.ignoreDirs) {
-          await db.repository.update({
+          await db.repositories.update({
             where: { id: primaryRepo.id },
             data: { ignoreDirs: ignoreDirsParam },
           });
@@ -219,7 +219,7 @@ export async function GET(request: NextRequest) {
         if (!unitGlobParam) {
           finalUnitGlob = primaryRepo.unitGlob || "";
         } else if (unitGlobParam !== primaryRepo.unitGlob) {
-          await db.repository.update({
+          await db.repositories.update({
             where: { id: primaryRepo.id },
             data: { unitGlob: unitGlobParam },
           });
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
         if (!integrationGlobParam) {
           finalIntegrationGlob = primaryRepo.integrationGlob || "";
         } else if (integrationGlobParam !== primaryRepo.integrationGlob) {
-          await db.repository.update({
+          await db.repositories.update({
             where: { id: primaryRepo.id },
             data: { integrationGlob: integrationGlobParam },
           });
@@ -237,7 +237,7 @@ export async function GET(request: NextRequest) {
         if (!e2eGlobParam) {
           finalE2eGlob = primaryRepo.e2eGlob || "";
         } else if (e2eGlobParam !== primaryRepo.e2eGlob) {
-          await db.repository.update({
+          await db.repositories.update({
             where: { id: primaryRepo.id },
             data: { e2eGlob: e2eGlobParam },
           });
@@ -284,7 +284,7 @@ export async function GET(request: NextRequest) {
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarms.findFirst({ where });
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });

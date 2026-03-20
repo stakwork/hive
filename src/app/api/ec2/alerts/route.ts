@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       const alarmType = alarmName.includes("high-cpu") ? "high-cpu" : "low-cpu";
       const triggeredAt = new Date(stateChangeTime);
 
-      await db.ec2Alert.upsert({
+      await db.ec2_alerts.upsert({
         where: { instanceId },
         create: { instanceId, alarmName, alarmState, alarmType, stateReason, triggeredAt },
         update: { alarmName, alarmState, alarmType, stateReason, triggeredAt },

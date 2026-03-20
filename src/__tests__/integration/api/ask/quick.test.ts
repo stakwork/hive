@@ -79,8 +79,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: owner.id,
+        slug: generateUniqueId('workspace'),owner_id: owner.id,
       });
 
       const request = createPostRequest('/api/ask/quick', {
@@ -105,8 +104,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: owner.id,
+        slug: generateUniqueId('workspace'),owner_id: owner.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -134,8 +132,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -159,8 +156,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -229,8 +225,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -256,15 +251,12 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await db.swarm.create({
+      await db.swarms.create({
         data: {
-          name: 'test-swarm',
-          swarmUrl: null,
-          workspaceId: workspace.id,
+          name: 'test-swarm',swarm_url: null,workspace_id: workspace.id,
           status: 'ACTIVE',
         },
       });
@@ -292,14 +284,10 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
       const request = createAuthenticatedPostRequest(
@@ -325,19 +313,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const request = createAuthenticatedPostRequest(
@@ -366,19 +348,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const mockStream = {
@@ -427,19 +403,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       vi.mocked(streamText).mockImplementation(() => {
@@ -469,19 +439,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const mockStream = {
@@ -545,28 +509,20 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: owner.id,
+        slug: generateUniqueId('workspace'),owner_id: owner.id,
       });
 
       // Add developer as a workspace member
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: developer.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: developer.id,
           role: WorkspaceRole.DEVELOPER,
         },
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const mockStream = {
@@ -613,19 +569,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const mockStream = {
@@ -669,19 +619,13 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmUrl: 'https://test-swarm.sphinx.chat',
-        swarmApiKey: 'test-key',
+      await createTestSwarm({workspace_id: workspace.id,swarm_url: 'https://test-swarm.sphinx.chat',swarm_api_key: 'test-key',
       });
 
-      await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: 'https://github.com/test-org/test-repo',
+      await createTestRepository({workspace_id: workspace.id,repository_url: 'https://github.com/test-org/test-repo',
       });
 
       const mockStream = {
@@ -728,8 +672,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const workspace = await createTestWorkspace({
-        slug: generateUniqueId('workspace'),
-        ownerId: user.id,
+        slug: generateUniqueId('workspace'),owner_id: user.id,
       });
 
       const request = createAuthenticatedPostRequest(

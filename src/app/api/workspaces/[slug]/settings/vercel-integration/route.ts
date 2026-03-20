@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch workspace with Vercel integration fields
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug, deleted: false },
       select: {
         id: true,
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let swarmLogDrainUrl: string | null = null;
     let swarmBearerToken: string | null = null;
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
       select: { name: true, status: true, swarmApiKey: true },
     });
@@ -189,7 +189,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Update the workspace
-    const updatedWorkspace = await db.workspace.update({
+    const updatedWorkspace = await db.workspaces.update({
       where: { slug, deleted: false },
       data: {
         vercelApiToken: encryptedToken,

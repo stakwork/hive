@@ -34,8 +34,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
@@ -45,11 +44,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
           title: "Test Task",
           description: "Test task for messages",
           status: "IN_PROGRESS",
-          priority: "MEDIUM",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          workflowStatus: "IN_PROGRESS",
+          priority: "MEDIUM",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,workflow_status: "IN_PROGRESS",
         },
       });
 
@@ -71,9 +66,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
 
       // Add member to workspace
       await tx.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -104,7 +97,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -121,7 +114,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -138,7 +131,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -157,7 +150,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(400);
@@ -174,7 +167,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(400);
@@ -191,7 +184,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(400);
@@ -209,7 +202,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: nonExistentId }),
+        params: Promise.resolve({task_id: nonExistentId }),
       });
 
       expect(response?.status).toBe(404);
@@ -221,9 +214,9 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       // Soft-delete the task
-      await db.task.update({
+      await db.tasks.update({
         where: { id: testTask.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createPostRequest(
@@ -232,7 +225,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(404);
@@ -251,7 +244,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(403);
@@ -268,7 +261,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
@@ -286,7 +279,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
@@ -306,7 +299,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
@@ -327,7 +320,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
@@ -363,7 +356,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
@@ -372,9 +365,9 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       expect(data.success).toBe(true);
 
       // Verify task status was updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
-        select: { status: true, workflowStatus: true },
+        select: { status: true,workflow_status: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
@@ -411,15 +404,15 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
 
       // Verify task status was updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
-        select: { status: true, workflowStatus: true },
+        select: { status: true,workflow_status: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
@@ -435,13 +428,13 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
 
       // Verify task status was NOT changed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
         select: { status: true },
       });
@@ -460,13 +453,13 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);
 
       // Verify task status was NOT changed (case-sensitive check)
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
         select: { status: true },
       });
@@ -479,14 +472,11 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       // Create a task in TODO status
-      const todoTask = await db.task.create({
+      const todoTask = await db.tasks.create({
         data: {
           title: "TODO Task",
           status: "TODO",
-          priority: "MEDIUM",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          priority: "MEDIUM",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -509,15 +499,15 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: todoTask.id }),
+        params: Promise.resolve({task_id: todoTask.id }),
       });
 
       expect(response?.status).toBe(201);
 
       // Verify task status was updated from TODO to DONE
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: todoTask.id },
-        select: { status: true, workflowStatus: true },
+        select: { status: true,workflow_status: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
@@ -535,7 +525,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(201);

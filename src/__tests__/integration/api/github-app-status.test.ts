@@ -100,8 +100,7 @@ describe("GET /api/github/app/status", () => {
     it("should return 403 when workspace exists but user is not a member", async () => {
       const testUser = await createTestUser();
       const workspaceOwner = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: workspaceOwner.id,
+      const workspace = await createTestWorkspace({owner_id: workspaceOwner.id,
       });
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -159,7 +158,7 @@ describe("GET /api/github/app/status", () => {
       const testUser = await createTestUser();
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: undefined });
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: undefined });
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status");
       const response = await GET(request);
@@ -173,20 +172,16 @@ describe("GET /api/github/app/status", () => {
   describe("Workspace-specific token checks", () => {
     it("should return hasTokens=true when workspace is linked to SourceControlOrg and user has tokens", async () => {
       const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
-        githubOwner: "test-org",
-        githubInstallationId: 12345,
+        githubOwner: "test-org",github_installation_id: 12345,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -212,26 +207,21 @@ describe("GET /api/github/app/status", () => {
 
     it("should return hasTokens=false when workspace is linked but user has no tokens for that org", async () => {
       const testUser = await createTestUser();
-      const sourceControlOrg = await db.sourceControlOrg.create({
+      const sourceControlOrg = await db.source_control_orgs.create({
         data: {
-          id: generateUniqueId("org"),
-          githubLogin: "different-org",
-          githubInstallationId: 98765,
+          id: generateUniqueId("org"),github_login: "different-org",github_installation_id: 98765,
           name: "Different Organization",
           type: "ORG",
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-no-tokens",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace-no-tokens",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -259,21 +249,16 @@ describe("GET /api/github/app/status", () => {
   describe("Repository access verification", () => {
     it("should return hasRepoAccess=true when user has tokens and repository access", async () => {
       const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
-        githubOwner: "test-org",
-        githubInstallationId: 12345,
+        githubOwner: "test-org",github_installation_id: 12345,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-with-repo",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
-          repositoryDraft: "https://github.com/test-org/test-repo",
+          slug: "test-workspace-with-repo",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,repository_draft: "https://github.com/test-org/test-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -305,21 +290,16 @@ describe("GET /api/github/app/status", () => {
 
     it("should return hasRepoAccess=false when user has tokens but no repository access", async () => {
       const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
-        githubOwner: "test-org",
-        githubInstallationId: 12345,
+        githubOwner: "test-org",github_installation_id: 12345,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-no-access",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
-          repositoryDraft: "https://github.com/test-org/private-repo",
+          slug: "test-workspace-no-access",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,repository_draft: "https://github.com/test-org/private-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -346,20 +326,16 @@ describe("GET /api/github/app/status", () => {
 
     it("should use repositoryUrl query parameter when provided", async () => {
       const { testUser, sourceControlOrg } = await createTestUserWithGitHubTokens({
-        githubOwner: "test-org",
-        githubInstallationId: 12345,
+        githubOwner: "test-org",github_installation_id: 12345,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-query-repo",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace-query-repo",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -374,8 +350,7 @@ describe("GET /api/github/app/status", () => {
       vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
 
       const request = createGetRequest("http://localhost:3000/api/github/app/status", {
-        workspaceSlug: workspace.slug,
-        repositoryUrl: "https://github.com/test-org/custom-repo",
+        workspaceSlug: workspace.slug,repository_url: "https://github.com/test-org/custom-repo",
       });
       const response = await GET(request);
 
@@ -392,20 +367,16 @@ describe("GET /api/github/app/status", () => {
 
     it("should skip repository access check when no repository URL is available", async () => {
       const { testUser, sourceControlOrg } = await createTestUserWithGitHubTokens({
-        githubOwner: "test-org",
-        githubInstallationId: 12345,
+        githubOwner: "test-org",github_installation_id: 12345,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-no-repo-url",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: "test-workspace-no-repo-url",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -434,36 +405,28 @@ describe("GET /api/github/app/status", () => {
     // The production code properly handles this scenario, but we cannot create test data to verify it
     it.skip("should skip repository access check when installationId is missing", async () => {
       const { testUser } = await createTestUser();
-      const sourceControlOrg = await db.sourceControlOrg.create({
+      const sourceControlOrg = await db.source_control_orgs.create({
         data: {
-          id: generateUniqueId("org"),
-          githubLogin: "test-org",
-          githubInstallationId: null, // Missing installation ID
+          id: generateUniqueId("org"),github_login: "test-org",github_installation_id: null, // Missing installation ID
           name: "Test Organization",
           type: "ORG",
         },
       });
 
-      const sourceControlToken = await db.sourceControlToken.create({
+      const sourceControlToken = await db.source_control_tokens.create({
         data: {
-          id: generateUniqueId("token"),
-          userId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          id: generateUniqueId("token"),user_id: testUser.id,source_control_org_id: sourceControlOrg.id,
           token: JSON.stringify({ data: "encrypted", iv: "test", tag: "test", version: "v1", encryptedAt: new Date().toISOString() }),
         },
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: "test-workspace-no-installation",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
-          repositoryDraft: "https://github.com/test-org/test-repo",
+          slug: "test-workspace-no-installation",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,repository_draft: "https://github.com/test-org/test-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -492,20 +455,16 @@ describe("GET /api/github/app/status", () => {
   describe("Workspace auto-linking", () => {
     it("should auto-link workspace to existing SourceControlOrg when repository URL matches githubLogin", async () => {
       const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
-        githubOwner: "existing-org",
-        githubInstallationId: 98765,
+        githubOwner: "existing-org",github_installation_id: 98765,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Unlinked Workspace",
-          slug: "unlinked-workspace",
-          ownerId: testUser.id,
-          repositoryDraft: "https://github.com/existing-org/test-repo",
+          slug: "unlinked-workspace",owner_id: testUser.id,repository_draft: "https://github.com/existing-org/test-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -530,7 +489,7 @@ describe("GET /api/github/app/status", () => {
       expect(data.hasRepoAccess).toBe(true);
 
       // Verify workspace was linked
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(updatedWorkspace?.sourceControlOrgId).toBe(sourceControlOrg.id);
@@ -544,16 +503,13 @@ describe("GET /api/github/app/status", () => {
 
     it("should return hasTokens=false when workspace is unlinked and no matching SourceControlOrg exists", async () => {
       const testUser = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Unlinked Workspace",
-          slug: "unlinked-workspace-no-org",
-          ownerId: testUser.id,
-          repositoryDraft: "https://github.com/nonexistent-org/test-repo",
+          slug: "unlinked-workspace-no-org",owner_id: testUser.id,repository_draft: "https://github.com/nonexistent-org/test-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -580,15 +536,13 @@ describe("GET /api/github/app/status", () => {
 
     it("should return hasTokens=false and hasRepoAccess=false when workspace has no repository URL", async () => {
       const testUser = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Empty Workspace",
-          slug: "empty-workspace",
-          ownerId: testUser.id,
+          slug: "empty-workspace",owner_id: testUser.id,
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -614,20 +568,16 @@ describe("GET /api/github/app/status", () => {
 
     it("should handle SSH repository URL format for auto-linking", async () => {
       const { testUser, sourceControlOrg } = await createTestUserWithGitHubTokens({
-        githubOwner: "ssh-org",
-        githubInstallationId: 11111,
+        githubOwner: "ssh-org",github_installation_id: 11111,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "SSH Workspace",
-          slug: "ssh-workspace",
-          ownerId: testUser.id,
-          repositoryDraft: "git@github.com:ssh-org/test-repo.git",
+          slug: "ssh-workspace",owner_id: testUser.id,repository_draft: "git@github.com:ssh-org/test-repo.git",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -652,7 +602,7 @@ describe("GET /api/github/app/status", () => {
       expect(data.hasRepoAccess).toBe(true);
 
       // Verify auto-linking occurred
-      const updatedWorkspace = await db.workspace.findUnique({
+      const updatedWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(updatedWorkspace?.sourceControlOrgId).toBe(sourceControlOrg.id);
@@ -685,21 +635,16 @@ describe("GET /api/github/app/status", () => {
     // Fix in separate PR: Review token checking logic in route.ts
     it.skip("should return hasRepoAccess=false when checkRepositoryAccess throws error", async () => {
       const { testUser, sourceControlOrg } = await createTestUserWithGitHubTokens({
-        githubOwner: "error-org",
-        githubInstallationId: 99999,
+        githubOwner: "error-org",github_installation_id: 99999,
       });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Error Workspace",
-          slug: "error-workspace",
-          ownerId: testUser.id,
-          sourceControlOrgId: sourceControlOrg.id,
-          repositoryDraft: "https://github.com/error-org/test-repo",
+          slug: "error-workspace",owner_id: testUser.id,source_control_org_id: sourceControlOrg.id,repository_draft: "https://github.com/error-org/test-repo",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },
@@ -745,16 +690,13 @@ describe("GET /api/github/app/status", () => {
 
     it("should handle malformed repository URL gracefully", async () => {
       const testUser = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Malformed URL Workspace",
-          slug: "malformed-url-workspace",
-          ownerId: testUser.id,
-          repositoryDraft: "not-a-valid-url",
+          slug: "malformed-url-workspace",owner_id: testUser.id,repository_draft: "not-a-valid-url",
           members: {
-            create: {
-              userId: testUser.id,
+            create: {user_id: testUser.id,
               role: "OWNER",
             },
           },

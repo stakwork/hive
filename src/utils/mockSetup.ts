@@ -23,7 +23,7 @@ let mockGitHubIdCounter = 100000;
 export async function ensureMockWorkspaceForUser(
   userId: string,
 ): Promise<string> {
-  const existing = await db.workspace.findFirst({
+  const existing = await db.workspaces.findFirst({
     where: { ownerId: userId, deleted: false },
     select: { id: true, slug: true },
   });
@@ -33,12 +33,12 @@ export async function ensureMockWorkspaceForUser(
   const baseSlug = "mock-stakgraph";
   let slugCandidate = baseSlug;
   let suffix = 1;
-  while (await db.workspace.findUnique({ where: { slug: slugCandidate } })) {
+  while (await db.workspaces.findUnique({ where: { slug: slugCandidate } })) {
     slugCandidate = `${baseSlug}-${++suffix}`;
   }
 
   // Get user info for building mock GitHub username
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
     select: { name: true, email: true },
   });
@@ -74,7 +74,7 @@ export async function ensureMockWorkspaceForUser(
   // Wrap all DB operations in transaction to prevent partial state
   const workspace = await db.$transaction(async (tx) => {
     // 1. Create GitHubAuth record (links user to their GitHub identity)
-    await tx.gitHubAuth.upsert({
+    await tx.github_auth.upsert({
       where: { userId },
       create: {
         userId,
@@ -95,7 +95,7 @@ export async function ensureMockWorkspaceForUser(
     });
 
     // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
-    const sourceControlOrg = await tx.sourceControlOrg.upsert({
+    const sourceControlOrg = await tx.source_control_orgs.upsert({
       where: { githubLogin: mockGitHubUsername },
       create: {
         type: SourceControlOrgType.USER,
@@ -111,7 +111,7 @@ export async function ensureMockWorkspaceForUser(
 
     // 3. Create SourceControlToken (encrypted GitHub App tokens for API access)
     if (encryptedGitHubToken) {
-      await tx.sourceControlToken.upsert({
+      await tx.source_control_tokens.upsert({
         where: {
           userId_sourceControlOrgId: {
             userId,
@@ -135,7 +135,7 @@ export async function ensureMockWorkspaceForUser(
     }
 
     // 4. Create workspace linked to the SourceControlOrg
-    const workspace = await tx.workspace.create({
+    const workspace = await tx.workspaces.create({
       data: {
         name: "Mock Workspace",
         description: "Development workspace (mock)",
@@ -149,7 +149,7 @@ export async function ensureMockWorkspaceForUser(
     });
 
     // Optional repository seed to satisfy UIs expecting a repository
-    await tx.repository.create({
+    await tx.repositories.create({
       data: {
         name: "hive",
         repositoryUrl: "https://github.com/stakwork/hive",
@@ -168,7 +168,7 @@ export async function ensureMockWorkspaceForUser(
       },
     });
 
-    await tx.swarm.create({
+    await tx.swarms.create({
       data: {
         name: slugify(`${workspace.slug}-swarm`),
         status: SwarmStatus.ACTIVE,
@@ -219,7 +219,7 @@ export async function ensureStakworkMockWorkspace(
   const STAKWORK_SLUG = "stakwork";
 
   // Check if workspace with production ID already exists (idempotent)
-  const existing = await db.workspace.findUnique({
+  const existing = await db.workspaces.findUnique({
     where: { id: STAKWORK_WORKSPACE_ID },
     select: { id: true, slug: true },
   });
@@ -227,7 +227,7 @@ export async function ensureStakworkMockWorkspace(
   if (existing?.slug) return existing.slug;
 
   // Get user info for building mock GitHub username
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
     select: { name: true, email: true },
   });
@@ -261,7 +261,7 @@ export async function ensureStakworkMockWorkspace(
   // Wrap all DB operations in transaction to prevent partial state
   const workspace = await db.$transaction(async (tx) => {
     // 1. Create GitHubAuth record (links user to their GitHub identity)
-    await tx.gitHubAuth.upsert({
+    await tx.github_auth.upsert({
       where: { userId },
       create: {
         userId,
@@ -282,7 +282,7 @@ export async function ensureStakworkMockWorkspace(
     });
 
     // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
-    const sourceControlOrg = await tx.sourceControlOrg.upsert({
+    const sourceControlOrg = await tx.source_control_orgs.upsert({
       where: { githubLogin: mockGitHubUsername },
       create: {
         githubLogin: mockGitHubUsername,
@@ -297,7 +297,7 @@ export async function ensureStakworkMockWorkspace(
 
     // 3. Create SourceControlToken (encrypted GitHub App tokens for API access)
     if (encryptedGitHubToken) {
-      await tx.sourceControlToken.upsert({
+      await tx.source_control_tokens.upsert({
         where: {
           userId_sourceControlOrgId: {
             userId,
@@ -321,7 +321,7 @@ export async function ensureStakworkMockWorkspace(
     }
 
     // 4. Create workspace with hardcoded production ID and slug
-    const workspace = await tx.workspace.create({
+    const workspace = await tx.workspaces.create({
       data: {
         id: STAKWORK_WORKSPACE_ID,
         name: "Stakwork",
@@ -336,7 +336,7 @@ export async function ensureStakworkMockWorkspace(
     });
 
     // 5. Create WorkspaceMember record (role=OWNER for the user)
-    await tx.workspaceMember.create({
+    await tx.workspace_members.create({
       data: {
         workspaceId: workspace.id,
         userId,
@@ -346,7 +346,7 @@ export async function ensureStakworkMockWorkspace(
     });
 
     // 6. Create Repository record for "hive"
-    await tx.repository.create({
+    await tx.repositories.create({
       data: {
         name: "hive",
         repositoryUrl: "https://github.com/stakwork/hive",
@@ -366,7 +366,7 @@ export async function ensureStakworkMockWorkspace(
     });
 
     // 7. Create Swarm record with poolState=COMPLETE and podState=COMPLETED
-    await tx.swarm.create({
+    await tx.swarms.create({
       data: {
         name: slugify(`${workspace.slug}-swarm`),
         status: SwarmStatus.ACTIVE,

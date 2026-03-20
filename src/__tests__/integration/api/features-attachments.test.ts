@@ -27,8 +27,8 @@ vi.mock("@/lib/auth/nextauth", () => ({
 describe("GET /api/features/[featureId]/attachments", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
-  let testFeature: Awaited<ReturnType<typeof db.feature.create>>;
-  let testTask: Awaited<ReturnType<typeof db.task.create>>;
+  let testFeature: Awaited<ReturnType<typeof db.features.create>>;
+  let testTask: Awaited<ReturnType<typeof db.tasks.create>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -39,7 +39,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
     
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     // Mock session for auth
     vi.mocked(getServerSession).mockResolvedValue({
@@ -50,12 +50,9 @@ describe("GET /api/features/[featureId]/attachments", () => {
       },
     } as any);
 
-    testFeature = await db.feature.create({
+    testFeature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Test Feature",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         phases: {
           create: {
             name: "Phase 1",
@@ -65,43 +62,36 @@ describe("GET /api/features/[featureId]/attachments", () => {
       },
     });
 
-    testTask = await db.task.create({
+    testTask = await db.tasks.create({
       data: {
-        title: "Test Task",
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Test Task",workspace_id: testWorkspace.id,feature_id: testFeature.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
   });
 
   afterEach(async () => {
-    await db.attachment.deleteMany({ where: { message: { taskId: testTask.id } } });
-    await db.chatMessage.deleteMany({ where: { taskId: testTask.id } });
-    await db.task.delete({ where: { id: testTask.id } });
-    await db.phase.deleteMany({ where: { featureId: testFeature.id } });
-    await db.feature.delete({ where: { id: testFeature.id } });
-    await db.workspaceMember.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspace.delete({ where: { id: testWorkspace.id } });
-    await db.user.delete({ where: { id: testUser.id } });
+    await db.attachments.deleteMany({ where: { message: {task_id: testTask.id } } });
+    await db.chat_messages.deleteMany({ where: {task_id: testTask.id } });
+    await db.tasks.delete({ where: { id: testTask.id } });
+    await db.phases.deleteMany({ where: {feature_id: testFeature.id } });
+    await db.features.delete({ where: { id: testFeature.id } });
+    await db.workspace_members.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspaces.delete({ where: { id: testWorkspace.id } });
+    await db.users.delete({ where: { id: testUser.id } });
   });
 
   it("should return image attachments for feature tasks", async () => {
     // Create a chat message
-    const message = await db.chatMessage.create({
-      data: {
-        taskId: testTask.id,
-        userId: testUser.id,
+    const message = await db.chat_messages.create({
+      data: {task_id: testTask.id,user_id: testUser.id,
         message: "Task completed",
         role: ChatRole.ASSISTANT,
-        status: "SENT",
-        contextTags: "[]",
+        status: "SENT",context_tags: "[]",
       },
     });
 
     // Create image attachments
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "screenshot-1.jpg",
@@ -111,7 +101,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
       },
     });
 
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "screenshot-2.png",
@@ -135,7 +125,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: testFeature.id }),
+      params: Promise.resolve({feature_id: testFeature.id }),
     });
 
     expect(response.status).toBe(200);
@@ -144,33 +134,28 @@ describe("GET /api/features/[featureId]/attachments", () => {
     expect(data.attachments).toHaveLength(2);
     expect(data.attachments[0]).toMatchObject({
       filename: "screenshot-1.jpg",
-      mimeType: "image/jpeg",
-      taskId: testTask.id,
+      mimeType: "image/jpeg",task_id: testTask.id,
       taskTitle: "Test Task",
     });
     expect(data.attachments[0].url).toBeDefined();
     expect(data.attachments[1]).toMatchObject({
       filename: "screenshot-2.png",
-      mimeType: "image/png",
-      taskId: testTask.id,
+      mimeType: "image/png",task_id: testTask.id,
       taskTitle: "Test Task",
     });
   });
 
   it("should exclude non-image attachments", async () => {
-    const message = await db.chatMessage.create({
-      data: {
-        taskId: testTask.id,
-        userId: testUser.id,
+    const message = await db.chat_messages.create({
+      data: {task_id: testTask.id,user_id: testUser.id,
         message: "Task completed",
         role: ChatRole.ASSISTANT,
-        status: "SENT",
-        contextTags: "[]",
+        status: "SENT",context_tags: "[]",
       },
     });
 
     // Create image attachment
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "screenshot.png",
@@ -181,7 +166,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     });
 
     // Create non-image attachments
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "error.log",
@@ -191,7 +176,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
       },
     });
 
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "config.json",
@@ -214,7 +199,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: testFeature.id }),
+      params: Promise.resolve({feature_id: testFeature.id }),
     });
 
     expect(response.status).toBe(200);
@@ -225,29 +210,22 @@ describe("GET /api/features/[featureId]/attachments", () => {
   });
 
   it("should exclude attachments from deleted tasks", async () => {
-    const deletedTask = await db.task.create({
+    const deletedTask = await db.tasks.create({
       data: {
-        title: "Deleted Task",
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        title: "Deleted Task",workspace_id: testWorkspace.id,feature_id: testFeature.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         deleted: true,
       },
     });
 
-    const message = await db.chatMessage.create({
-      data: {
-        taskId: deletedTask.id,
-        userId: testUser.id,
+    const message = await db.chat_messages.create({
+      data: {task_id: deletedTask.id,user_id: testUser.id,
         message: "Task completed",
         role: ChatRole.ASSISTANT,
-        status: "SENT",
-        contextTags: "[]",
+        status: "SENT",context_tags: "[]",
       },
     });
 
-    await db.attachment.create({
+    await db.attachments.create({
       data: {
         messageId: message.id,
         filename: "screenshot.png",
@@ -270,7 +248,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: testFeature.id }),
+      params: Promise.resolve({feature_id: testFeature.id }),
     });
 
     expect(response.status).toBe(200);
@@ -279,9 +257,9 @@ describe("GET /api/features/[featureId]/attachments", () => {
     expect(data.attachments).toHaveLength(0);
 
     // Cleanup
-    await db.attachment.deleteMany({ where: { message: { taskId: deletedTask.id } } });
-    await db.chatMessage.deleteMany({ where: { taskId: deletedTask.id } });
-    await db.task.delete({ where: { id: deletedTask.id } });
+    await db.attachments.deleteMany({ where: { message: {task_id: deletedTask.id } } });
+    await db.chat_messages.deleteMany({ where: {task_id: deletedTask.id } });
+    await db.tasks.delete({ where: { id: deletedTask.id } });
   });
 
   it("should return empty array when no image attachments exist", async () => {
@@ -298,7 +276,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: testFeature.id }),
+      params: Promise.resolve({feature_id: testFeature.id }),
     });
 
     expect(response.status).toBe(200);
@@ -313,7 +291,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: testFeature.id }),
+      params: Promise.resolve({feature_id: testFeature.id }),
     });
 
     expect(response.status).toBe(401);
@@ -333,7 +311,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
     );
 
     const response = await GET(request, {
-      params: Promise.resolve({ featureId: "non-existent-id" }),
+      params: Promise.resolve({feature_id: "non-existent-id" }),
     });
 
     expect(response.status).toBe(404);

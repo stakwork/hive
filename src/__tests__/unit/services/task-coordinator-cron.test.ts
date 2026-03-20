@@ -4,14 +4,11 @@ import { JanitorTestDataFactory } from "@/__tests__/support/fixtures";
 
 // Mock all dependencies at module level
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findMany: vi.fn(),
-    },
-    janitorRecommendation: {
+    },janitor_recommendations: {
       findMany: vi.fn(),
-    },
-    task: {
+    },tasks: {
       findMany: vi.fn(),
       update: vi.fn(),
     },
@@ -50,7 +47,7 @@ const { executeTaskCoordinatorRuns, processTicketSweep, areDependenciesSatisfied
 // Test Helpers - Setup and assertion utilities
 const TestHelpers = {
   setupWorkspaceWithConfig: (workspaces: any[] = [JanitorTestDataFactory.createValidWorkspace()]) => {
-    vi.mocked(mockDb.workspace.findMany).mockResolvedValue(workspaces as any);
+    vi.mocked(mockDb.workspaces.findMany).mockResolvedValue(workspaces as any);
   },
 
   setupPoolManagerResponse: (unusedVms: number) => {
@@ -66,7 +63,7 @@ const TestHelpers = {
   },
 
   setupRecommendations: (recommendations: any[] = []) => {
-    vi.mocked(mockDb.janitorRecommendation.findMany).mockResolvedValue(recommendations as any);
+    vi.mocked(mockDb.janitor_recommendations.findMany).mockResolvedValue(recommendations as any);
   },
 
   setupAcceptRecommendationSuccess: () => {
@@ -80,7 +77,7 @@ const TestHelpers = {
   },
 
   expectWorkspaceQueryCalled: () => {
-    expect(mockDb.workspace.findMany).toHaveBeenCalledWith({
+    expect(mockDb.workspaces.findMany).toHaveBeenCalledWith({
       where: {
         janitorConfig: {
           OR: [
@@ -108,7 +105,7 @@ const TestHelpers = {
   },
 
   expectRecommendationsQueryCalled: (workspaceId: string) => {
-    expect(mockDb.janitorRecommendation.findMany).toHaveBeenCalledWith({
+    expect(mockDb.janitor_recommendations.findMany).toHaveBeenCalledWith({
       where: {
         status: "PENDING",
         janitorRun: {
@@ -186,8 +183,8 @@ const MockSetup = {
   reset: () => {
     vi.clearAllMocks();
     // Mock empty task list by default (no stale tasks)
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.update).mockResolvedValue({} as any);
     vi.mocked(mockStartTaskWorkflow).mockResolvedValue(undefined as any);
   },
 
@@ -252,7 +249,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      expect(mockDb.workspace.findMany).toHaveBeenCalledWith(
+      expect(mockDb.workspaces.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
             janitorConfig: true,
@@ -413,7 +410,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      expect(mockDb.janitorRecommendation.findMany).toHaveBeenCalledWith(
+      expect(mockDb.janitor_recommendations.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: [
             { priority: "desc" },
@@ -428,7 +425,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      expect(mockDb.janitorRecommendation.findMany).toHaveBeenCalledWith(
+      expect(mockDb.janitor_recommendations.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           take: 1,
         })
@@ -750,7 +747,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
   describe("Error Handling - Critical Failures", () => {
     test("should return system error when workspace query fails", async () => {
-      vi.mocked(mockDb.workspace.findMany).mockRejectedValue(new Error("Database connection lost"));
+      vi.mocked(mockDb.workspaces.findMany).mockRejectedValue(new Error("Database connection lost"));
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -765,7 +762,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
     test("should log critical error to console", async () => {
       const consoleErrorSpy = vi.spyOn(console, "error");
-      vi.mocked(mockDb.workspace.findMany).mockRejectedValue(new Error("Fatal database error"));
+      vi.mocked(mockDb.workspaces.findMany).mockRejectedValue(new Error("Fatal database error"));
 
       await executeTaskCoordinatorRuns();
 
@@ -778,7 +775,7 @@ describe("executeTaskCoordinatorRuns", () => {
     });
 
     test("should handle non-Error thrown values", async () => {
-      vi.mocked(mockDb.workspace.findMany).mockRejectedValue("String error");
+      vi.mocked(mockDb.workspaces.findMany).mockRejectedValue("String error");
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -966,7 +963,7 @@ describe("executeTaskCoordinatorRuns", () => {
       // 5 eligible candidate tasks (no deps)
       const candidates = Array.from({ length: 5 }, () => createCandidateTask());
       // findMany called twice: first for stale tasks (returns []), then for ticket sweep candidates
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any); // ticket sweep candidates
 
@@ -985,7 +982,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       // Only 2 eligible candidates
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any);
 
@@ -1003,7 +1000,7 @@ describe("executeTaskCoordinatorRuns", () => {
       TestHelpers.setupPoolManagerResponse(2); // slotsAvailable = 1
 
       const candidates = Array.from({ length: 3 }, () => createCandidateTask());
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce(candidates as any);
 
@@ -1031,12 +1028,12 @@ describe("executeTaskCoordinatorRuns", () => {
       // ws-1 → 3 candidates (slotsAvailable=3), ws-2 → 2 candidates (slotsAvailable=2)
       const ws1Candidates = Array.from({ length: 3 }, () => createCandidateTask());
       const ws2Candidates = Array.from({ length: 2 }, () => createCandidateTask());
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([])          // stale tasks
         .mockResolvedValueOnce(ws1Candidates as any) // ws-1 ticket sweep
         .mockResolvedValueOnce(ws2Candidates as any); // ws-2 ticket sweep
 
-      vi.mocked(mockDb.janitorRecommendation.findMany).mockResolvedValue([]);
+      vi.mocked(mockDb.janitor_recommendations.findMany).mockResolvedValue([]);
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -1051,7 +1048,7 @@ describe("executeTaskCoordinatorRuns", () => {
       TestHelpers.setupPoolManagerResponse(4); // slotsAvailable = 3
 
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce(candidates as any);
 
@@ -1072,7 +1069,7 @@ describe("executeTaskCoordinatorRuns", () => {
       TestHelpers.setupPoolManagerResponse(3); // slotsAvailable = 2
 
       const candidates = [createCandidateTask()];
-      vi.mocked(mockDb.task.findMany)
+      vi.mocked(mockDb.tasks.findMany)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce(candidates as any);
 
@@ -1098,7 +1095,7 @@ describe("executeTaskCoordinatorRuns", () => {
         },
       });
       // Override mock to return workspace despite filter
-      vi.mocked(mockDb.workspace.findMany).mockResolvedValue([workspace] as any);
+      vi.mocked(mockDb.workspaces.findMany).mockResolvedValue([workspace] as any);
       TestHelpers.setupPoolManagerResponse(3);
       TestHelpers.setupRecommendations([]);
 
@@ -1123,7 +1120,7 @@ describe("executeTaskCoordinatorRuns", () => {
         ...JanitorTestDataFactory.createValidWorkspace(),
         janitorConfig: null,
       };
-      vi.mocked(mockDb.workspace.findMany).mockResolvedValue([workspace] as any);
+      vi.mocked(mockDb.workspaces.findMany).mockResolvedValue([workspace] as any);
 
       const result = await executeTaskCoordinatorRuns();
 
@@ -1210,7 +1207,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const rec1 = JanitorTestDataFactory.createPendingRecommendation("HIGH");
       const rec2 = JanitorTestDataFactory.createPendingRecommendation("MEDIUM");
 
-      vi.mocked(mockDb.janitorRecommendation.findMany)
+      vi.mocked(mockDb.janitor_recommendations.findMany)
         .mockResolvedValueOnce([rec1] as any)
         .mockResolvedValueOnce([rec2] as any);
 
@@ -1231,7 +1228,7 @@ describe("executeTaskCoordinatorRuns", () => {
 describe("processTicketSweep", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValue([]);
     vi.mocked(mockStartTaskWorkflow).mockResolvedValue(undefined as any);
   });
 
@@ -1241,7 +1238,7 @@ describe("processTicketSweep", () => {
 
   test("multiple slots filled: 5 slots, 5 eligible tasks → returns 5, startTaskWorkflow called 5 times", async () => {
     const candidates = Array.from({ length: 5 }, () => createCandidateTask());
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce(candidates as any);
 
     const result = await processTicketSweep("ws-1", "workspace-1", 5);
 
@@ -1251,7 +1248,7 @@ describe("processTicketSweep", () => {
 
   test("partial fill: 5 slots, 2 eligible tasks → returns 2, startTaskWorkflow called 2 times", async () => {
     const candidates = Array.from({ length: 2 }, () => createCandidateTask());
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce(candidates as any);
 
     const result = await processTicketSweep("ws-1", "workspace-1", 5);
 
@@ -1265,7 +1262,7 @@ describe("processTicketSweep", () => {
     const candidates = Array.from({ length: 5 }, () =>
       createCandidateTask({ dependsOnTaskIds: [blockerId] })
     );
-    vi.mocked(mockDb.task.findMany)
+    vi.mocked(mockDb.tasks.findMany)
       .mockResolvedValueOnce(candidates as any) // candidates query
       .mockResolvedValue([] as any);            // areDependenciesSatisfied batch fetch (returns 0 tasks → length mismatch)
 
@@ -1277,7 +1274,7 @@ describe("processTicketSweep", () => {
 
   test("single slot (slotsAvailable = 1): returns 1, only one workflow started", async () => {
     const candidates = Array.from({ length: 3 }, () => createCandidateTask());
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce(candidates as any);
 
     const result = await processTicketSweep("ws-1", "workspace-1", 1);
 
@@ -1301,7 +1298,7 @@ describe("processTicketSweep", () => {
     // Candidates query returns the 8 candidates
     // areDependenciesSatisfied for tasks with deps will call task.findMany and get 0 results → unmet
     // areDependenciesSatisfied for tasks without deps returns true immediately (no DB call)
-    vi.mocked(mockDb.task.findMany)
+    vi.mocked(mockDb.tasks.findMany)
       .mockResolvedValueOnce(candidates as any) // candidates query
       .mockResolvedValue([] as any);            // dep checks for the 3 blocked tasks
 
@@ -1312,7 +1309,7 @@ describe("processTicketSweep", () => {
   });
 
   test("no candidates: returns 0 immediately", async () => {
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce([] as any);
 
     const result = await processTicketSweep("ws-1", "workspace-1", 5);
 
@@ -1322,7 +1319,7 @@ describe("processTicketSweep", () => {
 
   test("workflow error on one task does not abort sweep — already dispatched count is preserved", async () => {
     const candidates = Array.from({ length: 3 }, () => createCandidateTask());
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce(candidates as any);
 
     // Second task throws, first and third succeed
     vi.mocked(mockStartTaskWorkflow)
@@ -1338,22 +1335,22 @@ describe("processTicketSweep", () => {
   });
 
   test("uses Math.max(slotsAvailable * 3, 20) as take for candidate query", async () => {
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce([] as any);
 
     // slotsAvailable=3 → take = max(9, 20) = 20
     await processTicketSweep("ws-1", "workspace-1", 3);
 
-    expect(mockDb.task.findMany).toHaveBeenCalledWith(
+    expect(mockDb.tasks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 20 })
     );
 
     vi.clearAllMocks();
-    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+    vi.mocked(mockDb.tasks.findMany).mockResolvedValueOnce([] as any);
 
     // slotsAvailable=10 → take = max(30, 20) = 30
     await processTicketSweep("ws-1", "workspace-1", 10);
 
-    expect(mockDb.task.findMany).toHaveBeenCalledWith(
+    expect(mockDb.tasks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 30 })
     );
   });

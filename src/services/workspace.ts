@@ -63,7 +63,7 @@ export async function createWorkspace(
   }
 
   // Check workspace limit for the user
-  const existingWorkspacesCount = await db.workspace.count({
+  const existingWorkspacesCount = await db.workspaces.count({
     where: { ownerId: data.ownerId, deleted: false },
   });
 
@@ -72,7 +72,7 @@ export async function createWorkspace(
   }
 
   // Check if the slug already exists
-  const existing = await db.workspace.findUnique({
+  const existing = await db.workspaces.findUnique({
     where: { slug: data.slug, deleted: false },
     select: { id: true },
   });
@@ -82,7 +82,7 @@ export async function createWorkspace(
   }
 
   try {
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: data.name,
         description: data.description,
@@ -119,7 +119,7 @@ export async function createWorkspace(
 export async function getWorkspacesByUserId(
   userId: string,
 ): Promise<WorkspaceResponse[]> {
-  const workspaces = await db.workspace.findMany({
+  const workspaces = await db.workspaces.findMany({
     where: { ownerId: userId, deleted: false },
   });
 
@@ -139,7 +139,7 @@ export async function getWorkspaceById(
   userId: string,
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       id: workspaceId,
       deleted: false,
@@ -200,7 +200,7 @@ export async function getWorkspaceById(
   }
 
   // Check if user is a member
-  const membership = await db.workspaceMember.findFirst({
+  const membership = await db.workspace_members.findFirst({
     where: {
       workspaceId: workspace.id,
       userId,
@@ -252,7 +252,7 @@ export async function getWorkspaceBySlug(
   options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       slug,
       deleted: false,
@@ -348,7 +348,7 @@ export async function getWorkspaceBySlug(
   }
 
   // Check if user is a member
-  const membership = await db.workspaceMember.findFirst({
+  const membership = await db.workspace_members.findFirst({
     where: {
       workspaceId: workspace.id,
       userId,
@@ -399,13 +399,13 @@ export async function getUserWorkspaces(
 ): Promise<WorkspaceWithRole[]> {
   // Get all workspaces the user owns or is a member of in a single query
   const [ownedWorkspaces, memberships] = await Promise.all([
-    db.workspace.findMany({
+    db.workspaces.findMany({
       where: {
         ownerId: userId,
         deleted: false,
       },
     }),
-    db.workspaceMember.findMany({
+    db.workspace_members.findMany({
       where: {
         userId,
         leftAt: null,
@@ -427,7 +427,7 @@ export async function getUserWorkspaces(
   ];
 
   // Query self-referencing WorkspaceMember records for owners to get lastAccessedAt
-  const ownerMemberships = await db.workspaceMember.findMany({
+  const ownerMemberships = await db.workspace_members.findMany({
     where: {
       workspaceId: { in: ownedWorkspaces.map(w => w.id) },
       userId,
@@ -447,7 +447,7 @@ export async function getUserWorkspaces(
   // Get all member counts in a single query if we have workspace IDs
   const memberCountMap: Record<string, number> = {};
   if (allWorkspaceIds.length > 0) {
-    const allMembers = await db.workspaceMember.findMany({
+    const allMembers = await db.workspace_members.findMany({
       where: {
         workspaceId: { in: allWorkspaceIds },
         leftAt: null,
@@ -547,7 +547,7 @@ export async function validateWorkspaceAccess(
 
   // If allowOwner is false and user is the owner, check actual membership role
   if (!allowOwner && workspace.ownerId === userId) {
-    const membership = await db.workspaceMember.findUnique({
+    const membership = await db.workspace_members.findUnique({
       where: {
         workspaceId_userId: {
           workspaceId: workspace.id,
@@ -618,7 +618,7 @@ export async function validateWorkspaceAccessById(
 
   // If allowOwner is false and user is the owner, check actual membership role
   if (!allowOwner && workspace.ownerId === userId) {
-    const membership = await db.workspaceMember.findUnique({
+    const membership = await db.workspace_members.findUnique({
       where: {
         workspaceId_userId: {
           workspaceId: workspace.id,
@@ -680,7 +680,7 @@ export async function getDefaultWorkspaceForUser(
   const workspace = userWorkspaces[0];
   
   // Fetch the full workspace details to return WorkspaceResponse
-  const fullWorkspace = await db.workspace.findUnique({
+  const fullWorkspace = await db.workspaces.findUnique({
     where: { id: workspace.id },
   });
 
@@ -704,7 +704,7 @@ export async function getDefaultWorkspaceForUser(
 export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
 
   // Get the current workspace to access its slug
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId }
   });
 
@@ -715,7 +715,7 @@ export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
   const timestamp = Date.now();
   const deletedSlug = `${workspace.slug}-deleted-${timestamp}`;
 
-  await db.workspace.update({
+  await db.workspaces.update({
     where: { id: workspaceId },
     data: {
       deleted: true,
@@ -735,7 +735,7 @@ async function cleanupWorkspaceInfrastructure(
   workspaceIdentifier: string, // slug or id for logging
 ): Promise<void> {
   // Check for associated Swarm infrastructure
-  const swarm = await db.swarm.findFirst({
+  const swarm = await db.swarms.findFirst({
     where: {
       workspaceId,
     },
@@ -896,7 +896,7 @@ export async function deleteWorkspaceBySlug(
  */
 export async function deleteWorkspaceById(workspaceId: string): Promise<void> {
   // Find workspace by ID (must not be deleted)
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       id: workspaceId,
       deleted: false,
@@ -925,7 +925,7 @@ export async function recoverWorkspace(
   userId: string,
 ): Promise<WorkspaceResponse> {
   // Get the deleted workspace
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       id: workspaceId,
       ownerId: userId,
@@ -942,7 +942,7 @@ export async function recoverWorkspace(
   }
 
   // Check if original slug is available
-  const existingWorkspace = await db.workspace.findFirst({
+  const existingWorkspace = await db.workspaces.findFirst({
     where: {
       slug: workspace.originalSlug,
       deleted: false
@@ -955,7 +955,7 @@ export async function recoverWorkspace(
     : workspace.originalSlug;
 
   // Recover the workspace
-  const recoveredWorkspace = await db.workspace.update({
+  const recoveredWorkspace = await db.workspaces.update({
     where: { id: workspaceId },
     data: {
       deleted: false,
@@ -981,7 +981,7 @@ import { nextIndexedName } from "@/lib/utils/slug";
  * Ensures a slug is unique by finding max index and adding 1
  */
 export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
-  const workspaces = await db.workspace.findMany({
+  const workspaces = await db.workspaces.findMany({
     where: { deleted: false },
     select: { slug: true },
   });
@@ -1047,7 +1047,7 @@ export async function getWorkspaceMembers(
     : await getActiveWorkspaceMembers(workspaceId);
 
   // Get workspace owner information
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     include: {
       owner: {
@@ -1277,7 +1277,7 @@ export async function updateWorkspace(
     }
 
     // Check if the new slug already exists
-    const existingWorkspace = await db.workspace.findUnique({
+    const existingWorkspace = await db.workspaces.findUnique({
       where: { slug: data.slug, deleted: false },
     });
     if (existingWorkspace && existingWorkspace.id !== workspace.id) {
@@ -1286,7 +1286,7 @@ export async function updateWorkspace(
   }
 
   try {
-    const updatedWorkspace = await db.workspace.update({
+    const updatedWorkspace = await db.workspaces.update({
       where: { id: workspace.id },
       data: {
         name: data.name,

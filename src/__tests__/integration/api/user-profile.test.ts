@@ -17,13 +17,13 @@ describe("PATCH /api/user/profile - Integration", () => {
   afterEach(async () => {
     // Cleanup
     if (createdUserIds.length > 0) {
-      await db.session.deleteMany({
-        where: { userId: { in: createdUserIds } },
+      await db.sessions.deleteMany({
+        where: {user_id: { in: createdUserIds } },
       });
-      await db.account.deleteMany({
-        where: { userId: { in: createdUserIds } },
+      await db.accounts.deleteMany({
+        where: {user_id: { in: createdUserIds } },
       });
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: { id: { in: createdUserIds } },
       });
       createdUserIds.length = 0;
@@ -33,7 +33,7 @@ describe("PATCH /api/user/profile - Integration", () => {
   test("persists sphinxAlias to database and includes in session", async () => {
     // Create test user
     const userId = generateUniqueId("user");
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: userId,
         email: "test@example.com",
@@ -50,7 +50,7 @@ describe("PATCH /api/user/profile - Integration", () => {
     // Update sphinxAlias
     const request = new NextRequest("http://localhost/api/user/profile", {
       method: "PATCH",
-      body: JSON.stringify({ sphinxAlias: "mytribealias" }),
+      body: JSON.stringify({sphinx_alias: "mytribealias" }),
     });
 
     const response = await PATCH(request);
@@ -60,9 +60,9 @@ describe("PATCH /api/user/profile - Integration", () => {
     expect(data.sphinxAlias).toBe("mytribealias");
 
     // Verify it's in the database
-    const updatedUser = await db.user.findUnique({
+    const updatedUser = await db.users.findUnique({
       where: { id: userId },
-      select: { sphinxAlias: true },
+      select: {sphinx_alias: true },
     });
 
     expect(updatedUser?.sphinxAlias).toBe("mytribealias");
@@ -71,12 +71,11 @@ describe("PATCH /api/user/profile - Integration", () => {
   test("clears sphinxAlias when set to null", async () => {
     // Create test user with existing alias
     const userId = generateUniqueId("user");
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: userId,
         email: "test2@example.com",
-        name: "Test User 2",
-        sphinxAlias: "existingalias",
+        name: "Test User 2",sphinx_alias: "existingalias",
       },
     });
     createdUserIds.push(userId);
@@ -89,7 +88,7 @@ describe("PATCH /api/user/profile - Integration", () => {
     // Clear sphinxAlias
     const request = new NextRequest("http://localhost/api/user/profile", {
       method: "PATCH",
-      body: JSON.stringify({ sphinxAlias: null }),
+      body: JSON.stringify({sphinx_alias: null }),
     });
 
     const response = await PATCH(request);
@@ -99,9 +98,9 @@ describe("PATCH /api/user/profile - Integration", () => {
     expect(data.sphinxAlias).toBeNull();
 
     // Verify it's cleared in the database
-    const updatedUser = await db.user.findUnique({
+    const updatedUser = await db.users.findUnique({
       where: { id: userId },
-      select: { sphinxAlias: true },
+      select: {sphinx_alias: true },
     });
 
     expect(updatedUser?.sphinxAlias).toBeNull();
@@ -110,12 +109,11 @@ describe("PATCH /api/user/profile - Integration", () => {
   test("updates existing sphinxAlias", async () => {
     // Create test user with existing alias
     const userId = generateUniqueId("user");
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         id: userId,
         email: "test3@example.com",
-        name: "Test User 3",
-        sphinxAlias: "oldalias",
+        name: "Test User 3",sphinx_alias: "oldalias",
       },
     });
     createdUserIds.push(userId);
@@ -128,7 +126,7 @@ describe("PATCH /api/user/profile - Integration", () => {
     // Update to new alias
     const request = new NextRequest("http://localhost/api/user/profile", {
       method: "PATCH",
-      body: JSON.stringify({ sphinxAlias: "newalias" }),
+      body: JSON.stringify({sphinx_alias: "newalias" }),
     });
 
     const response = await PATCH(request);
@@ -138,9 +136,9 @@ describe("PATCH /api/user/profile - Integration", () => {
     expect(data.sphinxAlias).toBe("newalias");
 
     // Verify it's updated in the database
-    const updatedUser = await db.user.findUnique({
+    const updatedUser = await db.users.findUnique({
       where: { id: userId },
-      select: { sphinxAlias: true },
+      select: {sphinx_alias: true },
     });
 
     expect(updatedUser?.sphinxAlias).toBe("newalias");

@@ -18,7 +18,7 @@ export async function GET(
 
   try {
     // Find workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -38,7 +38,7 @@ export async function GET(
 
     // Check if user is a workspace member (owner or explicit member)
     const isOwner = workspace.ownerId === userId;
-    const isMember = isOwner || await db.workspaceMember.findFirst({
+    const isMember = isOwner || await db.workspace_members.findFirst({
       where: {
         workspaceId: workspace.id,
         userId,
@@ -54,7 +54,7 @@ export async function GET(
     }
 
     // Fetch the shared conversation
-    const sharedConversation = await db.sharedConversation.findUnique({
+    const sharedConversation = await db.shared_conversations.findUnique({
       where: {
         id: shareId,
       },

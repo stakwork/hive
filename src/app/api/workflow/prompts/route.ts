@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Verify user has access to stakwork workspace
-      const stakworkWorkspace = await db.workspace.findFirst({
+      const stakworkWorkspace = await db.workspaces.findFirst({
         where: {
           slug: "stakwork",
           OR: [{ ownerId: userId }, { members: { some: { userId } } }],
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Verify user has access to stakwork workspace
-      const stakworkWorkspace = await db.workspace.findFirst({
+      const stakworkWorkspace = await db.workspaces.findFirst({
         where: {
           slug: "stakwork",
           OR: [{ ownerId: userId }, { members: { some: { userId } } }],

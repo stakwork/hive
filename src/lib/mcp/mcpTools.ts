@@ -61,7 +61,7 @@ type RawMessage = {
 async function fetchChatHistoryForMcp(
   filter: { featureId: string } | { taskId: string },
 ) {
-  const messages: RawMessage[] = await db.chatMessage.findMany({
+  const messages: RawMessage[] = await db.chat_messages.findMany({
     where: filter,
     include: {
       artifacts: {
@@ -120,7 +120,7 @@ export async function findWorkspaceUser(
 ): Promise<string | undefined> {
   const lower = userHint.toLowerCase();
 
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: {
       ownerId: true,
@@ -190,7 +190,7 @@ export async function resolveWorkspaceUser(
   }
 
   // No hint or no match — fall back to owner
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: { ownerId: true },
   });
@@ -259,7 +259,7 @@ export async function mcpListFeatures(
   auth: WorkspaceAuth,
 ): Promise<McpToolResult> {
   try {
-    const features = await db.feature.findMany({
+    const features = await db.features.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,
@@ -296,7 +296,7 @@ export async function mcpReadFeature(
   featureId: string,
 ): Promise<McpToolResult> {
   try {
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: {
         id: true,
@@ -395,7 +395,7 @@ export async function mcpSendMessage(
 
   try {
     if (featureId) {
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: featureId },
         select: { workspaceId: true },
       });
@@ -405,7 +405,7 @@ export async function mcpSendMessage(
       await sendFeatureChatMessage({ featureId, userId: auth.userId, message });
       return mcpOk({ sent: true, target: "feature", featureId });
     } else {
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: taskId },
         select: { workspaceId: true },
       });
@@ -434,7 +434,7 @@ export async function mcpListTasks(
   auth: WorkspaceAuth,
 ): Promise<McpToolResult> {
   try {
-    const tasks = await db.task.findMany({
+    const tasks = await db.tasks.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,
@@ -473,7 +473,7 @@ export async function mcpReadTask(
   taskId: string,
 ): Promise<McpToolResult> {
   try {
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       select: {
         id: true,
@@ -526,7 +526,7 @@ export async function mcpCreateTask(
         ? (priority as Priority)
         : Priority.MEDIUM;
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
         title: title.trim(),
         description: description?.trim() || null,
@@ -626,7 +626,7 @@ async function fetchStatusItems(
     : {};
 
   const [tasks, features] = await Promise.all([
-    db.task.findMany({
+    db.tasks.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,
@@ -647,7 +647,7 @@ async function fetchStatusItems(
       orderBy: { updatedAt: "desc" },
       take: TARGET_COUNT,
     }),
-    db.feature.findMany({
+    db.features.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,

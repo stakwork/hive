@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (data && typeof data === "object" && "token" in data) {
       const { token } = data;
 
-      const workspace = await db.workspace.findFirst({
+      const workspace = await db.workspaces.findFirst({
         where: { id: workspaceId, deleted: false },
       });
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
           "stakworkApiKey",
           token || "",
         );
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: workspace.id },
           data: {
             stakworkApiKey: JSON.stringify(encryptedStakworkApiKey),
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const swarm = await db.swarm.findFirst({
+      const swarm = await db.swarms.findFirst({
         where: {
           workspaceId: workspace?.id || "",
         },

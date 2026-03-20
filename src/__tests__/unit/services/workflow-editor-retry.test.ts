@@ -3,12 +3,10 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       update: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
     },
   },
@@ -131,8 +129,8 @@ describe("retryWorkflowEditorTask", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
-    mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
-    mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
+    mockedDb.tasks.update = vi.fn().mockResolvedValue({}) as never;
+    mockedDb.chat_messages.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
   });
 
   afterEach(() => {
@@ -140,29 +138,29 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("returns false when mode !== 'workflow_editor'", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask({ mode: "live" })) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask({ mode: "live" })) as never;
     const result = await retryWorkflowEditorTask("task-1");
     expect(result).toBe(false);
-    expect(mockedDb.task.update).not.toHaveBeenCalled();
+    expect(mockedDb.tasks.update).not.toHaveBeenCalled();
   });
 
   test("returns false when haltRetryAttempted is true", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(
       makeTask({ haltRetryAttempted: true }),
     ) as never;
     const result = await retryWorkflowEditorTask("task-1");
     expect(result).toBe(false);
-    expect(mockedDb.task.update).not.toHaveBeenCalled();
+    expect(mockedDb.tasks.update).not.toHaveBeenCalled();
   });
 
   test("returns false when task is not found", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(null) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(null) as never;
     const result = await retryWorkflowEditorTask("task-1");
     expect(result).toBe(false);
   });
 
   test("returns false when no WORKFLOW artifact exists in chat history", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(
       makeTask({
         chatMessages: [
           { role: ChatRole.USER, message: "hello", artifacts: [] },
@@ -174,7 +172,7 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("returns false when WORKFLOW artifact has no workflowRefId", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(
       makeTask({
         chatMessages: [
           {
@@ -196,7 +194,7 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("returns false when no USER message exists", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(
       makeTask({
         chatMessages: [
           {
@@ -221,11 +219,11 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("sets haltRetryAttempted = true BEFORE calling Stakwork", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockFetchSuccess();
 
     const updateCalls: unknown[] = [];
-    mockedDb.task.update = vi.fn().mockImplementation(async (args: unknown) => {
+    mockedDb.tasks.update = vi.fn().mockImplementation(async (args: unknown) => {
       updateCalls.push(args);
       return {};
     }) as never;
@@ -238,11 +236,11 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("returns true and resets haltRetryAttempted on Stakwork success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockFetchSuccess(888);
 
     const updateCalls: unknown[] = [];
-    mockedDb.task.update = vi.fn().mockImplementation(async (args: unknown) => {
+    mockedDb.tasks.update = vi.fn().mockImplementation(async (args: unknown) => {
       updateCalls.push(args);
       return {};
     }) as never;
@@ -259,22 +257,22 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("returns false and leaves haltRetryAttempted = true when Stakwork returns !ok", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockFetchNotOk();
 
     const result = await retryWorkflowEditorTask("task-1");
 
     expect(result).toBe(false);
     // Only the guard update should have been called (haltRetryAttempted = true)
-    expect(mockedDb.task.update).toHaveBeenCalledTimes(1);
-    const guardUpdate = (mockedDb.task.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+    expect(mockedDb.tasks.update).toHaveBeenCalledTimes(1);
+    const guardUpdate = (mockedDb.tasks.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       data: Record<string, unknown>;
     };
     expect(guardUpdate.data.haltRetryAttempted).toBe(true);
   });
 
   test("returns false when Stakwork returns success:false", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: false }),
@@ -282,11 +280,11 @@ describe("retryWorkflowEditorTask", () => {
 
     const result = await retryWorkflowEditorTask("task-1");
     expect(result).toBe(false);
-    expect(mockedDb.task.update).toHaveBeenCalledTimes(1);
+    expect(mockedDb.tasks.update).toHaveBeenCalledTimes(1);
   });
 
   test("correctly picks LAST WORKFLOW artifact when multiple exist", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(
       makeTask({
         chatMessages: [
           { role: ChatRole.USER, message: "first", artifacts: [] },
@@ -341,13 +339,13 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("creates assistant WORKFLOW artifact message on success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockFetchSuccess(999);
 
     await retryWorkflowEditorTask("task-1");
 
-    expect(mockedDb.chatMessage.create).toHaveBeenCalledTimes(1);
-    const createArg = (mockedDb.chatMessage.create as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+    expect(mockedDb.chat_messages.create).toHaveBeenCalledTimes(1);
+    const createArg = (mockedDb.chat_messages.create as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       data: Record<string, unknown>;
     };
     expect(createArg.data.taskId).toBe("task-1");
@@ -355,7 +353,7 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("triggers Pusher NEW_MESSAGE on success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.tasks.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockFetchSuccess();
 
     await retryWorkflowEditorTask("task-1");

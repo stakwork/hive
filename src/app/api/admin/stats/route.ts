@@ -35,24 +35,24 @@ export async function GET(request: NextRequest) {
       activePods,
       totalUsers,
     ] = await Promise.all([
-      db.task.count({
+      db.tasks.count({
         where: {
           status: "DONE",
           ...dateFilter,
         },
       }),
-      db.task.count({
+      db.tasks.count({
         where: {
           status: "IN_PROGRESS",
           ...dateFilter,
         },
       }),
-      db.task.count({
+      db.tasks.count({
         where: {
           ...dateFilter,
         },
       }),
-      db.artifact.count({
+      db.artifacts.count({
         where: {
           type: "PULL_REQUEST",
           content: {
@@ -62,13 +62,13 @@ export async function GET(request: NextRequest) {
           ...dateFilter,
         },
       }),
-      db.pod.count({
+      db.pods.count({
         where: {
           status: "RUNNING",
           deletedAt: null,
         },
       }),
-      db.user.count({
+      db.users.count({
         where: {
           deleted: false,
         },

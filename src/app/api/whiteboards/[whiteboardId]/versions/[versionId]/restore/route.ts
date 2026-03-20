@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 const MAX_VERSIONS = 10;
 
 async function checkWhiteboardAccess(whiteboardId: string, userId: string) {
-  const whiteboard = await db.whiteboard.findUnique({
+  const whiteboard = await db.whiteboards.findUnique({
     where: { id: whiteboardId },
     include: {
       workspace: {
@@ -38,7 +38,7 @@ async function createVersionSnapshot(
   files: unknown,
   label: string
 ) {
-  const created = await tx.whiteboardVersion.create({
+  const created = await tx.whiteboard_versions.create({
     data: {
       whiteboardId,
       elements: (elements as object) ?? [],
@@ -48,7 +48,7 @@ async function createVersionSnapshot(
     },
   });
 
-  const allVersions = await tx.whiteboardVersion.findMany({
+  const allVersions = await tx.whiteboard_versions.findMany({
     where: { whiteboardId },
     orderBy: { createdAt: "asc" },
     select: { id: true },
@@ -56,7 +56,7 @@ async function createVersionSnapshot(
 
   if (allVersions.length > MAX_VERSIONS) {
     const toDelete = allVersions.slice(0, allVersions.length - MAX_VERSIONS);
-    await tx.whiteboardVersion.deleteMany({
+    await tx.whiteboard_versions.deleteMany({
       where: { id: { in: toDelete.map((v) => v.id) } },
     });
   }
@@ -83,7 +83,7 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const targetVersion = await db.whiteboardVersion.findUnique({
+    const targetVersion = await db.whiteboard_versions.findUnique({
       where: { id: versionId },
     });
 
@@ -104,7 +104,7 @@ export async function POST(
       );
 
       // Apply the selected version
-      return tx.whiteboard.update({
+      return tx.whiteboards.update({
         where: { id: whiteboardId },
         data: {
           elements: targetVersion.elements as object,

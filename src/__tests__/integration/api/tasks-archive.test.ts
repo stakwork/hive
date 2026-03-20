@@ -14,14 +14,13 @@ import type { User, Workspace, Task } from "@prisma/client";
 async function createTestWorkspace(ownerId: string) {
   const slug = generateUniqueSlug("test-workspace");
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: `Test Workspace ${slug}`,
       slug,
       ownerId,
       members: {
-        create: {
-          userId: ownerId,
+        create: {user_id: ownerId,
           role: "OWNER",
         },
       },
@@ -32,22 +31,18 @@ async function createTestWorkspace(ownerId: string) {
 }
 
 async function createTestTask(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options?: { archived?: boolean }
 ) {
   const taskId = generateUniqueId("task");
 
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       id: taskId,
       title: `Test Task ${taskId}`,
       description: "Test description",
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
-      archived: options?.archived || false,
-      archivedAt: options?.archived ? new Date() : null,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
+      archived: options?.archived || false,archived_at: options?.archived ? new Date() : null,
     },
   });
 
@@ -56,16 +51,16 @@ async function createTestTask(
 
 // Cleanup
 async function cleanup(workspaceIds: string[], userIds: string[]) {
-  await db.task.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.tasks.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspaceMember.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.workspace_members.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }
@@ -84,7 +79,7 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       }, testUser);
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response.status).toBe(200);
@@ -94,9 +89,9 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       expect(data.task.archivedAt).toBeDefined();
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testTask.id },
-        select: { archived: true, archivedAt: true },
+        select: { archived: true,archived_at: true },
       });
       expect(updatedTask?.archived).toBe(true);
       expect(updatedTask?.archivedAt).toBeInstanceOf(Date);
@@ -119,7 +114,7 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       }, testUser);
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: archivedTask.id }),
+        params: Promise.resolve({task_id: archivedTask.id }),
       });
 
       expect(response.status).toBe(200);
@@ -129,9 +124,9 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       expect(data.task.archivedAt).toBeNull();
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: archivedTask.id },
-        select: { archived: true, archivedAt: true },
+        select: { archived: true,archived_at: true },
       });
       expect(updatedTask?.archived).toBe(false);
       expect(updatedTask?.archivedAt).toBeNull();
@@ -152,7 +147,7 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       }, testUser);
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response.status).toBe(400);
@@ -174,7 +169,7 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
       }, testUser);
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ taskId: "non-existent-task-id" }),
+        params: Promise.resolve({task_id: "non-existent-task-id" }),
       });
 
       expect(response.status).toBe(404);

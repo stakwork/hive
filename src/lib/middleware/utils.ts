@@ -68,8 +68,8 @@ export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
   const { isSuperAdmin } = await import("@/config/env");
 
   const [user, githubAuth] = await Promise.all([
-    db.user.findUnique({ where: { id: userId }, select: { role: true } }),
-    db.gitHubAuth.findUnique({ where: { userId }, select: { githubUsername: true } }),
+    db.users.findUnique({ where: { id: userId }, select: { role: true } }),
+    db.github_auth.findUnique({ where: { userId }, select: { githubUsername: true } }),
   ]);
 
   return user?.role === "SUPER_ADMIN" || isSuperAdmin(githubAuth?.githubUsername ?? "");

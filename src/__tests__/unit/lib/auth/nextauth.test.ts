@@ -4,22 +4,18 @@ import type { Account, User } from "next-auth";
 
 // Mock all external dependencies
 vi.mock("@/lib/db", () => ({
-  db: {
-    user: {
+  db: {users: {
       findUnique: vi.fn(),
       create: vi.fn(),
-    },
-    account: {
+    },accounts: {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
-    },
-    gitHubAuth: {
+    },github_auth: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findFirst: vi.fn(),
     },
   },
@@ -115,10 +111,10 @@ describe("nextauth.ts - signIn callback", () => {
       };
 
       // Mock user doesn't exist
-      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.users.findUnique as any).mockResolvedValue(null);
 
       // Mock user creation
-      (db.user.create as any).mockResolvedValue({
+      (db.users.create as any).mockResolvedValue({
         id: "new-user-id",
         email: mockUser.email,
         name: mockUser.name,
@@ -130,7 +126,7 @@ describe("nextauth.ts - signIn callback", () => {
       (ensureMockWorkspaceForUser as any).mockResolvedValue("test-workspace-slug");
 
       // Mock workspace verification
-      (db.workspace.findFirst as any).mockResolvedValue({
+      (db.workspaces.findFirst as any).mockResolvedValue({
         slug: "test-workspace-slug",
       });
 
@@ -146,10 +142,10 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.user.findUnique).toHaveBeenCalledWith({
+      expect(db.users.findUnique).toHaveBeenCalledWith({
         where: { email: mockUser.email },
       });
-      expect(db.user.create).toHaveBeenCalledWith({
+      expect(db.users.create).toHaveBeenCalledWith({
         data: {
           name: mockUser.name,
           email: mockUser.email,
@@ -158,7 +154,7 @@ describe("nextauth.ts - signIn callback", () => {
         },
       });
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id");
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: "new-user-id", deleted: false },
         select: { slug: true },
       });
@@ -194,7 +190,7 @@ describe("nextauth.ts - signIn callback", () => {
       };
 
       // Mock existing user
-      (db.user.findUnique as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue({
         id: "existing-user-id",
         email: mockUser.email,
         name: mockUser.name,
@@ -204,7 +200,7 @@ describe("nextauth.ts - signIn callback", () => {
       (ensureMockWorkspaceForUser as any).mockResolvedValue("existing-workspace");
 
       // Mock workspace verification
-      (db.workspace.findFirst as any).mockResolvedValue({
+      (db.workspaces.findFirst as any).mockResolvedValue({
         slug: "existing-workspace",
       });
 
@@ -218,8 +214,8 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.user.findUnique).toHaveBeenCalled();
-      expect(db.user.create).not.toHaveBeenCalled();
+      expect(db.users.findUnique).toHaveBeenCalled();
+      expect(db.users.create).not.toHaveBeenCalled();
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("existing-user-id");
     });
 
@@ -244,8 +240,8 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({
         id: "new-user-id",
         email: mockUser.email,
       });
@@ -291,15 +287,15 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({
         id: "new-user-id",
         email: mockUser.email,
       });
       (ensureMockWorkspaceForUser as any).mockResolvedValue("test-workspace");
 
       // Mock workspace verification failing
-      (db.workspace.findFirst as any).mockResolvedValue(null);
+      (db.workspaces.findFirst as any).mockResolvedValue(null);
 
       const signInCallback = authOptions.callbacks?.signIn;
       const result = await signInCallback!({
@@ -342,7 +338,7 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockRejectedValue(new Error("Database error"));
+      (db.users.findUnique as any).mockRejectedValue(new Error("Database error"));
 
       const signInCallback = authOptions.callbacks?.signIn;
       const result = await signInCallback!({
@@ -385,16 +381,16 @@ describe("nextauth.ts - signIn callback", () => {
       };
 
       // Mock existing user
-      (db.user.findUnique as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue({
         id: "existing-user-id",
         email: mockUser.email,
       });
 
       // Mock no existing GitHub account
-      (db.account.findFirst as any).mockResolvedValue(null);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
 
       // Mock account creation
-      (db.account.create as any).mockResolvedValue({
+      (db.accounts.create as any).mockResolvedValue({
         id: "new-account-id",
         userId: "existing-user-id",
         provider: "github",
@@ -410,16 +406,16 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.user.findUnique).toHaveBeenCalledWith({
+      expect(db.users.findUnique).toHaveBeenCalledWith({
         where: { email: mockUser.email },
       });
-      expect(db.account.findFirst).toHaveBeenCalledWith({
+      expect(db.accounts.findFirst).toHaveBeenCalledWith({
         where: {
           userId: "existing-user-id",
           provider: "github",
         },
       });
-      expect(db.account.create).toHaveBeenCalledWith({
+      expect(db.accounts.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: "existing-user-id",
           type: "oauth",
@@ -429,7 +425,7 @@ describe("nextauth.ts - signIn callback", () => {
         }),
       });
       // Verify access_token is a stringified JSON object
-      const createCall = (db.account.create as any).mock.calls[0][0];
+      const createCall = (db.accounts.create as any).mock.calls[0][0];
       expect(createCall.data.access_token).toContain("encrypted_");
     });
 
@@ -454,13 +450,13 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue({
         id: "existing-user-id",
         email: mockUser.email,
       });
 
       // Mock existing GitHub account
-      (db.account.findFirst as any).mockResolvedValue({
+      (db.accounts.findFirst as any).mockResolvedValue({
         id: "existing-account-id",
         userId: "existing-user-id",
         provider: "github",
@@ -471,7 +467,7 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       // Mock account update
-      (db.account.update as any).mockResolvedValue({
+      (db.accounts.update as any).mockResolvedValue({
         id: "existing-account-id",
         access_token: "new_encrypted_token",
       });
@@ -486,14 +482,14 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.account.update).toHaveBeenCalledWith({
+      expect(db.accounts.update).toHaveBeenCalledWith({
         where: { id: "existing-account-id" },
         data: expect.objectContaining({
           scope: "read:user,repo",
         }),
       });
       // Verify encryption occurred by checking the update call contains encrypted data
-      const updateCall = (db.account.update as any).mock.calls[0][0];
+      const updateCall = (db.accounts.update as any).mock.calls[0][0];
       expect(updateCall.data.access_token).toContain("encrypted_");
     });
 
@@ -518,12 +514,12 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockResolvedValue({
+      (db.users.findUnique as any).mockResolvedValue({
         id: "existing-user-id",
         email: mockUser.email,
       });
 
-      (db.account.findFirst as any).mockResolvedValue({
+      (db.accounts.findFirst as any).mockResolvedValue({
         id: "existing-account-id",
         userId: "existing-user-id",
       });
@@ -538,7 +534,7 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.account.update).not.toHaveBeenCalled();
+      expect(db.accounts.update).not.toHaveBeenCalled();
     });
 
     test("should handle GitHub authentication errors gracefully", async () => {
@@ -562,7 +558,7 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      (db.user.findUnique as any).mockRejectedValue(new Error("Database error"));
+      (db.users.findUnique as any).mockRejectedValue(new Error("Database error"));
 
       const signInCallback = authOptions.callbacks?.signIn;
       const result = await signInCallback!({
@@ -612,7 +608,7 @@ describe("nextauth.ts - signIn callback", () => {
       });
 
       expect(result).toBe(true);
-      expect(db.user.findUnique).not.toHaveBeenCalled();
+      expect(db.users.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -655,8 +651,8 @@ describe("nextauth.ts - jwt callback", () => {
 
       const mockToken = {};
 
-      // Mock db.user.findUnique to return user with role
-      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+      // Mock db.users.findUnique to return user with role
+      vi.mocked(db.users.findUnique).mockResolvedValueOnce({
         id: "user-123",
         role: "USER",
       } as any);
@@ -706,8 +702,8 @@ describe("nextauth.ts - jwt callback", () => {
 
       const mockToken = {};
 
-      // Mock db.user.findUnique to return user with role
-      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+      // Mock db.users.findUnique to return user with role
+      vi.mocked(db.users.findUnique).mockResolvedValueOnce({
         id: "mock-user-123",
         role: "USER",
       } as any);
@@ -760,8 +756,8 @@ describe("nextauth.ts - jwt callback", () => {
 
       const mockToken = {};
 
-      // Mock db.user.findUnique to return user with role
-      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+      // Mock db.users.findUnique to return user with role
+      vi.mocked(db.users.findUnique).mockResolvedValueOnce({
         id: "mock-user-456",
         role: "USER",
       } as any);
@@ -936,7 +932,7 @@ describe("nextauth.ts - session callback", () => {
         name: "Test User",
       };
 
-      (db.workspace.findFirst as any).mockResolvedValue({
+      (db.workspaces.findFirst as any).mockResolvedValue({
         slug: "test-workspace",
       });
 
@@ -949,7 +945,7 @@ describe("nextauth.ts - session callback", () => {
 
       expect(result.user).toHaveProperty("id", "mock-user-123");
       expect(result.user).toHaveProperty("defaultWorkspaceSlug", "test-workspace");
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: "mock-user-123", deleted: false },
         select: { slug: true },
       });
@@ -971,7 +967,7 @@ describe("nextauth.ts - session callback", () => {
         email: "testuser@mock.dev",
       };
 
-      (db.workspace.findFirst as any).mockResolvedValue(null);
+      (db.workspaces.findFirst as any).mockResolvedValue(null);
 
       const sessionCallback = authOptions.callbacks?.session;
       const result = await sessionCallback!({
@@ -1010,7 +1006,7 @@ describe("nextauth.ts - session callback", () => {
         },
       };
 
-      (db.workspace.findFirst as any).mockResolvedValue({
+      (db.workspaces.findFirst as any).mockResolvedValue({
         slug: "test-workspace",
       });
 
@@ -1044,7 +1040,7 @@ describe("nextauth.ts - session callback", () => {
         email: "testuser@mock.dev",
       };
 
-      (db.workspace.findFirst as any).mockRejectedValue(new Error("Database error"));
+      (db.workspaces.findFirst as any).mockRejectedValue(new Error("Database error"));
 
       const sessionCallback = authOptions.callbacks?.session;
       const result = await sessionCallback!({
@@ -1163,10 +1159,10 @@ describe("nextauth.ts - session callback", () => {
       };
 
       // No existing GitHub auth
-      (db.gitHubAuth.findUnique as any).mockResolvedValueOnce(null);
+      (db.github_auth.findUnique as any).mockResolvedValueOnce(null);
 
       // Mock account with token
-      (db.account.findFirst as any).mockResolvedValue({
+      (db.accounts.findFirst as any).mockResolvedValue({
         id: "account-123",
         userId: "user-123",
         provider: "github",
@@ -1202,7 +1198,7 @@ describe("nextauth.ts - session callback", () => {
       });
 
       // Mock upsert
-      (db.gitHubAuth.upsert as any).mockResolvedValue({
+      (db.github_auth.upsert as any).mockResolvedValue({
         userId: "user-123",
         githubUsername: "githubuser",
         publicRepos: 25,
@@ -1222,7 +1218,7 @@ describe("nextauth.ts - session callback", () => {
         },
       });
 
-      expect(db.gitHubAuth.upsert).toHaveBeenCalledWith({
+      expect(db.github_auth.upsert).toHaveBeenCalledWith({
         where: { userId: "user-123" },
         update: expect.objectContaining({
           githubUsername: "githubuser",
@@ -1269,7 +1265,7 @@ describe("nextauth.ts - session callback", () => {
       };
 
       // Existing GitHub auth
-      (db.gitHubAuth.findUnique as any).mockResolvedValue({
+      (db.github_auth.findUnique as any).mockResolvedValue({
         userId: "user-456",
         githubUsername: "existinguser",
         publicRepos: 15,
@@ -1289,7 +1285,7 @@ describe("nextauth.ts - session callback", () => {
         followers: 50,
       });
 
-      expect(db.account.findFirst).not.toHaveBeenCalled();
+      expect(db.accounts.findFirst).not.toHaveBeenCalled();
       expect(axios.get).not.toHaveBeenCalled();
     });
 
@@ -1317,8 +1313,8 @@ describe("nextauth.ts - session callback", () => {
         poolApiKey: null,
       };
 
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(null);
-      (db.account.findFirst as any).mockResolvedValue({
+      (db.github_auth.findUnique as any).mockResolvedValue(null);
+      (db.accounts.findFirst as any).mockResolvedValue({
         id: "account-789",
         userId: "user-789",
         provider: "github",
@@ -1371,10 +1367,10 @@ describe("nextauth.ts - session callback", () => {
         poolApiKey: null,
       };
 
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(null);
+      (db.github_auth.findUnique as any).mockResolvedValue(null);
 
       // Account exists but no token
-      (db.account.findFirst as any).mockResolvedValue({
+      (db.accounts.findFirst as any).mockResolvedValue({
         id: "account-revoked",
         userId: "user-revoked",
         provider: "github",
@@ -1463,7 +1459,7 @@ describe("nextauth.ts - linkAccount event", () => {
       userId: "user-123",
     };
 
-    (db.account.updateMany as any).mockResolvedValue({ count: 1 });
+    (db.accounts.updateMany as any).mockResolvedValue({ count: 1 });
 
     const linkAccountEvent = authOptions.events?.linkAccount;
     expect(linkAccountEvent).toBeDefined();
@@ -1480,7 +1476,7 @@ describe("nextauth.ts - linkAccount event", () => {
       "gho_raw_token_123"
     );
 
-    expect(db.account.updateMany).toHaveBeenCalledWith({
+    expect(db.accounts.updateMany).toHaveBeenCalledWith({
       where: {
         userId: "user-123",
         provider: "github",
@@ -1524,7 +1520,7 @@ describe("nextauth.ts - linkAccount event", () => {
     });
 
     expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
-    expect(db.account.updateMany).not.toHaveBeenCalled();
+    expect(db.accounts.updateMany).not.toHaveBeenCalled();
   });
 
   test("should handle encryption errors gracefully", async () => {
@@ -1550,7 +1546,7 @@ describe("nextauth.ts - linkAccount event", () => {
       userId: "user-error",
     };
 
-    (db.account.updateMany as any).mockRejectedValue(new Error("Database error"));
+    (db.accounts.updateMany as any).mockRejectedValue(new Error("Database error"));
 
     const linkAccountEvent = authOptions.events?.linkAccount;
     await linkAccountEvent!({
@@ -1599,7 +1595,7 @@ describe("nextauth.ts - linkAccount event", () => {
     });
 
     expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
-    expect(db.account.updateMany).not.toHaveBeenCalled();
+    expect(db.accounts.updateMany).not.toHaveBeenCalled();
   });
 });
 

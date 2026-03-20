@@ -42,32 +42,24 @@ describe("POST /api/learnings/diagrams/edit", () => {
         "test-diagram-edit-swarm-api-key"
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-diagram-edit-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: "https://test-diagram-edit.sphinx.chat",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: "https://test-diagram-edit.sphinx.chat",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
-      repository = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test-owner/test-diagram-edit-repo",
+      repository = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test-owner/test-diagram-edit-repo",
         branch: "main",
       });
 
       // GitHub auth for owner
       await tx.gitHubAuth.create({
-        data: {
-          userId: owner.id,
-          githubUserId: generateUniqueId("github"),
-          githubUsername: "test-diagram-edit-owner",
+        data: {user_id: owner.id,github_user_id: generateUniqueId("github"),github_username: "test-diagram-edit-owner",
         },
       });
       const encryptedToken = encryptionService.encryptField(
@@ -75,14 +67,11 @@ describe("POST /api/learnings/diagrams/edit", () => {
         "test-owner-edit-diagram-pat"
       );
       await tx.account.create({
-        data: {
-          userId: owner.id,
+        data: {user_id: owner.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId("provider"),
+          provider: "github",provider_account_id: generateUniqueId("provider"),
           access_token: JSON.stringify(encryptedToken),
-          token_type: "bearer",
-          scope: "repo,user",
+          token_type: "bearer",scope: "repo,user",
         },
       });
 
@@ -148,7 +137,7 @@ describe("POST /api/learnings/diagrams/edit", () => {
     const sourceGroupId = generateUniqueId("group");
 
     // Create the original diagram
-    const sourceDiagram = await db.diagram.create({
+    const sourceDiagram = await db.diagrams.create({
       data: {
         name: "Auth Flow",
         body: originalBody,
@@ -157,8 +146,8 @@ describe("POST /api/learnings/diagrams/edit", () => {
         groupId: sourceGroupId,
       },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: sourceDiagram.id,workspace_id: workspace.id },
     });
 
     const updatedBody = "graph TD\n  A[Client] --> B[API]\n  B --> C[DB]";
@@ -182,26 +171,26 @@ describe("POST /api/learnings/diagrams/edit", () => {
     expect(data.diagram.id).not.toBe(sourceDiagram.id);
 
     // Verify DB record
-    const newRow = await db.diagram.findUnique({ where: { id: data.diagram.id } });
+    const newRow = await db.diagrams.findUnique({ where: { id: data.diagram.id } });
     expect(newRow).not.toBeNull();
     expect(newRow?.groupId).toBe(sourceGroupId);
     expect(newRow?.name).toBe("Auth Flow");
     expect(newRow?.body).toBe(updatedBody);
 
     // Verify workspace link for new row
-    const link = await db.diagramWorkspace.findFirst({
-      where: { diagramId: data.diagram.id, workspaceId: workspace.id },
+    const link = await db.diagram_workspaces.findFirst({
+      where: { diagramId: data.diagram.id,workspace_id: workspace.id },
     });
     expect(link).not.toBeNull();
 
     // Original diagram must still exist
-    const original = await db.diagram.findUnique({ where: { id: sourceDiagram.id } });
+    const original = await db.diagrams.findUnique({ where: { id: sourceDiagram.id } });
     expect(original).not.toBeNull();
   });
 
   it("should build an augmented prompt containing the current diagram body", async () => {
     const originalBody = "graph TD\n  X --> Y";
-    const sourceDiagram = await db.diagram.create({
+    const sourceDiagram = await db.diagrams.create({
       data: {
         name: "Flow",
         body: originalBody,
@@ -210,8 +199,8 @@ describe("POST /api/learnings/diagrams/edit", () => {
         groupId: generateUniqueId("group"),
       },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: sourceDiagram.id,workspace_id: workspace.id },
     });
 
     vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\ngraph TD\n  X --> Y\n  Y --> Z\n```" });
@@ -233,7 +222,7 @@ describe("POST /api/learnings/diagrams/edit", () => {
   });
 
   it("should return 422 when repoAgent response has no mermaid block", async () => {
-    const sourceDiagram = await db.diagram.create({
+    const sourceDiagram = await db.diagrams.create({
       data: {
         name: "Flow",
         body: "graph TD\n  A --> B",
@@ -242,8 +231,8 @@ describe("POST /api/learnings/diagrams/edit", () => {
         groupId: generateUniqueId("group"),
       },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: sourceDiagram.id,workspace_id: workspace.id },
     });
 
     vi.mocked(repoAgent).mockResolvedValue({ content: "Here is some text without mermaid." });

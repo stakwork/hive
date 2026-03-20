@@ -25,43 +25,33 @@ describe("Single Feature API - Integration Tests", () => {
     test("returns feature with user stories for workspace member", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
+          title: "Test Feature",workspace_id: workspace.id,
           status: FeatureStatus.IN_PROGRESS,
-          priority: FeaturePriority.HIGH,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: FeaturePriority.HIGH,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create user stories
-      await db.userStory.create({
-        data: {
-          featureId: feature.id,
+      await db.user_stories.create({
+        data: {feature_id: feature.id,
           title: "User Story 1",
           order: 1,
-          completed: false,
-          createdById: user.id,
-          updatedById: user.id,
+          completed: false,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.userStory.create({
-        data: {
-          featureId: feature.id,
+      await db.user_stories.create({
+        data: {feature_id: feature.id,
           title: "User Story 2",
           order: 2,
-          completed: true,
-          createdById: user.id,
-          updatedById: user.id,
+          completed: true,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -72,7 +62,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await GET(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -94,19 +84,14 @@ describe("Single Feature API - Integration Tests", () => {
       // Setup
       const creator = await createTestUser({ name: "Creator User" });
       const assignee = await createTestUser({ name: "Assignee User" });
-      const workspace = await createTestWorkspace({
-        ownerId: creator.id,
+      const workspace = await createTestWorkspace({owner_id: creator.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          assigneeId: assignee.id,
-          createdById: creator.id,
-          updatedById: creator.id,
+          title: "Test Feature",workspace_id: workspace.id,assignee_id: assignee.id,created_by_id: creator.id,updated_by_id: creator.id,
         },
       });
 
@@ -117,7 +102,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await GET(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -143,7 +128,7 @@ describe("Single Feature API - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ featureId: "test-feature-id" }),
+        params: Promise.resolve({feature_id: "test-feature-id" }),
       });
 
       await expectUnauthorized(response);
@@ -158,7 +143,7 @@ describe("Single Feature API - Integration Tests", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ featureId: "non-existent-id" }),
+        params: Promise.resolve({feature_id: "non-existent-id" }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -168,18 +153,14 @@ describe("Single Feature API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -190,7 +171,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await GET(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -202,18 +183,14 @@ describe("Single Feature API - Integration Tests", () => {
     test("updates feature title", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Original Title",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -225,7 +202,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -237,19 +214,15 @@ describe("Single Feature API - Integration Tests", () => {
     test("updates feature status", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          status: FeatureStatus.BACKLOG,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,
+          status: FeatureStatus.BACKLOG,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -261,7 +234,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -272,19 +245,15 @@ describe("Single Feature API - Integration Tests", () => {
     test("updates feature priority", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          priority: FeaturePriority.LOW,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,
+          priority: FeaturePriority.LOW,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -296,7 +265,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -308,30 +277,26 @@ describe("Single Feature API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const assignee = await createTestUser({ name: "New Assignee" });
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: assignee.id },
+        {assignee_id: assignee.id },
         owner
       );
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -346,31 +311,26 @@ describe("Single Feature API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const assignee = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          assigneeId: assignee.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,assignee_id: assignee.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: null },
+        {assignee_id: null },
         owner
       );
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -382,20 +342,16 @@ describe("Single Feature API - Integration Tests", () => {
     test("updates multiple fields at once", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Original Title",
-          workspaceId: workspace.id,
+          title: "Original Title",workspace_id: workspace.id,
           status: FeatureStatus.BACKLOG,
-          priority: FeaturePriority.LOW,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: FeaturePriority.LOW,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -411,7 +367,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -426,18 +382,14 @@ describe("Single Feature API - Integration Tests", () => {
     test("trims whitespace from title", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Original Title",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -449,7 +401,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -464,7 +416,7 @@ describe("Single Feature API - Integration Tests", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: "test-feature-id" }),
+        params: Promise.resolve({feature_id: "test-feature-id" }),
       });
 
       await expectUnauthorized(response);
@@ -480,7 +432,7 @@ describe("Single Feature API - Integration Tests", () => {
       );
 
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: "non-existent-id" }),
+        params: Promise.resolve({feature_id: "non-existent-id" }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -490,18 +442,14 @@ describe("Single Feature API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -513,7 +461,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -523,18 +471,14 @@ describe("Single Feature API - Integration Tests", () => {
     test("validates status enum", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -546,7 +490,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -556,18 +500,14 @@ describe("Single Feature API - Integration Tests", () => {
     test("validates priority enum", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -579,7 +519,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert
@@ -589,30 +529,26 @@ describe("Single Feature API - Integration Tests", () => {
     test("validates assignee exists", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: "non-existent-user-id" },
+        {assignee_id: "non-existent-user-id" },
         user
       );
 
       // Execute
       const response = await PATCH(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Assert

@@ -49,25 +49,19 @@ async function createUserJourneyTestSetup() {
 
     // Create GitHub auth for user
     await tx.gitHubAuth.create({
-      data: {
-        userId: user.id,
-        githubUserId: generateUniqueId(),
-        githubUsername: testGithubUsername,
+      data: {user_id: user.id,github_user_id: generateUniqueId(),github_username: testGithubUsername,
         githubNodeId: `node_${generateUniqueId()}`,
       },
     });
 
     // Create GitHub OAuth account with encrypted token
     await tx.account.create({
-      data: {
-        userId: user.id,
+      data: {user_id: user.id,
         type: "oauth",
-        provider: "github",
-        providerAccountId: generateUniqueId(),
+        provider: "github",provider_account_id: generateUniqueId(),
         access_token: JSON.stringify(
           enc.encryptField("access_token", testGithubToken)
-        ),
-        scope: "repo,user",
+        ),scope: "repo,user",
       },
     });
 
@@ -75,27 +69,18 @@ async function createUserJourneyTestSetup() {
     const workspace = await tx.workspace.create({
       data: {
         name: "Test Workspace",
-        slug: generateUniqueSlug("test-workspace"),
-        ownerId: user.id,
+        slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
       },
     });
 
     // Create swarm for workspace
     const swarm = await tx.swarm.create({
-      data: {
-        workspaceId: workspace.id,
+      data: {workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        swarmId: generateUniqueId("swarm"),
-        swarmUrl: testSwarmUrl,
-        swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
-        swarmApiKey: JSON.stringify(
+        status: "ACTIVE",swarm_id: generateUniqueId("swarm"),swarm_url: testSwarmUrl,swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",swarm_api_key: JSON.stringify(
           enc.encryptField("swarmApiKey", testSwarmApiKey)
-        ),
-        poolName: "test-pool",
-        services: [],
-        agentRequestId: null,
-        agentStatus: null,
+        ),pool_name: "test-pool",
+        services: [],agent_request_id: null,agent_status: null,
       },
     });
 
@@ -148,8 +133,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: "workspace-123",
+          message: "Test user journey",workspace_id: "workspace-123",
         }
       );
 
@@ -167,8 +151,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: "workspace-123",
+          message: "Test user journey",workspace_id: "workspace-123",
         }
       );
 
@@ -184,8 +167,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: "non-existent-workspace-id",
+          message: "Test user journey",workspace_id: "non-existent-workspace-id",
         }
       );
 
@@ -211,8 +193,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: workspace.id,
+          message: "Test user journey",workspace_id: workspace.id,
         }
       );
 
@@ -233,8 +214,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
-        {
-          workspaceId: workspace.id,
+        {workspace_id: workspace.id,
         }
       );
 
@@ -250,8 +230,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "",
-          workspaceId: workspace.id,
+          message: "",workspace_id: workspace.id,
         }
       );
 
@@ -283,8 +262,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: "",
+          message: "Test user journey",workspace_id: "",
         }
       );
 
@@ -297,8 +275,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
   describe("Swarm Configuration", () => {
     test("should return 404 when no swarm is configured for workspace", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Workspace Without Swarm",
       });
 
@@ -307,8 +284,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test user journey",
-          workspaceId: workspace.id,
+          message: "Test user journey",workspace_id: workspace.id,
         }
       );
 
@@ -329,8 +305,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: testMessage,
-          workspaceId: workspace.id,
+          message: testMessage,workspace_id: workspace.id,
         }
       );
 
@@ -367,14 +342,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
           set_var: {
             attributes: {
               vars: {
-                message: testMessage,
-                accessToken: testGithubToken,
-                username: testGithubUsername,
-                swarmUrl: "https://test-swarm.sphinx.chat:8444/api",
-                swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
-                poolName: "test-pool",
-                repo2graph_url: "https://test-swarm.sphinx.chat:3355",
-                workspaceId: workspace.id,
+                message: testMessage,access_token: testGithubToken,
+                username: testGithubUsername,swarm_url: "https://test-swarm.sphinx.chat:8444/api",swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",pool_name: "test-pool",
+                repo2graph_url: "https://test-swarm.sphinx.chat:3355",workspace_id: workspace.id,
               },
             },
           },
@@ -389,8 +359,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test webhook URL inclusion",
-          workspaceId: workspace.id,
+          message: "Test webhook URL inclusion",workspace_id: workspace.id,
         }
       );
 
@@ -419,9 +388,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       });
 
       // Make user workspace owner
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { ownerId: userWithoutGithub.id },
+        data: {owner_id: userWithoutGithub.id },
       });
 
       getMockedSession().mockResolvedValue(
@@ -431,8 +400,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test without GitHub",
-          workspaceId: workspace.id,
+          message: "Test without GitHub",workspace_id: workspace.id,
         }
       );
 
@@ -451,9 +419,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, swarm } = await createUserJourneyTestSetup();
 
       // Update swarm to have null poolName
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { poolName: null },
+        data: {pool_name: null },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -461,8 +429,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test poolName fallback",
-          workspaceId: workspace.id,
+          message: "Test poolName fallback",workspace_id: workspace.id,
         }
       );
 
@@ -484,8 +451,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test URL transformation",
-          workspaceId: workspace.id,
+          message: "Test URL transformation",workspace_id: workspace.id,
         }
       );
 
@@ -509,9 +475,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, swarm } = await createUserJourneyTestSetup();
 
       // Update swarm to have null swarmUrl
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { swarmUrl: null },
+        data: {swarm_url: null },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -519,8 +485,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test empty swarmUrl",
-          workspaceId: workspace.id,
+          message: "Test empty swarmUrl",workspace_id: workspace.id,
         }
       );
 
@@ -543,8 +508,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: analyticsMessage,
-          workspaceId: workspace.id,
+          message: analyticsMessage,workspace_id: workspace.id,
         }
       );
 
@@ -579,8 +543,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test API error",
-          workspaceId: workspace.id,
+          message: "Test API error",workspace_id: workspace.id,
         }
       );
 
@@ -605,8 +568,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test network error",
-          workspaceId: workspace.id,
+          message: "Test network error",workspace_id: workspace.id,
         }
       );
 
@@ -628,8 +590,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test with valid API key",
-          workspaceId: workspace.id,
+          message: "Test with valid API key",workspace_id: workspace.id,
         }
       );
 
@@ -651,8 +612,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test with valid workflow ID",
-          workspaceId: workspace.id,
+          message: "Test with valid workflow ID",workspace_id: workspace.id,
         }
       );
 
@@ -674,8 +634,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test workspace query",
-          workspaceId: workspace.id,
+          message: "Test workspace query",workspace_id: workspace.id,
         }
       );
 
@@ -683,7 +642,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       await expectSuccess(response, 201);
 
       // Verify workspace is still in database
-      const dbWorkspace = await db.workspace.findUnique({
+      const dbWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(dbWorkspace).toBeDefined();
@@ -697,8 +656,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test swarm retrieval",
-          workspaceId: workspace.id,
+          message: "Test swarm retrieval",workspace_id: workspace.id,
         }
       );
 
@@ -715,7 +673,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       }
 
       // Verify swarm is still in database
-      const dbSwarm = await db.swarm.findUnique({
+      const dbSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
       expect(dbSwarm).toBeDefined();
@@ -731,8 +689,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "Test credential decryption",
-          workspaceId: workspace.id,
+          message: "Test credential decryption",workspace_id: workspace.id,
         }
       );
 
@@ -764,8 +721,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: userSpecificMessage,
-          workspaceId: workspace.id,
+          message: userSpecificMessage,workspace_id: workspace.id,
         }
       );
 
@@ -793,8 +749,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
-          message: "User interacted with workspace-specific features",
-          workspaceId: workspace.id,
+          message: "User interacted with workspace-specific features",workspace_id: workspace.id,
         }
       );
 

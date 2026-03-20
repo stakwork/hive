@@ -48,7 +48,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   });
 
   // Helper to create complete test setup with encrypted agentPassword
-  async function createTestSetup(options?: { agentPassword?: string; deleted?: boolean }) {
+  async function createTestSetup(options?: {agent_password?: string; deleted?: boolean }) {
     return await db.$transaction(async (tx) => {
       // Create user
       const user = await tx.user.create({
@@ -62,20 +62,14 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${generateUniqueId()}`,
-          slug: `workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
 
       // Create swarm
       const swarm = await tx.swarm.create({
         data: {
-          name: `swarm-${generateUniqueId()}`,
-          swarmUrl: "https://test-swarm.example.com",
-          poolName: `pool-${generateUniqueId()}`,
-          poolApiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-pool-key")),
-          swarmApiKey: JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-swarm-key")),
-          workspaceId: workspace.id,
+          name: `swarm-${generateUniqueId()}`,swarm_url: "https://test-swarm.example.com",pool_name: `pool-${generateUniqueId()}`,pool_api_key: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-pool-key")),swarm_api_key: JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-swarm-key")),workspace_id: workspace.id,
         },
       });
 
@@ -89,14 +83,8 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
         data: {
           id: generateUniqueId("task"),
           title: "Test Recording Task",
-          description: "Task for testing recording upload",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          sourceType: "USER_JOURNEY",
-          status: "IN_PROGRESS",
-          workflowStatus: "IN_PROGRESS",
-          agentPassword: agentPasswordField,
+          description: "Task for testing recording upload",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,source_type: "USER_JOURNEY",
+          status: "IN_PROGRESS",workflow_status: "IN_PROGRESS",agent_password: agentPasswordField,
           deleted: options?.deleted || false,
         },
       });
@@ -107,7 +95,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
   // Helper to create multipart form request
   function createMultipartRequest(
-    taskId: string,
+task_id: string,
     options: {
       apiKey?: string;
       videoBuffer?: Buffer;
@@ -164,28 +152,28 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
   describe("Authentication & Authorization", () => {
     test("returns 401 when x-api-key header is missing", async () => {
-      const { task } = await createTestSetup({ agentPassword: "test-password" });
+      const { task } = await createTestSetup({agent_password: "test-password" });
 
       const request = createMultipartRequest(task.id, {
         // No apiKey provided
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response);
     });
 
     test("returns 401 when x-api-key header is invalid", async () => {
-      const { task } = await createTestSetup({ agentPassword: "correct-password" });
+      const { task } = await createTestSetup({agent_password: "correct-password" });
 
       const request = createMultipartRequest(task.id, {
         apiKey: "wrong-password",
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response);
@@ -199,7 +187,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response);
@@ -207,14 +195,14 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("accepts request with valid x-api-key", async () => {
       const validPassword = "valid-test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 201);
@@ -228,7 +216,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: nonExistentTaskId }),
+        params: Promise.resolve({task_id: nonExistentTaskId }),
       });
 
       await expectNotFound(response);
@@ -236,8 +224,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns 404 for soft-deleted task", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({
-        agentPassword: validPassword,
+      const { task } = await createTestSetup({agent_password: validPassword,
         deleted: true,
       });
 
@@ -246,7 +233,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectNotFound(response);
@@ -256,7 +243,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Request Validation", () => {
     test("returns 400 when video file is missing", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
@@ -264,7 +251,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Missing required files", 400);
@@ -272,7 +259,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns 400 when timestamps file is missing", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
@@ -280,7 +267,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Missing required files", 400);
@@ -288,7 +275,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns 400 when timestamps JSON is invalid", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Create request with invalid JSON in timestamps
       const formData = new FormData();
@@ -308,7 +295,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Invalid timestamps JSON", 400);
@@ -316,7 +303,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns 413 when video file exceeds size limit", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Create oversized video buffer (100MB + 1 byte)
       const maxSize = 100 * 1024 * 1024;
@@ -333,7 +320,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "File too large", 413);
@@ -341,7 +328,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns 400 when video format is invalid", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Mock S3 service to reject invalid format
       mockValidateVideoBuffer.mockReturnValue(false);
@@ -352,7 +339,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Invalid video format", 400);
@@ -362,7 +349,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Video Upload & Storage", () => {
     test("uploads video to S3 with correct path", async () => {
       const validPassword = "test-password";
-      const { task, workspace, swarm } = await createTestSetup({ agentPassword: validPassword });
+      const { task, workspace, swarm } = await createTestSetup({agent_password: validPassword });
 
       const videoBuffer = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, ...Buffer.alloc(1000, 0)]);
 
@@ -372,7 +359,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify S3 path generation
@@ -392,7 +379,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("handles S3 upload failure gracefully", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Mock S3 upload failure
       mockPutObject.mockRejectedValueOnce(new Error("S3 connection timeout"));
@@ -402,7 +389,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Upload failed", 500);
@@ -415,8 +402,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         name: "Workspace Without Swarm",
-        slug: `no-swarm-${generateUniqueId()}`,
-        ownerId: user.id,
+        slug: `no-swarm-${generateUniqueId()}`,owner_id: user.id,
       });
 
       const agentPasswordField = JSON.stringify(
@@ -424,15 +410,13 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       );
 
       const task = await createTestTask({
-        title: "Task Without Swarm",
-        workspaceId: workspace.id,
-        createdById: user.id,
+        title: "Task Without Swarm",workspace_id: workspace.id,created_by_id: user.id,
       });
 
       // Update task with agentPassword
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
-        data: { agentPassword: agentPasswordField },
+        data: {agent_password: agentPasswordField },
       });
 
       const request = createMultipartRequest(task.id, {
@@ -440,7 +424,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Internal error", 500);
@@ -450,7 +434,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Database Persistence", () => {
     test("creates ChatMessage with video and timestamps artifacts", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const videoBuffer = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, ...Buffer.alloc(500, 0)]);
       const timestampsData = {
@@ -468,13 +452,13 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 201);
 
       // Verify message creation
-      const message = await db.chatMessage.findUnique({
+      const message = await db.chat_messages.findUnique({
         where: { id: data.data.messageId },
         include: { artifacts: true },
       });
@@ -512,20 +496,20 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("invalidates agentPassword after successful upload", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
       });
 
       await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify agentPassword is nullified
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
-        select: { agentPassword: true },
+        select: {agent_password: true },
       });
 
       expect(updatedTask!.agentPassword).toBeNull();
@@ -533,7 +517,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("prevents reusing API key after first use", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request1 = createMultipartRequest(task.id, {
         apiKey: validPassword,
@@ -541,7 +525,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
       // First request succeeds
       const response1 = await POST(request1, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       await expectSuccess(response1, 201);
 
@@ -551,7 +535,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response2 = await POST(request2, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response2);
@@ -559,7 +543,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("preserves other task fields during upload", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const originalTitle = task.title;
       const originalStatus = task.status;
@@ -570,16 +554,15 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify other fields unchanged
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: {
           title: true,
-          status: true,
-          workflowStatus: true,
+          status: true,workflow_status: true,
           description: true,
         },
       });
@@ -593,14 +576,14 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Response Format", () => {
     test("returns correct success response structure", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 201);
@@ -621,20 +604,20 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("returns artifact IDs in response", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest(task.id, {
         apiKey: validPassword,
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 201);
 
       // Verify artifacts exist
-      const artifacts = await db.artifact.findMany({
+      const artifacts = await db.artifacts.findMany({
         where: { id: { in: data.data.artifactIds } },
       });
 
@@ -647,11 +630,11 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Edge Cases & Error Handling", () => {
     test("handles database transaction failure during message creation", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Mock database error
-      const originalCreate = db.chatMessage.create;
-      db.chatMessage.create = vi
+      const originalCreate = db.chat_messages.create;
+      db.chat_messages.create = vi
         .fn()
         .mockRejectedValueOnce(new Error("Database connection lost"));
 
@@ -660,23 +643,23 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Restore original function
-      db.chatMessage.create = originalCreate;
+      db.chat_messages.create = originalCreate;
 
       await expectError(response, "Internal error", 500);
     });
 
     test("continues if agentPassword invalidation fails", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Mock task update failure for invalidation
-      const originalUpdate = db.task.update;
+      const originalUpdate = db.tasks.update;
       const mockUpdate = vi.fn();
-      db.task.update = mockUpdate as any;
+      db.tasks.update = mockUpdate as any;
 
       // Let the update succeed for the select, but fail for the invalidation
       mockUpdate.mockImplementation((args: any) => {
@@ -691,11 +674,11 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Restore original function
-      db.task.update = originalUpdate;
+      db.tasks.update = originalUpdate;
 
       // Should still return success even if invalidation fails
       await expectSuccess(response, 201);
@@ -703,7 +686,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("handles very large but valid video file", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Create large video buffer (50MB - within limit)
       const largeSize = 50 * 1024 * 1024;
@@ -719,7 +702,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 201);
@@ -727,7 +710,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("handles unicode characters in timestamps JSON", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const timestampsWithUnicode = {
         actions: [
@@ -743,13 +726,13 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 201);
 
       // Verify timestamps persisted correctly
-      const message = await db.chatMessage.findUnique({
+      const message = await db.chat_messages.findUnique({
         where: { id: data.data.messageId },
         include: { artifacts: true },
       });
@@ -764,7 +747,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("handles custom video filename", async () => {
       const validPassword = "test-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       const customFilename = "custom-test-recording-2024.webm";
 
@@ -774,13 +757,13 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 201);
 
       // Verify filename stored in artifact
-      const message = await db.chatMessage.findUnique({
+      const message = await db.chat_messages.findUnique({
         where: { id: data.data.messageId },
         include: { artifacts: true },
       });
@@ -791,14 +774,14 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("handles missing taskId parameter", async () => {
       const validPassword = "test-password";
-      await createTestSetup({ agentPassword: validPassword });
+      await createTestSetup({agent_password: validPassword });
 
       const request = createMultipartRequest("", {
         apiKey: validPassword,
       });
 
       const response = await POST(request, {
-        params: Promise.resolve({ taskId: "" }),
+        params: Promise.resolve({task_id: "" }),
       });
 
       await expectError(response, "Task ID required", 400);
@@ -808,7 +791,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
   describe("Security & Timing-Safe Comparison", () => {
     test("uses timing-safe comparison for API key validation", async () => {
       const validPassword = "test-password-123456";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Test with keys of different lengths (should fail safely)
       const shortKey = "test";
@@ -817,7 +800,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response1 = await POST(request1, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response1);
@@ -829,7 +812,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       });
 
       const response2 = await POST(request2, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response2);
@@ -837,7 +820,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
     test("prevents timing attacks by consistent response time", async () => {
       const validPassword = "correct-password";
-      const { task } = await createTestSetup({ agentPassword: validPassword });
+      const { task } = await createTestSetup({agent_password: validPassword });
 
       // Measure time for completely wrong key
       const start1 = Date.now();
@@ -845,7 +828,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
         apiKey: "aaaaaaaaaaaaaaaa",
       });
       await POST(request1, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       const duration1 = Date.now() - start1;
 
@@ -855,7 +838,7 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
         apiKey: "correct-passwor0",
       });
       await POST(request2, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
       const duration2 = Date.now() - start2;
 

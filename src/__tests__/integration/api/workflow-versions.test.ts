@@ -38,25 +38,19 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
     const workspace = await createTestWorkspace({
       id: generateUniqueId(),
       name: "Test Workspace",
-      slug: `test-workspace-${Date.now()}`,
-      ownerId: user.id,
+      slug: `test-workspace-${Date.now()}`,owner_id: user.id,
     });
     createdWorkspaceIds.push(workspace.id);
 
     // Create workspace membership
-    await db.workspaceMember.create({
-      data: {
-        userId: user.id,
-        workspaceId: workspace.id,
+    await db.workspace_members.create({
+      data: {user_id: user.id,workspace_id: workspace.id,
         role: "OWNER",
       },
     });
 
     const swarm = await createTestSwarm({
-      id: generateUniqueId(),
-      workspaceId: workspace.id,
-      swarmUrl: "https://knowledge-graph.stakwork.com",
-      swarmApiKey: "test-graph-api-key",
+      id: generateUniqueId(),workspace_id: workspace.id,swarm_url: "https://knowledge-graph.stakwork.com",swarm_api_key: "test-graph-api-key",
     });
     createdSwarmIds.push(swarm.id);
 
@@ -72,27 +66,27 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
   afterEach(async () => {
     // Cleanup in reverse order of creation
     if (createdSwarmIds.length > 0) {
-      await db.swarm.deleteMany({
+      await db.swarms.deleteMany({
         where: { id: { in: createdSwarmIds } },
       });
       createdSwarmIds.length = 0;
     }
 
     if (createdWorkspaceIds.length > 0) {
-      await db.workspaceMember.deleteMany({
-        where: { workspaceId: { in: createdWorkspaceIds } },
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: { in: createdWorkspaceIds } },
       });
-      await db.workspace.deleteMany({
+      await db.workspaces.deleteMany({
         where: { id: { in: createdWorkspaceIds } },
       });
       createdWorkspaceIds.length = 0;
     }
 
     if (createdUserIds.length > 0) {
-      await db.session.deleteMany({
-        where: { userId: { in: createdUserIds } },
+      await db.sessions.deleteMany({
+        where: {user_id: { in: createdUserIds } },
       });
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: { id: { in: createdUserIds } },
       });
       createdUserIds.length = 0;
@@ -211,15 +205,12 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
       const workspace = await createTestWorkspace({
         id: generateUniqueId(),
         name: "Test Workspace",
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: user.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: user.id,
       });
       createdWorkspaceIds.push(workspace.id);
 
-      await db.workspaceMember.create({
-        data: {
-          userId: user.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: user.id,workspace_id: workspace.id,
           role: "OWNER",
         },
       });

@@ -15,7 +15,7 @@ import type { Pod } from "@prisma/client";
  * @returns Array of active (non-deleted) pods
  */
 export async function findActivePods(swarmId: string): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       deletedAt: null,
@@ -32,7 +32,7 @@ export async function findActivePods(swarmId: string): Promise<Pod[]> {
  * @returns Array of unused pods (usageStatus = UNUSED)
  */
 export async function findUnusedPods(swarmId: string): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       usageStatus: PodUsageStatus.UNUSED,
@@ -50,7 +50,7 @@ export async function findUnusedPods(swarmId: string): Promise<Pod[]> {
  * @returns Array of used pods (usageStatus = USED)
  */
 export async function findUsedPods(swarmId: string): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       usageStatus: PodUsageStatus.USED,
@@ -69,7 +69,7 @@ export async function findUsedPods(swarmId: string): Promise<Pod[]> {
  * @returns Array of claimable pods
  */
 export async function findClaimablePods(swarmId: string): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       status: PodStatus.RUNNING,
@@ -89,7 +89,7 @@ export async function findClaimablePods(swarmId: string): Promise<Pod[]> {
  * @returns Array of pods with the specified status
  */
 export async function findPodsByStatus(swarmId: string, status: PodStatus): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       status,
@@ -107,7 +107,7 @@ export async function findPodsByStatus(swarmId: string, status: PodStatus): Prom
  * @returns The updated pod record
  */
 export async function softDeletePod(podId: string): Promise<Pod> {
-  return db.pod.update({
+  return db.pods.update({
     where: {
       id: podId,
     },
@@ -123,7 +123,7 @@ export async function softDeletePod(podId: string): Promise<Pod> {
  * @returns Array of soft-deleted pods
  */
 export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
-  return db.pod.findMany({
+  return db.pods.findMany({
     where: {
       swarmId,
       deletedAt: {
@@ -238,7 +238,7 @@ export function buildPodUrl(podId: string, port: number | string): string {
 export async function getPodDetails(
   podId: string,
 ): Promise<{ podId: string; password: string | null; portMappings: number[] | null } | null> {
-  const pod = await db.pod.findFirst({
+  const pod = await db.pods.findFirst({
     where: {
       podId,
       deletedAt: null,
@@ -271,7 +271,7 @@ export async function getPodDetails(
 export async function releasePodById(podId: string): Promise<Pod | null> {
   return db.$transaction(async (tx) => {
     // First, find the pod to ensure it exists
-    const existingPod = await tx.pod.findFirst({
+    const existingPod = await tx.pods.findFirst({
       where: {
         podId,
         deletedAt: null,
@@ -283,7 +283,7 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
     }
 
     // Clear task associations
-    await tx.task.updateMany({
+    await tx.tasks.updateMany({
       where: {
         podId,
       },
@@ -294,7 +294,7 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
     });
 
     // Release the pod
-    const updatedPod = await tx.pod.update({
+    const updatedPod = await tx.pods.update({
       where: {
         id: existingPod.id,
       },
@@ -321,7 +321,7 @@ export async function getPodUsageStatus(podId: string): Promise<{
   usageStatusMarkedAt: Date | null;
   usageStatusMarkedBy: string | null;
 } | null> {
-  const pod = await db.pod.findFirst({
+  const pod = await db.pods.findFirst({
     where: {
       podId,
       deletedAt: null,

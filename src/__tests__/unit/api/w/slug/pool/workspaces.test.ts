@@ -13,8 +13,7 @@ vi.mock("@/services/workspace", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
+  db: {swarms: {
       findFirst: vi.fn(),
     },
   },
@@ -158,7 +157,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
     vi.mocked(requireAuth).mockReturnValue(mockUser);
     vi.mocked(getWorkspaceBySlug).mockResolvedValue(mockWorkspace as any);
-    vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm as any);
+    vi.mocked(db.swarms.findFirst).mockResolvedValue(mockSwarm as any);
 
     // Setup mock PoolManagerService instance
     mockPoolManagerService = {
@@ -240,7 +239,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
   describe("Swarm Configuration", () => {
     it("should return 404 when workspace has no Swarm configured", async () => {
-      vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
+      vi.mocked(db.swarms.findFirst).mockResolvedValue(null);
 
       const response = await GET(mockRequest, {
         params: Promise.resolve({ slug: "test-workspace" }),
@@ -256,7 +255,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
     });
 
     it("should return 404 when Swarm has no pool ID", async () => {
-      vi.mocked(db.swarm.findFirst).mockResolvedValue({
+      vi.mocked(db.swarms.findFirst).mockResolvedValue({
         ...mockSwarm,
         id: null,
       } as any);
@@ -275,7 +274,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
     });
 
     it("should return 404 when Swarm has no pool API key", async () => {
-      vi.mocked(db.swarm.findFirst).mockResolvedValue({
+      vi.mocked(db.swarms.findFirst).mockResolvedValue({
         ...mockSwarm,
         poolApiKey: null,
       } as any);
@@ -325,7 +324,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      expect(db.swarm.findFirst).toHaveBeenCalledWith({
+      expect(db.swarms.findFirst).toHaveBeenCalledWith({
         where: {
           workspaceId: mockWorkspace.id,
         },
@@ -539,7 +538,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
     });
 
     it("should handle database query failures gracefully", async () => {
-      vi.mocked(db.swarm.findFirst).mockRejectedValue(
+      vi.mocked(db.swarms.findFirst).mockRejectedValue(
         new Error("Query timeout")
       );
 

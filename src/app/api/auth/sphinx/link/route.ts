@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     try {
       await db.$transaction(async (tx) => {
         // Update user with encrypted Lightning pubkey and Sphinx profile info
-        await tx.user.update({
+        await tx.users.update({
           where: { id: userId },
           data: {
             lightningPubkey: encryptedPubkey,
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Check if user already has a Sphinx account
-        const existingAccount = await tx.account.findFirst({
+        const existingAccount = await tx.accounts.findFirst({
           where: {
             userId,
             provider: "sphinx",
@@ -156,13 +156,13 @@ export async function POST(request: NextRequest) {
 
         if (existingAccount) {
           // Update existing account with new pubkey
-          await tx.account.update({
+          await tx.accounts.update({
             where: { id: existingAccount.id },
             data: { providerAccountId: pubkey },
           });
         } else {
           // Create new account
-          await tx.account.create({
+          await tx.accounts.create({
             data: {
               userId,
               type: "oauth",

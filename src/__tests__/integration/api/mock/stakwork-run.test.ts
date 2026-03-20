@@ -34,10 +34,7 @@ function buildBody(overrides: Record<string, unknown> = {}) {
     workflow_params: {
       set_var: {
         attributes: {
-          vars: {
-            webhookUrl: WEBHOOK_URL,
-            swarmUrl: SWARM_URL,
-            swarmApiKey: SWARM_API_KEY,
+          vars: {webhook_url: WEBHOOK_URL,swarm_url: SWARM_URL,swarm_api_key: SWARM_API_KEY,
             repo_url: REPO_URL,
             prompt: PROMPT,
             ...overrides,
@@ -87,10 +84,7 @@ describe("POST /api/mock/stakwork/run", () => {
 
     for (const field of requiredFields) {
       test(`returns 400 when '${field}' is missing`, async () => {
-        const vars: Record<string, unknown> = {
-          webhookUrl: WEBHOOK_URL,
-          swarmUrl: SWARM_URL,
-          swarmApiKey: SWARM_API_KEY,
+        const vars: Record<string, unknown> = {webhook_url: WEBHOOK_URL,swarm_url: SWARM_URL,swarm_api_key: SWARM_API_KEY,
           repo_url: REPO_URL,
           prompt: PROMPT,
         };
@@ -179,7 +173,7 @@ describe("POST /api/mock/stakwork/run", () => {
       try {
         const request = createPostRequest(
           "http://localhost/api/mock/stakwork/run",
-          buildBody({ workspaceId: ws2.id })
+          buildBody({workspace_id: ws2.id })
         );
         const response = await POST(request);
         const body = await response.json();

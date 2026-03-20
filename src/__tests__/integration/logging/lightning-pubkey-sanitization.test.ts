@@ -7,9 +7,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
   describe("SENSITIVE_KEYS sanitization", () => {
     it("should sanitize lightningPubkey field in log data", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: testPubkey,
+      const logData = {user_id: "user123",lightning_pubkey: testPubkey,
         action: "authentication",
       };
 
@@ -32,8 +30,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     });
 
     it("should sanitize lightning_pubkey (snake_case) field in log data", () => {
-      const logData = {
-        userId: "user123",
+      const logData = {user_id: "user123",
         lightning_pubkey: testPubkey,
         action: "authentication",
       };
@@ -57,8 +54,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     it("should sanitize nested lightningPubkey in objects", () => {
       const logData = {
         user: {
-          id: "user123",
-          lightningPubkey: testPubkey,
+          id: "user123",lightning_pubkey: testPubkey,
           name: "Test User",
         },
         action: "login",
@@ -83,8 +79,8 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     it("should sanitize lightningPubkey in arrays", () => {
       const logData = {
         users: [
-          { id: "user1", lightningPubkey: testPubkey },
-          { id: "user2", lightningPubkey: "03" + "b".repeat(64) },
+          { id: "user1",lightning_pubkey: testPubkey },
+          { id: "user2",lightning_pubkey: "03" + "b".repeat(64) },
         ],
       };
 
@@ -105,10 +101,8 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     });
 
     it("should preserve non-sensitive data while sanitizing lightningPubkey", () => {
-      const logData = {
-        userId: "user123",
-        email: "test@example.com",
-        lightningPubkey: testPubkey,
+      const logData = {user_id: "user123",
+        email: "test@example.com",lightning_pubkey: testPubkey,
         action: "authentication",
         timestamp: "2024-01-01",
       };
@@ -133,9 +127,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
   describe("Auth-specific logger methods", () => {
     it("should sanitize lightningPubkey in logger.authInfo", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: testPubkey,
+      const logData = {user_id: "user123",lightning_pubkey: testPubkey,
         method: "sphinx",
       };
 
@@ -180,8 +172,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
     it("should sanitize lightningPubkey in logger.authWarn", () => {
       const logData = {
-        warning: "Duplicate login attempt",
-        lightningPubkey: testPubkey,
+        warning: "Duplicate login attempt",lightning_pubkey: testPubkey,
       };
 
       const logs: string[] = [];
@@ -201,8 +192,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
     it("should sanitize lightningPubkey in logger.authDebug", () => {
       const logData = {
-        debug: "Challenge verification",
-        lightningPubkey: testPubkey,
+        debug: "Challenge verification",lightning_pubkey: testPubkey,
         challenge: "test_challenge",
       };
 
@@ -227,9 +217,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
   describe("Multiple sensitive fields", () => {
     it("should sanitize both lightningPubkey and other sensitive fields", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: testPubkey,
+      const logData = {user_id: "user123",lightning_pubkey: testPubkey,
         token: "secret_token_123",
         apiKey: "api_key_456",
       };
@@ -255,9 +243,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
 
   describe("Edge cases", () => {
     it("should handle null lightningPubkey gracefully", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: null,
+      const logData = {user_id: "user123",lightning_pubkey: null,
       };
 
       const logs: string[] = [];
@@ -275,9 +261,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     });
 
     it("should handle undefined lightningPubkey gracefully", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: undefined,
+      const logData = {user_id: "user123",lightning_pubkey: undefined,
       };
 
       const logs: string[] = [];
@@ -295,9 +279,7 @@ describe("Logger Lightning Pubkey Sanitization", () => {
     });
 
     it("should handle empty string lightningPubkey", () => {
-      const logData = {
-        userId: "user123",
-        lightningPubkey: "",
+      const logData = {user_id: "user123",lightning_pubkey: "",
       };
 
       const logs: string[] = [];

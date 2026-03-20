@@ -31,7 +31,7 @@ export async function PUT(
       );
     }
 
-    const currentFeature = await db.feature.findUnique({
+    const currentFeature = await db.features.findUnique({
       where: { id: featureId },
       select: { id: true, title: true, workspaceId: true },
     });
@@ -56,7 +56,7 @@ export async function PUT(
       );
     }
 
-    const updatedFeature = await db.feature.update({
+    const updatedFeature = await db.features.update({
       where: { id: featureId },
       data: { title: trimmedTitle },
       select: { id: true, title: true, workspaceId: true },

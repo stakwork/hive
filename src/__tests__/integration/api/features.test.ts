@@ -25,32 +25,25 @@ describe("Features API - Integration Tests", () => {
     test("returns features for workspace with access", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Create test features
-      await db.feature.create({
+      await db.features.create({
         data: {
-          title: "Feature 1",
-          workspaceId: workspace.id,
+          title: "Feature 1",workspace_id: workspace.id,
           status: FeatureStatus.BACKLOG,
-          priority: FeaturePriority.HIGH,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: FeaturePriority.HIGH,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.feature.create({
+      await db.features.create({
         data: {
-          title: "Feature 2",
-          workspaceId: workspace.id,
+          title: "Feature 2",workspace_id: workspace.id,
           status: FeatureStatus.IN_PROGRESS,
-          priority: FeaturePriority.MEDIUM,
-          createdById: user.id,
-          updatedById: user.id,
+          priority: FeaturePriority.MEDIUM,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -83,20 +76,16 @@ describe("Features API - Integration Tests", () => {
     test("supports pagination", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Create 15 features
       for (let i = 0; i < 15; i++) {
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: `Feature ${i + 1}`,
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: `Feature ${i + 1}`,workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
           },
         });
       }
@@ -145,8 +134,7 @@ describe("Features API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -165,8 +153,7 @@ describe("Features API - Integration Tests", () => {
 
     test("validates pagination parameters", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -185,31 +172,22 @@ describe("Features API - Integration Tests", () => {
       test("returns features where user is the explicit assignee", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
         const assignee = await createTestUser({ name: "Assigned User" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
         // Feature explicitly assigned to assignee
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Assigned Feature",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: assignee.id,
+            title: "Assigned Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: assignee.id,
           },
         });
 
         // Feature with no assignee, different creator — should NOT appear
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Unassigned Feature by Owner",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Unassigned Feature by Owner",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
           },
         });
 
@@ -228,34 +206,25 @@ describe("Features API - Integration Tests", () => {
       test("returns features where user is creator and no assignee is set", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
         const otherUser = await createTestUser({ name: "Other User" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
-        await db.workspaceMember.create({
-          data: { workspaceId: workspace.id, userId: otherUser.id, role: "DEVELOPER" },
+        await db.workspace_members.create({
+          data: {workspace_id: workspace.id,user_id: otherUser.id, role: "DEVELOPER" },
         });
 
         // Feature created by owner, no assignee — should appear when filtering by owner
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Created by Owner, no Assignee",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Created by Owner, no Assignee",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
           },
         });
 
         // Feature created by otherUser, no assignee — should NOT appear
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Created by Other, no Assignee",
-            workspaceId: workspace.id,
-            createdById: otherUser.id,
-            updatedById: otherUser.id,
-            assigneeId: null,
+            title: "Created by Other, no Assignee",workspace_id: workspace.id,created_by_id: otherUser.id,updated_by_id: otherUser.id,assignee_id: null,
           },
         });
 
@@ -272,31 +241,22 @@ describe("Features API - Integration Tests", () => {
 
       test("returns both assignee features and creator-only features for the same user", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
         // Feature where owner is the explicit assignee
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Owner is Assignee",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: owner.id,
+            title: "Owner is Assignee",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: owner.id,
           },
         });
 
         // Feature where owner is creator with no assignee
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Owner is Creator, no Assignee",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Owner is Creator, no Assignee",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
           },
         });
 
@@ -317,29 +277,20 @@ describe("Features API - Integration Tests", () => {
       test("UNASSIGNED returns only features with no assignee (regardless of creator)", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
         const assignee = await createTestUser({ name: "Assignee" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Has Assignee",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: assignee.id,
+            title: "Has Assignee",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: assignee.id,
           },
         });
 
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "No Assignee",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "No Assignee",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
           },
         });
 
@@ -358,29 +309,20 @@ describe("Features API - Integration Tests", () => {
       test("returns all features when assigneeId is not provided", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
         const assignee = await createTestUser({ name: "Assigned User" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Assigned Feature",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: assignee.id,
+            title: "Assigned Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: assignee.id,
           },
         });
 
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Unassigned Feature",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Unassigned Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
           },
         });
 
@@ -397,32 +339,23 @@ describe("Features API - Integration Tests", () => {
 
       test("owner filter combines correctly with status filter", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
         // Creator-only feature (BACKLOG)
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Creator Backlog Feature",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Creator Backlog Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
             status: FeatureStatus.BACKLOG,
           },
         });
 
         // Creator-only feature (IN_PROGRESS) — should appear
-        await db.feature.create({
+        await db.features.create({
           data: {
-            title: "Creator In Progress Feature",
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            updatedById: owner.id,
-            assigneeId: null,
+            title: "Creator In Progress Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
             status: FeatureStatus.IN_PROGRESS,
           },
         });
@@ -440,32 +373,23 @@ describe("Features API - Integration Tests", () => {
 
       test("pagination is correct with OR owner filter", async () => {
         const owner = await createTestUser({ name: "Workspace Owner" });
-        const workspace = await createTestWorkspace({
-          ownerId: owner.id,
+        const workspace = await createTestWorkspace({owner_id: owner.id,
           name: "Test Workspace",
           slug: "test-workspace",
         });
 
         // Create 12 features owned by owner (mix of assignee and creator-only)
         for (let i = 0; i < 6; i++) {
-          await db.feature.create({
+          await db.features.create({
             data: {
-              title: `Assigned Feature ${i + 1}`,
-              workspaceId: workspace.id,
-              createdById: owner.id,
-              updatedById: owner.id,
-              assigneeId: owner.id,
+              title: `Assigned Feature ${i + 1}`,workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: owner.id,
             },
           });
         }
         for (let i = 0; i < 6; i++) {
-          await db.feature.create({
+          await db.features.create({
             data: {
-              title: `Creator Feature ${i + 1}`,
-              workspaceId: workspace.id,
-              createdById: owner.id,
-              updatedById: owner.id,
-              assigneeId: null,
+              title: `Creator Feature ${i + 1}`,workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,assignee_id: null,
             },
           });
         }
@@ -493,15 +417,13 @@ describe("Features API - Integration Tests", () => {
     test("creates feature successfully", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
+        title: "New Feature",workspace_id: workspace.id,
         status: FeatureStatus.PLANNED,
         priority: FeaturePriority.HIGH,
       }, user);
@@ -514,24 +436,20 @@ describe("Features API - Integration Tests", () => {
       expect(data.data).toMatchObject({
         title: "New Feature",
         status: FeatureStatus.PLANNED,
-        priority: FeaturePriority.HIGH,
-        createdById: user.id,
-        updatedById: user.id,
+        priority: FeaturePriority.HIGH,created_by_id: user.id,updated_by_id: user.id,
       });
     });
 
     test("uses default values for optional fields", async () => {
       // Setup
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Simple Feature",
-        workspaceId: workspace.id,
+        title: "Simple Feature",workspace_id: workspace.id,
       }, user);
 
       // Execute
@@ -543,7 +461,7 @@ describe("Features API - Integration Tests", () => {
         title: "Simple Feature",
         status: FeatureStatus.BACKLOG, // default
         priority: FeaturePriority.LOW, // default
-        assigneeId: null,
+assignee_id: null,
       });
     });
 
@@ -551,16 +469,13 @@ describe("Features API - Integration Tests", () => {
       // Setup
       const owner = await createTestUser();
       const assignee = await createTestUser({ name: "Assignee User" });
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Assigned Feature",
-        workspaceId: workspace.id,
-        assigneeId: assignee.id,
+        title: "Assigned Feature",workspace_id: workspace.id,assignee_id: assignee.id,
       }, owner);
 
       // Execute
@@ -576,8 +491,7 @@ describe("Features API - Integration Tests", () => {
 
     test("requires authentication", async () => {
       const request = createPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: "test-id",
+        title: "New Feature",workspace_id: "test-id",
       });
 
       const response = await POST(request);
@@ -600,15 +514,13 @@ describe("Features API - Integration Tests", () => {
 
     test("validates status enum", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
+        title: "New Feature",workspace_id: workspace.id,
         status: "INVALID_STATUS",
       }, user);
 
@@ -619,15 +531,13 @@ describe("Features API - Integration Tests", () => {
 
     test("validates priority enum", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
+        title: "New Feature",workspace_id: workspace.id,
         priority: "INVALID_PRIORITY",
       }, user);
 
@@ -638,16 +548,13 @@ describe("Features API - Integration Tests", () => {
 
     test("validates assignee exists", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-        assigneeId: "non-existent-user-id",
+        title: "New Feature",workspace_id: workspace.id,assignee_id: "non-existent-user-id",
       }, user);
 
       const response = await POST(request);
@@ -658,15 +565,13 @@ describe("Features API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
+        title: "New Feature",workspace_id: workspace.id,
       }, nonMember);
 
       const response = await POST(request);
@@ -676,15 +581,13 @@ describe("Features API - Integration Tests", () => {
 
     test("trims whitespace from title", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "  Trimmed Feature  ",
-        workspaceId: workspace.id,
+        title: "  Trimmed Feature  ",workspace_id: workspace.id,
       }, user);
 
       const response = await POST(request);
@@ -695,16 +598,13 @@ describe("Features API - Integration Tests", () => {
 
     test("creates feature with isFastTrack: true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Fast Track Feature",
-        workspaceId: workspace.id,
-        isFastTrack: true,
+        title: "Fast Track Feature",workspace_id: workspace.id,is_fast_track: true,
       }, user);
 
       const response = await POST(request);
@@ -713,24 +613,22 @@ describe("Features API - Integration Tests", () => {
       expect(data.data.isFastTrack).toBe(true);
 
       // Verify in database
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: data.data.id },
-        select: { isFastTrack: true },
+        select: {is_fast_track: true },
       });
       expect(feature?.isFastTrack).toBe(true);
     });
 
     test("defaults isFastTrack to false when omitted", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Regular Feature",
-        workspaceId: workspace.id,
+        title: "Regular Feature",workspace_id: workspace.id,
       }, user);
 
       const response = await POST(request);
@@ -739,25 +637,22 @@ describe("Features API - Integration Tests", () => {
       expect(data.data.isFastTrack).toBe(false);
 
       // Verify in database
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: data.data.id },
-        select: { isFastTrack: true },
+        select: {is_fast_track: true },
       });
       expect(feature?.isFastTrack).toBe(false);
     });
 
     test("creates feature with isFastTrack: false explicitly", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Explicit Non-Fast-Track Feature",
-        workspaceId: workspace.id,
-        isFastTrack: false,
+        title: "Explicit Non-Fast-Track Feature",workspace_id: workspace.id,is_fast_track: false,
       }, user);
 
       const response = await POST(request);
@@ -766,9 +661,9 @@ describe("Features API - Integration Tests", () => {
       expect(data.data.isFastTrack).toBe(false);
 
       // Verify in database
-      const feature = await db.feature.findUnique({
+      const feature = await db.features.findUnique({
         where: { id: data.data.id },
-        select: { isFastTrack: true },
+        select: {is_fast_track: true },
       });
       expect(feature?.isFastTrack).toBe(false);
     });
@@ -777,24 +672,19 @@ describe("Features API - Integration Tests", () => {
   describe("GET /api/features - needsAttention filter", () => {
     test("returns feature with ASSISTANT last message and no tasks when needsAttention=true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Feature that SHOULD appear: last message = ASSISTANT, no tasks
-      const awaitingFeature = await db.feature.create({
+      const awaitingFeature = await db.features.create({
         data: {
-          title: "Awaiting Feedback Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Awaiting Feedback Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
-      await db.chatMessage.create({
-        data: {
-          featureId: awaitingFeature.id,
+      await db.chat_messages.create({
+        data: {feature_id: awaitingFeature.id,
           role: ChatRole.ASSISTANT,
           message: "I've analyzed the requirements. Could you clarify your goals?",
           status: ChatStatus.SENT,
@@ -815,32 +705,26 @@ describe("Features API - Integration Tests", () => {
 
     test("excludes feature where last message is USER when needsAttention=true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Feature that should NOT appear: last message is USER
-      const repliedFeature = await db.feature.create({
+      const repliedFeature = await db.features.create({
         data: {
-          title: "User Replied Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "User Replied Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
-      await db.chatMessage.create({
-        data: {
-          featureId: repliedFeature.id,
+      await db.chat_messages.create({
+        data: {feature_id: repliedFeature.id,
           role: ChatRole.ASSISTANT,
           message: "What are your requirements?",
           status: ChatStatus.SENT,
         },
       });
-      await db.chatMessage.create({
-        data: {
-          featureId: repliedFeature.id,
+      await db.chat_messages.create({
+        data: {feature_id: repliedFeature.id,
           role: ChatRole.USER,
           message: "Here they are...",
           status: ChatStatus.SENT,
@@ -859,37 +743,28 @@ describe("Features API - Integration Tests", () => {
 
     test("excludes feature with ASSISTANT last message but with tasks when needsAttention=true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Feature that should NOT appear: has tasks
-      const featureWithTasks = await db.feature.create({
+      const featureWithTasks = await db.features.create({
         data: {
-          title: "Feature With Tasks",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature With Tasks",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
-      await db.chatMessage.create({
-        data: {
-          featureId: featureWithTasks.id,
+      await db.chat_messages.create({
+        data: {feature_id: featureWithTasks.id,
           role: ChatRole.ASSISTANT,
           message: "Tasks have been generated!",
           status: ChatStatus.SENT,
         },
       });
       // Create a task for the feature directly (no phase)
-      await db.task.create({
+      await db.tasks.create({
         data: {
-          title: "Some Task",
-          workspaceId: workspace.id,
-          featureId: featureWithTasks.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Some Task",workspace_id: workspace.id,feature_id: featureWithTasks.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 

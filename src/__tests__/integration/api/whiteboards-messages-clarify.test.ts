@@ -26,7 +26,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
   let testFeature: Awaited<ReturnType<typeof createTestFeature>>;
-  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboard.create>>;
+  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboards.create>>;
   let otherUser: Awaited<ReturnType<typeof createTestUser>>;
 
   const mockClarifyingQuestions = {
@@ -45,19 +45,14 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     vi.clearAllMocks();
 
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
-    testFeature = await createTestFeature({
-      workspaceId: testWorkspace.id,
-      createdById: testUser.id,
-      updatedById: testUser.id,
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
+    testFeature = await createTestFeature({workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       architecture: "Test architecture for diagram generation",
     });
 
-    testWhiteboard = await db.whiteboard.create({
+    testWhiteboard = await db.whiteboards.create({
       data: {
-        name: "Test Whiteboard",
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
+        name: "Test Whiteboard",workspace_id: testWorkspace.id,feature_id: testFeature.id,
         elements: [],
         appState: {},
         files: {},
@@ -69,11 +64,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     vi.mocked(stakworkRunService.createDiagramStakworkRun).mockResolvedValue({
       id: "mock-run-id",
       type: "DIAGRAM_GENERATION",
-      status: "PENDING",
-      featureId: testFeature.id,
-      userId: testUser.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      status: "PENDING",feature_id: testFeature.id,user_id: testUser.id,created_at: new Date(),updated_at: new Date(),
     } as any);
   });
 
@@ -165,8 +156,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
       await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "ASSISTANT",
-        content: "Here is your diagram.",
-        userId: null,
+        content: "Here is your diagram.",user_id: null,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -183,7 +173,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     });
 
     it("returns 400 when last ASSISTANT message has different tool_use", async () => {
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",
@@ -210,7 +200,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
   describe("Concurrent generation guard (409)", () => {
     it("returns 409 when a DIAGRAM_GENERATION run is PENDING for the feature", async () => {
       // Seed clarifying questions so we pass the 400 check
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",
@@ -220,13 +210,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
         },
       });
 
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "PENDING",
-          featureId: testFeature.id,
-          workspaceId: testWorkspace.id,
-          webhookUrl: "http://localhost:3000/api/webhook/stakwork/response",
+          status: "PENDING",feature_id: testFeature.id,workspace_id: testWorkspace.id,webhook_url: "http://localhost:3000/api/webhook/stakwork/response",
         },
       });
 
@@ -247,18 +234,16 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     });
 
     it("returns 409 when a DIAGRAM_GENERATION run is IN_PROGRESS for the whiteboard URL", async () => {
-      const standaloneWhiteboard = await db.whiteboard.create({
+      const standaloneWhiteboard = await db.whiteboards.create({
         data: {
-          name: "Standalone",
-          workspaceId: testWorkspace.id,
-          featureId: null,
+          name: "Standalone",workspace_id: testWorkspace.id,feature_id: null,
           elements: [],
           appState: {},
           files: {},
         },
       });
 
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: standaloneWhiteboard.id,
           role: "ASSISTANT",
@@ -268,13 +253,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
         },
       });
 
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "IN_PROGRESS",
-          featureId: null,
-          workspaceId: testWorkspace.id,
-          webhookUrl: `http://localhost:3000/api/webhook/stakwork/response?whiteboard_id=${standaloneWhiteboard.id}`,
+          status: "IN_PROGRESS",feature_id: null,workspace_id: testWorkspace.id,webhook_url: `http://localhost:3000/api/webhook/stakwork/response?whiteboard_id=${standaloneWhiteboard.id}`,
         },
       });
 
@@ -300,13 +282,12 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
       const originalUserMessage = await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "USER",
-        content: "Draw the auth flow",
-        userId: testUser.id,
+        content: "Draw the auth flow",user_id: testUser.id,
       });
 
       await new Promise((resolve) => setTimeout(resolve, 5));
 
-      const clarifyMessage = await db.whiteboardMessage.create({
+      const clarifyMessage = await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",
@@ -340,7 +321,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
       expect(result.data.runId).toBe("mock-run-id");
 
       // Verify message was persisted
-      const persisted = await db.whiteboardMessage.findUnique({
+      const persisted = await db.whiteboard_messages.findUnique({
         where: { id: result.data.message.id },
       });
       expect(persisted).toBeDefined();
@@ -348,13 +329,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
 
       // Verify createDiagramStakworkRun was called with enriched text
       expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          workspaceId: testWorkspace.id,
-          featureId: testFeature.id,
+        expect.objectContaining({workspace_id: testWorkspace.id,feature_id: testFeature.id,
           whiteboardId: testWhiteboard.id,
           architectureText: expect.stringContaining("Draw the auth flow"),
-          layout: "layered",
-          userId: testUser.id,
+          layout: "layered",user_id: testUser.id,
         })
       );
 
@@ -378,7 +356,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
 
     it("uses only answers as enriched prompt when no original USER message exists", async () => {
       // Only the clarifying questions ASSISTANT message, no prior USER message
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",
@@ -413,11 +391,9 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     });
 
     it("works correctly for standalone whiteboard (no featureId)", async () => {
-      const standaloneWhiteboard = await db.whiteboard.create({
+      const standaloneWhiteboard = await db.whiteboards.create({
         data: {
-          name: "Standalone",
-          workspaceId: testWorkspace.id,
-          featureId: null,
+          name: "Standalone",workspace_id: testWorkspace.id,feature_id: null,
           elements: [],
           appState: {},
           files: {},
@@ -427,13 +403,12 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
       await createTestWhiteboardMessage({
         whiteboardId: standaloneWhiteboard.id,
         role: "USER",
-        content: "Draw the system",
-        userId: testUser.id,
+        content: "Draw the system",user_id: testUser.id,
       });
 
       await new Promise((resolve) => setTimeout(resolve, 5));
 
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: standaloneWhiteboard.id,
           role: "ASSISTANT",
@@ -471,7 +446,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     });
 
     it("passes layout parameter from request body", async () => {
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",
@@ -516,7 +491,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages/clarify", () => {
     });
 
     it("returns 500 when createDiagramStakworkRun throws", async () => {
-      await db.whiteboardMessage.create({
+      await db.whiteboard_messages.create({
         data: {
           whiteboardId: testWhiteboard.id,
           role: "ASSISTANT",

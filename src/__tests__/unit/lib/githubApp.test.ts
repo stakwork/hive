@@ -8,8 +8,7 @@ const mockEncryptionInstance = {
 
 // Mock dependencies BEFORE imports
 vi.mock("@/lib/db", () => ({
-  db: {
-    sourceControlToken: {
+  db: {source_control_tokens: {
       findFirst: vi.fn(),
     },
   },
@@ -54,7 +53,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: mockEncryptedRefreshToken,
       });
@@ -72,7 +71,7 @@ describe("getUserAppTokens", () => {
         refreshToken: mockRefreshToken,
       });
 
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
           sourceControlOrg: {
@@ -109,7 +108,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -145,7 +144,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -156,7 +155,7 @@ describe("getUserAppTokens", () => {
       await getUserAppTokens(differentUserId, differentGithubOwner);
 
       // Assert
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: differentUserId,
           sourceControlOrg: {
@@ -182,7 +181,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -198,7 +197,7 @@ describe("getUserAppTokens", () => {
         refreshToken: undefined,
       });
 
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: { userId: mockUserId },
         select: {
           token: true,
@@ -224,7 +223,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: mockEncryptedRefreshToken,
       });
@@ -242,7 +241,7 @@ describe("getUserAppTokens", () => {
         refreshToken: mockRefreshToken,
       });
 
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: { userId: mockUserId },
         select: {
           token: true,
@@ -255,14 +254,14 @@ describe("getUserAppTokens", () => {
   describe("error handling - no tokens found", () => {
     it("should return null when no token record exists in database", async () => {
       // Arrange
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue(null);
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue(null);
 
       // Act
       const result = await getUserAppTokens(mockUserId, mockGithubOwner);
 
       // Assert
       expect(result).toBeNull();
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
           sourceControlOrg: {
@@ -279,7 +278,7 @@ describe("getUserAppTokens", () => {
 
     it("should return null when token exists but token field is null", async () => {
       // Arrange
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: null,
         refreshToken: null,
       });
@@ -294,7 +293,7 @@ describe("getUserAppTokens", () => {
 
     it("should return null when token field is undefined", async () => {
       // Arrange
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: undefined,
         refreshToken: null,
       });
@@ -319,7 +318,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -365,7 +364,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: mockEncryptedRefreshToken,
       });
@@ -403,7 +402,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -432,14 +431,14 @@ describe("getUserAppTokens", () => {
     it("should propagate database connection errors", async () => {
       // Arrange
       const dbError = new Error("Database connection timeout");
-      vi.mocked(db.sourceControlToken.findFirst).mockRejectedValue(dbError);
+      vi.mocked(db.source_control_tokens.findFirst).mockRejectedValue(dbError);
 
       // Act & Assert
       await expect(
         getUserAppTokens(mockUserId, mockGithubOwner)
       ).rejects.toThrow("Database connection timeout");
 
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
           sourceControlOrg: {
@@ -458,7 +457,7 @@ describe("getUserAppTokens", () => {
       const prismaError = new Error(
         "Invalid `prisma.sourceControlToken.findFirst()` invocation"
       );
-      vi.mocked(db.sourceControlToken.findFirst).mockRejectedValue(prismaError);
+      vi.mocked(db.source_control_tokens.findFirst).mockRejectedValue(prismaError);
 
       // Act & Assert
       await expect(
@@ -472,14 +471,14 @@ describe("getUserAppTokens", () => {
   describe("edge cases", () => {
     it("should handle empty string userId", async () => {
       // Arrange
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue(null);
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue(null);
 
       // Act
       const result = await getUserAppTokens("", mockGithubOwner);
 
       // Assert
       expect(result).toBeNull();
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: "",
           sourceControlOrg: {
@@ -496,7 +495,7 @@ describe("getUserAppTokens", () => {
     it("should handle empty string githubOwner as falsy value", async () => {
       // Arrange
       // Empty string is falsy, so it should query without sourceControlOrg filter
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue(null);
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue(null);
 
       // Act
       const result = await getUserAppTokens(mockUserId, "");
@@ -504,7 +503,7 @@ describe("getUserAppTokens", () => {
       // Assert
       expect(result).toBeNull();
       // Empty string is falsy, so query should not include sourceControlOrg filter
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
         },
@@ -518,14 +517,14 @@ describe("getUserAppTokens", () => {
     it("should handle special characters in githubOwner", async () => {
       // Arrange
       const specialGithubOwner = "test-owner_123.special";
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue(null);
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue(null);
 
       // Act
       const result = await getUserAppTokens(mockUserId, specialGithubOwner);
 
       // Assert
       expect(result).toBeNull();
-      expect(db.sourceControlToken.findFirst).toHaveBeenCalledWith({
+      expect(db.source_control_tokens.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
           sourceControlOrg: {
@@ -551,7 +550,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -580,7 +579,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: "2024-01-01T00:00:00.000Z",
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: null,
       });
@@ -621,7 +620,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: mockEncryptedRefreshToken,
       });
@@ -670,7 +669,7 @@ describe("getUserAppTokens", () => {
         encryptedAt: new Date().toISOString(),
       };
 
-      vi.mocked(db.sourceControlToken.findFirst).mockResolvedValue({
+      vi.mocked(db.source_control_tokens.findFirst).mockResolvedValue({
         token: mockEncryptedAccessToken,
         refreshToken: mockEncryptedRefreshToken,
       });

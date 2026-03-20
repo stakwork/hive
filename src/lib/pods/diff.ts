@@ -103,7 +103,7 @@ export async function generateAndSaveDiff(options: GenerateDiffOptions): Promise
     console.log(`[generateAndSaveDiff] Creating chat message with DIFF artifact`);
 
     // Create a chat message with the DIFF artifact
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         message: "Changes have been applied",

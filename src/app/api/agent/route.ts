@@ -114,7 +114,7 @@ interface ServiceInfo {
  * Fetch chat history for a task
  */
 async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
-  const chatHistory = await db.chatMessage.findMany({
+  const chatHistory = await db.chat_messages.findMany({
     where: { taskId },
     orderBy: { createdAt: "asc" },
     select: {
@@ -189,7 +189,7 @@ async function getChatHistoryContext(taskId: string): Promise<string | null> {
  */
 async function claimPodForTask(taskId: string, workspaceId: string): Promise<PodClaimResult> {
   // Load workspace with swarm configuration
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     include: {
       swarm: true,
@@ -229,7 +229,7 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
 
   // Store pod credentials on task
   const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
-  await db.task.update({
+  await db.tasks.update({
     where: { id: taskId },
     data: {
       podId: podWorkspace.id,
@@ -291,7 +291,7 @@ async function getOrCreateWebhookSecret(taskId: string, existingSecret: string |
 
   const webhookSecret = generateWebhookSecret();
   const encryptedSecret = encryptionService.encryptField("agentWebhookSecret", webhookSecret);
-  await db.task.update({
+  await db.tasks.update({
     where: { id: taskId },
     data: {
       agentWebhookSecret: JSON.stringify(encryptedSecret),
@@ -367,7 +367,7 @@ async function createAgentSession(
  */
 async function saveUserMessage(taskId: string, message: string, artifacts: ArtifactRequest[]): Promise<void> {
   try {
-    await db.chatMessage.create({
+    await db.chat_messages.create({
       data: {
         taskId,
         message,
@@ -410,7 +410,7 @@ export async function POST(request: NextRequest) {
 
   // 2. Load task and message count
   const [task, messageCount] = await Promise.all([
-    db.task.findUnique({
+    db.tasks.findUnique({
       where: { id: taskId },
       select: {
         podId: true,
@@ -422,7 +422,7 @@ export async function POST(request: NextRequest) {
         model: true,
       },
     }),
-    db.chatMessage.count({
+    db.chat_messages.count({
       where: { taskId },
     }),
   ]);
@@ -474,7 +474,7 @@ export async function POST(request: NextRequest) {
     const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
 
     // Store mock podId on task
-    await db.task.update({
+    await db.tasks.update({
       where: { id: taskId },
       data: {
         podId: mockPodId,

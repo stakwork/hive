@@ -12,20 +12,18 @@ import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 describe("GET /api/tasks - Summary Field Exclusion", () => {
   test("should not include summary field in task list response", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     // Create a task with summary
     const taskId = generateUniqueId("task");
-    await db.task.create({
+    await db.tasks.create({
       data: {
         id: taskId,
         title: "Test Task",
         description: "Test description",
         summary: "## Task Complete\n\n- Fixed bug\n- Added tests",
         status: "IN_PROGRESS", // Non-TODO status so it shows up in results
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
 
@@ -55,12 +53,12 @@ describe("GET /api/tasks - Summary Field Exclusion", () => {
       expect(task).toHaveProperty("description");
     } finally {
       // Cleanup
-      await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
-      await db.workspaceMember.deleteMany({
-        where: { workspaceId: testWorkspace.id },
+      await db.tasks.deleteMany({ where: {workspace_id: testWorkspace.id } });
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: testWorkspace.id },
       });
-      await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-      await db.user.deleteMany({ where: { id: testUser.id } });
+      await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+      await db.users.deleteMany({ where: { id: testUser.id } });
     }
   });
 });
@@ -68,19 +66,16 @@ describe("GET /api/tasks - Summary Field Exclusion", () => {
 describe("GET /api/task/[taskId] - Summary Field Exclusion", () => {
   test("should not include summary field in single task response", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     // Create a task with summary
     const taskId = generateUniqueId("task");
-    await db.task.create({
+    await db.tasks.create({
       data: {
         id: taskId,
         title: "Test Task",
         description: "Test description",
-        summary: "## Task Complete\n\n- Fixed bug\n- Added tests",
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        summary: "## Task Complete\n\n- Fixed bug\n- Added tests",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
 
@@ -106,30 +101,27 @@ describe("GET /api/task/[taskId] - Summary Field Exclusion", () => {
       expect(responseData.data).toHaveProperty("workspaceId");
     } finally {
       // Cleanup
-      await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
-      await db.workspaceMember.deleteMany({
-        where: { workspaceId: testWorkspace.id },
+      await db.tasks.deleteMany({ where: {workspace_id: testWorkspace.id } });
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: testWorkspace.id },
       });
-      await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-      await db.user.deleteMany({ where: { id: testUser.id } });
+      await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+      await db.users.deleteMany({ where: { id: testUser.id } });
     }
   });
 
   test("should not include summary field even when task has no summary", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     // Create a task without summary
     const taskId = generateUniqueId("task");
-    await db.task.create({
+    await db.tasks.create({
       data: {
         id: taskId,
         title: "Test Task",
         description: "Test description",
-        summary: null,
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+        summary: null,workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       },
     });
 
@@ -149,12 +141,12 @@ describe("GET /api/task/[taskId] - Summary Field Exclusion", () => {
       expect(responseData.data).not.toHaveProperty("summary");
     } finally {
       // Cleanup
-      await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
-      await db.workspaceMember.deleteMany({
-        where: { workspaceId: testWorkspace.id },
+      await db.tasks.deleteMany({ where: {workspace_id: testWorkspace.id } });
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: testWorkspace.id },
       });
-      await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-      await db.user.deleteMany({ where: { id: testUser.id } });
+      await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+      await db.users.deleteMany({ where: { id: testUser.id } });
     }
   });
 });

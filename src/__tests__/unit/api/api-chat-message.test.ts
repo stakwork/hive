@@ -3,20 +3,16 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -119,13 +115,13 @@ describe("POST /api/chat/message", () => {
     vi.clearAllMocks();
 
     // Setup default mocks
-    mockDb.task.findFirst.mockResolvedValue(mockTask as any);
-    mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
-    mockDb.user.findUnique.mockResolvedValue(mockUser as any);
-    mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
-    mockDb.chatMessage.findMany.mockResolvedValue([]);
-    mockDb.task.update.mockResolvedValue({} as any);
-    mockDb.workspace.findUnique.mockResolvedValue({ slug: "test-workspace" } as any);
+    mockDb.tasks.findFirst.mockResolvedValue(mockTask as any);
+    mockDb.tasks.findUnique.mockResolvedValue({ status: "TODO" } as any);
+    mockDb.users.findUnique.mockResolvedValue(mockUser as any);
+    mockDb.chat_messages.create.mockResolvedValue(mockChatMessage as any);
+    mockDb.chat_messages.findMany.mockResolvedValue([]);
+    mockDb.tasks.update.mockResolvedValue({} as any);
+    mockDb.workspaces.findUnique.mockResolvedValue({ slug: "test-workspace" } as any);
 
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
@@ -215,7 +211,7 @@ describe("POST /api/chat/message", () => {
 
   describe("Task and User Validation", () => {
     it("should return 404 if task not found", async () => {
-      mockDb.task.findFirst.mockResolvedValue(null);
+      mockDb.tasks.findFirst.mockResolvedValue(null);
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", { taskId: mockTaskId, message: mockMessage });
 
@@ -227,7 +223,7 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should return 404 if user not found", async () => {
-      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.users.findUnique.mockResolvedValue(null);
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", { taskId: mockTaskId, message: mockMessage });
 
@@ -247,7 +243,7 @@ describe("POST /api/chat/message", () => {
           members: [],
         },
       };
-      mockDb.task.findFirst.mockResolvedValue(taskWithDifferentOwner as any);
+      mockDb.tasks.findFirst.mockResolvedValue(taskWithDifferentOwner as any);
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", { taskId: mockTaskId, message: mockMessage });
 
@@ -267,7 +263,7 @@ describe("POST /api/chat/message", () => {
           members: [{ role: "MEMBER" }],
         },
       };
-      mockDb.task.findFirst.mockResolvedValue(taskWithMember as any);
+      mockDb.tasks.findFirst.mockResolvedValue(taskWithMember as any);
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", { taskId: mockTaskId, message: mockMessage });
 
@@ -293,7 +289,7 @@ describe("POST /api/chat/message", () => {
         role: ChatRole.USER,
       });
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           message: mockMessage,
@@ -341,7 +337,7 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           message: mockMessage,
@@ -396,7 +392,7 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith({
         data: {
           taskId: mockTaskId,
           message: mockMessage,
@@ -473,7 +469,7 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      expect(mockDb.task.update).toHaveBeenCalledWith({
+      expect(mockDb.tasks.update).toHaveBeenCalledWith({
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -500,7 +496,7 @@ describe("POST /api/chat/message", () => {
       await POST(request);
 
       // Non-2xx response → no project_id → no workflowStatus update
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     it("should use mock service when Stakwork not configured", async () => {
@@ -526,7 +522,7 @@ describe("POST /api/chat/message", () => {
 
   describe("Error Handling", () => {
     it("should return 500 on database error", async () => {
-      mockDb.chatMessage.create.mockRejectedValue(new Error("Database error"));
+      mockDb.chat_messages.create.mockRejectedValue(new Error("Database error"));
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", { taskId: mockTaskId, message: mockMessage });
 

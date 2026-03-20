@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update user record with the S3 key
-    await db.user.update({
+    await db.users.update({
       where: { id: session.user.id },
       data: { voiceSignatureKey: s3Path },
     })

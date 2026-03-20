@@ -16,7 +16,7 @@ export async function GET(
     const { featureId } = await context.params;
 
     // Look up feature to get workspaceId for auth
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
@@ -35,7 +35,7 @@ export async function GET(
       return userOrResponse;
     }
 
-    const count = await db.attachment.count({
+    const count = await db.attachments.count({
       where: {
         mimeType: { startsWith: "image/" },
         message: {

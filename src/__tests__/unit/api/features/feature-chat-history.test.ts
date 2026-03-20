@@ -15,10 +15,7 @@ vi.mock("@/lib/auth/api-token", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    feature: { findUnique: vi.fn(), update: vi.fn() },
-    chatMessage: { create: vi.fn(), findMany: vi.fn() },
-    artifact: { findFirst: vi.fn() },
+  db: {features: { findUnique: vi.fn(), update: vi.fn() },chat_messages: { create: vi.fn(), findMany: vi.fn() },artifacts: { findFirst: vi.fn() },
   },
 }));
 
@@ -117,10 +114,10 @@ const featureParams = Promise.resolve({ featureId: "feature-123" });
 describe("POST /api/features/[featureId]/chat — history merging", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
-    vi.mocked(db.feature.update).mockResolvedValue({} as any);
-    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
+    vi.mocked(db.features.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
+    vi.mocked(db.features.update).mockResolvedValue({} as any);
+    vi.mocked(db.chat_messages.create).mockResolvedValue(makeChatMessage() as any);
   });
 
   it("passes mergedHistory (db + body) to callStakworkAPI when history provided in body", async () => {
@@ -135,7 +132,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
       artifacts: [],
       attachments: [],
     };
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([dbMsg] as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([dbMsg] as any);
 
     const bodyHistory = [
       { role: "user", content: "Prototype message 1" },
@@ -184,7 +181,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
         attachments: [],
       },
     ];
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(dbMsgs as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(dbMsgs as any);
 
     const request = createChatRequest({ message: "New message without history" });
 
@@ -204,15 +201,15 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
 describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
-    vi.mocked(db.feature.update).mockResolvedValue({} as any);
-    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
+    vi.mocked(db.features.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
+    vi.mocked(db.features.update).mockResolvedValue({} as any);
+    vi.mocked(db.chat_messages.create).mockResolvedValue(makeChatMessage() as any);
   });
 
   it("forwards isPrototype: true to callStakworkAPI when dbHistory is empty (first message)", async () => {
     // No prior DB messages — this is the first message in the conversation
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
     const request = createChatRequest({
       message: "Seed Plan Mode",
@@ -240,7 +237,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
       artifacts: [],
       attachments: [],
     };
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([dbMsg] as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([dbMsg] as any);
 
     const request = createChatRequest({
       message: "Follow-up message",
@@ -257,7 +254,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
 
   it("does NOT forward isPrototype for a standard (non-prototype) plan flow", async () => {
     // No prior DB messages but isPrototype not sent
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
     const request = createChatRequest({ message: "Standard plan message" });
 

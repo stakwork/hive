@@ -2,14 +2,11 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
-  db: {
-    phase: {
+  db: {phases: {
       findFirst: vi.fn(),
-    },
-    task: {
+    },tasks: {
       findFirst: vi.fn(),
-    },
-    feature: {
+    },features: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -31,12 +28,12 @@ describe("calculateNextOrder", () => {
 
   describe("Edge Cases - Empty Collections", () => {
     test("returns 0 when no items exist in collection", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue(null);
+      vi.mocked(db.phases.findFirst).mockResolvedValue(null);
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(0);
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -44,15 +41,15 @@ describe("calculateNextOrder", () => {
     });
 
     test("returns 0 for task collection with no items", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue(null);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(null);
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         phaseId: "phase-456",
       });
 
       expect(result).toBe(0);
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123", phaseId: "phase-456" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -60,12 +57,12 @@ describe("calculateNextOrder", () => {
     });
 
     test("returns 0 for feature collection with no items", async () => {
-      vi.mocked(db.feature.findFirst).mockResolvedValue(null);
+      vi.mocked(db.features.findFirst).mockResolvedValue(null);
 
-      const result = await calculateNextOrder(db.feature, { workspaceId: "ws-123" });
+      const result = await calculateNextOrder(db.features, { workspaceId: "ws-123" });
 
       expect(result).toBe(0);
-      expect(db.feature.findFirst).toHaveBeenCalledWith({
+      expect(db.features.findFirst).toHaveBeenCalledWith({
         where: { workspaceId: "ws-123" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -75,12 +72,12 @@ describe("calculateNextOrder", () => {
 
   describe("Standard Cases - Existing Items", () => {
     test("returns maxOrder + 1 when items exist", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 5 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 5 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(6);
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -88,9 +85,9 @@ describe("calculateNextOrder", () => {
     });
 
     test("returns 1 when only item with order 0 exists", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 0 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 0 });
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         phaseId: "phase-456",
       });
@@ -99,23 +96,23 @@ describe("calculateNextOrder", () => {
     });
 
     test("returns correct next order for large order values", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 999 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 999 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(1000);
     });
 
     test("handles tasks with null phaseId", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 3 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 3 });
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         phaseId: null,
       });
 
       expect(result).toBe(4);
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123", phaseId: null },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -123,9 +120,9 @@ describe("calculateNextOrder", () => {
     });
 
     test("returns correct order for sequential items", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 15 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 15 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(16);
     });
@@ -133,43 +130,43 @@ describe("calculateNextOrder", () => {
 
   describe("Different Prisma Models", () => {
     test("works with phase model", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 2 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 2 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(3);
-      expect(db.phase.findFirst).toHaveBeenCalled();
+      expect(db.phases.findFirst).toHaveBeenCalled();
     });
 
     test("works with task model", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 7 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 7 });
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         phaseId: "phase-456",
       });
 
       expect(result).toBe(8);
-      expect(db.task.findFirst).toHaveBeenCalled();
+      expect(db.tasks.findFirst).toHaveBeenCalled();
     });
 
     test("works with feature model", async () => {
-      vi.mocked(db.feature.findFirst).mockResolvedValue({ order: 12 });
+      vi.mocked(db.features.findFirst).mockResolvedValue({ order: 12 });
 
-      const result = await calculateNextOrder(db.feature, { workspaceId: "ws-123" });
+      const result = await calculateNextOrder(db.features, { workspaceId: "ws-123" });
 
       expect(result).toBe(13);
-      expect(db.feature.findFirst).toHaveBeenCalled();
+      expect(db.features.findFirst).toHaveBeenCalled();
     });
   });
 
   describe("Where Clause Variations", () => {
     test("handles simple where clause with single field", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 1 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 1 });
 
-      await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -177,15 +174,15 @@ describe("calculateNextOrder", () => {
     });
 
     test("handles complex where clause with multiple fields", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 4 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 4 });
 
-      await calculateNextOrder(db.task, {
+      await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         phaseId: "phase-456",
         deleted: false,
       });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           featureId: "feature-123",
           phaseId: "phase-456",
@@ -197,11 +194,11 @@ describe("calculateNextOrder", () => {
     });
 
     test("handles empty where clause", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 10 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 10 });
 
-      await calculateNextOrder(db.phase, {});
+      await calculateNextOrder(db.phases, {});
 
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: {},
         orderBy: { order: "desc" },
         select: { order: true },
@@ -209,15 +206,15 @@ describe("calculateNextOrder", () => {
     });
 
     test("handles where clause with boolean fields", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 6 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 6 });
 
-      await calculateNextOrder(db.task, {
+      await calculateNextOrder(db.tasks, {
         featureId: "feature-123",
         deleted: false,
         archived: false,
       });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           featureId: "feature-123",
           deleted: false,
@@ -231,11 +228,11 @@ describe("calculateNextOrder", () => {
 
   describe("Query Behavior Verification", () => {
     test("queries with descending order", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 5 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 5 });
 
-      await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
-      expect(db.phase.findFirst).toHaveBeenCalledWith(
+      expect(db.phases.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: { order: "desc" },
         })
@@ -243,11 +240,11 @@ describe("calculateNextOrder", () => {
     });
 
     test("selects only order field", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 3 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 3 });
 
-      await calculateNextOrder(db.task, { featureId: "feature-123" });
+      await calculateNextOrder(db.tasks, { featureId: "feature-123" });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith(
+      expect(db.tasks.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           select: { order: true },
         })
@@ -255,12 +252,12 @@ describe("calculateNextOrder", () => {
     });
 
     test("passes where clause to query", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 8 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 8 });
 
       const whereClause = { featureId: "feature-123", deleted: false };
-      await calculateNextOrder(db.phase, whereClause);
+      await calculateNextOrder(db.phases, whereClause);
 
-      expect(db.phase.findFirst).toHaveBeenCalledWith(
+      expect(db.phases.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: whereClause,
         })
@@ -268,35 +265,35 @@ describe("calculateNextOrder", () => {
     });
 
     test("calls findFirst exactly once", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 2 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 2 });
 
-      await calculateNextOrder(db.task, { featureId: "feature-123" });
+      await calculateNextOrder(db.tasks, { featureId: "feature-123" });
 
-      expect(db.task.findFirst).toHaveBeenCalledTimes(1);
+      expect(db.tasks.findFirst).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("Order Value Edge Cases", () => {
     test("handles order value of 0 correctly", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 0 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 0 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(1);
     });
 
     test("handles negative order values (should not occur but tests robustness)", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: -1 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: -1 });
 
-      const result = await calculateNextOrder(db.task, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.tasks, { featureId: "feature-123" });
 
       expect(result).toBe(0);
     });
 
     test("handles very large order values", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 999999 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 999999 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-123" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-123" });
 
       expect(result).toBe(1000000);
     });
@@ -304,12 +301,12 @@ describe("calculateNextOrder", () => {
 
   describe("Realistic Usage Scenarios", () => {
     test("calculates next order for phases within a feature", async () => {
-      vi.mocked(db.phase.findFirst).mockResolvedValue({ order: 4 });
+      vi.mocked(db.phases.findFirst).mockResolvedValue({ order: 4 });
 
-      const result = await calculateNextOrder(db.phase, { featureId: "feature-abc" });
+      const result = await calculateNextOrder(db.phases, { featureId: "feature-abc" });
 
       expect(result).toBe(5);
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-abc" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -317,15 +314,15 @@ describe("calculateNextOrder", () => {
     });
 
     test("calculates next order for tasks within a phase", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 9 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 9 });
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-abc",
         phaseId: "phase-xyz",
       });
 
       expect(result).toBe(10);
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           featureId: "feature-abc",
           phaseId: "phase-xyz",
@@ -336,15 +333,15 @@ describe("calculateNextOrder", () => {
     });
 
     test("calculates next order for tasks without phase (feature-level tasks)", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue({ order: 2 });
+      vi.mocked(db.tasks.findFirst).mockResolvedValue({ order: 2 });
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-abc",
         phaseId: null,
       });
 
       expect(result).toBe(3);
-      expect(db.task.findFirst).toHaveBeenCalledWith({
+      expect(db.tasks.findFirst).toHaveBeenCalledWith({
         where: {
           featureId: "feature-abc",
           phaseId: null,
@@ -355,9 +352,9 @@ describe("calculateNextOrder", () => {
     });
 
     test("calculates next order for first item in empty phase", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue(null);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(null);
 
-      const result = await calculateNextOrder(db.task, {
+      const result = await calculateNextOrder(db.tasks, {
         featureId: "feature-new",
         phaseId: "phase-new",
       });
@@ -369,13 +366,13 @@ describe("calculateNextOrder", () => {
   describe("Error Handling", () => {
     test("propagates Prisma database errors", async () => {
       const dbError = new Error("Database connection failed");
-      vi.mocked(db.phase.findFirst).mockRejectedValue(dbError);
+      vi.mocked(db.phases.findFirst).mockRejectedValue(dbError);
 
       await expect(
-        calculateNextOrder(db.phase, { featureId: "feature-123" })
+        calculateNextOrder(db.phases, { featureId: "feature-123" })
       ).rejects.toThrow("Database connection failed");
 
-      expect(db.phase.findFirst).toHaveBeenCalledWith({
+      expect(db.phases.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123" },
         orderBy: { order: "desc" },
         select: { order: true },
@@ -384,28 +381,28 @@ describe("calculateNextOrder", () => {
 
     test("propagates Prisma query errors for tasks", async () => {
       const queryError = new Error("Invalid query syntax");
-      vi.mocked(db.task.findFirst).mockRejectedValue(queryError);
+      vi.mocked(db.tasks.findFirst).mockRejectedValue(queryError);
 
       await expect(
-        calculateNextOrder(db.task, { featureId: "feature-123", phaseId: "phase-456" })
+        calculateNextOrder(db.tasks, { featureId: "feature-123", phaseId: "phase-456" })
       ).rejects.toThrow("Invalid query syntax");
     });
 
     test("propagates Prisma timeout errors", async () => {
       const timeoutError = new Error("Query timeout exceeded");
-      vi.mocked(db.feature.findFirst).mockRejectedValue(timeoutError);
+      vi.mocked(db.features.findFirst).mockRejectedValue(timeoutError);
 
       await expect(
-        calculateNextOrder(db.feature, { workspaceId: "ws-123" })
+        calculateNextOrder(db.features, { workspaceId: "ws-123" })
       ).rejects.toThrow("Query timeout exceeded");
     });
 
     test("propagates Prisma constraint violation errors", async () => {
       const constraintError = new Error("Foreign key constraint violation");
-      vi.mocked(db.phase.findFirst).mockRejectedValue(constraintError);
+      vi.mocked(db.phases.findFirst).mockRejectedValue(constraintError);
 
       await expect(
-        calculateNextOrder(db.phase, { featureId: "non-existent-feature" })
+        calculateNextOrder(db.phases, { featureId: "non-existent-feature" })
       ).rejects.toThrow("Foreign key constraint violation");
     });
   });
@@ -449,12 +446,12 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
       expect(result).toEqual(mockFeature);
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         select: {
           id: true,
@@ -487,7 +484,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -508,12 +505,12 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
       expect(result).toEqual(mockFeature);
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         select: {
           id: true,
@@ -546,7 +543,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -565,7 +562,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -584,7 +581,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -603,7 +600,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -613,13 +610,13 @@ describe("validateFeatureAccess", () => {
 
   describe("Access Denied - Not Found Errors", () => {
     test("throws 'Feature not found' when feature does not exist", async () => {
-      vi.mocked(db.feature.findUnique).mockResolvedValue(null);
+      vi.mocked(db.features.findUnique).mockResolvedValue(null);
 
       await expect(validateFeatureAccess("non-existent", "user-789")).rejects.toThrow(
         "Feature not found"
       );
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "non-existent" },
         select: {
           id: true,
@@ -652,7 +649,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Feature not found"
@@ -671,7 +668,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Feature not found"
@@ -691,7 +688,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Feature not found"
@@ -711,7 +708,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Feature not found"
@@ -732,13 +729,13 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Access denied"
       );
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         select: {
           id: true,
@@ -771,7 +768,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "unauthorized-user")).rejects.toThrow(
         "Access denied"
@@ -790,7 +787,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "random-user-id")).rejects.toThrow(
         "Access denied"
@@ -811,11 +808,11 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await validateFeatureAccess("feature-abc", "user-xyz");
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith(
+      expect(db.features.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "feature-abc" },
         })
@@ -834,11 +831,11 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await validateFeatureAccess("feature-123", "member-123");
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith(
+      expect(db.features.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
           select: expect.objectContaining({
             workspace: expect.objectContaining({
@@ -866,11 +863,11 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await validateFeatureAccess("feature-123", "user-789");
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         select: {
           id: true,
@@ -903,11 +900,11 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await validateFeatureAccess("feature-123", "user-789");
 
-      expect(db.feature.findUnique).toHaveBeenCalledTimes(1);
+      expect(db.features.findUnique).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -924,7 +921,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -943,7 +940,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -962,7 +959,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Feature not found"
@@ -972,13 +969,13 @@ describe("validateFeatureAccess", () => {
 
   describe("Edge Cases", () => {
     test("handles empty string feature ID gracefully", async () => {
-      vi.mocked(db.feature.findUnique).mockResolvedValue(null);
+      vi.mocked(db.features.findUnique).mockResolvedValue(null);
 
       await expect(validateFeatureAccess("", "user-789")).rejects.toThrow(
         "Feature not found"
       );
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "" },
         select: expect.any(Object),
       });
@@ -996,7 +993,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(validateFeatureAccess("feature-123", "")).rejects.toThrow(
         "Access denied"
@@ -1015,7 +1012,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-!@#$", "user-!@#$");
 
@@ -1037,7 +1034,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess(featureId, userId);
 
@@ -1059,7 +1056,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess(featureId, userId);
 
@@ -1070,13 +1067,13 @@ describe("validateFeatureAccess", () => {
   describe("Error Handling", () => {
     test("propagates database connection errors", async () => {
       const dbError = new Error("Database connection failed");
-      vi.mocked(db.feature.findUnique).mockRejectedValue(dbError);
+      vi.mocked(db.features.findUnique).mockRejectedValue(dbError);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Database connection failed"
       );
 
-      expect(db.feature.findUnique).toHaveBeenCalledWith({
+      expect(db.features.findUnique).toHaveBeenCalledWith({
         where: { id: "feature-123" },
         select: expect.any(Object),
       });
@@ -1084,7 +1081,7 @@ describe("validateFeatureAccess", () => {
 
     test("propagates Prisma query timeout errors", async () => {
       const timeoutError = new Error("Query timeout exceeded");
-      vi.mocked(db.feature.findUnique).mockRejectedValue(timeoutError);
+      vi.mocked(db.features.findUnique).mockRejectedValue(timeoutError);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Query timeout exceeded"
@@ -1093,7 +1090,7 @@ describe("validateFeatureAccess", () => {
 
     test("propagates Prisma constraint errors", async () => {
       const constraintError = new Error("Foreign key constraint violation");
-      vi.mocked(db.feature.findUnique).mockRejectedValue(constraintError);
+      vi.mocked(db.features.findUnique).mockRejectedValue(constraintError);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Foreign key constraint violation"
@@ -1102,7 +1099,7 @@ describe("validateFeatureAccess", () => {
 
     test("propagates network errors", async () => {
       const networkError = new Error("Network error occurred");
-      vi.mocked(db.feature.findUnique).mockRejectedValue(networkError);
+      vi.mocked(db.features.findUnique).mockRejectedValue(networkError);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Network error occurred"
@@ -1111,7 +1108,7 @@ describe("validateFeatureAccess", () => {
 
     test("propagates unexpected runtime errors", async () => {
       const runtimeError = new Error("Unexpected runtime error");
-      vi.mocked(db.feature.findUnique).mockRejectedValue(runtimeError);
+      vi.mocked(db.features.findUnique).mockRejectedValue(runtimeError);
 
       await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
         "Unexpected runtime error"
@@ -1132,7 +1129,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -1157,7 +1154,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-123", "user-789");
 
@@ -1179,7 +1176,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-prod-123", "pm-bob");
 
@@ -1198,7 +1195,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       const result = await validateFeatureAccess("feature-update-456", "dev-dave");
 
@@ -1217,7 +1214,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(
         validateFeatureAccess("feature-private-789", "external-user")
@@ -1236,7 +1233,7 @@ describe("validateFeatureAccess", () => {
         },
       };
 
-      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+      vi.mocked(db.features.findUnique).mockResolvedValue(mockFeature);
 
       await expect(
         validateFeatureAccess("feature-archived-101", "admin-grace")

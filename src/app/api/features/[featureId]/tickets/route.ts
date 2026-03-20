@@ -11,7 +11,7 @@ export async function POST(
   try {
     const { featureId } = await params;
 
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });

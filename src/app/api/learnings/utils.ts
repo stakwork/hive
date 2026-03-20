@@ -8,7 +8,7 @@ export async function getSwarmConfig(workspaceSlug: string, userId: string, opti
     return { error: "Workspace not found or access denied", status: 403 };
   }
 
-  const swarm = await db.swarm.findFirst({
+  const swarm = await db.swarms.findFirst({
     where: {
       workspaceId: workspaceAccess.workspace?.id,
     },

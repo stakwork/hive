@@ -35,11 +35,10 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
       name: "Regular User",
     });
 
-    workspace = await db.workspace.create({
+    workspace = await db.workspaces.create({
       data: {
         name: `PR Stats Test Workspace ${Date.now()}`,
-        slug: `pr-stats-ws-${Date.now()}`,
-        ownerId: regularUser.id,
+        slug: `pr-stats-ws-${Date.now()}`,owner_id: regularUser.id,
       },
       select: { id: true, name: true, slug: true },
     });
@@ -84,22 +83,17 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
 
   it("counts only DONE PR artifacts — excludes open/cancelled", async () => {
     // Create a repository for this workspace
-    const repo = await createTestRepository({
-      workspaceId: workspace.id,
-      repositoryUrl: "https://github.com/testorg/testrepo",
+    const repo = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/testorg/testrepo",
     });
 
     // Helper: create a task → message → PR artifact
     async function seedPRArtifact(status: string, ageHours: number) {
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: regularUser.id,
-        repositoryId: repo.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: regularUser.id,repository_id: repo.id,
       });
-      const message = await createTestChatMessage({ taskId: task.id, message: "test" });
+      const message = await createTestChatMessage({task_id: task.id, message: "test" });
       const createdAt = new Date(Date.now() - ageHours * 60 * 60 * 1000);
       // Use raw DB insert so we can control created_at
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: message.id,
           type: "PULL_REQUEST",
@@ -139,16 +133,14 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
   });
 
   it("buckets artifacts into the correct time windows", async () => {
-    const repo = await createTestRepository({
-      workspaceId: workspace.id,
-      repositoryUrl: "https://github.com/testorg/bucketrepo",
+    const repo = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/testorg/bucketrepo",
     });
 
     async function seedDoneArtifact(ageHours: number) {
-      const task = await createTestTask({ workspaceId: workspace.id, createdById: regularUser.id });
-      const message = await createTestChatMessage({ taskId: task.id, message: "test" });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: regularUser.id });
+      const message = await createTestChatMessage({task_id: task.id, message: "test" });
       const createdAt = new Date(Date.now() - ageHours * 60 * 60 * 1000);
-      await db.artifact.create({
+      await db.artifacts.create({
         data: {
           messageId: message.id,
           type: "PULL_REQUEST",
@@ -187,21 +179,18 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
   });
 
   it("does not count artifacts older than 30 days", async () => {
-    await createTestRepository({
-      workspaceId: workspace.id,
-      repositoryUrl: "https://github.com/testorg/oldrepo",
+    await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/testorg/oldrepo",
     });
 
-    const task = await createTestTask({ workspaceId: workspace.id, createdById: regularUser.id });
-    const message = await createTestChatMessage({ taskId: task.id, message: "old" });
+    const task = await createTestTask({workspace_id: workspace.id,created_by_id: regularUser.id });
+    const message = await createTestChatMessage({task_id: task.id, message: "old" });
     // 31 days old — outside the 30-day query window
     const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
-    await db.artifact.create({
+    await db.artifacts.create({
       data: {
         messageId: message.id,
         type: "PULL_REQUEST",
-        content: { url: "https://github.com/testorg/oldrepo/pull/1", repo: "testorg/oldrepo", status: "DONE", title: "Old PR" },
-        createdAt: old,
+        content: { url: "https://github.com/testorg/oldrepo/pull/1", repo: "testorg/oldrepo", status: "DONE", title: "Old PR" },created_at: old,
       },
     });
 

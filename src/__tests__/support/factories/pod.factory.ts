@@ -28,10 +28,9 @@ export async function createTestPod(options: CreatePodOptions) {
   // Encrypt password
   const encryptedPassword = encryptionService.encryptField("password", password);
 
-  const pod = await db.pod.create({
+  const pod = await db.pods.create({
     data: {
-      podId,
-      swarmId: options.swarmId,
+      podId,swarm_id: options.swarmId,
       password: JSON.stringify(encryptedPassword),
       portMappings: portMappings,
       status: options.status || PodStatus.RUNNING,

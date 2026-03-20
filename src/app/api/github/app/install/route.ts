@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
     const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
 
     // Store the GitHub state in the user's session
-    await db.session.updateMany({
+    await db.sessions.updateMany({
       where: { userId: session.user.id as string },
       data: { githubState: state },
     });
 
     // Get workspace
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { slug: workspaceSlug },
       include: {
         sourceControlOrg: true,
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     // First, check if we have a SourceControlOrg record for this GitHub owner
     // This tells us if ANY user has installed the app for this org/user
-    const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+    const existingSourceControlOrg = await db.source_control_orgs.findUnique({
       where: { githubLogin: githubOwner },
     });
 

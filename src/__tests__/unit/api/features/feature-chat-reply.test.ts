@@ -13,15 +13,12 @@ vi.mock("@/lib/auth/api-token", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    feature: {
+  db: {features: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
-    },
-    artifact: {
+    },artifacts: {
       findFirst: vi.fn(),
     },
   },
@@ -86,7 +83,7 @@ describe("Feature Chat POST Route - replyId", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    vi.mocked(db.feature.findUnique).mockResolvedValue({
+    vi.mocked(db.features.findUnique).mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
       updatedAt: new Date(),
@@ -99,12 +96,12 @@ describe("Feature Chat POST Route - replyId", () => {
       },
     } as any);
 
-    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.artifacts.findFirst).mockResolvedValue(null);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
   });
 
   it("should persist replyId when provided", async () => {
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       mockChatMessage({ message: "This is my answer", replyId: "original-message-id" }) as any,
     );
 
@@ -120,7 +117,7 @@ describe("Feature Chat POST Route - replyId", () => {
     expect(responseData.success).toBe(true);
     expect(responseData.message.replyId).toBe("original-message-id");
 
-    expect(db.chatMessage.create).toHaveBeenCalledWith(
+    expect(db.chat_messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           message: "This is my answer",
@@ -131,7 +128,7 @@ describe("Feature Chat POST Route - replyId", () => {
   });
 
   it("should default replyId to undefined when not provided", async () => {
-    vi.mocked(db.chatMessage.create).mockResolvedValue(
+    vi.mocked(db.chat_messages.create).mockResolvedValue(
       mockChatMessage({ message: "Regular message" }) as any,
     );
 
@@ -144,7 +141,7 @@ describe("Feature Chat POST Route - replyId", () => {
     expect(responseData.success).toBe(true);
     expect(responseData.message.replyId).toBeNull();
 
-    expect(db.chatMessage.create).toHaveBeenCalledWith(
+    expect(db.chat_messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           message: "Regular message",

@@ -65,26 +65,16 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace description",
-          ownerId: testUser.id,
+          description: "Test workspace description",owner_id: testUser.id,
         },
       });
 
       const testSwarm = await tx.swarm.create({
-        data: {
-          swarmId: `swarm-${Date.now()}`,
+        data: {swarm_id: `swarm-${Date.now()}`,
           name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          swarmApiKey: "test-api-key",
-          swarmUrl: "https://test-swarm.com/api",
-          swarmSecretAlias: "test-secret",
-          poolName: "test-pool",
+          status: "ACTIVE",instance_type: "XL",swarm_api_key: "test-api-key",swarm_url: "https://test-swarm.com/api",swarm_secret_alias: "test-secret",pool_name: "test-pool",
           environmentVariables: [],
-          services: [],
-          workspaceId: testWorkspace.id,
-          agentRequestId: null,
-          agentStatus: null,
+          services: [],workspace_id: testWorkspace.id,agent_request_id: null,agent_status: null,
         },
       });
 
@@ -93,11 +83,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
           id: generateUniqueId("task"),
           title: "Test Task",
           description: "Test task description",
-          status: "TODO",
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: "TODO",workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -151,8 +137,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
     test("should return 401 for unauthenticated request", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: "test-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -171,8 +156,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         user: null,
       });
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: "test-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -190,8 +174,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         // filename missing
         contentType: "image/jpeg",
         size: 1024000,
@@ -209,8 +192,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         // contentType missing
         size: 1024000,
@@ -228,8 +210,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         // size missing
@@ -266,8 +247,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: -1, // Invalid negative size
@@ -284,8 +264,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "empty.jpg",
         contentType: "image/jpeg",
         size: 0, // Zero bytes
@@ -302,8 +281,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "", // Empty string
         contentType: "image/jpeg",
         size: 1024000,
@@ -322,8 +300,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: "non-existent-task-id",
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: "non-existent-task-id",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -339,15 +316,14 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
       // Mark task as deleted
-      await db.task.update({
+      await db.tasks.update({
         where: { id: testTask.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -368,8 +344,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       // Mock S3Service to reject PDF
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "document.pdf",
         contentType: "application/pdf",
         size: 1024000,
@@ -390,8 +365,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       // Mock S3Service to reject JavaScript
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "malicious.js",
         contentType: "application/javascript",
         size: 1024000,
@@ -427,8 +401,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       ];
 
       for (const { contentType, filename } of imageTypes) {
-        const request = createPostRequest("http://localhost:3000/api/upload/image", {
-          taskId: testTask.id,
+        const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
           filename,
           contentType,
           size: 1024000,
@@ -456,8 +429,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -486,8 +458,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.png",
         contentType: "image/png",
         size: 1024000,
@@ -516,8 +487,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.gif",
         contentType: "image/gif",
         size: 1024000,
@@ -546,8 +516,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.webp",
         contentType: "image/webp",
         size: 1024000,
@@ -571,8 +540,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateImageBuffer).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "fake.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -595,8 +563,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateImageBuffer).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "fake.png",
         contentType: "image/png",
         size: 1024000,
@@ -622,8 +589,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -646,8 +612,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(false);
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "large-image.jpg",
         contentType: "image/jpeg",
         size: 11 * 1024 * 1024, // 11MB
@@ -673,8 +638,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "max-size.jpg",
         contentType: "image/jpeg",
         size: 10 * 1024 * 1024, // Exactly 10MB
@@ -703,8 +667,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -740,8 +703,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "file with spaces & special!chars@.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -759,7 +721,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
     });
 
     test("should use default swarmId when swarm is not configured", async () => {
-      const testUser = await db.user.create({
+      const testUser = await db.users.create({
         data: {
           id: generateUniqueId("test-user"),
           email: `test-${generateUniqueId()}@example.com`,
@@ -767,26 +729,21 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         },
       });
 
-      const testWorkspace = await db.workspace.create({
+      const testWorkspace = await db.workspaces.create({
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
           slug: generateUniqueId("test-workspace"),
-          description: "Test workspace without swarm",
-          ownerId: testUser.id,
+          description: "Test workspace without swarm",owner_id: testUser.id,
         },
       });
 
-      const testTask = await db.task.create({
+      const testTask = await db.tasks.create({
         data: {
           id: generateUniqueId("task"),
           title: "Test Task",
           description: "Test task description",
-          status: "TODO",
-          workspaceId: testWorkspace.id,
-          workflowStatus: WorkflowStatus.PENDING,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          status: "TODO",workspace_id: testWorkspace.id,workflow_status: WorkflowStatus.PENDING,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -802,8 +759,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -836,8 +792,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -873,8 +828,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       const contentTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
       for (const contentType of contentTypes) {
-        const request = createPostRequest("http://localhost:3000/api/upload/image", {
-          taskId: testTask.id,
+        const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
           filename: "test.jpg",
           contentType,
           size: 1024000,
@@ -904,8 +858,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "image.png",
         contentType: "image/png",
         size: 2048000,
@@ -948,8 +901,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         new Error("AWS SDK Error: Invalid credentials"),
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -967,8 +919,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Use malformed task ID to trigger database error
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: "malformed-task-id-that-causes-db-error",
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: "malformed-task-id-that-causes-db-error",
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -997,8 +948,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
 
       const longFilename = "a".repeat(500) + ".jpg"; // 500+ character filename
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: longFilename,
         contentType: "image/jpeg",
         size: 1024000,
@@ -1027,8 +977,7 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
-      const request = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "测试图片.jpg", // Chinese characters
         contentType: "image/jpeg",
         size: 1024000,
@@ -1051,15 +1000,13 @@ describe.skip("POST /api/upload/image Integration Tests - DISABLED", () => {
         "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url-unique",
       );
 
-      const request1 = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request1 = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "concurrent1.jpg",
         contentType: "image/jpeg",
         size: 1024000,
       });
 
-      const request2 = createPostRequest("http://localhost:3000/api/upload/image", {
-        taskId: testTask.id,
+      const request2 = createPostRequest("http://localhost:3000/api/upload/image", {task_id: testTask.id,
         filename: "concurrent2.jpg",
         contentType: "image/jpeg",
         size: 1024000,

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Verify task exists and user has access
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Create the chat message with artifacts
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         message: message || "",
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     if (hasPullRequest) {
-      const updatedTask = await db.task.update({
+      const updatedTask = await db.tasks.update({
         where: { id: taskId },
         data: {
           status: "DONE",

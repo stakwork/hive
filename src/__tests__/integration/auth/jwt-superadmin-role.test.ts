@@ -57,7 +57,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
       expect(resultToken.role).toBe("SUPER_ADMIN");
 
       // Verify DB was updated
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUser.id },
         select: { role: true },
       });
@@ -105,7 +105,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
       expect(resultToken.role).toBe("SUPER_ADMIN");
 
       // Verify DB still has SUPER_ADMIN (no unnecessary update)
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUser.id },
         select: { role: true },
       });
@@ -153,7 +153,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
       expect(resultToken.role).toBe("USER");
 
       // Verify DB still has USER role
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUser.id },
         select: { role: true },
       });
@@ -201,7 +201,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
       expect(resultToken.role).toBe("ADMIN");
 
       // Verify DB still has ADMIN role
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: testUser.id },
         select: { role: true },
       });
@@ -311,9 +311,9 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
       expect(token3.role).toBe("USER");
 
       // Verify DB updates
-      const dbUser1 = await db.user.findUnique({ where: { id: user1.id }, select: { role: true } });
-      const dbUser2 = await db.user.findUnique({ where: { id: user2.id }, select: { role: true } });
-      const dbUser3 = await db.user.findUnique({ where: { id: user3.id }, select: { role: true } });
+      const dbUser1 = await db.users.findUnique({ where: { id: user1.id }, select: { role: true } });
+      const dbUser2 = await db.users.findUnique({ where: { id: user2.id }, select: { role: true } });
+      const dbUser3 = await db.users.findUnique({ where: { id: user3.id }, select: { role: true } });
 
       expect(dbUser1?.role).toBe("SUPER_ADMIN");
       expect(dbUser2?.role).toBe("SUPER_ADMIN");
@@ -350,8 +350,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
         user: {
           id: testUser.id,
           email: testUser.email ?? undefined,
-          name: testUser.name ?? undefined,
-          emailVerified: null,
+          name: testUser.name ?? undefined,email_verified: null,
         } as any,
         expires: new Date(Date.now() + 86400000).toISOString(),
       };
@@ -400,8 +399,7 @@ describe("JWT Callback SUPER_ADMIN Role Integration Tests", () => {
         user: {
           id: testUser.id,
           email: testUser.email ?? undefined,
-          name: testUser.name ?? undefined,
-          emailVerified: null,
+          name: testUser.name ?? undefined,email_verified: null,
         } as any,
         expires: new Date(Date.now() + 86400000).toISOString(),
       };

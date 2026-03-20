@@ -50,22 +50,19 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     // Create test fixtures
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
-    testTask = await createTestTask({
-      workspaceId: testWorkspace.id,
-      createdById: testUser.id,
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
+    testTask = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
       status: 'TODO',
     });
 
     // Create test message (required for artifact relation)
-    testMessage = await createTestChatMessage({
-      taskId: testTask.id,
+    testMessage = await createTestChatMessage({task_id: testTask.id,
       message: 'Test message',
       role: 'ASSISTANT',
     });
 
     // Create test artifact with MEDIA type
-    testArtifact = await db.artifact.create({
+    testArtifact = await db.artifacts.create({
       data: {
         id: generateUniqueId('artifact'),
         type: ArtifactType.MEDIA,
@@ -87,7 +84,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectUnauthorized(response);
@@ -101,7 +98,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectUnauthorized(response);
@@ -117,7 +114,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -133,7 +130,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectForbidden(response);
@@ -150,7 +147,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -158,10 +155,8 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should allow workspace admin to access artifact URL', async () => {
       const adminUser = await createTestUser({ email: 'admin@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          userId: adminUser.id,
-          workspaceId: testWorkspace.id,
+      await db.workspace_members.create({
+        data: {user_id: adminUser.id,workspace_id: testWorkspace.id,
           role: 'ADMIN',
         },
       });
@@ -175,7 +170,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -183,10 +178,8 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should allow workspace developer to access artifact URL', async () => {
       const developerUser = await createTestUser({ email: 'developer@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          userId: developerUser.id,
-          workspaceId: testWorkspace.id,
+      await db.workspace_members.create({
+        data: {user_id: developerUser.id,workspace_id: testWorkspace.id,
           role: 'DEVELOPER',
         },
       });
@@ -200,7 +193,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -208,10 +201,8 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should allow workspace viewer to access artifact URL', async () => {
       const viewerUser = await createTestUser({ email: 'viewer@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          userId: viewerUser.id,
-          workspaceId: testWorkspace.id,
+      await db.workspace_members.create({
+        data: {user_id: viewerUser.id,workspace_id: testWorkspace.id,
           role: 'VIEWER',
         },
       });
@@ -225,7 +216,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -240,7 +231,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks//artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: '', artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: '',artifact_id: testArtifact.id }),
       });
 
       await expectError(response, 'Task ID and Artifact ID required', 400);
@@ -253,7 +244,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts//url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: '' }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: '' }),
       });
 
       await expectError(response, 'Task ID and Artifact ID required', 400);
@@ -266,7 +257,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks//artifacts//url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: '', artifactId: '' }),
+        params: Promise.resolve({task_id: '',artifact_id: '' }),
       });
 
       await expectError(response, 'Task ID and Artifact ID required', 400);
@@ -281,9 +272,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/non-existent-artifact-id/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: 'non-existent-artifact-id',
+        params: Promise.resolve({task_id: testTask.id,artifact_id: 'non-existent-artifact-id',
         }),
       });
 
@@ -292,17 +281,14 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should return 400 for artifact belonging to different task', async () => {
       // Create another task with artifact
-      const otherTask = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
+      const otherTask = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
         status: 'TODO',
       });
-      const otherMessage = await createTestChatMessage({
-        taskId: otherTask.id,
+      const otherMessage = await createTestChatMessage({task_id: otherTask.id,
         message: 'Other message',
         role: 'ASSISTANT',
       });
-      const otherArtifact = await db.artifact.create({
+      const otherArtifact = await db.artifacts.create({
         data: {
           id: generateUniqueId('other'),
           type: ArtifactType.MEDIA,
@@ -317,9 +303,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${otherArtifact.id}/url`
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: otherArtifact.id,
+        params: Promise.resolve({task_id: testTask.id,artifact_id: otherArtifact.id,
         }),
       });
 
@@ -330,9 +314,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Artifact Validation', () => {
     test('should return 400 if artifact does not belong to specified task', async () => {
       // Create another task with its own artifact
-      const otherTask = await createTestTask({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
+      const otherTask = await createTestTask({workspace_id: testWorkspace.id,created_by_id: testUser.id,
         status: 'TODO',
       });
 
@@ -342,9 +324,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${otherTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: otherTask.id,
-          artifactId: testArtifact.id,
+        params: Promise.resolve({task_id: otherTask.id,artifact_id: testArtifact.id,
         }),
       });
 
@@ -353,7 +333,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should return 400 if artifact is not MEDIA type', async () => {
       // Create non-MEDIA artifact
-      const codeArtifact = await db.artifact.create({
+      const codeArtifact = await db.artifacts.create({
         data: {
           id: generateUniqueId('code'),
           type: ArtifactType.CODE,
@@ -371,9 +351,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${codeArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: codeArtifact.id,
+        params: Promise.resolve({task_id: testTask.id,artifact_id: codeArtifact.id,
         }),
       });
 
@@ -382,7 +360,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     test('should return 400 if artifact has no S3 key', async () => {
       // Create artifact without S3 key
-      const invalidArtifact = await db.artifact.create({
+      const invalidArtifact = await db.artifacts.create({
         data: {
           id: generateUniqueId('invalid'),
           type: ArtifactType.MEDIA,
@@ -400,9 +378,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${invalidArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: invalidArtifact.id,
+        params: Promise.resolve({task_id: testTask.id,artifact_id: invalidArtifact.id,
         }),
       });
 
@@ -421,7 +397,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
@@ -441,7 +417,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -462,7 +438,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -484,7 +460,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledTimes(1);
@@ -501,7 +477,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`
       );
       await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
@@ -515,7 +491,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
@@ -533,7 +509,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       expect(response.status).toBe(500);
@@ -548,9 +524,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/malformed-id/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: 'malformed-id',
+        params: Promise.resolve({task_id: testTask.id,artifact_id: 'malformed-id',
         }),
       });
 
@@ -560,7 +534,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
   describe('Edge Cases', () => {
     test('should handle artifact with null content', async () => {
-      const nullContentArtifact = await db.artifact.create({
+      const nullContentArtifact = await db.artifacts.create({
         data: {
           id: generateUniqueId('null-content'),
           type: ArtifactType.MEDIA,
@@ -575,9 +549,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${nullContentArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: nullContentArtifact.id,
+        params: Promise.resolve({task_id: testTask.id,artifact_id: nullContentArtifact.id,
         }),
       });
 
@@ -585,7 +557,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
     });
 
     test('should handle artifact with empty object content', async () => {
-      const emptyContentArtifact = await db.artifact.create({
+      const emptyContentArtifact = await db.artifacts.create({
         data: {
           id: generateUniqueId('empty-content'),
           type: ArtifactType.MEDIA,
@@ -600,9 +572,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${emptyContentArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({
-          taskId: testTask.id,
-          artifactId: emptyContentArtifact.id,
+        params: Promise.resolve({task_id: testTask.id,artifact_id: emptyContentArtifact.id,
         }),
       });
 
@@ -624,10 +594,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const [response1, response2] = await Promise.all([
         GET(request1, {
-          params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+          params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
         }),
         GET(request2, {
-          params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+          params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
         }),
       ]);
 
@@ -653,7 +623,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response1 = await GET(request1, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
       const data1 = await expectSuccess(response1, 200);
 
@@ -661,7 +631,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response2 = await GET(request2, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
       const data2 = await expectSuccess(response2, 200);
 
@@ -680,13 +650,13 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
         `http://localhost:3000/api/tasks/${testTask.id}/artifacts/${testArtifact.id}/url`,
       );
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id, artifactId: testArtifact.id }),
+        params: Promise.resolve({task_id: testTask.id,artifact_id: testArtifact.id }),
       });
 
       await expectSuccess(response, 200);
 
       // Verify artifact still belongs to correct task in database
-      const artifact = await db.artifact.findUnique({
+      const artifact = await db.artifacts.findUnique({
         where: { id: testArtifact.id },
         include: { message: { include: { task: true } } },
       });

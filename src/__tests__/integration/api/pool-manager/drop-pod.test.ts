@@ -104,7 +104,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "test-workspace-id" }),
+        params: Promise.resolve({workspace_id: "test-workspace-id" }),
       });
 
       await expectUnauthorized(response);
@@ -122,7 +122,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "" }),
+        params: Promise.resolve({workspace_id: "" }),
       });
 
       await expectError(response, "Missing required field: workspaceId", 400);
@@ -132,12 +132,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("returns 400 when podId query parameter is missing", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
+      await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       const request = createAuthenticatedPostRequest(
@@ -146,7 +143,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectError(response, "Missing required field: podId", 400);
@@ -162,7 +159,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: "nonexistent-workspace-id" }),
+        params: Promise.resolve({workspace_id: "nonexistent-workspace-id" }),
       });
 
       await expectNotFound(response, "Workspace not found");
@@ -175,7 +172,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       });
 
       // Delete swarm if it exists
-      await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
+      await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
 
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
@@ -183,7 +180,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectNotFound(response, "No swarm found for this workspace");
@@ -198,12 +195,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       const { workspace } = await createTestWorkspaceScenario();
       const nonMemberUser = await createTestUser({ name: "Non-member User" });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
+      await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       const request = createAuthenticatedPostRequest(
@@ -212,7 +206,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectForbidden(response, "Access denied");
@@ -222,18 +216,13 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("allows workspace owner to drop pod", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      const swarm = await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       // Create a pod in the database
-      const pod = await createTestPod({
-        podId: "pod-owner-test",
-        swarmId: swarm.id,
+      const pod = await createTestPod({pod_id: "pod-owner-test",swarm_id: swarm.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -242,7 +231,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectSuccess(response, 200);
@@ -255,18 +244,13 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       const memberUser = members[0];
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      const swarm = await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       // Create a pod in the database
-      const pod = await createTestPod({
-        podId: "pod-member-test",
-        swarmId: swarm.id,
+      const pod = await createTestPod({pod_id: "pod-member-test",swarm_id: swarm.id,
       });
 
       const request = createAuthenticatedPostRequest(
@@ -275,7 +259,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectSuccess(response, 200);
@@ -286,18 +270,13 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("successfully drops pod with required parameters", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      const swarm = await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       // Create a pod in the database
-      const pod = await createTestPod({
-        podId: "pod-123",
-        swarmId: swarm.id,
+      const pod = await createTestPod({pod_id: "pod-123",swarm_id: swarm.id,
         portMappings: [3000, 3010, 15551, 15552],
       });
 
@@ -307,7 +286,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -318,12 +297,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("returns 404 when pod does not exist", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
+      await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       const request = createAuthenticatedPostRequest(
@@ -332,7 +308,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectNotFound(response, "Pod not found");
@@ -343,27 +319,20 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("resets repositories when latest=true and pod exists", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      const swarm = await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       // Create a pod in the database with control port
-      const pod = await createTestPod({
-        podId: "pod-with-repos",
-        swarmId: swarm.id,
+      const pod = await createTestPod({pod_id: "pod-with-repos",swarm_id: swarm.id,
         portMappings: [3000, 3010, 15551, 15552],
       });
 
       // Add repositories to the workspace
-      await db.repository.create({
+      await db.repositories.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
-          workspaceId: workspace.id,
+          name: "test-repo",repository_url: "https://github.com/test/repo",workspace_id: workspace.id,
           status: "SYNCED",
         },
       });
@@ -382,7 +351,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       await expectSuccess(response, 200);
@@ -399,26 +368,19 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     test("handles missing control port gracefully when latest=true", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      const swarm = await createTestSwarm({workspace_id: workspace.id,
         name: "test-swarm",
-        status: "ACTIVE",
-        poolName: "test-pool",
-        poolApiKey: "test-api-key",
+        status: "ACTIVE",pool_name: "test-pool",pool_api_key: "test-api-key",
       });
 
       // Create a pod without control port
-      const pod = await createTestPod({
-        podId: "pod-no-control",
-        swarmId: swarm.id,
+      const pod = await createTestPod({pod_id: "pod-no-control",swarm_id: swarm.id,
         portMappings: [3000],
       });
 
-      await db.repository.create({
+      await db.repositories.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
-          workspaceId: workspace.id,
+          name: "test-repo",repository_url: "https://github.com/test/repo",workspace_id: workspace.id,
           status: "SYNCED",
         },
       });
@@ -429,7 +391,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
 
       const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
+        params: Promise.resolve({workspace_id: workspace.id }),
       });
 
       // Should succeed despite missing control port

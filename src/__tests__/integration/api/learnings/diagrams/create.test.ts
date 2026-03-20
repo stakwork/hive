@@ -21,30 +21,26 @@ vi.mock("@/lib/ai/askTools", () => ({
 import { repoAgent } from "@/lib/ai/askTools";
 
 async function createGitHubAuth(
-  userId: string,
+user_id: string,
   username = "test-diagram-user",
   token = "test-diagram-pat"
 ) {
   const encryptionService = EncryptionService.getInstance();
   const encryptedToken = encryptionService.encryptField("access_token", token);
 
-  await db.gitHubAuth.create({
+  await db.github_auth.create({
     data: {
-      userId,
-      githubUserId: generateUniqueId("github"),
-      githubUsername: username,
+      userId,github_user_id: generateUniqueId("github"),github_username: username,
     },
   });
 
-  await db.account.create({
+  await db.accounts.create({
     data: {
       userId,
       type: "oauth",
-      provider: "github",
-      providerAccountId: generateUniqueId("provider"),
+      provider: "github",provider_account_id: generateUniqueId("provider"),
       access_token: JSON.stringify(encryptedToken),
-      token_type: "bearer",
-      scope: "repo,user",
+      token_type: "bearer",scope: "repo,user",
     },
   });
 }
@@ -74,32 +70,24 @@ describe("POST /api/learnings/diagrams/create", () => {
         "test-diagram-create-swarm-api-key"
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-diagram-create-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: "https://test-diagram-create.sphinx.chat",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: "https://test-diagram-create.sphinx.chat",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
-      repository = await createTestRepository({
-        workspaceId: workspace.id,
-        repositoryUrl: "https://github.com/test-owner/test-diagram-repo",
+      repository = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test-owner/test-diagram-repo",
         branch: "main",
       });
 
       // GitHub auth for owner
       await tx.gitHubAuth.create({
-        data: {
-          userId: owner.id,
-          githubUserId: generateUniqueId("github"),
-          githubUsername: "test-diagram-owner",
+        data: {user_id: owner.id,github_user_id: generateUniqueId("github"),github_username: "test-diagram-owner",
         },
       });
       const encryptedToken = encryptionService.encryptField(
@@ -107,14 +95,11 @@ describe("POST /api/learnings/diagrams/create", () => {
         "test-owner-diagram-pat"
       );
       await tx.account.create({
-        data: {
-          userId: owner.id,
+        data: {user_id: owner.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId("provider"),
+          provider: "github",provider_account_id: generateUniqueId("provider"),
           access_token: JSON.stringify(encryptedToken),
-          token_type: "bearer",
-          scope: "repo,user",
+          token_type: "bearer",scope: "repo,user",
         },
       });
 
@@ -228,7 +213,7 @@ describe("POST /api/learnings/diagrams/create", () => {
     expect(data.diagram.description).toBeNull();
 
     // Verify DB record
-    const saved = await db.diagram.findUnique({ where: { id: data.diagram.id } });
+    const saved = await db.diagrams.findUnique({ where: { id: data.diagram.id } });
     expect(saved).not.toBeNull();
     expect(saved?.name).toBe("Auth Flow");
     expect(saved?.createdBy).toBe(owner.id);
@@ -238,8 +223,8 @@ describe("POST /api/learnings/diagrams/create", () => {
     expect(data.diagram.groupId).toBe(data.diagram.id);
 
     // Verify workspace link
-    const link = await db.diagramWorkspace.findFirst({
-      where: { diagramId: data.diagram.id, workspaceId: workspace.id },
+    const link = await db.diagram_workspaces.findFirst({
+      where: { diagramId: data.diagram.id,workspace_id: workspace.id },
     });
     expect(link).not.toBeNull();
   });

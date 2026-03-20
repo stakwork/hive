@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Fetch task with relations
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId, deleted: false },
       select: {
         id: true,
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Step 5: Get Swarm for S3 Path
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: task.workspaceId },
       select: { id: true },
     });
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // - Fresh URLs are generated on-demand via /api/artifacts/[id]/url endpoint
     let chatMessage;
     try {
-      chatMessage = await db.chatMessage.create({
+      chatMessage = await db.chat_messages.create({
         data: {
           taskId,
           message: "Playwright recording uploaded",
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Step 8: Invalidate API Key (One-time Use)
     try {
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { agentPassword: null },
       });

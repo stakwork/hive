@@ -89,7 +89,7 @@ export async function validateApiKey(key: string): Promise<{
 
   const hash = hashApiKey(key);
 
-  const apiKey = await db.workspaceApiKey.findUnique({
+  const apiKey = await db.workspace_api_keys.findUnique({
     where: { keyHash: hash },
     include: {
       workspace: {
@@ -167,7 +167,7 @@ export async function createApiKey(params: {
   const keyPrefix = getKeyPrefix(rawKey);
 
   // Store in database
-  const apiKey = await db.workspaceApiKey.create({
+  const apiKey = await db.workspace_api_keys.create({
     data: {
       workspaceId,
       name,
@@ -199,7 +199,7 @@ export async function revokeApiKey(params: {
   const { keyId, revokedById } = params;
 
   try {
-    await db.workspaceApiKey.update({
+    await db.workspace_api_keys.update({
       where: { id: keyId },
       data: {
         revokedAt: new Date(),
@@ -217,7 +217,7 @@ export async function revokeApiKey(params: {
  * List all API keys for a workspace (does not include the raw key)
  */
 export async function listApiKeys(workspaceId: string) {
-  const keys = await db.workspaceApiKey.findMany({
+  const keys = await db.workspace_api_keys.findMany({
     where: { workspaceId },
     include: {
       createdBy: {
@@ -244,7 +244,7 @@ export async function listApiKeys(workspaceId: string) {
  * Get a single API key by ID (for permission checks)
  */
 export async function getApiKey(keyId: string) {
-  return db.workspaceApiKey.findUnique({
+  return db.workspace_api_keys.findUnique({
     where: { id: keyId },
     select: {
       id: true,

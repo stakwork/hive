@@ -32,26 +32,21 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
   let testFeature: Awaited<ReturnType<typeof createTestFeature>>;
-  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboard.create>>;
+  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboards.create>>;
   let otherUser: Awaited<ReturnType<typeof createTestUser>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
-    testFeature = await createTestFeature({
-      workspaceId: testWorkspace.id,
-      createdById: testUser.id,
-      updatedById: testUser.id,
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
+    testFeature = await createTestFeature({workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       architecture: "Test architecture for diagram generation",
     });
 
-    testWhiteboard = await db.whiteboard.create({
+    testWhiteboard = await db.whiteboards.create({
       data: {
-        name: "Test Whiteboard",
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
+        name: "Test Whiteboard",workspace_id: testWorkspace.id,feature_id: testFeature.id,
         elements: [],
         appState: {},
         files: {},
@@ -109,8 +104,7 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
       const message1 = await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "USER",
-        content: "First message",
-        userId: testUser.id,
+        content: "First message",user_id: testUser.id,
       });
 
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -118,8 +112,7 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
       const message2 = await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "ASSISTANT",
-        content: "Second message",
-        userId: null,
+        content: "Second message",user_id: null,
       });
 
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -127,8 +120,7 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
       const message3 = await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "USER",
-        content: "Third message",
-        userId: testUser.id,
+        content: "Third message",user_id: testUser.id,
       });
 
       const request = createAuthenticatedGetRequest(
@@ -152,10 +144,9 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
 
     it("returns only messages for the specified whiteboard", async () => {
       // Create another whiteboard with messages
-      const otherWhiteboard = await db.whiteboard.create({
+      const otherWhiteboard = await db.whiteboards.create({
         data: {
-          name: "Other Whiteboard",
-          workspaceId: testWorkspace.id,
+          name: "Other Whiteboard",workspace_id: testWorkspace.id,
           elements: [],
           appState: {},
           files: {},
@@ -165,15 +156,13 @@ describe("GET /api/whiteboards/[whiteboardId]/messages", () => {
       await createTestWhiteboardMessage({
         whiteboardId: otherWhiteboard.id,
         role: "USER",
-        content: "Other whiteboard message",
-        userId: testUser.id,
+        content: "Other whiteboard message",user_id: testUser.id,
       });
 
       const message = await createTestWhiteboardMessage({
         whiteboardId: testWhiteboard.id,
         role: "USER",
-        content: "Test whiteboard message",
-        userId: testUser.id,
+        content: "Test whiteboard message",user_id: testUser.id,
       });
 
       const request = createAuthenticatedGetRequest(
@@ -197,26 +186,21 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   let testWorkspace: Awaited<ReturnType<typeof createTestWorkspace>>;
   let testFeature: Awaited<ReturnType<typeof createTestFeature>>;
-  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboard.create>>;
+  let testWhiteboard: Awaited<ReturnType<typeof db.whiteboards.create>>;
   let otherUser: Awaited<ReturnType<typeof createTestUser>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     testUser = await createTestUser();
-    testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
-    testFeature = await createTestFeature({
-      workspaceId: testWorkspace.id,
-      createdById: testUser.id,
-      updatedById: testUser.id,
+    testWorkspace = await createTestWorkspace({owner_id: testUser.id });
+    testFeature = await createTestFeature({workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
       architecture: "Test architecture for diagram generation",
     });
 
-    testWhiteboard = await db.whiteboard.create({
+    testWhiteboard = await db.whiteboards.create({
       data: {
-        name: "Test Whiteboard",
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
+        name: "Test Whiteboard",workspace_id: testWorkspace.id,feature_id: testFeature.id,
         elements: [],
         appState: {},
         files: {},
@@ -229,11 +213,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
     vi.mocked(stakworkRunService.createDiagramStakworkRun).mockResolvedValue({
       id: "mock-run-id",
       type: "DIAGRAM_GENERATION",
-      status: "PENDING",
-      featureId: testFeature.id,
-      userId: testUser.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      status: "PENDING",feature_id: testFeature.id,user_id: testUser.id,created_at: new Date(),updated_at: new Date(),
     } as any);
   });
 
@@ -276,11 +256,9 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
 
   describe("Validation", () => {
     it("creates message and triggers diagram run for standalone whiteboard (no featureId)", async () => {
-      const whiteboardNoFeature = await db.whiteboard.create({
+      const whiteboardNoFeature = await db.whiteboards.create({
         data: {
-          name: "No Feature Whiteboard",
-          workspaceId: testWorkspace.id,
-          featureId: null,
+          name: "No Feature Whiteboard",workspace_id: testWorkspace.id,feature_id: null,
           elements: [],
           appState: {},
           files: {},
@@ -306,31 +284,23 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(result.data.runId).toBe("mock-run-id");
 
       // Verify createDiagramStakworkRun was called with standalone params
-      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        featureId: undefined,
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({workspace_id: testWorkspace.id,feature_id: undefined,
         whiteboardId: whiteboardNoFeature.id,
         architectureText: "Generate a standalone diagram",
-        layout: "layered",
-        userId: testUser.id,
+        layout: "layered",user_id: testUser.id,
         diagramContext: null,
         currentMessageId: result.data.message.id,
       });
     });
 
     it("uses message content as architectureText when feature has no architecture", async () => {
-      const featureNoArchitecture = await createTestFeature({
-        workspaceId: testWorkspace.id,
-        createdById: testUser.id,
-        updatedById: testUser.id,
+      const featureNoArchitecture = await createTestFeature({workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         architecture: "",
       });
 
-      const whiteboardNoArchitecture = await db.whiteboard.create({
+      const whiteboardNoArchitecture = await db.whiteboards.create({
         data: {
-          name: "No Architecture Whiteboard",
-          workspaceId: testWorkspace.id,
-          featureId: featureNoArchitecture.id,
+          name: "No Architecture Whiteboard",workspace_id: testWorkspace.id,feature_id: featureNoArchitecture.id,
           elements: [],
           appState: {},
           files: {},
@@ -352,13 +322,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       // Verify the service was called with message content as architectureText
       // (empty architecture falls through to standalone path, but featureId is still passed)
       const noArchResult = await response.json();
-      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        featureId: featureNoArchitecture.id,
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({workspace_id: testWorkspace.id,feature_id: featureNoArchitecture.id,
         whiteboardId: whiteboardNoArchitecture.id,
         architectureText: "Test message",
-        layout: "layered",
-        userId: testUser.id,
+        layout: "layered",user_id: testUser.id,
         diagramContext: null,
         currentMessageId: noArchResult.data.message.id,
       });
@@ -382,13 +349,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
   describe("Concurrent Generation Guard", () => {
     it("returns 409 when a DIAGRAM_GENERATION run is already PENDING", async () => {
       // Create a pending StakworkRun
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "PENDING",
-          featureId: testFeature.id,
-          workspaceId: testWorkspace.id,
-          webhookUrl: "http://localhost:3000/api/webhook/stakwork/response",
+          status: "PENDING",feature_id: testFeature.id,workspace_id: testWorkspace.id,webhook_url: "http://localhost:3000/api/webhook/stakwork/response",
         },
       });
 
@@ -410,13 +374,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
 
     it("returns 409 when a DIAGRAM_GENERATION run is already IN_PROGRESS", async () => {
       // Create an in-progress StakworkRun
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "IN_PROGRESS",
-          featureId: testFeature.id,
-          workspaceId: testWorkspace.id,
-          webhookUrl: "http://localhost:3000/api/webhook/stakwork/response",
+          status: "IN_PROGRESS",feature_id: testFeature.id,workspace_id: testWorkspace.id,webhook_url: "http://localhost:3000/api/webhook/stakwork/response",
         },
       });
 
@@ -438,13 +399,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
 
     it("allows POST when previous DIAGRAM_GENERATION run is COMPLETED", async () => {
       // Create a completed StakworkRun
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "COMPLETED",
-          featureId: testFeature.id,
-          workspaceId: testWorkspace.id,
-          webhookUrl: "http://localhost:3000/api/webhook/stakwork/response",
+          status: "COMPLETED",feature_id: testFeature.id,workspace_id: testWorkspace.id,webhook_url: "http://localhost:3000/api/webhook/stakwork/response",
         },
       });
 
@@ -491,7 +449,7 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(result.data.runId).toBe("mock-run-id");
 
       // Verify message was persisted in DB
-      const persistedMessage = await db.whiteboardMessage.findUnique({
+      const persistedMessage = await db.whiteboard_messages.findUnique({
         where: { id: result.data.message.id },
       });
       expect(persistedMessage).toBeDefined();
@@ -500,13 +458,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       );
 
       // Verify createDiagramStakworkRun was called with correct params
-      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({workspace_id: testWorkspace.id,feature_id: testFeature.id,
         whiteboardId: testWhiteboard.id,
         architectureText: "Architecture:\nTest architecture for diagram generation\n\nUser request:\nGenerate a diagram for user authentication flow",
-        layout: "layered",
-        userId: testUser.id,
+        layout: "layered",user_id: testUser.id,
         diagramContext: null,
         currentMessageId: result.data.message.id,
       });
@@ -526,13 +481,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(response.status).toBe(202);
 
       const forceResult = await response.json();
-      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        featureId: testFeature.id,
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({workspace_id: testWorkspace.id,feature_id: testFeature.id,
         whiteboardId: testWhiteboard.id,
         architectureText: "Architecture:\nTest architecture for diagram generation\n\nUser request:\nTest message",
-        layout: "force",
-        userId: testUser.id,
+        layout: "force",user_id: testUser.id,
         diagramContext: null,
         currentMessageId: forceResult.data.message.id,
       });
@@ -555,11 +507,9 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
 
   describe("Standalone Whiteboard (no featureId)", () => {
     it("creates message and triggers diagram run using message content as architectureText", async () => {
-      const standaloneWhiteboard = await db.whiteboard.create({
+      const standaloneWhiteboard = await db.whiteboards.create({
         data: {
-          name: "Standalone Whiteboard",
-          workspaceId: testWorkspace.id,
-          featureId: null, // No linked feature
+          name: "Standalone Whiteboard",workspace_id: testWorkspace.id,feature_id: null, // No linked feature
           elements: [],
           appState: {},
           files: {},
@@ -588,19 +538,16 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       expect(result.data.runId).toBe("mock-run-id");
 
       // Verify createDiagramStakworkRun was called with message content as architectureText
-      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({
-        workspaceId: testWorkspace.id,
-        featureId: undefined, // No featureId
+      expect(stakworkRunService.createDiagramStakworkRun).toHaveBeenCalledWith({workspace_id: testWorkspace.id,feature_id: undefined, // No featureId
         whiteboardId: standaloneWhiteboard.id,
         architectureText: messageContent, // User's message is used as prompt
-        layout: "layered",
-        userId: testUser.id,
+        layout: "layered",user_id: testUser.id,
         diagramContext: null,
         currentMessageId: result.data.message.id,
       });
 
       // Verify message was persisted
-      const persistedMessage = await db.whiteboardMessage.findUnique({
+      const persistedMessage = await db.whiteboard_messages.findUnique({
         where: { id: result.data.message.id },
       });
       expect(persistedMessage).toBeDefined();
@@ -608,11 +555,9 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
     });
 
     it("returns 409 when standalone whiteboard has generation in progress", async () => {
-      const standaloneWhiteboard = await db.whiteboard.create({
+      const standaloneWhiteboard = await db.whiteboards.create({
         data: {
-          name: "Standalone Whiteboard 2",
-          workspaceId: testWorkspace.id,
-          featureId: null,
+          name: "Standalone Whiteboard 2",workspace_id: testWorkspace.id,feature_id: null,
           elements: [],
           appState: {},
           files: {},
@@ -620,13 +565,10 @@ describe("POST /api/whiteboards/[whiteboardId]/messages", () => {
       });
 
       // Create a pending run for this whiteboard
-      await db.stakworkRun.create({
+      await db.stakwork_runs.create({
         data: {
           type: "DIAGRAM_GENERATION",
-          status: "IN_PROGRESS",
-          featureId: null,
-          workspaceId: testWorkspace.id,
-          webhookUrl: `http://localhost:3000/api/webhook/stakwork/response?whiteboard_id=${standaloneWhiteboard.id}`,
+          status: "IN_PROGRESS",feature_id: null,workspace_id: testWorkspace.id,webhook_url: `http://localhost:3000/api/webhook/stakwork/response?whiteboard_id=${standaloneWhiteboard.id}`,
         },
       });
 

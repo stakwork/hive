@@ -189,7 +189,7 @@ export const authOptions: NextAuthOptions = {
         try {
           // Create or find the mock user in the database
           const existingUser = user.email
-            ? await db.user.findUnique({
+            ? await db.users.findUnique({
               where: {
                 email: user.email,
               },
@@ -198,7 +198,7 @@ export const authOptions: NextAuthOptions = {
 
           if (!existingUser) {
             // Create a new user for mock authentication
-            const newUser = await db.user.create({
+            const newUser = await db.users.create({
               data: {
                 name: user.name || "Mock User",
                 email: user.email!, // Email is always generated from username
@@ -225,7 +225,7 @@ export const authOptions: NextAuthOptions = {
 
           // Verify workspace was committed to DB before proceeding
           // This ensures subsequent queries in middleware/pages will find it
-          const verifyWorkspace = await db.workspace.findFirst({
+          const verifyWorkspace = await db.workspaces.findFirst({
             where: { ownerId: user.id as string, deleted: false },
             select: { slug: true },
           });
@@ -272,7 +272,7 @@ export const authOptions: NextAuthOptions = {
         try {
           // Check if there's an existing user with the same email
           const existingUser = user.email
-            ? await db.user.findUnique({
+            ? await db.users.findUnique({
               where: {
                 email: user.email,
               },
@@ -281,7 +281,7 @@ export const authOptions: NextAuthOptions = {
 
           if (existingUser) {
             // Check if there's already a GitHub account for this user
-            const existingAccount = await db.account.findFirst({
+            const existingAccount = await db.accounts.findFirst({
               where: {
                 userId: existingUser.id,
                 provider: "github",
@@ -292,7 +292,7 @@ export const authOptions: NextAuthOptions = {
               // Create a new account record linking GitHub to the existing user
               const encryptedAccessToken = encryptionService.encryptField("access_token", account.access_token ?? "");
 
-              await db.account.create({
+              await db.accounts.create({
                 data: {
                   userId: existingUser.id,
                   type: account.type,
@@ -318,7 +318,7 @@ export const authOptions: NextAuthOptions = {
               if (account.access_token) {
                 const encryptedAccessToken = encryptionService.encryptField("access_token", account.access_token ?? "");
 
-                await db.account.update({
+                await db.accounts.update({
                   where: { id: existingAccount.id },
                   data: {
                     access_token: JSON.stringify(encryptedAccessToken),
@@ -355,7 +355,7 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Check if Lightning pubkey already exists in database
-          const existingUserWithPubkey = await db.user.findFirst({
+          const existingUserWithPubkey = await db.users.findFirst({
             where: {
               lightningPubkey: {
                 not: null,
@@ -388,7 +388,7 @@ export const authOptions: NextAuthOptions = {
             user.id = existingSphinxUser.id;
 
             // Update lastLoginAt
-            await db.user.update({
+            await db.users.update({
               where: { id: existingSphinxUser.id },
               data: { lastLoginAt: new Date() },
             });
@@ -412,7 +412,7 @@ export const authOptions: NextAuthOptions = {
             // Encrypt and store Lightning pubkey on existing user
             const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
 
-            await db.user.update({
+            await db.users.update({
               where: { id: existingUserId },
               data: {
                 lightningPubkey: JSON.stringify(encryptedPubkey),
@@ -421,7 +421,7 @@ export const authOptions: NextAuthOptions = {
             });
 
             // Create Account record for Sphinx provider
-            await db.account.create({
+            await db.accounts.create({
               data: {
                 userId: existingUserId,
                 type: "credentials",
@@ -440,7 +440,7 @@ export const authOptions: NextAuthOptions = {
           // Scenario 3: New Sphinx user - create new account
           const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
 
-          const newUser = await db.user.create({
+          const newUser = await db.users.create({
             data: {
               lightningPubkey: JSON.stringify(encryptedPubkey),
               name: `Sphinx User`, // Default name, can be updated later
@@ -450,7 +450,7 @@ export const authOptions: NextAuthOptions = {
           });
 
           // Create Account record for Sphinx provider
-          await db.account.create({
+          await db.accounts.create({
             data: {
               userId: newUser.id,
               type: "credentials",
@@ -491,7 +491,7 @@ export const authOptions: NextAuthOptions = {
         // This needs to happen BEFORE any early returns
         if (userId) {
           try {
-            const userRecord = await db.user.findUnique({
+            const userRecord = await db.users.findUnique({
               where: { id: userId },
               select: { lightningPubkey: true, sphinxAlias: true, voiceSignatureKey: true },
             });
@@ -538,7 +538,7 @@ export const authOptions: NextAuthOptions = {
           const uid = (session.user as { id?: string }).id;
           if (uid) {
             try {
-              const workspace = await db.workspace.findFirst({
+              const workspace = await db.workspaces.findFirst({
                 where: { ownerId: uid, deleted: false },
                 select: { slug: true },
               });
@@ -597,14 +597,14 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Check if we already have GitHub data
-        let githubAuth = await db.gitHubAuth.findUnique({
+        let githubAuth = await db.github_auth.findUnique({
           where: { userId },
         });
 
         // If not, try to fetch from GitHub and upsert
         if (!githubAuth) {
           // Find the GitHub account for this user
-          const account = await db.account.findFirst({
+          const account = await db.accounts.findFirst({
             where: {
               userId,
               provider: "github",
@@ -620,7 +620,7 @@ export const authOptions: NextAuthOptions = {
                 },
               });
 
-              githubAuth = await db.gitHubAuth.upsert({
+              githubAuth = await db.github_auth.upsert({
                 where: { userId },
                 update: {
                   githubUserId: githubProfile.id.toString(),
@@ -706,7 +706,7 @@ export const authOptions: NextAuthOptions = {
         token.picture = user.image;
 
         // Fetch user role from DB and apply SUPER_ADMIN env override
-        const dbUser = await db.user.findUnique({
+        const dbUser = await db.users.findUnique({
           where: { id: user.id },
           select: { role: true },
         });
@@ -714,7 +714,7 @@ export const authOptions: NextAuthOptions = {
 
         // Bootstrap SUPER_ADMIN role from environment variable
         if (isSuperAdminUserId(user.id as string) && role !== "SUPER_ADMIN") {
-          await db.user.update({
+          await db.users.update({
             where: { id: user.id },
             data: { role: "SUPER_ADMIN" },
           });
@@ -741,7 +741,7 @@ export const authOptions: NextAuthOptions = {
       try {
         if (account?.provider === "github" && account.access_token) {
           const encryptedToken = JSON.stringify(encryptionService.encryptField("access_token", account.access_token));
-          await db.account.updateMany({
+          await db.accounts.updateMany({
             where: {
               userId: user.id,
               provider: "github",
@@ -784,7 +784,7 @@ export async function getGithubUsernameAndPAT(
   console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
 
   // Check if this is a mock user
-  const user = await db.user.findUnique({ where: { id: userId } });
+  const user = await db.users.findUnique({ where: { id: userId } });
   if (!user) {
     console.log(`[getGithubUsernameAndPAT] User not found: ${userId}`);
     return null;
@@ -800,7 +800,7 @@ export async function getGithubUsernameAndPAT(
   console.log(`[getGithubUsernameAndPAT] User found: ${user.email}`);
 
   // Get GitHub username from GitHubAuth
-  const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
+  const githubAuth = await db.github_auth.findUnique({ where: { userId } });
   if (!githubAuth) {
     console.log(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`);
     return null;
@@ -818,7 +818,7 @@ export async function getGithubUsernameAndPAT(
   if (!workspaceSlug) {
     console.log(`[getGithubUsernameAndPAT] No workspace provided, using OAuth token`);
 
-    const account = await db.account.findFirst({
+    const account = await db.accounts.findFirst({
       where: {
         userId,
         provider: "github",
@@ -850,7 +850,7 @@ export async function getGithubUsernameAndPAT(
   console.log(`[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`);
 
   // Get workspace and its source control org
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { slug: workspaceSlug },
     include: {
       sourceControlOrg: true,
@@ -865,7 +865,7 @@ export async function getGithubUsernameAndPAT(
   if (!workspace.sourceControlOrg) {
     console.log(`[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`);
 
-    const account = await db.account.findFirst({
+    const account = await db.accounts.findFirst({
       where: {
         userId,
         provider: "github",
@@ -894,7 +894,7 @@ export async function getGithubUsernameAndPAT(
   console.log(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`);
 
   // Get user's token for this source control org
-  const sourceControlToken = await db.sourceControlToken.findUnique({
+  const sourceControlToken = await db.source_control_tokens.findUnique({
     where: {
       userId_sourceControlOrgId: {
         userId,

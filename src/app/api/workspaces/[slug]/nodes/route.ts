@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "node_type is required" }, { status: 400 });
     }
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: workspace.id },
     });
 

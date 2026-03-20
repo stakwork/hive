@@ -14,7 +14,7 @@ export async function GET(
 
     const { whiteboardId } = await params;
 
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -42,7 +42,7 @@ export async function GET(
     }
 
     // Fetch messages ordered by creation time
-    const messages = await db.whiteboardMessage.findMany({
+    const messages = await db.whiteboard_messages.findMany({
       where: { whiteboardId },
       orderBy: { createdAt: "asc" },
     });
@@ -73,7 +73,7 @@ export async function POST(
     }
 
     // Fetch whiteboard with workspace access check and feature data
-    const whiteboard = await db.whiteboard.findUnique({
+    const whiteboard = await db.whiteboards.findUnique({
       where: { id: whiteboardId },
       include: {
         workspace: {
@@ -109,7 +109,7 @@ export async function POST(
     }
 
     // Guard against concurrent diagram generation (check by whiteboard or feature)
-    const activeGeneration = await db.stakworkRun.findFirst({
+    const activeGeneration = await db.stakwork_runs.findFirst({
       where: {
         OR: [
           ...(whiteboard.featureId ? [{ featureId: whiteboard.featureId }] : []),
@@ -129,7 +129,7 @@ export async function POST(
     }
 
     // Persist USER message
-    const message = await db.whiteboardMessage.create({
+    const message = await db.whiteboard_messages.create({
       data: {
         whiteboardId,
         role: "USER",

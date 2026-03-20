@@ -221,14 +221,14 @@ describe("POST /api/mock/db/scenario", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify workspace was created
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { id: data.data.workspaceId },
       });
       expect(workspace).toBeDefined();
       expect(workspace?.slug).toBe(data.data.workspaceSlug);
 
       // Verify owner was created
-      const owner = await db.user.findUnique({
+      const owner = await db.users.findUnique({
         where: { id: data.data.ownerId },
       });
       expect(owner).toBeDefined();

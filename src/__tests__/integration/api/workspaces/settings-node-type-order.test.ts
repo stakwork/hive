@@ -35,8 +35,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
   async function createTestWorkspace(customNodeTypeOrder?: Array<{ type: string; value: number }>) {
     const scenario = await createTestWorkspaceScenario({
-      workspace: {
-        nodeTypeOrder: customNodeTypeOrder || defaultNodeTypeOrder,
+      workspace: {node_type_order: customNodeTypeOrder || defaultNodeTypeOrder,
       },
       members: [{ role: "ADMIN" }, { role: "DEVELOPER" }, { role: "VIEWER" }],
     });
@@ -117,9 +116,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       // Set nodeTypeOrder to null
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { nodeTypeOrder: null },
+        data: {node_type_order: null },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
@@ -163,7 +162,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: { deleted: true },
       });
@@ -217,7 +216,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -226,9 +225,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toEqual(updatedOrder);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true, updatedAt: true },
+        select: {node_type_order: true,updated_at: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual(updatedOrder);
     });
@@ -245,7 +244,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -254,9 +253,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toEqual(updatedOrder);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual(updatedOrder);
     });
@@ -270,7 +269,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -278,9 +277,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectNotFound(response, "Workspace not found or access denied");
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -294,7 +293,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -302,9 +301,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectNotFound(response, "Workspace not found or access denied");
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -316,7 +315,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: [] }
+        {node_type_order: [] }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -325,9 +324,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toEqual([]);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual([]);
     });
@@ -341,7 +340,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: invalidOrder }
+        {node_type_order: invalidOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -349,9 +348,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -365,7 +364,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: invalidOrder }
+        {node_type_order: invalidOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -373,9 +372,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -392,7 +391,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: validOrder }
+        {node_type_order: validOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -401,9 +400,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toEqual(validOrder);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual(validOrder);
     });
@@ -417,7 +416,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: invalidOrder }
+        {node_type_order: invalidOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -425,9 +424,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -437,7 +436,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const invalidData = { nodeTypeOrder: "not an array" };
+      const invalidData = {node_type_order: "not an array" };
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
@@ -449,9 +448,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -473,9 +472,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -489,7 +488,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: invalidOrder }
+        {node_type_order: invalidOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -497,9 +496,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -513,7 +512,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: invalidOrder }
+        {node_type_order: invalidOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -521,9 +520,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -537,7 +536,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -545,9 +544,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       await expectUnauthorized(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
@@ -561,7 +560,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         "http://localhost:3000/api/workspaces/nonexistent/settings/node-type-order",
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: "nonexistent" }) });
@@ -573,7 +572,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       // Soft delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: { deleted: true },
       });
@@ -584,7 +583,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -607,7 +606,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -628,7 +627,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: largeOrder }
+        {node_type_order: largeOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -638,9 +637,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toHaveLength(50);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual(largeOrder);
     });
@@ -660,7 +659,7 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: specialOrder }
+        {node_type_order: specialOrder }
       );
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -669,9 +668,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(data.data.nodeTypeOrder).toEqual(specialOrder);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { nodeTypeOrder: true },
+        select: {node_type_order: true },
       });
       expect(updatedWorkspaceInDb?.nodeTypeOrder).toEqual(specialOrder);
     });
@@ -680,9 +679,9 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       // Get initial updatedAt timestamp
-      const initialWorkspace = await db.workspace.findUnique({
+      const initialWorkspace = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { updatedAt: true },
+        select: {updated_at: true },
       });
 
       // Wait a bit to ensure timestamp difference
@@ -694,15 +693,15 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
-        { nodeTypeOrder: updatedOrder }
+        {node_type_order: updatedOrder }
       );
 
       await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       // Verify updatedAt was changed
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
-        select: { updatedAt: true },
+        select: {updated_at: true },
       });
 
       expect(updatedWorkspaceInDb?.updatedAt.getTime()).toBeGreaterThan(

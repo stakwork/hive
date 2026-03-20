@@ -3,23 +3,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock all external dependencies
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
     },
@@ -104,7 +100,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     vi.mocked(config).STAKWORK_WORKFLOW_ID = "101,102,103"; // live,test,unit/integration
 
     // Mock empty chat history for all tests by default
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -181,7 +177,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -241,11 +237,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -272,7 +268,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
   describe("Database Access Control Tests", () => {
     it("should return 404 when task is not found", async () => {
-      vi.mocked(db.task.findFirst).mockResolvedValue(null);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(null);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -288,7 +284,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Task not found");
-      expect(vi.mocked(db.task.findFirst)).toHaveBeenCalledWith({
+      expect(vi.mocked(db.tasks.findFirst)).toHaveBeenCalledWith({
         where: {
           id: mockTaskId,
           deleted: false,
@@ -307,8 +303,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(null);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -350,10 +346,10 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(null);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -383,8 +379,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       const mockUser = { id: mockUserId, name: "Test User" };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -433,11 +429,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -491,11 +487,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -552,11 +548,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
     });
 
     it("should use mock service when STAKWORK_API_KEY is not present", async () => {
@@ -682,11 +678,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -822,11 +818,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -891,7 +887,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -1051,11 +1047,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
     });
 
     it("should handle Stakwork API HTTP failure (response.ok === false) — leave workflowStatus unchanged", async () => {
@@ -1082,7 +1078,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.workflow).toBeUndefined();
 
       // Non-2xx → no project_id → workflowStatus left unchanged (no update)
-      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
+      expect(vi.mocked(db.tasks.update)).not.toHaveBeenCalled();
     });
 
     it("should handle Stakwork API network error (fetch rejection) — leave workflowStatus unchanged", async () => {
@@ -1106,11 +1102,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.workflow).toBeUndefined();
 
       // Network error → no project_id → workflowStatus left unchanged (no update)
-      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
+      expect(vi.mocked(db.tasks.update)).not.toHaveBeenCalled();
     });
 
     it("should return 500 on database error", async () => {
-      vi.mocked(db.task.findFirst).mockRejectedValue(new Error("Database connection error"));
+      vi.mocked(db.tasks.findFirst).mockRejectedValue(new Error("Database connection error"));
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -1166,7 +1162,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       const data = await response.json();
 
       // Verify chat message was still created
-      expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalled();
+      expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalled();
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
       expect(data.message).toBeDefined();
@@ -1207,11 +1203,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
     });
 
     it("should successfully create chat message and start workflow", async () => {
@@ -1250,7 +1246,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       });
 
       // Verify database operations
-      expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalledWith({
+      expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalledWith({
         data: expect.objectContaining({
           taskId: mockTaskId,
           message: "Test message",
@@ -1261,7 +1257,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       });
 
       // Verify task was updated with workflow status
-      expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
+      expect(vi.mocked(db.tasks.update)).toHaveBeenCalledWith({
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -1299,7 +1295,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       await POST(request);
 
-      expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
+      expect(vi.mocked(db.tasks.update)).toHaveBeenCalledWith({
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -1343,7 +1339,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.success).toBe(true);
 
       // No project_id in response → workflowStatus left unchanged (no update)
-      expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
+      expect(vi.mocked(db.tasks.update)).not.toHaveBeenCalled();
     });
   });
 
@@ -1368,11 +1364,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       const mockUser = { id: mockUserId, name: "Test User" };
       const mockWorkspace = { id: mockWorkspaceId, slug: "test-workspace" };
 
-      vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-      vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-      vi.mocked(db.task.update).mockResolvedValue({} as any);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]); // Mock empty chat history
+      vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+      vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+      vi.mocked(db.tasks.update).mockResolvedValue({} as any);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]); // Mock empty chat history
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -1396,7 +1392,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -1450,7 +1446,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",
@@ -1476,7 +1472,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.message.artifacts[0].type).toBe("CODE");
 
       // Verify database creation included artifacts
-      expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalledWith({
+      expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalledWith({
         data: expect.objectContaining({
           artifacts: {
             create: [
@@ -1516,7 +1512,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         task: { id: mockTaskId, title: "Test Task" },
       };
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
 
       const request = createAuthenticatedPostRequest(
         "http://localhost/api/chat/message",

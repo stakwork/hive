@@ -4,8 +4,7 @@ import { db } from "@/lib/db";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    chatMessage: {
+  db: {chat_messages: {
       findMany: vi.fn(),
     },
   },
@@ -53,11 +52,11 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 
-    expect(db.chatMessage.findMany).toHaveBeenCalledWith({
+    expect(db.chat_messages.findMany).toHaveBeenCalledWith({
       where: { taskId: "task-1" },
       include: {
         artifacts: {
@@ -92,11 +91,11 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     await fetchChatHistory("task-1", "msg-1");
 
-    expect(db.chatMessage.findMany).toHaveBeenCalledWith({
+    expect(db.chat_messages.findMany).toHaveBeenCalledWith({
       where: {
         taskId: "task-1",
         id: { not: "msg-1" },
@@ -139,7 +138,7 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 
@@ -159,7 +158,7 @@ describe("fetchChatHistory", () => {
   });
 
   test("should return empty array when no messages found", async () => {
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
     const result = await fetchChatHistory("task-999");
 
@@ -181,7 +180,7 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 
@@ -219,7 +218,7 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 
@@ -251,7 +250,7 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 
@@ -277,7 +276,7 @@ describe("fetchChatHistory", () => {
       },
     ];
 
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue(mockMessages as any);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue(mockMessages as any);
 
     const result = await fetchChatHistory("task-1");
 

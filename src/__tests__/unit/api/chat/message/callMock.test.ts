@@ -18,19 +18,15 @@ import {
 // Mock all external dependencies
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
     },
@@ -93,7 +89,7 @@ describe("callMock Function - Chat Message Processing", () => {
     setupChatMessageDatabaseMocks(mockUserId, mockTaskId, mockWorkspaceId);
 
     // Mock workspace query
-    vi.mocked(db.workspace.findUnique).mockResolvedValue({
+    vi.mocked(db.workspaces.findUnique).mockResolvedValue({
       id: mockWorkspaceId,
       slug: mockWorkspaceSlug,
     } as any);
@@ -111,8 +107,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       // Mock successful response from /api/mock/chat
       mockFetch.mockResolvedValue({
@@ -163,8 +159,8 @@ describe("callMock Function - Chat Message Processing", () => {
         ],
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([
         {
           id: "hist-1",
           message: "Previous message",
@@ -243,8 +239,8 @@ describe("callMock Function - Chat Message Processing", () => {
         },
       ];
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue(historyMessages as any);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue(historyMessages as any);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -286,8 +282,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -329,8 +325,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       const mockServerResponse = {
         message: "Mock response text",
@@ -374,8 +370,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockRejectedValue(new Error("Network error"));
 
@@ -414,8 +410,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: false,
@@ -455,8 +451,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -500,8 +496,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -540,8 +536,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -567,8 +563,8 @@ describe("callMock Function - Chat Message Processing", () => {
       await POST(request);
 
       // Verify message was created before calling mock
-      expect(db.chatMessage.create).toHaveBeenCalled();
-      const createCall = vi.mocked(db.chatMessage.create).mock.calls[0];
+      expect(db.chat_messages.create).toHaveBeenCalled();
+      const createCall = vi.mocked(db.chat_messages.create).mock.calls[0];
       expect(createCall[0].data.message).toBe("Test message");
       expect(createCall[0].data.taskId).toBe(mockTaskId);
     });
@@ -580,8 +576,8 @@ describe("callMock Function - Chat Message Processing", () => {
         message: "Test message",
       });
 
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+      vi.mocked(db.chat_messages.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
       mockFetch.mockResolvedValue({
         ok: true,

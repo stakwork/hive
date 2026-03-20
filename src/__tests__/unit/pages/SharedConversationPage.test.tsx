@@ -32,14 +32,11 @@ vi.mock("@/lib/auth/nextauth", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findFirst: vi.fn(),
-    },
-    sharedConversation: {
+    },shared_conversations: {
       findUnique: vi.fn(),
     },
   },

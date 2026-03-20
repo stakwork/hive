@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Handle StakworkRun updates
     if (finalRunId) {
-      const run = await db.stakworkRun.findFirst({
+      const run = await db.stakwork_runs.findFirst({
         where: {
           id: finalRunId,
         },
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Run not found" }, { status: 404 });
       }
 
-      const updatedRun = await db.stakworkRun.update({
+      const updatedRun = await db.stakwork_runs.update({
         where: { id: finalRunId },
         data: {
           status: workflowStatus,
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "task_id is required for task updates" }, { status: 400 });
     }
 
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: finalTaskId,
         deleted: false,
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     if (!task) {
       // If no task found, check if this is a feature (plan mode uses featureId as taskId)
-      const feature = await db.feature.findFirst({
+      const feature = await db.features.findFirst({
         where: { id: finalTaskId },
         select: {
           id: true,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (feature) {
-        await db.feature.update({
+        await db.features.update({
           where: { id: feature.id },
           data: buildWorkflowTimestamps(workflowStatus),
         });
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
             try {
               const targetUserId = feature.assigneeId ?? feature.createdById;
               const planUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${feature.id}`;
-              const targetUser = await db.user.findUnique({
+              const targetUser = await db.users.findUnique({
                 where: { id: targetUserId },
                 select: { sphinxAlias: true, name: true },
               });
@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const updatedTask = await db.task.update({
+    const updatedTask = await db.tasks.update({
       where: { id: finalTaskId },
       data: buildWorkflowTimestamps(workflowStatus),
       select: {
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
         try {
           const targetUserId = task.assigneeId ?? task.createdById;
           const taskUrl = `${process.env.NEXTAUTH_URL}/w/${task.workspace.slug}/task/${task.id}`;
-          const targetUser = await db.user.findUnique({
+          const targetUser = await db.users.findUnique({
             where: { id: targetUserId },
             select: { sphinxAlias: true, name: true },
           });

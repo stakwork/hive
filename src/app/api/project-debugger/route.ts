@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the task and ensure the user is authorized
-    const task = await db.task.findUnique({
+    const task = await db.tasks.findUnique({
       where: { id: taskId },
       include: {
         workspace: {
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     const projectData = projectResult.data.project;
 
     // Create the initial chat message
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         message,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get workspace swarm configuration for credentials
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: task.workspaceId },
     });
 
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       console.error(`Failed to call project debugger workflow: ${response.statusText}`);
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { workflowStatus: WorkflowStatus.FAILED },
       });
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
         updateData.stakworkProjectId = result.data.project_id;
       }
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: updateData,
       });
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
       // Create a new WORKFLOW artifact with the projectId and project metadata
       if (result.data?.project_id) {
         try {
-          const newMessage = await db.chatMessage.create({
+          const newMessage = await db.chat_messages.create({
             data: {
               taskId,
               message: "",
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { workflowStatus: WorkflowStatus.FAILED },
       });

@@ -66,7 +66,7 @@ describe("Admin Users API", () => {
       expect(data.success).toBe(true);
 
       // Verify user was promoted
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: targetUser.id },
         select: { role: true },
       });
@@ -80,7 +80,7 @@ describe("Admin Users API", () => {
       const request = createAuthenticatedPostRequest(
         "/api/admin/users",
         superAdminUser,
-        { userId: newUser.id }
+        {user_id: newUser.id }
       );
       const { POST } = await import("@/app/api/admin/users/route");
       const response = await POST(request);
@@ -88,7 +88,7 @@ describe("Admin Users API", () => {
       expect(response.status).toBe(200);
 
       // Verify user was promoted
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: newUser.id },
         select: { role: true },
       });
@@ -133,7 +133,7 @@ describe("Admin Users API", () => {
     });
 
     it("should return 403 for regular users", async () => {
-      const baseRequest = createDeleteRequest("/api/admin/users", { userId: promotedUser.id });
+      const baseRequest = createDeleteRequest("/api/admin/users", {user_id: promotedUser.id });
       const request = addMiddlewareHeaders(baseRequest, regularUser);
       const { DELETE } = await import("@/app/api/admin/users/route");
       const response = await DELETE(request);
@@ -142,7 +142,7 @@ describe("Admin Users API", () => {
     });
 
     it("should demote a superadmin to regular user", async () => {
-      const baseRequest = createDeleteRequest("/api/admin/users", { userId: promotedUser.id });
+      const baseRequest = createDeleteRequest("/api/admin/users", {user_id: promotedUser.id });
       const request = addMiddlewareHeaders(baseRequest, superAdminUser);
       const { DELETE } = await import("@/app/api/admin/users/route");
       const response = await DELETE(request);
@@ -152,7 +152,7 @@ describe("Admin Users API", () => {
       expect(data.success).toBe(true);
 
       // Verify user was demoted
-      const updatedUser = await db.user.findUnique({
+      const updatedUser = await db.users.findUnique({
         where: { id: promotedUser.id },
         select: { role: true },
       });
@@ -160,7 +160,7 @@ describe("Admin Users API", () => {
     });
 
     it("should return 400 when trying to demote self", async () => {
-      const baseRequest = createDeleteRequest("/api/admin/users", { userId: superAdminUser.id });
+      const baseRequest = createDeleteRequest("/api/admin/users", {user_id: superAdminUser.id });
       const request = addMiddlewareHeaders(baseRequest, superAdminUser);
       const { DELETE } = await import("@/app/api/admin/users/route");
       const response = await DELETE(request);
@@ -171,7 +171,7 @@ describe("Admin Users API", () => {
     });
 
     it("should return 404 for non-existent user", async () => {
-      const baseRequest = createDeleteRequest("/api/admin/users", { userId: "cm00000000000000000000000" });
+      const baseRequest = createDeleteRequest("/api/admin/users", {user_id: "cm00000000000000000000000" });
       const request = addMiddlewareHeaders(baseRequest, superAdminUser);
       const { DELETE } = await import("@/app/api/admin/users/route");
       const response = await DELETE(request);
@@ -182,7 +182,7 @@ describe("Admin Users API", () => {
     });
 
     it("should return 400 if user is not a superadmin", async () => {
-      const baseRequest = createDeleteRequest("/api/admin/users", { userId: regularUser.id });
+      const baseRequest = createDeleteRequest("/api/admin/users", {user_id: regularUser.id });
       const request = addMiddlewareHeaders(baseRequest, superAdminUser);
       const { DELETE } = await import("@/app/api/admin/users/route");
       const response = await DELETE(request);

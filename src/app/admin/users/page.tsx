@@ -18,7 +18,7 @@ import { PromoteSuperadminForm, RevokeSuperadminButton } from "./components";
 
 export default async function AdminUsersPage() {
   // Fetch all superadmin users
-  const superadmins = await db.user.findMany({
+  const superadmins = await db.users.findMany({
     where: { role: "SUPER_ADMIN" },
     select: {
       id: true,

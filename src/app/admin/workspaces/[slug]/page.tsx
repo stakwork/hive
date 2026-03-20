@@ -15,7 +15,7 @@ export default async function AdminWorkspaceDetailPage({
 }) {
   const { slug } = await params;
 
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: {
       slug,
       deleted: false,
@@ -63,7 +63,7 @@ export default async function AdminWorkspaceDetailPage({
   const workspaceId = workspace.id;
 
   const ec2Alert = workspace.swarm?.ec2Id
-    ? await db.ec2Alert.findUnique({ where: { instanceId: workspace.swarm.ec2Id } })
+    ? await db.ec2_alerts.findUnique({ where: { instanceId: workspace.swarm.ec2Id } })
     : null;
 
   return (

@@ -40,7 +40,7 @@ export async function updateTaskWorkflowStatus(
     skipPusher,
   } = options;
 
-  const updatedTask = await db.task.update({
+  const updatedTask = await db.tasks.update({
     where: { id: taskId },
     data: {
       workflowStatus,

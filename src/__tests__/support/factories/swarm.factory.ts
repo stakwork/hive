@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import type { Swarm } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
+import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import {
   SWARM_VALUES,
   getRandomSwarm,
@@ -44,26 +45,28 @@ export async function createTestSwarm(
 
   // Idempotent: check if exists
   if (options.idempotent) {
-    const existing = await db.swarm.findFirst({
-      where: { workspaceId: options.workspaceId, name },
+    const existing = await db.swarms.findFirst({
+      where: {workspace_id: options.workspaceId, name },
     });
     if (existing) return existing;
   }
 
   const baseData = {
+    id: generateUniqueId("swarm"),
     name,
-    swarmUrl: options.swarmUrl ?? baseValues?.swarmUrl ?? `https://${name}.test.sphinxlabs.ai/api`,
-    workspaceId: options.workspaceId,
+    swarm_url: options.swarmUrl ?? baseValues?.swarmUrl ?? `https://${name}.test.sphinxlabs.ai/api`,
+    workspace_id: options.workspaceId,
     status: options.status ?? baseValues?.status ?? "ACTIVE",
-    instanceType: options.instanceType ?? baseValues?.instanceType ?? "XL",
-    agentRequestId: null,
-    agentStatus: null,
-    containerFilesSetUp: options.containerFilesSetUp ?? baseValues?.containerFilesSetUp ?? true,
-    containerFiles: options.containerFiles ?? null,
-    poolName: options.poolName ?? null,
-    poolState: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
-    podState: options.podState ?? "NOT_STARTED",
-    ec2Id: options.ec2Id ?? null,
+    instance_type: options.instanceType ?? baseValues?.instanceType ?? "XL",
+    agent_request_id: null,
+    agent_status: null,
+    container_files_set_up: options.containerFilesSetUp ?? baseValues?.containerFilesSetUp ?? true,
+    container_files: options.containerFiles ?? null,
+    pool_name: options.poolName ?? null,
+    pool_state: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
+    pod_state: options.podState ?? "NOT_STARTED",
+    ec2_id: options.ec2Id ?? null,
+    updated_at: new Date(),
   };
 
    
@@ -72,25 +75,25 @@ export async function createTestSwarm(
   // Encrypt API keys if provided
   const swarmApiKey = options.swarmApiKey ?? (options.valueKey ? "test-swarm-api-key" : undefined);
   if (swarmApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
-    createData.swarmApiKey = JSON.stringify(
+    createData.swarm_api_key = JSON.stringify(
       encryptionService.encryptField("swarmApiKey", swarmApiKey)
     );
   }
 
   if (options.poolApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
-    createData.poolApiKey = JSON.stringify(
+    createData.pool_api_key = JSON.stringify(
       encryptionService.encryptField("poolApiKey", options.poolApiKey)
     );
   }
 
   // Encrypt swarm password if provided
   if (options.swarmPassword && process.env.TOKEN_ENCRYPTION_KEY) {
-    createData.swarmPassword = JSON.stringify(
+    createData.swarm_password = JSON.stringify(
       encryptionService.encryptField("swarmPassword", options.swarmPassword)
     );
   }
 
-  return db.swarm.create({ data: createData });
+  return db.swarms.create({ data: createData });
 }
 
 /**

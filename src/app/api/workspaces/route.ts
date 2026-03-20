@@ -131,7 +131,7 @@ export async function DELETE() {
   }
   const userId = (session.user as { id: string }).id;
   // Find the workspace owned by this user
-  const workspace = await db.workspace.findFirst({
+  const workspace = await db.workspaces.findFirst({
     where: { ownerId: userId, deleted: false },
   });
   if (!workspace) {

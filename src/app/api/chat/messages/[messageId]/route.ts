@@ -24,7 +24,7 @@ export async function GET(
       );
     }
 
-    const chatMessage = await db.chatMessage.findUnique({
+    const chatMessage = await db.chat_messages.findUnique({
       where: { id: messageId },
       include: {
         task: {

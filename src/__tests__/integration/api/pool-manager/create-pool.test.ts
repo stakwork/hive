@@ -70,18 +70,14 @@ describe("POST /api/pool-manager/create-pool", () => {
     workspace = scenario.workspace;
 
     // Create repository
-    repository = await createTestRepository({
-      workspaceId: workspace.id,
-      repositoryUrl: "https://github.com/test/repo",
+    repository = await createTestRepository({workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
       branch: "main",
     });
 
     // Create swarm
     const swarmId = generateUniqueId("swarm");
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
-      name: `test-swarm-${swarmId}`,
-      swarmId: swarmId,
+    swarm = await createTestSwarm({workspace_id: workspace.id,
+      name: `test-swarm-${swarmId}`,swarm_id: swarmId,
       status: "ACTIVE",
     });
 
@@ -105,7 +101,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -117,7 +113,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -131,7 +127,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -145,7 +141,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -159,7 +155,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: "nonexistent-swarm-id", workspaceId: workspace.id }
+        {swarm_id: "nonexistent-swarm-id",workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -172,7 +168,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id }
       );
       const response = await POST(request);
 
@@ -198,9 +194,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -211,10 +205,8 @@ describe("POST /api/pool-manager/create-pool", () => {
 
     test("allows workspace member to create pool", async () => {
       const member = await createTestUser({ email: "member@test.com" });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
@@ -237,9 +229,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -270,9 +260,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -291,8 +279,7 @@ describe("POST /api/pool-manager/create-pool", () => {
         })
       );
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          containerFiles: expect.any(Object),
+        expect.objectContaining({container_files: expect.any(Object),
         })
       );
     });
@@ -304,10 +291,9 @@ describe("POST /api/pool-manager/create-pool", () => {
         ".devcontainer/devcontainer.json": '{"name": "existing"}',
       };
 
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: {
-          containerFiles: existingContainerFiles,
+        data: {container_files: existingContainerFiles,
         },
       });
 
@@ -328,9 +314,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -363,17 +347,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
 
       await expectSuccess(response, 201);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          poolState: "COMPLETE",
+        expect.objectContaining({pool_state: "COMPLETE",
         })
       );
     });
@@ -383,16 +364,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       // Add environment variables to the database (global vars)
       const encryptionService = (await import("@/lib/encryption")).EncryptionService.getInstance();
-      await db.environmentVariable.createMany({
+      await db.environment_variables.createMany({
         data: [
-          {
-            swarmId: swarm.id,
+          {swarm_id: swarm.id,
             serviceName: null, // Global env var
             name: "GLOBAL_VAR",
             value: JSON.stringify(encryptionService.encryptField("environmentVariable", "global-value")),
           },
-          {
-            swarmId: swarm.id,
+          {swarm_id: swarm.id,
             serviceName: null, // Global env var
             name: "ANOTHER_GLOBAL",
             value: JSON.stringify(encryptionService.encryptField("environmentVariable", "another-global-value")),
@@ -417,9 +396,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -466,17 +443,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
 
       await expectError(response, "Repository not found", 404);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          poolState: "FAILED",
+        expect.objectContaining({pool_state: "FAILED",
         })
       );
     });
@@ -497,17 +471,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
 
       await expectError(response, "Insufficient permissions", 403);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          poolState: "FAILED",
+        expect.objectContaining({pool_state: "FAILED",
         })
       );
     });
@@ -528,9 +499,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -554,9 +523,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -574,17 +541,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
 
       await expectError(response, "Failed to create pool", 500);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          poolState: "FAILED",
+        expect.objectContaining({pool_state: "FAILED",
         })
       );
     });
@@ -615,9 +579,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -658,9 +620,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -692,9 +652,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -723,9 +681,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -744,7 +700,7 @@ describe("POST /api/pool-manager/create-pool", () => {
     test("handles workspace without repository", async () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      await db.repository.delete({
+      await db.repositories.delete({
         where: { id: repository.id },
       });
 
@@ -764,9 +720,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
@@ -799,17 +753,14 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
+        {swarm_id: swarm.swarmId,workspace_id: workspace.id,
         }
       );
       const response = await POST(request);
 
       await expectSuccess(response, 201);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          containerFiles: expect.any(Object),
+        expect.objectContaining({container_files: expect.any(Object),
         })
       );
     });

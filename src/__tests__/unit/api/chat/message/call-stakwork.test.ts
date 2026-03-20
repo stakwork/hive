@@ -21,19 +21,15 @@ import {
 // Mock all external dependencies
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
+  db: {tasks: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
-    },
-    chatMessage: {
+    },chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
     },
@@ -113,7 +109,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
     } as any);
 
     // Mock chat history as empty
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.chat_messages.findMany).mockResolvedValue([]);
 
     // Mock global fetch
     mockFetch = vi.fn();
@@ -157,11 +153,11 @@ describe("callStakwork Function - Chat Message Processing", () => {
           task: { id: mockTaskId, title: "Test Task" },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue(mockUser as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue(mockWorkspace as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -184,7 +180,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         expect(data.success).toBe(true);
         
         // Verify chat message was created with correct status
-        expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalledWith({
+        expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalledWith({
           data: expect.objectContaining({
             taskId: mockTaskId,
             message: "Test message",
@@ -211,10 +207,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -225,7 +221,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -244,7 +240,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         // Verify task was updated with IN_PROGRESS status and stakworkProjectId
-        expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
+        expect(vi.mocked(db.tasks.update)).toHaveBeenCalledWith({
           where: { id: mockTaskId },
           data: {
             workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -276,10 +272,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -290,7 +286,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: false,
@@ -311,7 +307,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         expect(response.status).toBe(201); // Message still created
 
         // Non-2xx → no project_id → workflowStatus left unchanged (no update)
-        expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
+        expect(vi.mocked(db.tasks.update)).not.toHaveBeenCalled();
       });
 
       it("should handle artifacts and attachments in chat message", async () => {
@@ -356,11 +352,11 @@ describe("callStakwork Function - Chat Message Processing", () => {
           task: { id: mockTaskId, title: "Test Task" },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -416,10 +412,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -430,7 +426,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -500,11 +496,11 @@ describe("callStakwork Function - Chat Message Processing", () => {
           task: { id: mockTaskId, title: "Test Task" },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue(mockCreatedMessage as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue(mockCreatedMessage as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -524,7 +520,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         // Verify context tags were serialized to JSON string for database
-        expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalledWith({
+        expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalledWith({
           data: expect.objectContaining({
             contextTags: JSON.stringify(contextTags),
           }),
@@ -552,10 +548,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           { type: "SCHEMATIC", id: "diagram-789" },
         ];
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -566,7 +562,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -609,10 +605,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -623,7 +619,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -726,10 +722,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -740,7 +736,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -777,10 +773,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -791,7 +787,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -828,8 +824,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
 
         const request = createAuthenticatedPostRequest(
           "http://localhost/api/chat/message",
@@ -869,10 +865,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -926,10 +922,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -940,7 +936,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -988,10 +984,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -1002,7 +998,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -1091,10 +1087,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -1105,7 +1101,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockRejectedValue(new Error("Network error"));
 
@@ -1126,7 +1122,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         expect(data.success).toBe(true);
 
         // Network error → no project_id → workflowStatus left unchanged
-        expect(vi.mocked(db.task.update)).not.toHaveBeenCalled();
+        expect(vi.mocked(db.tasks.update)).not.toHaveBeenCalled();
       });
 
       it("should create message even when Stakwork API fails", async () => {
@@ -1145,10 +1141,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test message",
@@ -1159,7 +1155,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: false,
@@ -1179,7 +1175,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const data = await response.json();
 
         // Verify chat message was still created
-        expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalled();
+        expect(vi.mocked(db.chat_messages.create)).toHaveBeenCalled();
         expect(response.status).toBe(201);
         expect(data.success).toBe(true);
         expect(data.message.message).toBe("Test message");
@@ -1203,10 +1199,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -1217,7 +1213,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -1275,10 +1271,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -1289,7 +1285,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           attachments: [],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,
@@ -1340,10 +1336,10 @@ describe("callStakwork Function - Chat Message Processing", () => {
 
         vi.mocked(getS3Service).mockReturnValue(mockS3Service as any);
 
-        vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
-        vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
-        vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
-        vi.mocked(db.chatMessage.create).mockResolvedValue({
+        vi.mocked(db.tasks.findFirst).mockResolvedValue(mockTask as any);
+        vi.mocked(db.users.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+        vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+        vi.mocked(db.chat_messages.create).mockResolvedValue({
           id: mockMessageId,
           taskId: mockTaskId,
           message: "Test",
@@ -1357,7 +1353,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           ],
           task: { id: mockTaskId, title: "Test Task" },
         } as any);
-        vi.mocked(db.task.update).mockResolvedValue({} as any);
+        vi.mocked(db.tasks.update).mockResolvedValue({} as any);
 
         mockFetch.mockResolvedValue({
           ok: true,

@@ -34,36 +34,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
   describe("runBuild Field", () => {
     test("updates runBuild to false", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: true,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: true,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runBuild: false },
+        {run_build: false },
         user
       );
 
@@ -72,9 +62,9 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runBuild: true, runTestSuite: true },
+        select: {run_build: true,run_test_suite: true },
       });
       expect(updatedTask?.runBuild).toBe(false);
       expect(updatedTask?.runTestSuite).toBe(true); // Should remain unchanged
@@ -82,36 +72,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
 
     test("updates runBuild to true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: false,
-          runTestSuite: true,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: false,run_test_suite: true,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runBuild: true },
+        {run_build: true },
         user
       );
 
@@ -120,39 +100,29 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runBuild: true },
+        select: {run_build: true },
       });
       expect(updatedTask?.runBuild).toBe(true);
     });
 
     test("does not update runBuild when not provided", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: false,
-          runTestSuite: true,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: false,run_test_suite: true,
         },
       });
 
@@ -167,9 +137,9 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database that runBuild remains unchanged
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runBuild: true, title: true },
+        select: {run_build: true, title: true },
       });
       expect(updatedTask?.runBuild).toBe(false);
       expect(updatedTask?.title).toBe("Updated Title");
@@ -179,36 +149,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
   describe("runTestSuite Field", () => {
     test("updates runTestSuite to false", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: true,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: true,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runTestSuite: false },
+        {run_test_suite: false },
         user
       );
 
@@ -217,9 +177,9 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runBuild: true, runTestSuite: true },
+        select: {run_build: true,run_test_suite: true },
       });
       expect(updatedTask?.runTestSuite).toBe(false);
       expect(updatedTask?.runBuild).toBe(true); // Should remain unchanged
@@ -227,36 +187,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
 
     test("updates runTestSuite to true", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: false,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: false,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runTestSuite: true },
+        {run_test_suite: true },
         user
       );
 
@@ -265,39 +215,29 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runTestSuite: true },
+        select: {run_test_suite: true },
       });
       expect(updatedTask?.runTestSuite).toBe(true);
     });
 
     test("does not update runTestSuite when not provided", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: false,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: false,
         },
       });
 
@@ -312,9 +252,9 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database that runTestSuite remains unchanged
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runTestSuite: true, title: true },
+        select: {run_test_suite: true, title: true },
       });
       expect(updatedTask?.runTestSuite).toBe(false);
       expect(updatedTask?.title).toBe("Updated Title");
@@ -324,36 +264,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
   describe("Combined Updates", () => {
     test("updates both runBuild and runTestSuite simultaneously", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: true,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: true,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runBuild: false, runTestSuite: false },
+        {run_build: false,run_test_suite: false },
         user
       );
 
@@ -362,9 +292,9 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
-        select: { runBuild: true, runTestSuite: true },
+        select: {run_build: true,run_test_suite: true },
       });
       expect(updatedTask?.runBuild).toBe(false);
       expect(updatedTask?.runTestSuite).toBe(false);
@@ -372,33 +302,23 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
 
     test("updates runBuild, runTestSuite, and other fields together", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
           title: "Test Ticket",
-          description: "Original description",
-          workspaceId: workspace.id,
-          featureId: feature.id,
+          description: "Original description",workspace_id: workspace.id,feature_id: feature.id,
           status: "TODO",
-          priority: "MEDIUM",
-          createdById: user.id,
-          updatedById: user.id,
-          runBuild: true,
-          runTestSuite: true,
+          priority: "MEDIUM",created_by_id: user.id,updated_by_id: user.id,run_build: true,run_test_suite: true,
         },
       });
 
@@ -408,9 +328,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
           title: "Updated Ticket",
           description: "Updated description",
           status: "IN_PROGRESS",
-          priority: "HIGH",
-          runBuild: false,
-          runTestSuite: false,
+          priority: "HIGH",run_build: false,run_test_suite: false,
         },
         user
       );
@@ -420,15 +338,13 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       // Verify in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: ticket.id },
         select: {
           title: true,
           description: true,
           status: true,
-          priority: true,
-          runBuild: true,
-          runTestSuite: true,
+          priority: true,run_build: true,run_test_suite: true,
         },
       });
       expect(updatedTask?.title).toBe("Updated Ticket");
@@ -446,7 +362,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
 
       const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/tickets/non-existent-id",
-        { runBuild: false },
+        {run_build: false },
         user
       );
 
@@ -458,34 +374,26 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const ticket = await db.task.create({
+      const ticket = await db.tasks.create({
         data: {
-          title: "Test Ticket",
-          workspaceId: workspace.id,
-          featureId: feature.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Ticket",workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
-        { runBuild: false },
+        {run_build: false },
         nonMember
       );
 

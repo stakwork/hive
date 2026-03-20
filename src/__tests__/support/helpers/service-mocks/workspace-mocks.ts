@@ -118,34 +118,34 @@ export const workspaceMocks = {
 
 export const workspaceMockSetup = {
   mockWorkspaceWithOwnerAccess(db: any, workspace: any) {
-    vi.mocked(db.workspace.findFirst).mockResolvedValue(workspace);
+    vi.mocked(db.workspaces.findFirst).mockResolvedValue(workspace);
   },
 
   mockWorkspaceWithMemberAccess(db: any, workspace: any, role: WorkspaceRole = "DEVELOPER") {
-    vi.mocked(db.workspace.findFirst).mockResolvedValue({
+    vi.mocked(db.workspaces.findFirst).mockResolvedValue({
       ...workspace,
       ownerId: "different-owner",
     });
-    vi.mocked(db.workspaceMember.findFirst).mockResolvedValue({ role });
+    vi.mocked(db.workspace_members.findFirst).mockResolvedValue({ role });
   },
 
   mockWorkspaceNotFound(db: any) {
-    vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
+    vi.mocked(db.workspaces.findFirst).mockResolvedValue(null);
   },
 
   mockWorkspaceCreate(db: any, workspace: any) {
-    vi.mocked(db.workspace.count).mockResolvedValue(1);
-    vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-    vi.mocked(db.workspace.create).mockResolvedValue(workspace);
+    vi.mocked(db.workspaces.count).mockResolvedValue(1);
+    vi.mocked(db.workspaces.findUnique).mockResolvedValue(null);
+    vi.mocked(db.workspaces.create).mockResolvedValue(workspace);
   },
 
   mockWorkspaceSlugExists(db: any, existingWorkspace: any) {
-    vi.mocked(db.workspace.count).mockResolvedValue(1);
-    vi.mocked(db.workspace.findUnique).mockResolvedValue(existingWorkspace);
+    vi.mocked(db.workspaces.count).mockResolvedValue(1);
+    vi.mocked(db.workspaces.findUnique).mockResolvedValue(existingWorkspace);
   },
 
   mockWorkspaceUpdate(db: any, updatedWorkspace: any) {
-    vi.mocked(db.workspace.update).mockResolvedValue(updatedWorkspace);
+    vi.mocked(db.workspaces.update).mockResolvedValue(updatedWorkspace);
   },
 
   mockWorkspaceUpdateScenario(db: any, originalWorkspace: any, updatedWorkspace: any, options: {
@@ -153,31 +153,31 @@ export const workspaceMockSetup = {
     slugExists?: boolean;
   } = {}) {
     // Mock getWorkspaceBySlug
-    vi.mocked(db.workspace.findFirst).mockResolvedValue(originalWorkspace);
+    vi.mocked(db.workspaces.findFirst).mockResolvedValue(originalWorkspace);
 
     if (options.memberRole) {
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue({ role: options.memberRole });
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue({ role: options.memberRole });
     } else {
-      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspace_members.findFirst).mockResolvedValue(null);
     }
 
     // Mock slug uniqueness check
     if (options.slugExists) {
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: "existing", slug: "existing-slug" });
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue({ id: "existing", slug: "existing-slug" });
     } else {
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.workspaces.findUnique).mockResolvedValue(null);
     }
 
     // Mock update operation
-    vi.mocked(db.workspace.update).mockResolvedValue(updatedWorkspace);
+    vi.mocked(db.workspaces.update).mockResolvedValue(updatedWorkspace);
   },
 
   mockPrismaError(db: any, operation: "create" | "update", code: string = "P2002", target: string[] = ["slug"]) {
     const error = { code, meta: { target } };
     if (operation === "create") {
-      vi.mocked(db.workspace.create).mockRejectedValue(error);
+      vi.mocked(db.workspaces.create).mockRejectedValue(error);
     } else {
-      vi.mocked(db.workspace.update).mockRejectedValue(error);
+      vi.mocked(db.workspaces.update).mockRejectedValue(error);
     }
   },
 };

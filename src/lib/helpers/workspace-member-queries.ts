@@ -10,7 +10,7 @@ import {
  * Finds a user by GitHub username with their user profile
  */
 export async function findUserByGitHubUsername(githubUsername: string) {
-  return await db.gitHubAuth.findFirst({
+  return await db.github_auth.findFirst({
     where: { githubUsername },
     include: { user: true },
   });
@@ -20,7 +20,7 @@ export async function findUserByGitHubUsername(githubUsername: string) {
  * Finds an active workspace member
  */
 export async function findActiveMember(workspaceId: string, userId: string) {
-  return await db.workspaceMember.findFirst({
+  return await db.workspace_members.findFirst({
     where: {
       workspaceId,
       userId,
@@ -33,7 +33,7 @@ export async function findActiveMember(workspaceId: string, userId: string) {
  * Finds the most recent previous membership (soft deleted)
  */
 export async function findPreviousMember(workspaceId: string, userId: string) {
-  return await db.workspaceMember.findFirst({
+  return await db.workspace_members.findFirst({
     where: {
       workspaceId,
       userId,
@@ -47,7 +47,7 @@ export async function findPreviousMember(workspaceId: string, userId: string) {
  * Checks if a user is the workspace owner
  */
 export async function isWorkspaceOwner(workspaceId: string, userId: string): Promise<boolean> {
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: { ownerId: true },
   });
@@ -62,7 +62,7 @@ export async function createWorkspaceMember(
   userId: string,
   role: WorkspaceRole
 ): Promise<PrismaWorkspaceMemberWithUser> {
-  return await db.workspaceMember.create({
+  return await db.workspace_members.create({
     data: {
       workspaceId,
       userId,
@@ -79,7 +79,7 @@ export async function reactivateWorkspaceMember(
   memberId: string,
   role: WorkspaceRole
 ): Promise<PrismaWorkspaceMemberWithUser> {
-  return await db.workspaceMember.update({
+  return await db.workspace_members.update({
     where: { id: memberId },
     data: {
       role,
@@ -94,7 +94,7 @@ export async function reactivateWorkspaceMember(
  * Gets all active workspace members
  */
 export async function getActiveWorkspaceMembers(workspaceId: string): Promise<PrismaWorkspaceMemberWithUser[]> {
-  return await db.workspaceMember.findMany({
+  return await db.workspace_members.findMany({
     where: {
       workspaceId,
       leftAt: null,
@@ -108,7 +108,7 @@ export async function getActiveWorkspaceMembers(workspaceId: string): Promise<Pr
  * Gets all active workspace members with Sphinx fields (lightningPubkey, sphinxAlias)
  */
 export async function getActiveWorkspaceMembersWithSphinx(workspaceId: string): Promise<PrismaWorkspaceMemberWithUser[]> {
-  return await db.workspaceMember.findMany({
+  return await db.workspace_members.findMany({
     where: {
       workspaceId,
       leftAt: null,
@@ -125,7 +125,7 @@ export async function updateMemberRole(
   memberId: string,
   role: WorkspaceRole
 ): Promise<PrismaWorkspaceMemberWithUser> {
-  return await db.workspaceMember.update({
+  return await db.workspace_members.update({
     where: { id: memberId },
     data: { role },
     include: WORKSPACE_MEMBER_INCLUDE,
@@ -136,7 +136,7 @@ export async function updateMemberRole(
  * Soft deletes a workspace member by setting leftAt timestamp
  */
 export async function softDeleteMember(memberId: string): Promise<void> {
-  await db.workspaceMember.update({
+  await db.workspace_members.update({
     where: { id: memberId },
     data: { leftAt: new Date() },
   });

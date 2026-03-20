@@ -15,8 +15,7 @@ describe("Workspace Service - Superadmin Bypass", () => {
     workspaceOwner = await createTestUser({ role: "USER", email: "owner@test.com" });
 
     // Create a workspace owned by workspaceOwner
-    workspace = await createTestWorkspace({
-      ownerId: workspaceOwner.id,
+    workspace = await createTestWorkspace({owner_id: workspaceOwner.id,
       name: "Test Workspace",
       slug: "test-workspace",
     });

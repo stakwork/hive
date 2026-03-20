@@ -26,7 +26,7 @@ export async function getTicket(
     throw new Error("Task not found or access denied");
   }
 
-  const taskDetail = await db.task.findUnique({
+  const taskDetail = await db.tasks.findUnique({
     where: { id: taskId },
     select: {
       id: true,
@@ -116,7 +116,7 @@ export async function createTicket(
 
   if (data.phaseId) {
     // Validate provided phaseId belongs to this feature
-    const phase = await db.phase.findFirst({
+    const phase = await db.phases.findFirst({
       where: {
         id: data.phaseId,
         featureId: featureId,
@@ -129,7 +129,7 @@ export async function createTicket(
     }
   } else {
     // Default to the first phase for this feature
-    const defaultPhase = await db.phase.findFirst({
+    const defaultPhase = await db.phases.findFirst({
       where: {
         featureId: featureId,
         deleted: false,
@@ -150,7 +150,7 @@ export async function createTicket(
   if (data.assigneeId) {
     // Skip validation for system assignees
     if (!data.assigneeId.startsWith("system:")) {
-      const assignee = await db.user.findUnique({
+      const assignee = await db.users.findUnique({
         where: { id: data.assigneeId },
       });
 
@@ -162,7 +162,7 @@ export async function createTicket(
 
   // Validate repositoryId if provided
   if (data.repositoryId) {
-    const repository = await db.repository.findFirst({
+    const repository = await db.repositories.findFirst({
       where: {
         id: data.repositoryId,
         workspaceId: feature.workspaceId,
@@ -174,7 +174,7 @@ export async function createTicket(
     }
   }
 
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
   });
 
@@ -197,7 +197,7 @@ export async function createTicket(
 
   const bountyCode = await ensureUniqueBountyCode();
 
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       title: data.title.trim(),
       description: data.description?.trim() || null,
@@ -336,7 +336,7 @@ export async function updateTicket(
 
   if (data.repositoryId !== undefined) {
     if (data.repositoryId !== null) {
-      const repository = await db.repository.findFirst({
+      const repository = await db.repositories.findFirst({
         where: {
           id: data.repositoryId,
           workspaceId: task.feature?.workspace.id,
@@ -355,7 +355,7 @@ export async function updateTicket(
       if (!task.featureId) {
         throw new Error("Cannot assign phase to task without a feature");
       }
-      const phase = await db.phase.findFirst({
+      const phase = await db.phases.findFirst({
         where: {
           id: data.phaseId,
           featureId: task.featureId,
@@ -373,7 +373,7 @@ export async function updateTicket(
     if (data.assigneeId !== null) {
       // Skip validation for system assignees
       if (!data.assigneeId.startsWith("system:")) {
-        const assignee = await db.user.findUnique({
+        const assignee = await db.users.findUnique({
           where: { id: data.assigneeId },
         });
 
@@ -415,7 +415,7 @@ export async function updateTicket(
 
     // Validate all dependency tasks exist and belong to same feature
     if (data.dependsOnTaskIds.length > 0) {
-      const dependencyTasks = await db.task.findMany({
+      const dependencyTasks = await db.tasks.findMany({
         where: {
           id: { in: data.dependsOnTaskIds },
           deleted: false,
@@ -439,7 +439,7 @@ export async function updateTicket(
       }
 
       // Simple circular dependency check: prevent A->B and B->A
-      const existingDependents = await db.task.findMany({
+      const existingDependents = await db.tasks.findMany({
         where: {
           id: { in: data.dependsOnTaskIds },
           dependsOnTaskIds: { has: taskId },
@@ -457,7 +457,7 @@ export async function updateTicket(
     updateData.dependsOnTaskIds = data.dependsOnTaskIds;
   }
 
-  const updatedTask = await db.task.update({
+  const updatedTask = await db.tasks.update({
     where: { id: taskId },
     data: updateData,
     select: {
@@ -526,7 +526,7 @@ export async function updateTicket(
     void (async () => {
       try {
         const taskUrl = `${process.env.NEXTAUTH_URL}/w/${workspaceSlug}/task/${taskId}`;
-        const targetUser = await db.user.findUnique({
+        const targetUser = await db.users.findUnique({
           where: { id: assigneeId },
           select: { sphinxAlias: true, name: true },
         });
@@ -577,7 +577,7 @@ export async function deleteTicket(
   }
 
   // Clean up orphaned dependencies: Find all tasks that depend on this task
-  const dependentTasks = await db.task.findMany({
+  const dependentTasks = await db.tasks.findMany({
     where: {
       dependsOnTaskIds: { has: taskId },
       deleted: false,
@@ -590,7 +590,7 @@ export async function deleteTicket(
 
   // Remove the deleted task ID from each dependent task's dependsOnTaskIds array
   for (const dependent of dependentTasks) {
-    await db.task.update({
+    await db.tasks.update({
       where: { id: dependent.id },
       data: {
         dependsOnTaskIds: {
@@ -601,7 +601,7 @@ export async function deleteTicket(
   }
 
   // Perform soft-delete
-  await db.task.update({
+  await db.tasks.update({
     where: { id: taskId },
     data: {
       deleted: true,
@@ -621,7 +621,7 @@ export async function reorderTickets(
     throw new Error("Tasks must be a non-empty array");
   }
 
-  const allTasks = await db.task.findMany({
+  const allTasks = await db.tasks.findMany({
     where: { id: { in: tasks.map(t => t.id) } },
     select: { id: true, featureId: true },
   });
@@ -653,7 +653,7 @@ export async function reorderTickets(
       if (task.phaseId !== undefined) {
         updateData.phaseId = task.phaseId;
       }
-      return db.task.update({
+      return db.tasks.update({
         where: {
           id: task.id,
           featureId: featureId,
@@ -663,7 +663,7 @@ export async function reorderTickets(
     })
   );
 
-  const updatedTasks = await db.task.findMany({
+  const updatedTasks = await db.tasks.findMany({
     where: { featureId: featureId, deleted: false },
     select: {
       id: true,

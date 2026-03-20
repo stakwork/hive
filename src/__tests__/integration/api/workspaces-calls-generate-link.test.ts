@@ -426,7 +426,7 @@ describe("Generate Call Link API - Integration Tests", () => {
 
     //    // Mock db to throw an error
     //    const { db } = await import("@/lib/db");
-    //    const originalFindFirst = db.workspace.findFirst;
+    //    const originalFindFirst = db.workspaces.findFirst;
     //    vi.spyOn(db.workspace, "findFirst").mockRejectedValueOnce(
     //      new Error("Database error"),
     //    );
@@ -444,7 +444,7 @@ describe("Generate Call Link API - Integration Tests", () => {
     //    await expectError(response, "Internal server error", 500);
 
     //    // Restore original implementation
-    //    db.workspace.findFirst = originalFindFirst;
+    //    db.workspaces.findFirst = originalFindFirst;
     //  });
     //});
   });

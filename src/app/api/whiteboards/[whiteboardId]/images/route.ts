@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 
 async function getWhiteboardWithAccess(whiteboardId: string, userId: string) {
-  const whiteboard = await db.whiteboard.findUnique({
+  const whiteboard = await db.whiteboards.findUnique({
     where: { id: whiteboardId },
     include: {
       workspace: {

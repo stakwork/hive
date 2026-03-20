@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       });
 
       // Get workspace
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { slug: workspaceSlug },
         include: {
           sourceControlOrg: true,
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
           sourceControlOrgId: workspace.sourceControlOrg.id,
         });
 
-        const sourceControlToken = await db.sourceControlToken.findUnique({
+        const sourceControlToken = await db.source_control_tokens.findUnique({
           where: {
             userId_sourceControlOrgId: {
               userId: session.user.id,
@@ -202,19 +202,19 @@ export async function GET(request: Request) {
           const githubOwner = githubMatch[1];
 
           // Check if there's already a SourceControlOrg for this GitHub owner
-          const sourceControlOrg = await db.sourceControlOrg.findUnique({
+          const sourceControlOrg = await db.source_control_orgs.findUnique({
             where: { githubLogin: githubOwner },
           });
 
           if (sourceControlOrg) {
             // SourceControlOrg exists - automatically link this workspace to it
-            await db.workspace.update({
+            await db.workspaces.update({
               where: { slug: workspaceSlug },
               data: { sourceControlOrgId: sourceControlOrg.id },
             });
 
             // Now check if user has tokens for it
-            const sourceControlToken = await db.sourceControlToken.findUnique({
+            const sourceControlToken = await db.source_control_tokens.findUnique({
               where: {
                 userId_sourceControlOrgId: {
                   userId: session.user.id,

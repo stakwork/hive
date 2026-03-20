@@ -34,30 +34,30 @@ describe("GET /api/ask Integration Tests", () => {
   afterEach(async () => {
     // Cleanup created resources
     if (createdSwarmIds.length > 0) {
-      await db.swarm.deleteMany({
+      await db.swarms.deleteMany({
         where: { id: { in: createdSwarmIds } },
       });
       createdSwarmIds.length = 0;
     }
 
     if (createdWorkspaceIds.length > 0) {
-      await db.workspaceMember.deleteMany({
-        where: { workspaceId: { in: createdWorkspaceIds } },
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: { in: createdWorkspaceIds } },
       });
-      await db.workspace.deleteMany({
+      await db.workspaces.deleteMany({
         where: { id: { in: createdWorkspaceIds } },
       });
       createdWorkspaceIds.length = 0;
     }
 
     if (createdUserIds.length > 0) {
-      await db.session.deleteMany({
-        where: { userId: { in: createdUserIds } },
+      await db.sessions.deleteMany({
+        where: {user_id: { in: createdUserIds } },
       });
-      await db.account.deleteMany({
-        where: { userId: { in: createdUserIds } },
+      await db.accounts.deleteMany({
+        where: {user_id: { in: createdUserIds } },
       });
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: { id: { in: createdUserIds } },
       });
       createdUserIds.length = 0;
@@ -69,8 +69,8 @@ describe("GET /api/ask Integration Tests", () => {
    */
   async function createTestFixtures(options?: {
     includeSwarm?: boolean;
-    swarmApiKey?: string;
-    swarmUrl?: string;
+swarm_api_key?: string;
+swarm_url?: string;
     userRole?: "OWNER" | "ADMIN" | "DEVELOPER" | "VIEWER";
   }) {
     const {
@@ -96,8 +96,7 @@ describe("GET /api/ask Integration Tests", () => {
         data: {
           id: generateUniqueId("workspace"),
           name: "Test Workspace",
-          slug: `test-workspace-${generateUniqueId()}`,
-          ownerId: user.id,
+          slug: `test-workspace-${generateUniqueId()}`,owner_id: user.id,
         },
       });
       createdWorkspaceIds.push(workspace.id);
@@ -105,9 +104,7 @@ describe("GET /api/ask Integration Tests", () => {
       // Create workspace membership
       await tx.workspaceMember.create({
         data: {
-          id: generateUniqueId("member"),
-          workspaceId: workspace.id,
-          userId: user.id,
+          id: generateUniqueId("member"),workspace_id: workspace.id,user_id: user.id,
           role: userRole,
         },
       });
@@ -123,10 +120,7 @@ describe("GET /api/ask Integration Tests", () => {
         swarm = await tx.swarm.create({
           data: {
             id: generateUniqueId("swarm"),
-            name: `test-swarm-${generateUniqueId()}`,
-            workspaceId: workspace.id,
-            swarmUrl: swarmUrl,
-            swarmApiKey: JSON.stringify(encryptedApiKey),
+            name: `test-swarm-${generateUniqueId()}`,workspace_id: workspace.id,swarm_url: swarmUrl,swarm_api_key: JSON.stringify(encryptedApiKey),
           },
         });
         createdSwarmIds.push(swarm.id);
@@ -265,7 +259,7 @@ describe("GET /api/ask Integration Tests", () => {
       const { workspace } = await createTestFixtures();
 
       // Create different user (not a member)
-      const nonMember = await db.user.create({
+      const nonMember = await db.users.create({
         data: {
           id: generateUniqueId("non-member"),
           email: `non-member-${generateUniqueId()}@example.com`,
@@ -401,9 +395,9 @@ describe("GET /api/ask Integration Tests", () => {
       const { user, workspace } = await createTestFixtures();
 
       // Update swarm to remove URL
-      await db.swarm.updateMany({
-        where: { workspaceId: workspace.id },
-        data: { swarmUrl: null },
+      await db.swarms.updateMany({
+        where: {workspace_id: workspace.id },
+        data: {swarm_url: null },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -421,9 +415,7 @@ describe("GET /api/ask Integration Tests", () => {
     });
 
     test("should successfully use swarm configuration when present", async () => {
-      const { user, workspace } = await createTestFixtures({
-        swarmUrl: "https://production-swarm.example.com",
-        swarmApiKey: "production-api-key",
+      const { user, workspace } = await createTestFixtures({swarm_url: "https://production-swarm.example.com",swarm_api_key: "production-api-key",
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -449,8 +441,7 @@ describe("GET /api/ask Integration Tests", () => {
     });
 
     test("should construct localhost URL for local swarm instances", async () => {
-      const { user, workspace } = await createTestFixtures({
-        swarmUrl: "http://localhost:8080",
+      const { user, workspace } = await createTestFixtures({swarm_url: "http://localhost:8080",
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -479,8 +470,7 @@ describe("GET /api/ask Integration Tests", () => {
   describe("Encryption and Decryption", () => {
     test("should successfully decrypt swarm API key", async () => {
       const originalApiKey = "secret-swarm-api-key-456";
-      const { user, workspace } = await createTestFixtures({
-        swarmApiKey: originalApiKey,
+      const { user, workspace } = await createTestFixtures({swarm_api_key: originalApiKey,
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -522,13 +512,10 @@ describe("GET /api/ask Integration Tests", () => {
       const { user, workspace } = await createTestFixtures({ includeSwarm: false });
 
       // Create swarm with explicitly encrypted key
-      const swarm = await db.swarm.create({
+      const swarm = await db.swarms.create({
         data: {
           id: generateUniqueId("swarm"),
-          name: `test-swarm-${generateUniqueId()}`,
-          workspaceId: workspace.id,
-          swarmUrl: "https://test-swarm.example.com",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+          name: `test-swarm-${generateUniqueId()}`,workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
       createdSwarmIds.push(swarm.id);
@@ -563,13 +550,10 @@ describe("GET /api/ask Integration Tests", () => {
       const { user, workspace } = await createTestFixtures({ includeSwarm: false });
 
       // Create swarm with malformed encryption
-      const swarm = await db.swarm.create({
+      const swarm = await db.swarms.create({
         data: {
           id: generateUniqueId("swarm"),
-          name: `test-swarm-${generateUniqueId()}`,
-          workspaceId: workspace.id,
-          swarmUrl: "https://test-swarm.example.com",
-          swarmApiKey: "invalid-encryption-format",
+          name: `test-swarm-${generateUniqueId()}`,workspace_id: workspace.id,swarm_url: "https://test-swarm.example.com",swarm_api_key: "invalid-encryption-format",
         },
       });
       createdSwarmIds.push(swarm.id);
@@ -781,9 +765,7 @@ describe("GET /api/ask Integration Tests", () => {
   describe("End-to-End Integration", () => {
     test("should complete full request flow successfully", async () => {
       const apiKey = "e2e-test-api-key";
-      const { user, workspace } = await createTestFixtures({
-        swarmUrl: "https://e2e-swarm.example.com",
-        swarmApiKey: apiKey,
+      const { user, workspace } = await createTestFixtures({swarm_url: "https://e2e-swarm.example.com",swarm_api_key: apiKey,
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));

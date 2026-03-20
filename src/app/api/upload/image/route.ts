@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const { filename, contentType, size, featureId } = validatedData
     
     // Get feature with workspace information
-    const feature = await db.feature.findFirst({
+    const feature = await db.features.findFirst({
       where: {
         id: featureId,
         deleted: false,

@@ -98,14 +98,14 @@ describe("Workspace Update API Integration Tests", () => {
       expect(data.slugChanged).toBe(updateData.slug);
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { slug: updateData.slug },
       });
       expect(updatedWorkspaceInDb?.name).toBe("Updated Workspace Name");
       expect(updatedWorkspaceInDb?.description).toBe("Updated description");
 
       // Verify old slug no longer exists
-      const oldWorkspaceInDb = await db.workspace.findUnique({
+      const oldWorkspaceInDb = await db.workspaces.findUnique({
         where: { slug: workspace.slug },
       });
       expect(oldWorkspaceInDb).toBeNull();
@@ -129,7 +129,7 @@ describe("Workspace Update API Integration Tests", () => {
       expect(data.slugChanged).toBeNull(); // Slug didn't change
 
       // Verify changes were persisted in database
-      const updatedWorkspaceInDb = await db.workspace.findUnique({
+      const updatedWorkspaceInDb = await db.workspaces.findUnique({
         where: { slug: workspace.slug },
       });
       expect(updatedWorkspaceInDb?.name).toBe("Admin Updated Name");
@@ -155,7 +155,7 @@ describe("Workspace Update API Integration Tests", () => {
     //  await expectForbidden(response, "owners and admins");
 
     //  // Verify workspace was not changed in database
-    //  const unchangedWorkspaceInDb = await db.workspace.findUnique({
+    //  const unchangedWorkspaceInDb = await db.workspaces.findUnique({
     //    where: { slug: workspace.slug },
     //  });
     //  expect(unchangedWorkspaceInDb?.name).toBe(workspace.name); // Original name
@@ -177,7 +177,7 @@ describe("Workspace Update API Integration Tests", () => {
       await expectValidationError(response);
 
       // Verify workspace was not changed in database
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { slug: workspace.slug },
       });
       expect(unchangedWorkspaceInDb?.name).toBe(workspace.name);
@@ -204,7 +204,7 @@ describe("Workspace Update API Integration Tests", () => {
       await expectConflict(response, "already exists");
 
       // Verify original workspace slug unchanged
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { slug: workspace.slug },
       });
       expect(unchangedWorkspaceInDb?.slug).toBe(workspace.slug);
@@ -225,7 +225,7 @@ describe("Workspace Update API Integration Tests", () => {
       // Verify workspace was soft-deleted in database
       await expectWorkspaceDeleted(workspace.id);
 
-      const deletedWorkspaceInDb = await db.workspace.findUnique({
+      const deletedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(deletedWorkspaceInDb?.originalSlug).toBe(workspace.slug);
@@ -242,7 +242,7 @@ describe("Workspace Update API Integration Tests", () => {
       await expectForbidden(response, "Only workspace owners");
 
       // Verify workspace was not deleted
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(unchangedWorkspaceInDb?.deleted).toBeFalsy();
@@ -269,7 +269,7 @@ describe("Workspace Update API Integration Tests", () => {
       await expectUnauthorized(response);
 
       // Verify workspace was not deleted
-      const unchangedWorkspaceInDb = await db.workspace.findUnique({
+      const unchangedWorkspaceInDb = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(unchangedWorkspaceInDb?.deleted).toBeFalsy();

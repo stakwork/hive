@@ -107,14 +107,12 @@ describe("POST /api/agent Integration Tests", () => {
 
     test("sends agent_name: codex and model: codex in session payload when codex model is selected", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Codex test task",
       });
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { mode: "agent", model: "codex" },
       });
@@ -122,8 +120,7 @@ describe("POST /api/agent Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPostRequest("http://localhost/api/agent", {
-        message: "Debug this hard bug",
-        taskId: task.id,
+        message: "Debug this hard bug",task_id: task.id,
         model: "codex",
       });
 
@@ -145,14 +142,12 @@ describe("POST /api/agent Integration Tests", () => {
 
     test("does not send agent_name for non-codex models (sonnet)", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Sonnet test task",
       });
 
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
         data: { mode: "agent", model: "sonnet" },
       });
@@ -160,8 +155,7 @@ describe("POST /api/agent Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPostRequest("http://localhost/api/agent", {
-        message: "Help me write a feature",
-        taskId: task.id,
+        message: "Help me write a feature",task_id: task.id,
         model: "sonnet",
       });
 

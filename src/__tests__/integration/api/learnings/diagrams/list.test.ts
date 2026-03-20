@@ -37,17 +37,14 @@ describe("GET /api/learnings/diagrams", () => {
         "test-diagram-list-swarm-api-key"
       );
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-diagram-list-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       await tx.swarm.update({
         where: { id: swarm.id },
-        data: {
-          swarmUrl: "https://test-diagram-list.sphinx.chat",
-          swarmApiKey: JSON.stringify(encryptedApiKey),
+        data: {swarm_url: "https://test-diagram-list.sphinx.chat",swarm_api_key: JSON.stringify(encryptedApiKey),
         },
       });
 
@@ -119,19 +116,19 @@ describe("GET /api/learnings/diagrams", () => {
 
   it("should return only diagrams linked to the queried workspace", async () => {
     // Create a diagram for the target workspace
-    const diagram1 = await db.diagram.create({
+    const diagram1 = await db.diagrams.create({
       data: { name: "Auth Flow", body: "graph TD\n  A --> B", description: null, createdBy: owner.id, groupId: generateUniqueId("group") },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: diagram1.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: diagram1.id,workspace_id: workspace.id },
     });
 
     // Create a diagram for the OTHER workspace (should not be returned)
-    const diagram2 = await db.diagram.create({
+    const diagram2 = await db.diagrams.create({
       data: { name: "Other Flow", body: "graph TD\n  X --> Y", description: null, createdBy: otherOwner.id, groupId: generateUniqueId("group") },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: diagram2.id, workspaceId: otherWorkspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: diagram2.id,workspace_id: otherWorkspace.id },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -152,32 +149,30 @@ describe("GET /api/learnings/diagrams", () => {
   });
 
   it("should return diagrams ordered by createdAt descending", async () => {
-    const diagramA = await db.diagram.create({
+    const diagramA = await db.diagrams.create({
       data: {
         name: "First Diagram",
         body: "graph TD\n  A --> B",
         description: null,
         createdBy: owner.id,
-        groupId: generateUniqueId("group"),
-        createdAt: new Date("2024-01-01T10:00:00Z"),
+        groupId: generateUniqueId("group"),created_at: new Date("2024-01-01T10:00:00Z"),
       },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: diagramA.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: diagramA.id,workspace_id: workspace.id },
     });
 
-    const diagramB = await db.diagram.create({
+    const diagramB = await db.diagrams.create({
       data: {
         name: "Second Diagram",
         body: "graph TD\n  C --> D",
         description: null,
         createdBy: owner.id,
-        groupId: generateUniqueId("group"),
-        createdAt: new Date("2024-06-01T10:00:00Z"),
+        groupId: generateUniqueId("group"),created_at: new Date("2024-06-01T10:00:00Z"),
       },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: diagramB.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: diagramB.id,workspace_id: workspace.id },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -196,11 +191,11 @@ describe("GET /api/learnings/diagrams", () => {
   });
 
   it("should include description field in response (null if not set)", async () => {
-    const diagram = await db.diagram.create({
+    const diagram = await db.diagrams.create({
       data: { name: "Null Desc", body: "graph TD\n  A --> B", description: null, createdBy: owner.id },
     });
-    await db.diagramWorkspace.create({
-      data: { diagramId: diagram.id, workspaceId: workspace.id },
+    await db.diagram_workspaces.create({
+      data: { diagramId: diagram.id,workspace_id: workspace.id },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -218,30 +213,28 @@ describe("GET /api/learnings/diagrams", () => {
     const groupId = `group-dedup-${Date.now()}`;
 
     // Version 1 (older)
-    const v1 = await db.diagram.create({
+    const v1 = await db.diagrams.create({
       data: {
         name: "Auth Flow",
         body: "graph TD\n  A --> B",
         description: null,
         createdBy: owner.id,
-        groupId,
-        createdAt: new Date("2024-01-01T10:00:00Z"),
+        groupId,created_at: new Date("2024-01-01T10:00:00Z"),
       },
     });
-    await db.diagramWorkspace.create({ data: { diagramId: v1.id, workspaceId: workspace.id } });
+    await db.diagram_workspaces.create({ data: { diagramId: v1.id,workspace_id: workspace.id } });
 
     // Version 2 (newer — should be returned)
-    const v2 = await db.diagram.create({
+    const v2 = await db.diagrams.create({
       data: {
         name: "Auth Flow",
         body: "graph TD\n  A --> B\n  B --> C",
         description: null,
         createdBy: owner.id,
-        groupId,
-        createdAt: new Date("2024-06-01T10:00:00Z"),
+        groupId,created_at: new Date("2024-06-01T10:00:00Z"),
       },
     });
-    await db.diagramWorkspace.create({ data: { diagramId: v2.id, workspaceId: workspace.id } });
+    await db.diagram_workspaces.create({ data: { diagramId: v2.id,workspace_id: workspace.id } });
 
     const request = createAuthenticatedGetRequest(
       "/api/learnings/diagrams",
@@ -262,7 +255,7 @@ describe("GET /api/learnings/diagrams", () => {
 
   it("should include groupId in each response item", async () => {
     const groupId = `group-field-${Date.now()}`;
-    const diagram = await db.diagram.create({
+    const diagram = await db.diagrams.create({
       data: {
         name: "Field Check",
         body: "graph TD\n  A --> B",
@@ -271,7 +264,7 @@ describe("GET /api/learnings/diagrams", () => {
         groupId,
       },
     });
-    await db.diagramWorkspace.create({ data: { diagramId: diagram.id, workspaceId: workspace.id } });
+    await db.diagram_workspaces.create({ data: { diagramId: diagram.id,workspace_id: workspace.id } });
 
     const request = createAuthenticatedGetRequest(
       "/api/learnings/diagrams",

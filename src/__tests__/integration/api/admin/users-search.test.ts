@@ -12,7 +12,7 @@ describe("GET /api/admin/users/search", () => {
 
   beforeEach(async () => {
     // Create a superadmin user
-    superadminUser = await db.user.create({
+    superadminUser = await db.users.create({
       data: {
         email: "superadmin@test.com",
         role: "SUPER_ADMIN",
@@ -21,7 +21,7 @@ describe("GET /api/admin/users/search", () => {
     });
 
     // Create regular users
-    regularUser1 = await db.user.create({
+    regularUser1 = await db.users.create({
       data: {
         email: "alice@example.com",
         name: "Alice Smith",
@@ -29,7 +29,7 @@ describe("GET /api/admin/users/search", () => {
       },
     });
 
-    regularUser2 = await db.user.create({
+    regularUser2 = await db.users.create({
       data: {
         email: "bob@example.com",
         name: "Bob Jones",
@@ -37,7 +37,7 @@ describe("GET /api/admin/users/search", () => {
       },
     });
 
-    regularUser3 = await db.user.create({
+    regularUser3 = await db.users.create({
       data: {
         email: "charlie@test.org",
         name: "Charlie Brown",
@@ -47,7 +47,7 @@ describe("GET /api/admin/users/search", () => {
   });
 
   afterEach(async () => {
-    await db.user.deleteMany({
+    await db.users.deleteMany({
       where: {
         id: {
           in: [
@@ -145,7 +145,7 @@ describe("GET /api/admin/users/search", () => {
     // Create 25 users
     const createdUsers = [];
     for (let i = 0; i < 25; i++) {
-      const user = await db.user.create({
+      const user = await db.users.create({
         data: {
           email: `user${i}@test.com`,
           name: `User ${i}`,
@@ -168,7 +168,7 @@ describe("GET /api/admin/users/search", () => {
       expect(data.users.length).toBe(20);
     } finally {
       // Cleanup
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: {
           id: { in: createdUsers.map((u) => u.id) },
         },

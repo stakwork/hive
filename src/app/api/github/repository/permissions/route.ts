@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     // Check if repository owner matches workspace's linked GitHub organization
     if (workspaceSlug) {
-      const workspace = await db.workspace.findUnique({
+      const workspace = await db.workspaces.findUnique({
         where: { slug: workspaceSlug },
         include: { sourceControlOrg: true },
       });
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     // Three-branch check: distinguish between "app not installed" vs "user not authorised" vs happy path
     // Use case-insensitive lookup since GitHub logins are case-insensitive
-    const sourceControlOrg = await db.sourceControlOrg.findFirst({
+    const sourceControlOrg = await db.source_control_orgs.findFirst({
       where: { githubLogin: { equals: githubOwner, mode: "insensitive" } },
     });
 

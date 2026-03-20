@@ -37,8 +37,7 @@ describe("Seed Script Layer Type Coverage", () => {
     const layerTypeCounts = await prisma.task.groupBy({
       by: ["layerType"],
       _count: true,
-      where: {
-        layerType: { not: null },
+      where: {layer_type: { not: null },
       },
     });
 
@@ -64,7 +63,7 @@ describe("Seed Script Layer Type Coverage", () => {
   it("should create tasks with realistic titles for each layer type", async () => {
     // DATABASE_SCHEMA tasks should have database-related titles
     const dbTasks = await prisma.task.findMany({
-      where: { layerType: TaskLayerType.DATABASE_SCHEMA },
+      where: {layer_type: TaskLayerType.DATABASE_SCHEMA },
       select: { title: true },
     });
     expect(dbTasks.length).toBeGreaterThan(0);
@@ -78,7 +77,7 @@ describe("Seed Script Layer Type Coverage", () => {
 
     // BACKEND_API tasks should have API-related titles
     const apiTasks = await prisma.task.findMany({
-      where: { layerType: TaskLayerType.BACKEND_API },
+      where: {layer_type: TaskLayerType.BACKEND_API },
       select: { title: true },
     });
     expect(apiTasks.length).toBeGreaterThan(0);
@@ -92,7 +91,7 @@ describe("Seed Script Layer Type Coverage", () => {
 
     // FRONTEND_COMPONENT tasks should have UI-related titles
     const frontendTasks = await prisma.task.findMany({
-      where: { layerType: TaskLayerType.FRONTEND_COMPONENT },
+      where: {layer_type: TaskLayerType.FRONTEND_COMPONENT },
       select: { title: true },
     });
     expect(frontendTasks.length).toBeGreaterThan(0);
@@ -106,8 +105,7 @@ describe("Seed Script Layer Type Coverage", () => {
 
     // TEST layer types should have test-related titles
     const testTasks = await prisma.task.findMany({
-      where: {
-        layerType: {
+      where: {layer_type: {
           in: [
             TaskLayerType.UNIT_TEST,
             TaskLayerType.INTEGRATION_TEST,
@@ -129,8 +127,7 @@ describe("Seed Script Layer Type Coverage", () => {
 
   it("should include edge cases with ambiguous titles (null layerType)", async () => {
     const ambiguousTasks = await prisma.task.findMany({
-      where: { 
-        layerType: null,
+      where: {layer_type: null,
         title: {
           in: ["Fix button styling", "Improve performance", "Update dependencies"],
         },

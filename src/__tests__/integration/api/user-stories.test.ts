@@ -29,43 +29,30 @@ describe("User Stories API - Integration Tests", () => {
   describe("GET /api/features/[featureId]/user-stories", () => {
     test("returns user stories ordered by order field", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.userStory.createMany({
+      await db.user_stories.createMany({
         data: [
           {
-            title: "Story 3",
-            featureId: feature.id,
-            order: 2,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Story 3",feature_id: feature.id,
+            order: 2,created_by_id: user.id,updated_by_id: user.id,
           },
           {
-            title: "Story 1",
-            featureId: feature.id,
-            order: 0,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Story 1",feature_id: feature.id,
+            order: 0,created_by_id: user.id,updated_by_id: user.id,
           },
           {
-            title: "Story 2",
-            featureId: feature.id,
-            order: 1,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Story 2",feature_id: feature.id,
+            order: 1,created_by_id: user.id,updated_by_id: user.id,
           },
         ],
       });
@@ -75,7 +62,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await GET(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 200);
       const expectedStoriesCount = 3; // Created above in specific order
@@ -90,7 +77,7 @@ describe("User Stories API - Integration Tests", () => {
         "http://localhost:3000/api/features/test-id/user-stories"
       );
 
-      const response = await GET(request, { params: Promise.resolve({ featureId: "test-id" }) });
+      const response = await GET(request, { params: Promise.resolve({feature_id: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -103,7 +90,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await GET(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
+      const response = await GET(request, { params: Promise.resolve({feature_id: "non-existent-id" }) });
 
       await expectError(response, "Feature not found", 404);
     });
@@ -111,18 +98,14 @@ describe("User Stories API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -131,25 +114,21 @@ describe("User Stories API - Integration Tests", () => {
         nonMember
       );
 
-      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await GET(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Access denied", 403);
     });
 
     test("returns empty array when feature has no user stories", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Empty Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Empty Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -158,7 +137,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await GET(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toHaveLength(0);
@@ -168,28 +147,21 @@ describe("User Stories API - Integration Tests", () => {
   describe("POST /api/features/[featureId]/user-stories", () => {
     test("creates user story with auto-incremented order", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      await db.userStory.create({
+      await db.user_stories.create({
         data: {
-          title: "Existing Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Existing Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -199,32 +171,26 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data).toMatchObject({
         title: "New Story",
         order: 1,
-        completed: false,
-        createdById: user.id,
-        updatedById: user.id,
+        completed: false,created_by_id: user.id,updated_by_id: user.id,
       });
     });
 
     test("creates first story with order 0", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -234,7 +200,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.order).toBe(0);
@@ -246,25 +212,21 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: "test-id" }) });
 
       await expectUnauthorized(response);
     });
 
     test("validates required title field", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -274,25 +236,21 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Missing required field: title", 400);
     });
 
     test("validates title is non-empty string", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -302,25 +260,21 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Missing required field: title", 400);
     });
 
     test("trims whitespace from title", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -330,7 +284,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Story");
@@ -345,7 +299,7 @@ describe("User Stories API - Integration Tests", () => {
         user
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: "non-existent-id" }) });
 
       await expectError(response, "Feature not found", 404);
     });
@@ -353,18 +307,14 @@ describe("User Stories API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -374,7 +324,7 @@ describe("User Stories API - Integration Tests", () => {
         nonMember
       );
 
-      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+      const response = await POST(request, { params: Promise.resolve({feature_id: feature.id }) });
 
       await expectError(response, "Access denied", 403);
     });
@@ -383,28 +333,21 @@ describe("User Stories API - Integration Tests", () => {
   describe("PATCH /api/user-stories/[storyId]", () => {
     test("updates title", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Original Title",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Original Title",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -423,28 +366,21 @@ describe("User Stories API - Integration Tests", () => {
 
     test("updates order", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -462,29 +398,22 @@ describe("User Stories API - Integration Tests", () => {
 
     test("updates completed status", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
+          title: "Test Story",feature_id: feature.id,
           order: 0,
-          completed: false,
-          createdById: user.id,
-          updatedById: user.id,
+          completed: false,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -502,29 +431,22 @@ describe("User Stories API - Integration Tests", () => {
 
     test("updates multiple fields at once", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
+          title: "Test Story",feature_id: feature.id,
           order: 0,
-          completed: false,
-          createdById: user.id,
-          updatedById: user.id,
+          completed: false,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -571,28 +493,21 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates title is non-empty string", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -609,28 +524,21 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates order is non-negative", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -647,28 +555,21 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates completed is boolean", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -686,28 +587,21 @@ describe("User Stories API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -726,28 +620,21 @@ describe("User Stories API - Integration Tests", () => {
   describe("DELETE /api/user-stories/[storyId]", () => {
     test("deletes user story successfully", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -761,7 +648,7 @@ describe("User Stories API - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
 
-      const deletedStory = await db.userStory.findUnique({
+      const deletedStory = await db.user_stories.findUnique({
         where: { id: story.id },
       });
       expect(deletedStory).toBeNull();
@@ -793,28 +680,21 @@ describe("User Stories API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -836,49 +716,36 @@ describe("User Stories API - Integration Tests", () => {
 
     test("reorders user stories successfully and persists new order", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create 3 stories with initial order [0, 1, 2]
-      const story1 = await db.userStory.create({
+      const story1 = await db.user_stories.create({
         data: {
-          title: "Story 1",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 1",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story2 = await db.userStory.create({
+      const story2 = await db.user_stories.create({
         data: {
-          title: "Story 2",
-          featureId: feature.id,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 2",feature_id: feature.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story3 = await db.userStory.create({
+      const story3 = await db.user_stories.create({
         data: {
-          title: "Story 3",
-          featureId: feature.id,
-          order: 2,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 3",feature_id: feature.id,
+          order: 2,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -896,7 +763,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -904,8 +771,8 @@ describe("User Stories API - Integration Tests", () => {
       expect(data.data).toHaveLength(3);
 
       // Verify database state reflects new order
-      const updatedStories = await db.userStory.findMany({
-        where: { featureId: feature.id },
+      const updatedStories = await db.user_stories.findMany({
+        where: {feature_id: feature.id },
         orderBy: { order: "asc" },
       });
 
@@ -927,7 +794,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: "test-id" }),
+        params: Promise.resolve({feature_id: "test-id" }),
       });
 
       await expectUnauthorized(response);
@@ -936,28 +803,21 @@ describe("User Stories API - Integration Tests", () => {
     test("denies access to non-workspace members", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -970,7 +830,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Access denied", 403);
@@ -988,7 +848,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: "non-existent-id" }),
+        params: Promise.resolve({feature_id: "non-existent-id" }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -996,35 +856,28 @@ describe("User Stories API - Integration Tests", () => {
 
     test("rejects deleted workspace features", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createAuthenticatedPostRequest(
@@ -1036,7 +889,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Feature not found", 404);
@@ -1044,18 +897,14 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates stories array is provided", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1066,7 +915,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       await expectError(response, "Stories must be an array", 500);
@@ -1074,18 +923,14 @@ describe("User Stories API - Integration Tests", () => {
 
     test("handles empty stories array gracefully", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1096,7 +941,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Empty array is technically valid - should return empty array
@@ -1107,50 +952,37 @@ describe("User Stories API - Integration Tests", () => {
 
     test("prevents cross-feature story reordering", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Create two features in same workspace
-      const feature1 = await db.feature.create({
+      const feature1 = await db.features.create({
         data: {
-          title: "Feature 1",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 1",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const feature2 = await db.feature.create({
+      const feature2 = await db.features.create({
         data: {
-          title: "Feature 2",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Feature 2",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create story in feature 1
-      const story1 = await db.userStory.create({
+      const story1 = await db.user_stories.create({
         data: {
-          title: "Story in Feature 1",
-          featureId: feature1.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story in Feature 1",feature_id: feature1.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
       // Create story in feature 2
-      const story2 = await db.userStory.create({
+      const story2 = await db.user_stories.create({
         data: {
-          title: "Story in Feature 2",
-          featureId: feature2.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story in Feature 2",feature_id: feature2.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1167,7 +999,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature1.id }),
+        params: Promise.resolve({feature_id: feature1.id }),
       });
 
       // Transaction fails because story2 doesn't match featureId in WHERE clause
@@ -1175,10 +1007,10 @@ describe("User Stories API - Integration Tests", () => {
       expect(response.status).toBe(404);
 
       // Verify original order is preserved (transaction rolled back)
-      const story1Check = await db.userStory.findUnique({
+      const story1Check = await db.user_stories.findUnique({
         where: { id: story1.id },
       });
-      const story2Check = await db.userStory.findUnique({
+      const story2Check = await db.user_stories.findUnique({
         where: { id: story2.id },
       });
 
@@ -1190,38 +1022,28 @@ describe("User Stories API - Integration Tests", () => {
 
     test("rolls back transaction on partial failure with invalid story ID", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story1 = await db.userStory.create({
+      const story1 = await db.user_stories.create({
         data: {
-          title: "Story 1",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 1",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story2 = await db.userStory.create({
+      const story2 = await db.user_stories.create({
         data: {
-          title: "Story 2",
-          featureId: feature.id,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 2",feature_id: feature.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1239,15 +1061,15 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Prisma transaction fails with "not found" error, mapped to 404
       expect(response.status).toBe(404);
 
       // Verify original order is preserved (no partial updates)
-      const updatedStories = await db.userStory.findMany({
-        where: { featureId: feature.id },
+      const updatedStories = await db.user_stories.findMany({
+        where: {feature_id: feature.id },
         orderBy: { order: "asc" },
       });
 
@@ -1260,38 +1082,28 @@ describe("User Stories API - Integration Tests", () => {
 
     test("handles reordering with duplicate order values", async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story1 = await db.userStory.create({
+      const story1 = await db.user_stories.create({
         data: {
-          title: "Story 1",
-          featureId: feature.id,
-          order: 0,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 1",feature_id: feature.id,
+          order: 0,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
-      const story2 = await db.userStory.create({
+      const story2 = await db.user_stories.create({
         data: {
-          title: "Story 2",
-          featureId: feature.id,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Story 2",feature_id: feature.id,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -1308,7 +1120,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       // Should succeed - database allows duplicate order values
@@ -1316,8 +1128,8 @@ describe("User Stories API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify both stories have order 0
-      const updatedStories = await db.userStory.findMany({
-        where: { featureId: feature.id },
+      const updatedStories = await db.user_stories.findMany({
+        where: {feature_id: feature.id },
       });
 
       expect(updatedStories).toHaveLength(2);
@@ -1326,28 +1138,21 @@ describe("User Stories API - Integration Tests", () => {
 
     test("allows workspace owner to reorder stories", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -1360,14 +1165,14 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
 
       // Verify owner can reorder
-      const updatedStory = await db.userStory.findUnique({
+      const updatedStory = await db.user_stories.findUnique({
         where: { id: story.id },
       });
       expect(updatedStory?.order).toBe(5);
@@ -1376,37 +1181,28 @@ describe("User Stories API - Integration Tests", () => {
     test("allows workspace member to reorder stories", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({
-        ownerId: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
 
       // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
 
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
-      const story = await db.userStory.create({
+      const story = await db.user_stories.create({
         data: {
-          title: "Test Story",
-          featureId: feature.id,
-          order: 0,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: "Test Story",feature_id: feature.id,
+          order: 0,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
@@ -1419,14 +1215,14 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({feature_id: feature.id }),
       });
 
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
 
       // Verify member can reorder
-      const updatedStory = await db.userStory.findUnique({
+      const updatedStory = await db.user_stories.findUnique({
         where: { id: story.id },
       });
       expect(updatedStory?.order).toBe(3);

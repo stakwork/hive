@@ -28,8 +28,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
     test("should return 401 when user not authenticated", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: "test-task-id",
       });
 
       const response = await POST(request);
@@ -49,8 +48,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("Cannot process request with invalid user session")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: "test-task-id",
       });
 
       const response = await POST(request);
@@ -76,17 +74,14 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
     test("should return 500 when task has no conversation history", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
@@ -97,8 +92,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("No conversation history found for this task")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -117,8 +111,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("Task not found")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: "non-existent-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: "non-existent-task-id",
       });
 
       const response = await POST(request);
@@ -134,22 +127,18 @@ describe("POST /api/agent/branch Integration Tests", () => {
       const owner = await createTestUser({ name: "Owner" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: owner.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: owner.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
         title: "Test Task",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Implement feature X",
         role: "USER",
       });
@@ -162,8 +151,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "feat/implement-feature-x",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -181,24 +169,20 @@ describe("POST /api/agent/branch Integration Tests", () => {
       const owner = await createTestUser({ name: "Owner" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: owner.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: owner.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
         title: "Test Task",
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -213,32 +197,26 @@ describe("POST /api/agent/branch Integration Tests", () => {
       const owner = await createTestUser({ name: "Owner" });
       const viewer = await createTestUser({ name: "Viewer" });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: owner.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: owner.id,
         },
       });
 
-      await db.workspaceMember.create({
-        data: {
-          userId: viewer.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: viewer.id,workspace_id: workspace.id,
           role: "VIEWER",
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
         title: "Test Task",
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(viewer));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -253,30 +231,24 @@ describe("POST /api/agent/branch Integration Tests", () => {
       const owner = await createTestUser({ name: "Owner" });
       const developer = await createTestUser({ name: "Developer" });
 
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: owner.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: owner.id,
         },
       });
 
-      await db.workspaceMember.create({
-        data: {
-          userId: developer.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: developer.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
         title: "Test Task",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Add authentication",
         role: "USER",
       });
@@ -289,8 +261,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "feat/add-authentication",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -304,28 +275,23 @@ describe("POST /api/agent/branch Integration Tests", () => {
   describe("Functional Tests", () => {
     test("should successfully generate branch name from task conversation", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Add commit functionality",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Please add a commit button to the UI",
         role: "USER",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "I'll add a commit button with proper styling",
         role: "ASSISTANT",
       });
@@ -338,8 +304,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "feat/add-commit-button",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -354,22 +319,18 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
     test("should return both commit_message and branch_name in response", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Fix authentication bug",
         role: "USER",
       });
@@ -382,8 +343,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "fix/auth-token-expiry",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -400,22 +360,18 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
     test("should validate branch name format follows category/description pattern", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Refactor database queries",
         role: "USER",
       });
@@ -428,8 +384,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "refactor/optimize-db-queries",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -448,17 +403,14 @@ describe("POST /api/agent/branch Integration Tests", () => {
   describe("Error Handling Tests", () => {
     test("should handle AI generation errors gracefully", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
@@ -469,8 +421,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("AI service temporarily unavailable")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -482,17 +433,14 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
     test("should handle network timeouts from AI provider", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
@@ -503,8 +451,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("Request timeout: AI provider did not respond")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -516,17 +463,14 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
     test("should handle malformed AI responses", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Test Task",
       });
 
@@ -537,8 +481,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         new Error("Invalid AI response format")
       );
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);
@@ -552,36 +495,30 @@ describe("POST /api/agent/branch Integration Tests", () => {
   describe("Integration Tests", () => {
     test("should complete full branch name generation workflow with all validations", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Integration Test Workspace",
-          slug: generateUniqueSlug("integration-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("integration-workspace"),owner_id: user.id,
         },
       });
 
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: "Implement user authentication",
         description: "Add JWT-based authentication system",
       });
 
       // Create conversation history
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "I need to implement JWT authentication for the API",
         role: "USER",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "I'll implement JWT authentication with refresh tokens",
         role: "ASSISTANT",
       });
 
-      await createTestChatMessage({
-        taskId: task.id,
+      await createTestChatMessage({task_id: task.id,
         message: "Make sure to store refresh tokens securely",
         role: "USER",
       });
@@ -594,8 +531,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
         branch_name: "feat/jwt-authentication",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/branch", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/branch", {task_id: task.id,
       });
 
       const response = await POST(request);

@@ -7,17 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
 vi.mock('@/lib/db', () => ({
-  db: {
-    user: {
+  db: {users: {
       findUnique: vi.fn(),
       create: vi.fn(),
-    },
-    account: {
+    },accounts: {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findFirst: vi.fn(),
     },
   },
@@ -87,11 +84,11 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.users.findUnique as any).mockResolvedValue(null);
       const mockNewUser = { id: 'new-user-123', ...mockUser };
-      (db.user.create as any).mockResolvedValue(mockNewUser);
+      (db.users.create as any).mockResolvedValue(mockNewUser);
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
 
       // Act
       const result = await authOptions.callbacks?.signIn!({
@@ -101,10 +98,10 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.user.findUnique).toHaveBeenCalledWith({
+      expect(db.users.findUnique).toHaveBeenCalledWith({
         where: { email: 'mockuser@mock.dev' },
       });
-      expect(db.user.create).toHaveBeenCalledWith({
+      expect(db.users.create).toHaveBeenCalledWith({
         data: {
           name: 'mockuser',
           email: 'mockuser@mock.dev',
@@ -114,7 +111,7 @@ describe('signIn callback', () => {
       });
       // The user ID is mutated in the callback, so workspace operations use the new ID
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith(expect.any(String));
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: expect.any(String), deleted: false },
         select: { slug: true },
       });
@@ -146,9 +143,9 @@ describe('signIn callback', () => {
         name: 'Existing User',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
       (ensureMockWorkspaceForUser as any).mockResolvedValue('existing-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'existing-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'existing-workspace' });
 
       // Act
       const result = await signInCallback({
@@ -158,7 +155,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.user.create).not.toHaveBeenCalled();
+      expect(db.users.create).not.toHaveBeenCalled();
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('existing-user-456');
       expect(logger.authInfo).toHaveBeenCalledWith(
         'Mock workspace created successfully',
@@ -183,8 +180,8 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue(''); // Empty slug
 
       // Act
@@ -200,7 +197,7 @@ describe('signIn callback', () => {
         'SIGNIN_MOCK_WORKSPACE_FAILED',
         { userId: expect.any(String) } // User ID could be temp-id or user-789 depending on mutation timing
       );
-      expect(db.workspace.findFirst).not.toHaveBeenCalled();
+      expect(db.workspaces.findFirst).not.toHaveBeenCalled();
     });
 
     it('should return false when workspace creation fails (null slug)', async () => {
@@ -216,8 +213,8 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue(null);
 
       // Act
@@ -248,10 +245,10 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-999', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-999', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue(null); // Workspace not found
+      (db.workspaces.findFirst as any).mockResolvedValue(null); // Workspace not found
 
       // Act
       const result = await signInCallback({
@@ -282,7 +279,7 @@ describe('signIn callback', () => {
       };
       const error = new Error('Database connection failed');
 
-      (db.user.findUnique as any).mockRejectedValue(error);
+      (db.users.findUnique as any).mockRejectedValue(error);
 
       // Act
       const result = await signInCallback({
@@ -327,9 +324,9 @@ describe('signIn callback', () => {
         name: 'GitHub User',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null); // No existing GitHub account
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null); // No existing GitHub account
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       const result = await signInCallback({
@@ -339,13 +336,13 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.findFirst).toHaveBeenCalledWith({
+      expect(db.accounts.findFirst).toHaveBeenCalledWith({
         where: {
           userId: 'existing-user-123',
           provider: 'github',
         },
       });
-      expect(db.account.create).toHaveBeenCalledWith({
+      expect(db.accounts.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: 'existing-user-123',
           type: 'oauth',
@@ -358,7 +355,7 @@ describe('signIn callback', () => {
         }),
       });
       // Verify tokens were encrypted and stringified
-      const createCall = (db.account.create as any).mock.calls[0][0];
+      const createCall = (db.accounts.create as any).mock.calls[0][0];
       expect(createCall.data.access_token).toContain('encrypted_gho_test_token');
       expect(createCall.data.refresh_token).toContain('encrypted_ghr_refresh_token');
       expect(createCall.data.id_token).toContain('encrypted_id_token_value');
@@ -396,9 +393,9 @@ describe('signIn callback', () => {
         id_token: 'old_encrypted_id_token',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(existingAccount);
-      (db.account.update as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(existingAccount);
+      (db.accounts.update as any).mockResolvedValue({});
 
       // Act
       const result = await signInCallback({
@@ -408,14 +405,14 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.update).toHaveBeenCalledWith({
+      expect(db.accounts.update).toHaveBeenCalledWith({
         where: { id: 'account-789' },
         data: expect.objectContaining({
           scope: 'read:user user:email repo',
         }),
       });
       // Verify tokens were encrypted and stringified
-      const updateCall = (db.account.update as any).mock.calls[0][0];
+      const updateCall = (db.accounts.update as any).mock.calls[0][0];
       expect(updateCall.data.access_token).toContain('encrypted_gho_new_token');
       expect(updateCall.data.refresh_token).toContain('encrypted_ghr_new_refresh');
       expect(updateCall.data.id_token).toContain('encrypted_new_id_token');
@@ -447,8 +444,8 @@ describe('signIn callback', () => {
         provider: 'github',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(existingAccount);
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(existingAccount);
 
       // Act
       const result = await signInCallback({
@@ -458,7 +455,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.update).not.toHaveBeenCalled();
+      expect(db.accounts.update).not.toHaveBeenCalled();
     });
 
     it('should handle GitHub auth when user does not exist (adapter creates user)', async () => {
@@ -476,7 +473,7 @@ describe('signIn callback', () => {
         access_token: 'gho_new_user_token',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null); // No existing user
+      (db.users.findUnique as any).mockResolvedValue(null); // No existing user
 
       // Act
       const result = await signInCallback({
@@ -486,8 +483,8 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.findFirst).not.toHaveBeenCalled();
-      expect(db.account.create).not.toHaveBeenCalled();
+      expect(db.accounts.findFirst).not.toHaveBeenCalled();
+      expect(db.accounts.create).not.toHaveBeenCalled();
     });
 
     it('should handle optional tokens (refresh_token, id_token) gracefully', async () => {
@@ -513,9 +510,9 @@ describe('signIn callback', () => {
         name: 'GitHub User',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null);
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       const result = await signInCallback({
@@ -525,7 +522,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.create).toHaveBeenCalledWith({
+      expect(db.accounts.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           refresh_token: null,
           id_token: null,
@@ -549,7 +546,7 @@ describe('signIn callback', () => {
       };
       const error = new Error('Database error');
 
-      (db.user.findUnique as any).mockRejectedValue(error);
+      (db.users.findUnique as any).mockRejectedValue(error);
 
       // Act
       const result = await signInCallback({
@@ -588,7 +585,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.user.findUnique).not.toHaveBeenCalled();
+      expect(db.users.findUnique).not.toHaveBeenCalled();
       expect(ensureMockWorkspaceForUser).not.toHaveBeenCalled();
     });
   });
@@ -607,7 +604,7 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.users.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await signInCallback({
@@ -633,7 +630,7 @@ describe('signIn callback', () => {
         access_token: 'gho_test_token',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.users.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await signInCallback({
@@ -643,7 +640,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true); // Should still allow sign-in (adapter handles it)
-      expect(db.user.findUnique).not.toHaveBeenCalled();
+      expect(db.users.findUnique).not.toHaveBeenCalled();
     });
 
     it('should preserve original tokens when update has no new tokens', async () => {
@@ -675,9 +672,9 @@ describe('signIn callback', () => {
         id_token: 'old_encrypted_id_token',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(existingAccount);
-      (db.account.update as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(existingAccount);
+      (db.accounts.update as any).mockResolvedValue({});
 
       // Act
       const result = await signInCallback({
@@ -687,7 +684,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.update).toHaveBeenCalledWith({
+      expect(db.accounts.update).toHaveBeenCalledWith({
         where: { id: 'account-789' },
         data: expect.objectContaining({
           refresh_token: 'old_encrypted_refresh', // Preserved
@@ -711,10 +708,10 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'new-user-id-123', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'new-user-id-123', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
 
       // Act
       const result = await signInCallback({
@@ -725,7 +722,7 @@ describe('signIn callback', () => {
       // Assert
       expect(result).toBe(true);
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('new-user-id-123');
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: 'new-user-id-123', deleted: false },
         select: { slug: true },
       });
@@ -750,9 +747,9 @@ describe('signIn callback', () => {
         email: 'githubuser@example.com',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null);
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       const result = await signInCallback({
@@ -762,13 +759,13 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.account.findFirst).toHaveBeenCalledWith({
+      expect(db.accounts.findFirst).toHaveBeenCalledWith({
         where: {
           userId: 'existing-user-999',
           provider: 'github',
         },
       });
-      expect(db.account.create).toHaveBeenCalledWith({
+      expect(db.accounts.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: 'existing-user-999',
         }),
@@ -798,15 +795,15 @@ describe('signIn callback', () => {
         email: 'githubuser@example.com',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null);
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       await signInCallback({ user: mockUser, account: mockAccount });
 
       // Assert - verify all tokens are encrypted
-      const createCall = (db.account.create as any).mock.calls[0][0];
+      const createCall = (db.accounts.create as any).mock.calls[0][0];
       expect(createCall.data.access_token).toContain('encrypted_gho_sensitive_token');
       expect(createCall.data.refresh_token).toContain('encrypted_ghr_sensitive_refresh');
       expect(createCall.data.id_token).toContain('encrypted_sensitive_id_token');
@@ -842,15 +839,15 @@ describe('signIn callback', () => {
         provider: 'github',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(existingAccount);
-      (db.account.update as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(existingAccount);
+      (db.accounts.update as any).mockResolvedValue({});
 
       // Act
       await signInCallback({ user: mockUser, account: mockAccount });
 
       // Assert - verify tokens are encrypted
-      const updateCall = (db.account.update as any).mock.calls[0][0];
+      const updateCall = (db.accounts.update as any).mock.calls[0][0];
       expect(updateCall.data.access_token).toContain('encrypted_gho_new_sensitive_token');
       expect(updateCall.data.refresh_token).toContain('encrypted_ghr_new_sensitive_refresh');
       
@@ -872,10 +869,10 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-123', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-123', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
 
       // Act
       const result = await signInCallback({
@@ -885,7 +882,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: 'user-123', deleted: false },
         select: { slug: true },
       });
@@ -910,8 +907,8 @@ describe('signIn callback', () => {
       };
       const raceConditionError = new Error('Unique constraint failed on email');
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockRejectedValue(raceConditionError);
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockRejectedValue(raceConditionError);
 
       // Act
       const result = await signInCallback({
@@ -941,10 +938,10 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'database-generated-id', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'database-generated-id', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
 
       // Act
       await signInCallback({
@@ -973,9 +970,9 @@ describe('signIn callback', () => {
         email: 'existinguser@mock.dev',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
       (ensureMockWorkspaceForUser as any).mockResolvedValue('existing-workspace');
-      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'existing-workspace' });
+      (db.workspaces.findFirst as any).mockResolvedValue({ slug: 'existing-workspace' });
 
       // Act
       await signInCallback({
@@ -1006,9 +1003,9 @@ describe('signIn callback', () => {
         email: 'githubuser@example.com',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null);
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       await signInCallback({
@@ -1047,15 +1044,15 @@ describe('signIn callback', () => {
         email: 'githubuser@example.com',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(null);
-      (db.account.create as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(null);
+      (db.accounts.create as any).mockResolvedValue({});
 
       // Act
       await signInCallback({ user: mockUser, account: mockAccount });
 
       // Assert
-      expect(db.account.create).toHaveBeenCalledWith({
+      expect(db.accounts.create).toHaveBeenCalledWith({
         data: {
           userId: 'existing-user-123',
           type: 'oauth',
@@ -1100,15 +1097,15 @@ describe('signIn callback', () => {
         id_token: 'old_id_token',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(existingUser);
-      (db.account.findFirst as any).mockResolvedValue(existingAccount);
-      (db.account.update as any).mockResolvedValue({});
+      (db.users.findUnique as any).mockResolvedValue(existingUser);
+      (db.accounts.findFirst as any).mockResolvedValue(existingAccount);
+      (db.accounts.update as any).mockResolvedValue({});
 
       // Act
       await signInCallback({ user: mockUser, account: mockAccount });
 
       // Assert - should preserve old tokens when new ones aren't provided
-      expect(db.account.update).toHaveBeenCalledWith({
+      expect(db.accounts.update).toHaveBeenCalledWith({
         where: { id: 'account-789' },
         data: {
           access_token: expect.stringContaining('encrypted_gho_updated_token'),
@@ -1134,8 +1131,8 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue(undefined);
 
       // Act
@@ -1166,12 +1163,12 @@ describe('signIn callback', () => {
         type: 'credentials',
       };
 
-      (db.user.findUnique as any).mockResolvedValue(null);
-      (db.user.create as any).mockResolvedValue({ id: 'user-999', email: mockUser.email });
+      (db.users.findUnique as any).mockResolvedValue(null);
+      (db.users.create as any).mockResolvedValue({ id: 'user-999', email: mockUser.email });
       (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
       
       // First call to findFirst in verification - returns null (not found)
-      (db.workspace.findFirst as any).mockResolvedValue(null);
+      (db.workspaces.findFirst as any).mockResolvedValue(null);
 
       // Act
       const result = await signInCallback({
@@ -1181,7 +1178,7 @@ describe('signIn callback', () => {
 
       // Assert - authentication should fail due to verification failure
       expect(result).toBe(false);
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+      expect(db.workspaces.findFirst).toHaveBeenCalledWith({
         where: { ownerId: expect.any(String), deleted: false },
         select: { slug: true },
       });

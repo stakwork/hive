@@ -25,7 +25,7 @@ export async function POST(
       );
     }
 
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: {
         id: true,

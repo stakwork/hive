@@ -35,13 +35,10 @@ const createTestWorkspaceData = (ownerId: string) => ({
   ownerId,
 });
 
-const createTestSwarmData = (workspaceId: string, swarmApiKey: string) => ({
+const createTestSwarmData = (workspaceId: string,swarm_api_key: string) => ({
   workspaceId,
   name: "s1-name",
-  status: "ACTIVE" as const,
-  swarmId: generateUniqueId("s1"),
-  swarmUrl: "https://s1-name.sphinx.chat/api",
-  swarmSecretAlias: "{{SWARM_123456_API_KEY}}",
+  status: "ACTIVE" as const,swarm_id: generateUniqueId("s1"),swarm_url: "https://s1-name.sphinx.chat/api",swarm_secret_alias: "{{SWARM_123456_API_KEY}}",
   swarmApiKey,
   services: [],
 });
@@ -128,9 +125,9 @@ describe("POST /api/stakwork/create-customer", () => {
     // Make swarm row contain double-encrypted content to simulate legacy bug
     const first = enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY);
     const doubleCipher = enc.encryptField("swarmApiKey", JSON.stringify(first));
-    await db.swarm.updateMany({
+    await db.swarms.updateMany({
       where: { workspaceId },
-      data: { swarmApiKey: JSON.stringify(doubleCipher) },
+      data: {swarm_api_key: JSON.stringify(doubleCipher) },
     });
 
     const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
@@ -174,8 +171,7 @@ describe("POST /api/stakwork/create-customer", () => {
       });
 
       const nonExistentWorkspaceId = generateUniqueId("nonexistent");
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
-        workspaceId: nonExistentWorkspaceId,
+      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {workspace_id: nonExistentWorkspaceId,
       });
 
       const res = await POST(req);
@@ -186,7 +182,7 @@ describe("POST /api/stakwork/create-customer", () => {
       expect(json).toEqual({ success: true });
       
       // Verify no workspace was updated
-      const workspace = await db.workspace.findFirst({
+      const workspace = await db.workspaces.findFirst({
         where: { id: nonExistentWorkspaceId },
       });
       expect(workspace).toBeNull();
@@ -201,8 +197,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: "stak-token-no-swarm" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
-        workspaceId: userData.workspace.id,
+      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {workspace_id: userData.workspace.id,
       });
 
       const res = await POST(req);
@@ -289,9 +284,9 @@ describe("POST /api/stakwork/create-customer", () => {
   describe("edge cases", () => {
     it("skips secret creation when swarmSecretAlias is empty", async () => {
       // Update swarm to have empty secret alias
-      await db.swarm.updateMany({
+      await db.swarms.updateMany({
         where: { workspaceId },
-        data: { swarmSecretAlias: "" },
+        data: {swarm_secret_alias: "" },
       });
 
       mockCreateCustomer.mockResolvedValueOnce({
@@ -309,9 +304,9 @@ describe("POST /api/stakwork/create-customer", () => {
 
     it("skips secret creation when swarmApiKey is null", async () => {
       // Update swarm to have null API key
-      await db.swarm.updateMany({
+      await db.swarms.updateMany({
         where: { workspaceId },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
       mockCreateCustomer.mockResolvedValueOnce({
@@ -359,7 +354,7 @@ describe("POST /api/stakwork/create-customer", () => {
       expect(res?.status).toBe(201);
 
       // Verify stakwork API key was encrypted and stored
-      const workspace = await db.workspace.findFirst({
+      const workspace = await db.workspaces.findFirst({
         where: { id: workspaceId },
       });
       

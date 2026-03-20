@@ -71,7 +71,7 @@ describe("Swarm Poll API Integration Tests", () => {
     viewerUser = scenario.members[2];
 
     // Create unauthorized user not in workspace
-    unauthorizedUser = await db.user.create({
+    unauthorizedUser = await db.users.create({
       data: {
         id: generateUniqueId("unauth"),
         email: `unauth-${generateUniqueId()}@example.com`,
@@ -80,23 +80,19 @@ describe("Swarm Poll API Integration Tests", () => {
     });
 
     // Update swarm with required fields for polling
-    await db.swarm.update({
+    await db.swarms.update({
       where: { id: swarm.id },
-      data: {
-        swarmId: generateUniqueId("swarm"),
-        swarmUrl: "https://test-swarm.example.com",
-        swarmApiKey: JSON.stringify(
+      data: {swarm_id: generateUniqueId("swarm"),swarm_url: "https://test-swarm.example.com",swarm_api_key: JSON.stringify(
           EncryptionService.getInstance().encryptField(
             "swarmApiKey",
             "initial-api-key",
           ),
-        ),
-        swarmSecretAlias: "{{SWARM_123_API_KEY}}",
+        ),swarm_secret_alias: "{{SWARM_123_API_KEY}}",
       },
     });
 
     // Refresh swarm reference
-    swarm = (await db.swarm.findUnique({ where: { id: swarm.id } }))!;
+    swarm = (await db.swarms.findUnique({ where: { id: swarm.id } }))!;
   });
 
   afterEach(async () => {
@@ -107,8 +103,7 @@ describe("Swarm Poll API Integration Tests", () => {
     it("should return 401 for unauthenticated requests", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -125,8 +120,7 @@ describe("Swarm Poll API Integration Tests", () => {
         expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -157,8 +151,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -188,8 +181,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -220,8 +212,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -249,8 +240,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -265,8 +255,7 @@ describe("Swarm Poll API Integration Tests", () => {
         createAuthenticatedSession(unauthorizedUser),
       );
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -295,8 +284,7 @@ describe("Swarm Poll API Integration Tests", () => {
     it("should return 404 when swarm not found", async () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: "non-existent-workspace-id",
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: "non-existent-workspace-id",
       });
 
       const response = await POST(request);
@@ -311,13 +299,12 @@ describe("Swarm Poll API Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       // Update swarm to remove swarmUrl
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { swarmUrl: null },
+        data: {swarm_url: null },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -332,13 +319,12 @@ describe("Swarm Poll API Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       // Update swarm to remove swarmApiKey
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -369,8 +355,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -382,7 +367,7 @@ describe("Swarm Poll API Integration Tests", () => {
       expect(data.status).toBe(SwarmStatus.ACTIVE);
 
       // Verify database was updated
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
 
@@ -404,13 +389,12 @@ describe("Swarm Poll API Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       // Update swarm to ACTIVE status
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
         data: { status: SwarmStatus.ACTIVE },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -438,8 +422,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -451,7 +434,7 @@ describe("Swarm Poll API Integration Tests", () => {
       expect(data.status).toBe(SwarmStatus.PENDING);
 
       // Verify database status remains PENDING
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
       expect(updatedSwarm?.status).toBe(SwarmStatus.PENDING);
@@ -474,8 +457,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       await POST(request);
@@ -500,8 +482,7 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        swarmId: swarm.swarmId,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {swarm_id: swarm.swarmId,
       });
 
       const response = await POST(request);
@@ -523,8 +504,7 @@ describe("Swarm Poll API Integration Tests", () => {
         status: 500,
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -545,8 +525,7 @@ describe("Swarm Poll API Integration Tests", () => {
         data: { error: "Unauthorized" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -567,8 +546,7 @@ describe("Swarm Poll API Integration Tests", () => {
         new Error("Unexpected error"),
       );
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       const response = await POST(request);
@@ -599,14 +577,13 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       await POST(request);
 
       // Verify encrypted storage
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
 
@@ -714,9 +691,9 @@ describe("Swarm Poll API Integration Tests", () => {
 
       // Set specific swarmId to test pattern generation
       const swarmIdWithNumber = "test-swarm-456";
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: swarm.id },
-        data: { swarmId: swarmIdWithNumber },
+        data: {swarm_id: swarmIdWithNumber },
       });
 
       vi.mocked(fetchSwarmDetails).mockResolvedValue({
@@ -733,13 +710,12 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       await POST(request);
 
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
 
@@ -765,13 +741,12 @@ describe("Swarm Poll API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/swarm/poll", {workspace_id: workspace.id,
       });
 
       await POST(request);
 
-      const updatedSwarm = await db.swarm.findUnique({
+      const updatedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
 

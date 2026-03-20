@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const { filename, contentType, size, taskId } = validatedData
     
     // Get task with workspace and swarm information
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,

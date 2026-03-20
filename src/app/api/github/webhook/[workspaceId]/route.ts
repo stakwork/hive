@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Find repository by webhookId AND workspaceId for stronger isolation
-    const repository = await db.repository.findFirst({
+    const repository = await db.repositories.findFirst({
       where: {
         githubWebhookId: webhookId,
         workspaceId: workspaceId,
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     // Fetch GitHub credentials early for both push and PR events
-    const workspace = await db.workspace.findUnique({
+    const workspace = await db.workspaces.findUnique({
       where: { id: repository.workspaceId },
       select: { ownerId: true, slug: true },
     });
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             for (const task of tasks) {
               // Update PR artifact content status to "CANCELLED" (matching UI expectations)
               try {
-                const artifact = await db.artifact.findUnique({
+                const artifact = await db.artifacts.findUnique({
                   where: { id: task.artifact_id },
                   select: { content: true },
                 });
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     status: "CANCELLED",
                   };
 
-                  await db.artifact.update({
+                  await db.artifacts.update({
                     where: { id: task.artifact_id },
                     data: { content: updatedContent as Prisma.InputJsonValue },
                   });
@@ -392,7 +392,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
             // Update task status to DONE
             try {
-              await db.task.update({
+              await db.tasks.update({
                 where: { id: task.task_id },
                 data: { status: TaskStatus.DONE },
               });
@@ -414,13 +414,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             void (async () => {
               try {
                 const targetUserId = task.assignee_id ?? task.created_by_id;
-                const wsForNotif = await db.workspace.findUnique({
+                const wsForNotif = await db.workspaces.findUnique({
                   where: { id: task.workspace_id },
                   select: { slug: true },
                 });
                 if (wsForNotif) {
                   const taskUrl = `${process.env.NEXTAUTH_URL}/w/${wsForNotif.slug}/task/${task.task_id}`;
-                  const targetUser = await db.user.findUnique({
+                  const targetUser = await db.users.findUnique({
                     where: { id: targetUserId },
                     select: { sphinxAlias: true, name: true },
                   });
@@ -440,7 +440,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
             // Update PR artifact content status to "DONE"
             try {
-              const artifact = await db.artifact.findUnique({
+              const artifact = await db.artifacts.findUnique({
                 where: { id: task.artifact_id },
                 select: { content: true },
               });
@@ -452,7 +452,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   merge_commit_sha: payload.pull_request.merge_commit_sha,
                 };
 
-                await db.artifact.update({
+                await db.artifacts.update({
                   where: { id: task.artifact_id },
                   data: { content: updatedContent as Prisma.InputJsonValue },
                 });
@@ -762,7 +762,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // For production deployments, look for the last deployment of ANY environment
         // to ensure we upgrade all tasks that were deployed to staging
         // For staging deployments, only look for the last staging deployment
-        const lastDeployment = await db.deployment.findFirst({
+        const lastDeployment = await db.deployments.findFirst({
           where: {
             repositoryId: repository.id,
             environment: environment === "production" ? undefined : "STAGING",
@@ -782,7 +782,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // Fetch commit history from GitHub to get all commits in this deployment
         try {
           // Get any user's token for this workspace to access the repo
-          const workspaceUser = await db.workspaceMember.findFirst({
+          const workspaceUser = await db.workspace_members.findFirst({
             where: { workspaceId: repository.workspaceId },
             select: { userId: true },
           });
@@ -994,7 +994,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         for (const task of tasks) {
           try {
-            await db.deployment.create({
+            await db.deployments.create({
               data: {
                 taskId: task.task_id,
                 repositoryId: task.repository_id,
@@ -1080,7 +1080,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             }
 
             try {
-              const updateResult = await db.task.updateMany({
+              const updateResult = await db.tasks.updateMany({
                 where: {
                   id: { in: taskIds },
                 },
@@ -1088,7 +1088,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               });
 
               // Verify the update by querying the tasks again
-              const verifyTasks = await db.task.findMany({
+              const verifyTasks = await db.tasks.findMany({
                 where: { id: { in: taskIds } },
                 select: { id: true, deploymentStatus: true },
               });
@@ -1129,7 +1129,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 const featureTaskMap = tasksToUpdate.filter(t => t.feature_id);
                 const uniqueFeatureIds = [...new Set(featureTaskMap.map(t => t.feature_id as string))];
                 for (const fId of uniqueFeatureIds) {
-                  const feat = await db.feature.findUnique({
+                  const feat = await db.features.findUnique({
                     where: { id: fId },
                     select: {
                       id: true,
@@ -1143,7 +1143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   if (feat) {
                     const targetUserId = feat.assigneeId ?? feat.createdById;
                     const featureUrl = `${process.env.NEXTAUTH_URL}/w/${feat.workspace.slug}/plan/${feat.id}`;
-                    const targetUser = await db.user.findUnique({
+                    const targetUser = await db.users.findUnique({
                       where: { id: targetUserId },
                       select: { sphinxAlias: true, name: true },
                     });
@@ -1250,7 +1250,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = await db.swarms.findUnique({
       where: { workspaceId: repository.workspaceId },
       select: {
         id: true,
@@ -1295,7 +1295,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const swarmHost = swarm.swarmUrl ? new URL(swarm.swarmUrl).host : `${swarm.name}.sphinx.chat`;
     try {
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: { status: RepositoryStatus.PENDING },
       });
@@ -1374,7 +1374,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       const reqId = apiResult.data?.request_id;
       if (reqId) {
-        await db.swarm.update({
+        await db.swarms.update({
           where: { id: swarm.id },
           data: { ingestRefId: reqId },
         });

@@ -64,11 +64,9 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}`,
-          ownerId: user.id,
+          slug: `test-workspace-${Date.now()}`,owner_id: user.id,
           members: {
-            create: {
-              userId: user.id,
+            create: {user_id: user.id,
               role: 'OWNER',
             },
           },
@@ -78,29 +76,20 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       // Create repository
       const repository = await tx.repository.create({
         data: {
-          name: 'test-repo',
-          repositoryUrl: `https://github.com/testuser/test-repo-${Date.now()}`,
-          workspaceId: workspace.id,
+          name: 'test-repo',repository_url: `https://github.com/testuser/test-repo-${Date.now()}`,workspace_id: workspace.id,
         },
       });
 
       // Create swarm with encrypted API keys
       const swarm = await tx.swarm.create({
         data: {
-          name: `test-swarm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          swarmUrl: 'https://test-swarm.example.com',
-          poolName: 'test-pool-id',
-          poolApiKey: JSON.stringify(enc.encryptField('poolApiKey', 'test-pool-api-key')),
-          swarmApiKey: JSON.stringify(enc.encryptField('swarmApiKey', 'test-swarm-api-key')),
-          workspaceId: workspace.id,
+          name: `test-swarm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,swarm_url: 'https://test-swarm.example.com',pool_name: 'test-pool-id',pool_api_key: JSON.stringify(enc.encryptField('poolApiKey', 'test-pool-api-key')),swarm_api_key: JSON.stringify(enc.encryptField('swarmApiKey', 'test-swarm-api-key')),workspace_id: workspace.id,
         },
       });
 
       // Create an available pod for the swarm
       const pod = await tx.pod.create({
-        data: {
-          podId: `test-pod-${Date.now()}`,
-          swarmId: swarm.id,
+        data: {pod_id: `test-pod-${Date.now()}`,swarm_id: swarm.id,
           password: JSON.stringify(enc.encryptField('password', 'test-pod-password')),
           portMappings: [3000, 3010, 15551, 15552],
           status: 'RUNNING',
@@ -110,23 +99,14 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
       // Create GitHub auth (without token - tokens are stored in Account table)
       const githubAuth = await tx.gitHubAuth.create({
-        data: {
-          userId: user.id,
-          githubUserId: '123456',
-          githubUsername: 'testuser',
+        data: {user_id: user.id,github_user_id: '123456',github_username: 'testuser',
         },
       });
 
       // Create task
       const task = await tx.task.create({
         data: {
-          title: 'Test User Journey',
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          sourceType: 'USER_JOURNEY',
-          workflowStatus: 'PENDING',
-          testFilePath: '/tests/user-journey.spec.ts',
+          title: 'Test User Journey',workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,source_type: 'USER_JOURNEY',workflow_status: 'PENDING',test_file_path: '/tests/user-journey.spec.ts',
         },
       });
 
@@ -191,7 +171,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       );
 
       // Execute endpoint
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Validate response
       expect(response.status).toBe(200);
@@ -200,13 +180,11 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       expect(responseData.data.frontendUrl).toContain('test-pod.example.com');
 
       // Validate database updates
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
-      expect(updatedTask).toMatchObject({
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
-        agentPassword: expect.any(String), // One-time API key
+      expect(updatedTask).toMatchObject({workflow_status: WorkflowStatus.IN_PROGRESS,agent_password: expect.any(String), // One-time API key
       });
 
       // Verify pod was claimed with correct arguments
@@ -252,7 +230,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
           { method: 'POST' }
         );
 
-        const response = await POST(request, { params: { taskId: task.id } });
+        const response = await POST(request, { params: {task_id: task.id } });
 
         expect(response.status).toBe(200);
         const data = await response.json();
@@ -276,7 +254,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { user, task, swarm, pod } = await createTestSetup();
 
       // Delete GitHub auth to simulate missing credentials
-      await db.gitHubAuth.deleteMany({ where: { userId: user.id } });
+      await db.github_auth.deleteMany({ where: {user_id: user.id } });
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
@@ -325,7 +303,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Should still succeed
       expect(response.status).toBe(200);
@@ -343,7 +321,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: 'test-id' } });
+      const response = await POST(request, { params: {task_id: 'test-id' } });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -358,7 +336,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: 'test-id' } });
+      const response = await POST(request, { params: {task_id: 'test-id' } });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -375,7 +353,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: 'test-id' } });
+      const response = await POST(request, { params: {task_id: 'test-id' } });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -396,7 +374,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: '' } });
+      const response = await POST(request, { params: {task_id: '' } });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -416,7 +394,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       );
 
       const response = await POST(request, {
-        params: { taskId: 'invalid-id-format' },
+        params: {task_id: 'invalid-id-format' },
       });
 
       expect(response.status).toBe(404);
@@ -439,7 +417,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: nonExistentTaskId } });
+      const response = await POST(request, { params: {task_id: nonExistentTaskId } });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -450,7 +428,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { task } = await createTestSetup();
 
       // Create different user without workspace access
-      const unauthorizedUser = await db.user.create({
+      const unauthorizedUser = await db.users.create({
         data: {
           email: `unauthorized-${Date.now()}@example.com`,
           name: 'Unauthorized User',
@@ -466,7 +444,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       expect(response.status).toBe(403);
       const data = await response.json();
@@ -477,7 +455,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { user, task, workspace } = await createTestSetup();
 
       // Soft delete workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
         data: { deleted: true },
       });
@@ -491,7 +469,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       expect(response.status).toBe(403);
       const data = await response.json();
@@ -502,7 +480,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { user, task, workspace } = await createTestSetup();
 
       // Delete swarm configuration
-      await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });
+      await db.swarms.deleteMany({ where: {workspace_id: workspace.id } });
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
@@ -513,7 +491,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -535,7 +513,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: 'malformed-id' } });
+      const response = await POST(request, { params: {task_id: 'malformed-id' } });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -558,7 +536,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       expect(response.status).toBe(503);
       const data = await response.json();
@@ -616,7 +594,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Control port failure returns 500 (caught by error handler)
       expect(response.status).toBe(500);
@@ -629,7 +607,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { swarm } = await createTestSetup();
 
       // Fetch swarm from database
-      const fetchedSwarm = await db.swarm.findUnique({
+      const fetchedSwarm = await db.swarms.findUnique({
         where: { id: swarm.id },
       });
 
@@ -694,9 +672,9 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      await POST(request, { params: { taskId: task.id } });
+      await POST(request, { params: {task_id: task.id } });
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -760,9 +738,9 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      await POST(request, { params: { taskId: task.id } });
+      await POST(request, { params: {task_id: task.id } });
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -774,7 +752,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { user, workspace, swarm, task, githubAuth } = await createTestSetup();
 
       // Verify relationships
-      const taskWithRelations = await db.task.findUnique({
+      const taskWithRelations = await db.tasks.findUnique({
         where: { id: task.id },
         include: {
           workspace: {
@@ -791,7 +769,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       expect(taskWithRelations!.workspace.swarm!.id).toBe(swarm.id);
       expect(taskWithRelations!.workspace.members[0].userId).toBe(user.id);
 
-      const userWithGithub = await db.user.findUnique({
+      const userWithGithub = await db.users.findUnique({
         where: { id: user.id },
         include: { githubAuth: true },
       });
@@ -805,9 +783,9 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const { user, task, swarm, pod } = await createTestSetup();
 
       // Update task to IN_PROGRESS
-      await db.task.update({
+      await db.tasks.update({
         where: { id: task.id },
-        data: { workflowStatus: 'IN_PROGRESS' },
+        data: {workflow_status: 'IN_PROGRESS' },
       });
 
       mockGetServerSession.mockResolvedValue({
@@ -856,7 +834,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Task already in progress allows re-execution (returns 200)
       expect(response.status).toBe(200);
@@ -908,7 +886,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Missing control port returns 500
       expect(response.status).toBe(500);
@@ -966,7 +944,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         { method: 'POST' }
       );
 
-      const response = await POST(request, { params: { taskId: task.id } });
+      const response = await POST(request, { params: {task_id: task.id } });
 
       // Missing frontend is acceptable - test still executes
       expect(response.status).toBe(200);

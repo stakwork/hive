@@ -80,7 +80,7 @@ async function processNodesMediaUrls(
 // Helper function to call mock endpoint (reusable for all fallback scenarios)
 async function callMockEndpoint(request: NextRequest, workspaceId: string) {
   // Get workspace slug from workspace ID
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: { slug: true },
   });
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarms.findFirst({ where });
 
     // Return mock data if swarm is not configured (for development/testing)
     if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {

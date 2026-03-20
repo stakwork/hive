@@ -20,7 +20,7 @@ export async function POST() {
     const userId = (session.user as { id: string }).id;
 
     // Find the GitHub account for this user
-    const account = await db.account.findFirst({
+    const account = await db.accounts.findFirst({
       where: {
         userId: userId,
         provider: "github",
@@ -71,14 +71,14 @@ export async function POST() {
     }
 
     // Delete the GitHub account from our database completely
-    await db.account.delete({
+    await db.accounts.delete({
       where: {
         id: account.id,
       },
     });
 
     // Also delete the GitHub auth data
-    await db.gitHubAuth.deleteMany({
+    await db.github_auth.deleteMany({
       where: {
         userId: userId,
       },
@@ -87,7 +87,7 @@ export async function POST() {
     // Delete all sessions for this user to force complete re-authentication
     // Use try-catch to handle cases where sessions might already be deleted
     try {
-      await db.session.deleteMany({
+      await db.sessions.deleteMany({
         where: {
           userId: userId,
         },

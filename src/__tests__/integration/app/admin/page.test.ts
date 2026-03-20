@@ -16,12 +16,12 @@ import {
 describe("Admin Page - Workspace Query Integration", () => {
   beforeEach(async () => {
     // Clean up test data
-    await db.task.deleteMany();
-    await db.pod.deleteMany();
-    await db.swarm.deleteMany();
-    await db.workspaceMember.deleteMany();
-    await db.workspace.deleteMany();
-    await db.user.deleteMany();
+    await db.tasks.deleteMany();
+    await db.pods.deleteMany();
+    await db.swarms.deleteMany();
+    await db.workspace_members.deleteMany();
+    await db.workspaces.deleteMany();
+    await db.users.deleteMany();
   });
 
   test("returns workspace with logoKey, member count, task count, and active pod count", async () => {
@@ -30,50 +30,35 @@ describe("Admin Page - Workspace Query Integration", () => {
     const member2 = await createTestUser();
     
     // Create workspace with logo
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: owner.id,
-        logoKey: "workspaces/test-workspace/logo.png",
+        slug: "test-workspace",owner_id: owner.id,logo_key: "workspaces/test-workspace/logo.png",
       },
     });
 
     // Add members
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: member1.id,
+    await createTestMembership({workspace_id: workspace.id,user_id: member1.id,
       role: "DEVELOPER",
     });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: member2.id,
+    await createTestMembership({workspace_id: workspace.id,user_id: member2.id,
       role: "PM",
     });
 
     // Create tasks
-    await db.task.createMany({
+    await db.tasks.createMany({
       data: [
-        {
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        {workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           title: "Task 1",
           description: "Description 1",
           status: "TODO",
         },
-        {
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        {workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           title: "Task 2",
           description: "Description 2",
           status: "IN_PROGRESS",
         },
-        {
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+        {workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
           title: "Task 3",
           description: "Description 3",
           status: "DONE",
@@ -82,48 +67,38 @@ describe("Admin Page - Workspace Query Integration", () => {
     });
 
     // Create swarm with pods
-    const swarm = await db.swarm.create({
-      data: {
-        workspaceId: workspace.id,
+    const swarm = await db.swarms.create({
+      data: {workspace_id: workspace.id,
         name: "test-swarm",
       },
     });
 
     // Create active pods (not deleted)
-    await db.pod.createMany({
+    await db.pods.createMany({
       data: [
-        {
-          swarmId: swarm.id,
-          podId: "workspace-pod-1",
+        {swarm_id: swarm.id,pod_id: "workspace-pod-1",
           status: "RUNNING",
         },
-        {
-          swarmId: swarm.id,
-          podId: "workspace-pod-2",
+        {swarm_id: swarm.id,pod_id: "workspace-pod-2",
           status: "RUNNING",
         },
       ],
     });
 
     // Create soft-deleted pod (should NOT be counted)
-    await db.pod.create({
-      data: {
-        swarmId: swarm.id,
-        podId: "workspace-pod-3",
-        status: "STOPPED",
-        deletedAt: new Date(),
+    await db.pods.create({
+      data: {swarm_id: swarm.id,pod_id: "workspace-pod-3",
+        status: "STOPPED",deleted_at: new Date(),
       },
     });
 
     // Fetch workspace with the same query pattern as admin page
-    const workspaces = await db.workspace.findMany({
-      where: { deletedAt: null },
+    const workspaces = await db.workspaces.findMany({
+      where: {deleted_at: null },
       select: {
         id: true,
         name: true,
-        slug: true,
-        logoKey: true,
-        createdAt: true,
+        slug: true,logo_key: true,created_at: true,
         _count: {
           select: {
             members: true,
@@ -135,8 +110,7 @@ describe("Admin Page - Workspace Query Integration", () => {
             _count: {
               select: {
                 pods: {
-                  where: {
-                    deletedAt: null,
+                  where: {deleted_at: null,
                   },
                 },
               },
@@ -167,23 +141,20 @@ describe("Admin Page - Workspace Query Integration", () => {
   test("returns 0 pod count when workspace has no swarm", async () => {
     const owner = await createTestUser();
     
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Workspace Without Swarm",
-        slug: "no-swarm-workspace",
-        ownerId: owner.id,
+        slug: "no-swarm-workspace",owner_id: owner.id,
       },
     });
 
     // Fetch workspace
-    const workspaces = await db.workspace.findMany({
-      where: { deletedAt: null, id: workspace.id },
+    const workspaces = await db.workspaces.findMany({
+      where: {deleted_at: null, id: workspace.id },
       select: {
         id: true,
         name: true,
-        slug: true,
-        logoKey: true,
-        createdAt: true,
+        slug: true,logo_key: true,created_at: true,
         _count: {
           select: {
             members: true,
@@ -195,8 +166,7 @@ describe("Admin Page - Workspace Query Integration", () => {
             _count: {
               select: {
                 pods: {
-                  where: {
-                    deletedAt: null,
+                  where: {deleted_at: null,
                   },
                 },
               },
@@ -221,24 +191,21 @@ describe("Admin Page - Workspace Query Integration", () => {
   test("returns workspace without logoKey when not set", async () => {
     const owner = await createTestUser();
     
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: "Workspace Without Logo",
-        slug: "no-logo-workspace",
-        ownerId: owner.id,
+        slug: "no-logo-workspace",owner_id: owner.id,
         // logoKey not provided
       },
     });
 
     // Fetch workspace
-    const workspaces = await db.workspace.findMany({
-      where: { deletedAt: null, id: workspace.id },
+    const workspaces = await db.workspaces.findMany({
+      where: {deleted_at: null, id: workspace.id },
       select: {
         id: true,
         name: true,
-        slug: true,
-        logoKey: true,
-        createdAt: true,
+        slug: true,logo_key: true,created_at: true,
         _count: {
           select: {
             members: true,
@@ -250,8 +217,7 @@ describe("Admin Page - Workspace Query Integration", () => {
             _count: {
               select: {
                 pods: {
-                  where: {
-                    deletedAt: null,
+                  where: {deleted_at: null,
                   },
                 },
               },
@@ -273,33 +239,28 @@ describe("Admin Page - Workspace Query Integration", () => {
     const owner = await createTestUser();
     
     // Create active workspace
-    await db.workspace.create({
+    await db.workspaces.create({
       data: {
         name: "Active Workspace",
-        slug: "active-workspace",
-        ownerId: owner.id,
+        slug: "active-workspace",owner_id: owner.id,
       },
     });
 
     // Create soft-deleted workspace
-    await db.workspace.create({
+    await db.workspaces.create({
       data: {
         name: "Deleted Workspace",
-        slug: "deleted-workspace",
-        ownerId: owner.id,
-        deletedAt: new Date(),
+        slug: "deleted-workspace",owner_id: owner.id,deleted_at: new Date(),
       },
     });
 
     // Fetch workspaces
-    const workspaces = await db.workspace.findMany({
-      where: { deletedAt: null },
+    const workspaces = await db.workspaces.findMany({
+      where: {deleted_at: null },
       select: {
         id: true,
         name: true,
-        slug: true,
-        logoKey: true,
-        createdAt: true,
+        slug: true,logo_key: true,created_at: true,
         _count: {
           select: {
             members: true,
@@ -311,8 +272,7 @@ describe("Admin Page - Workspace Query Integration", () => {
             _count: {
               select: {
                 pods: {
-                  where: {
-                    deletedAt: null,
+                  where: {deleted_at: null,
                   },
                 },
               },

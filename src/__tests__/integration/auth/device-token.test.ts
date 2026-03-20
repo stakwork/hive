@@ -47,13 +47,13 @@ describe("POST /api/device-token — integration", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
 
-    const updated = await db.user.findUnique({ where: { id: userId } });
+    const updated = await db.users.findUnique({ where: { id: userId } });
     expect(updated?.iosDeviceToken).toBe("device-token-xyz");
   });
 
   it("clears (nulls) the device token when empty string is sent", async () => {
     // Pre-set a token directly in DB
-    await db.user.update({ where: { id: userId }, data: { iosDeviceToken: "existing-token" } });
+    await db.users.update({ where: { id: userId }, data: {ios_device_token: "existing-token" } });
 
     getMockedRequireAuth.mockReturnValue({ id: userId, email: "device-test@example.com", name: "Test" });
 
@@ -61,12 +61,12 @@ describe("POST /api/device-token — integration", () => {
 
     expect(res.status).toBe(200);
 
-    const updated = await db.user.findUnique({ where: { id: userId } });
+    const updated = await db.users.findUnique({ where: { id: userId } });
     expect(updated?.iosDeviceToken).toBeNull();
   });
 
   it("does not modify the record when ios_device_token field is absent", async () => {
-    await db.user.update({ where: { id: userId }, data: { iosDeviceToken: "keep-me" } });
+    await db.users.update({ where: { id: userId }, data: {ios_device_token: "keep-me" } });
 
     getMockedRequireAuth.mockReturnValue({ id: userId, email: "device-test@example.com", name: "Test" });
 
@@ -74,12 +74,12 @@ describe("POST /api/device-token — integration", () => {
 
     expect(res.status).toBe(200);
 
-    const updated = await db.user.findUnique({ where: { id: userId } });
+    const updated = await db.users.findUnique({ where: { id: userId } });
     expect(updated?.iosDeviceToken).toBe("keep-me");
   });
 
   it("returns 401 and does not modify DB when unauthenticated", async () => {
-    await db.user.update({ where: { id: userId }, data: { iosDeviceToken: "keep-me" } });
+    await db.users.update({ where: { id: userId }, data: {ios_device_token: "keep-me" } });
 
     getMockedRequireAuth.mockReturnValue(
       new (await import("next/server")).NextResponse(
@@ -92,12 +92,12 @@ describe("POST /api/device-token — integration", () => {
 
     expect(res.status).toBe(401);
 
-    const unchanged = await db.user.findUnique({ where: { id: userId } });
+    const unchanged = await db.users.findUnique({ where: { id: userId } });
     expect(unchanged?.iosDeviceToken).toBe("keep-me");
   });
 
   it("silently ignores unknown token fields and does not modify DB", async () => {
-    await db.user.update({ where: { id: userId }, data: { iosDeviceToken: "keep-me" } });
+    await db.users.update({ where: { id: userId }, data: {ios_device_token: "keep-me" } });
 
     getMockedRequireAuth.mockReturnValue({ id: userId, email: "device-test@example.com", name: "Test" });
 
@@ -105,7 +105,7 @@ describe("POST /api/device-token — integration", () => {
 
     expect(res.status).toBe(200);
 
-    const unchanged = await db.user.findUnique({ where: { id: userId } });
+    const unchanged = await db.users.findUnique({ where: { id: userId } });
     expect(unchanged?.iosDeviceToken).toBe("keep-me");
   });
 });

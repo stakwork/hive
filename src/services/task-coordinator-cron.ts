@@ -40,7 +40,7 @@ export async function checkDependencies(
   }
 
   // Batch fetch all dependency tasks with their PR artifacts
-  const dependencyTasks = await db.task.findMany({
+  const dependencyTasks = await db.tasks.findMany({
     where: {
       id: {
         in: dependsOnTaskIds,
@@ -132,7 +132,7 @@ export async function processTicketSweep(
   console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug} (slots: ${slotsAvailable})`);
 
   // Fetch enough candidates to survive dependency filtering
-  const candidateTasks = await db.task.findMany({
+  const candidateTasks = await db.tasks.findMany({
     where: {
       AND: [
         { workspaceId },
@@ -188,7 +188,7 @@ export async function processTicketSweep(
 
     if (depResult === "PERMANENTLY_BLOCKED") {
       console.log(`[TaskCoordinator] Unassigning task ${candidateTask.id} - dependency permanently cancelled`);
-      await db.task.update({
+      await db.tasks.update({
         where: { id: candidateTask.id },
         data: { systemAssigneeType: null },
       });
@@ -275,7 +275,7 @@ export async function releaseStaleTaskPods(): Promise<{
     // Find stale tasks that either:
     // 1. Have a pod (any status) - need to release the pod
     // 2. Are IN_PROGRESS without a pod - need to halt them
-    const staleTasks = await db.task.findMany({
+    const staleTasks = await db.tasks.findMany({
       where: {
         updatedAt: {
           lt: staleThreshold,
@@ -451,7 +451,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
     }
 
     // Get all workspaces with either sweep enabled
-    const enabledWorkspaces = await db.workspace.findMany({
+    const enabledWorkspaces = await db.workspaces.findMany({
       where: {
         janitorConfig: {
           OR: [
@@ -523,7 +523,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         if (ticketsDispatched === 0 && workspace.janitorConfig?.recommendationSweepEnabled) {
           try {
             // Get pending recommendations ordered by priority (CRITICAL > HIGH > MEDIUM > LOW)
-            const pendingRecommendations = await db.janitorRecommendation.findMany({
+            const pendingRecommendations = await db.janitor_recommendations.findMany({
               where: {
                 status: "PENDING",
                 janitorRun: {

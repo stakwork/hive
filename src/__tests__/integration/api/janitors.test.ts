@@ -64,15 +64,12 @@ describe("Janitor API Integration Tests", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: `Test Workspace ${generateUniqueId()}`,
-            slug: generateUniqueSlug("test-workspace"),
-            ownerId: user.id,
+            slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
           },
         });
 
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: user.id,
+          data: {workspace_id: workspace.id,user_id: user.id,
             role: "OWNER",
           },
         });
@@ -91,25 +88,20 @@ describe("Janitor API Integration Tests", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: `Test Workspace ${generateUniqueId()}`,
-            slug: generateUniqueSlug("test-workspace"),
-            ownerId: owner.id,
+            slug: generateUniqueSlug("test-workspace"),owner_id: owner.id,
           },
         });
 
         // Create owner membership
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: owner.id,
+          data: {workspace_id: workspace.id,user_id: owner.id,
             role: "OWNER",
           },
         });
 
         // Create test user membership with specified role
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: user.id,
+          data: {workspace_id: workspace.id,user_id: user.id,
             role: role,
           },
         });
@@ -154,9 +146,7 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData).toHaveProperty("config");
-      expect(responseData.config).toMatchObject({
-        workspaceId: workspace.id,
-        unitTestsEnabled: false,
+      expect(responseData.config).toMatchObject({workspace_id: workspace.id,unit_tests_enabled: false,
         integrationTestsEnabled: false,
       });
     });
@@ -166,8 +156,7 @@ describe("Janitor API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPutRequest("http://localhost/api/test", {
-        unitTestsEnabled: true,
+      const request = createPutRequest("http://localhost/api/test", {unit_tests_enabled: true,
         integrationTestsEnabled: false,
       });
       
@@ -188,8 +177,7 @@ describe("Janitor API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPutRequest("http://localhost/api/test", {
-        unitTestsEnabled: true,
+      const request = createPutRequest("http://localhost/api/test", {unit_tests_enabled: true,
       });
       
       const response = await UpdateConfig(request, {
@@ -219,10 +207,8 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // First enable unit tests
-      await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
       
@@ -241,17 +227,15 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.runs[0]).toMatchObject({
-        janitorType: "UNIT_TESTS",
+      expect(responseData.runs[0]).toMatchObject({janitor_type: "UNIT_TESTS",
         status: "PENDING",
         triggeredBy: "MANUAL",
       });
 
       // Verify database record was created
-      const runs = await db.janitorRun.findMany({
+      const runs = await db.janitor_runs.findMany({
         where: {
-          janitorConfig: {
-            workspaceId: workspace.id,
+          janitorConfig: {workspace_id: workspace.id,
           },
         },
       });
@@ -301,17 +285,13 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // Enable unit tests and create existing run
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "RUNNING",
         },
@@ -337,9 +317,8 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should trigger MOCK_GENERATION run when enabled", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
 
-      await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
+      await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,
           mockGenerationEnabled: true,
         },
       });
@@ -359,16 +338,14 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.runs[0]).toMatchObject({
-        janitorType: "MOCK_GENERATION",
+      expect(responseData.runs[0]).toMatchObject({janitor_type: "MOCK_GENERATION",
         status: "PENDING",
         triggeredBy: "MANUAL",
       });
 
-      const runs = await db.janitorRun.findMany({
+      const runs = await db.janitor_runs.findMany({
         where: {
-          janitorConfig: {
-            workspaceId: workspace.id,
+          janitorConfig: {workspace_id: workspace.id,
           },
         },
       });
@@ -382,24 +359,18 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
       // Create test data
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      await db.janitorRun.createMany({
+      await db.janitor_runs.createMany({
         data: [
-          {
-            janitorConfigId: config.id,
-            janitorType: "UNIT_TESTS",
+          {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
             triggeredBy: "MANUAL",
             status: "COMPLETED",
           },
-          {
-            janitorConfigId: config.id,
-            janitorType: "INTEGRATION_TESTS", 
+          {janitor_config_id: config.id,janitor_type: "INTEGRATION_TESTS", 
             triggeredBy: "SCHEDULED",
             status: "FAILED",
           },
@@ -430,24 +401,18 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/runs - should filter by janitor type", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      await db.janitorRun.createMany({
+      await db.janitor_runs.createMany({
         data: [
-          {
-            janitorConfigId: config.id,
-            janitorType: "UNIT_TESTS",
+          {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
             triggeredBy: "MANUAL",
             status: "COMPLETED",
           },
-          {
-            janitorConfigId: config.id,
-            janitorType: "INTEGRATION_TESTS",
+          {janitor_config_id: config.id,janitor_type: "INTEGRATION_TESTS",
             triggeredBy: "MANUAL", 
             status: "COMPLETED",
           },
@@ -475,25 +440,19 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser();
       
       // Create test janitor run
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
-          status: "RUNNING",
-          stakworkProjectId: 12345,
+          status: "RUNNING",stakwork_project_id: 12345,
         },
       });
 
-      const webhookPayload = {
-        projectId: 12345,
+      const webhookPayload = {project_id: 12345,
         status: "completed",
         results: {
           recommendations: [
@@ -525,7 +484,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.status).toBe("COMPLETED");
 
       // Verify database updates
-      const updatedRun = await db.janitorRun.findUnique({
+      const updatedRun = await db.janitor_runs.findUnique({
         where: { id: janitorRun.id },
         include: { recommendations: true },
       });
@@ -539,25 +498,19 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/janitors/webhook - should handle failed webhook", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser();
       
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
-          status: "RUNNING",
-          stakworkProjectId: 54321,
+          status: "RUNNING",stakwork_project_id: 54321,
         },
       });
 
-      const webhookPayload = {
-        projectId: 54321,
+      const webhookPayload = {project_id: 54321,
         status: "failed",
         error: "Analysis timed out",
       };
@@ -580,7 +533,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.status).toBe("FAILED");
 
       // Verify database updates
-      const updatedRun = await db.janitorRun.findUnique({
+      const updatedRun = await db.janitor_runs.findUnique({
         where: { id: janitorRun.id },
       });
 
@@ -589,8 +542,7 @@ describe("Janitor API Integration Tests", () => {
     });
 
     test("POST /api/janitors/webhook - should return 404 for unknown project", async () => {
-      const webhookPayload = {
-        projectId: 99999,
+      const webhookPayload = {project_id: 99999,
         status: "completed",
       };
 
@@ -610,8 +562,7 @@ describe("Janitor API Integration Tests", () => {
     });
 
     test("POST /api/janitors/webhook - should reject request without API token", async () => {
-      const webhookPayload = {
-        projectId: 12345,
+      const webhookPayload = {project_id: 12345,
         status: "completed",
       };
 
@@ -625,8 +576,7 @@ describe("Janitor API Integration Tests", () => {
     });
 
     test("POST /api/janitors/webhook - should reject request with invalid API token", async () => {
-      const webhookPayload = {
-        projectId: 12345,
+      const webhookPayload = {project_id: 12345,
         status: "completed",
       };
 
@@ -653,35 +603,27 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
       // Create test data
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "COMPLETED",
         },
       });
 
-      await db.janitorRecommendation.createMany({
+      await db.janitor_recommendations.createMany({
         data: [
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "Add unit tests for UserService",
             description: "UserService needs test coverage",
             priority: "HIGH",
             status: "PENDING",
           },
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "Add integration tests",
             description: "Missing integration test coverage",
             priority: "MEDIUM",
@@ -725,35 +667,27 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by status", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "COMPLETED",
         },
       });
 
-      await db.janitorRecommendation.createMany({
+      await db.janitor_recommendations.createMany({
         data: [
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "Pending recommendation",
             description: "This is pending",
             priority: "HIGH",
             status: "PENDING",
           },
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "Accepted recommendation",
             description: "This is accepted",
             priority: "MEDIUM",
@@ -783,35 +717,27 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by priority", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "COMPLETED",
         },
       });
 
-      await db.janitorRecommendation.createMany({
+      await db.janitor_recommendations.createMany({
         data: [
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "High priority recommendation",
             description: "This is high priority",
             priority: "HIGH",
             status: "PENDING",
           },
-          {
-            janitorRunId: janitorRun.id,
-            workspaceId: workspace.id,
+          {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
             title: "Low priority recommendation",
             description: "This is low priority",
             priority: "LOW",
@@ -872,26 +798,20 @@ describe("Janitor API Integration Tests", () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // Create test data
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "COMPLETED",
         },
       });
 
-      const recommendation = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: workspace.id,
+      const recommendation = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
           title: "Add unit tests",
           description: "Need more test coverage",
           priority: "HIGH",
@@ -920,12 +840,12 @@ describe("Janitor API Integration Tests", () => {
       }
 
       // Verify database updates
-      const updatedRecommendation = await db.janitorRecommendation.findUnique({
+      const updatedRecommendation = await db.janitor_recommendations.findUnique({
         where: { id: recommendation.id },
       });
       expect(updatedRecommendation?.status).toBe("ACCEPTED");
 
-      const task = await db.task.findFirst({
+      const task = await db.tasks.findFirst({
         where: { title: "Add unit tests" },
       });
       expect(task).toBeTruthy();
@@ -936,26 +856,20 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/janitors/recommendations/[id]/dismiss - should dismiss recommendation", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      const config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          unitTestsEnabled: true,
+      const config = await db.janitor_configs.create({
+        data: {workspace_id: workspace.id,unit_tests_enabled: true,
         },
       });
 
-      const janitorRun = await db.janitorRun.create({
-        data: {
-          janitorConfigId: config.id,
-          janitorType: "UNIT_TESTS",
+      const janitorRun = await db.janitor_runs.create({
+        data: {janitor_config_id: config.id,janitor_type: "UNIT_TESTS",
           triggeredBy: "MANUAL",
           status: "COMPLETED",
         },
       });
 
-      const recommendation = await db.janitorRecommendation.create({
-        data: {
-          janitorRunId: janitorRun.id,
-          workspaceId: workspace.id,
+      const recommendation = await db.janitor_recommendations.create({
+        data: {janitor_run_id: janitorRun.id,workspace_id: workspace.id,
           title: "Add unit tests",
           description: "Need more test coverage",
           priority: "LOW",
@@ -979,7 +893,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
 
       // Verify database updates
-      const updatedRecommendation = await db.janitorRecommendation.findUnique({
+      const updatedRecommendation = await db.janitor_recommendations.findUnique({
         where: { id: recommendation.id },
       });
       expect(updatedRecommendation?.status).toBe("DISMISSED");

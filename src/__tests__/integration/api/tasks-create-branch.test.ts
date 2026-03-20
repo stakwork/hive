@@ -7,23 +7,23 @@ import { generateUniqueSlug } from "@/__tests__/support/helpers/ids";
 
 async function createTestWorkspace(ownerId: string) {
   const slug = generateUniqueSlug("branch-test-ws");
-  return db.workspace.create({
+  return db.workspaces.create({
     data: {
       name: `Branch Test Workspace ${slug}`,
       slug,
       ownerId,
       members: {
-        create: { userId: ownerId, role: "OWNER" },
+        create: {user_id: ownerId, role: "OWNER" },
       },
     },
   });
 }
 
 async function cleanup(workspaceIds: string[], userIds: string[]) {
-  await db.task.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
-  await db.workspaceMember.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
-  await db.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
-  await db.user.deleteMany({ where: { id: { in: userIds } } });
+  await db.tasks.deleteMany({ where: {workspace_id: { in: workspaceIds } } });
+  await db.workspace_members.deleteMany({ where: {workspace_id: { in: workspaceIds } } });
+  await db.workspaces.deleteMany({ where: { id: { in: workspaceIds } } });
+  await db.users.deleteMany({ where: { id: { in: userIds } } });
 }
 
 describe("POST /api/tasks — branch persistence", () => {
@@ -54,7 +54,7 @@ describe("POST /api/tasks — branch persistence", () => {
       expect(body.data).toBeDefined();
       const taskId = body.data.id;
 
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: taskId },
         select: { branch: true },
       });
@@ -86,7 +86,7 @@ describe("POST /api/tasks — branch persistence", () => {
       const body = await response.json();
       const taskId = body.data.id;
 
-      const task = await db.task.findUnique({
+      const task = await db.tasks.findUnique({
         where: { id: taskId },
         select: { branch: true },
       });

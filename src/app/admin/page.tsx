@@ -11,7 +11,7 @@ import { StatsPanel } from "./components/StatsPanel";
 
 export default async function AdminDashboard() {
   // Fetch all workspaces
-  const workspaces = await db.workspace.findMany({
+  const workspaces = await db.workspaces.findMany({
     where: { deleted: false },
     select: {
       id: true,

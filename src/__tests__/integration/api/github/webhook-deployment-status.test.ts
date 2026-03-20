@@ -22,8 +22,7 @@ vi.mock("@octokit/rest", () => ({
 }));
 
 vi.mock("@/lib/githubApp", () => ({
-  getUserAppTokens: vi.fn().mockResolvedValue({
-    accessToken: "test-token",
+  getUserAppTokens: vi.fn().mockResolvedValue({access_token: "test-token",
   }),
 }));
 
@@ -48,7 +47,7 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   beforeEach(async () => {
     await resetDatabase();
     // Explicitly clean up deployment records for test isolation
-    await db.deployment.deleteMany({});
+    await db.deployments.deleteMany({});
     vi.clearAllMocks();
   });
 
@@ -59,8 +58,7 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   const createDeploymentStatusPayload = (
     state: string,
     environment: string,
-    sha: string = COMMIT_SHA,
-    repositoryUrl?: string,
+    sha: string = COMMIT_SHA,repository_url?: string,
   ) => ({
     deployment_status: {
       state,
@@ -85,12 +83,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should process deployment_status webhook with staging success", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -116,20 +111,20 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
-      select: { deploymentStatus: true, deployedToStagingAt: true },
+      select: {deployment_status: true,deployed_to_staging_at: true },
     });
     expect(updatedTask?.deploymentStatus).toBe("staging");
     expect(updatedTask?.deployedToStagingAt).toBeTruthy();
 
-    const deployment = await db.deployment.findFirst({
-      where: { taskId: task.id },
+    const deployment = await db.deployments.findFirst({
+      where: {task_id: task.id },
     });
     expect(deployment).toBeTruthy();
     expect(deployment?.environment).toBe("STAGING");
@@ -141,18 +136,14 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
     expect(pusherServer.trigger).toHaveBeenCalledWith(
       `workspace-${testSetup.workspace.slug}`,
       "deployment-status-change",
-      expect.objectContaining({
-        taskId: task.id,
-        deploymentStatus: "staging",
+      expect.objectContaining({task_id: task.id,deployment_status: "staging",
         environment: "staging",
       })
     );
     expect(pusherServer.trigger).toHaveBeenCalledWith(
       `task-${task.id}`,
       "deployment-status-change",
-      expect.objectContaining({
-        taskId: task.id,
-        deploymentStatus: "staging",
+      expect.objectContaining({task_id: task.id,deployment_status: "staging",
         environment: "staging",
       })
     );
@@ -161,12 +152,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should process deployment_status webhook with production success", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -192,20 +180,20 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
-      select: { deploymentStatus: true, deployedToProductionAt: true },
+      select: {deployment_status: true,deployed_to_production_at: true },
     });
     expect(updatedTask?.deploymentStatus).toBe("production");
     expect(updatedTask?.deployedToProductionAt).toBeTruthy();
 
-    const deployment = await db.deployment.findFirst({
-      where: { taskId: task.id },
+    const deployment = await db.deployments.findFirst({
+      where: {task_id: task.id },
     });
     expect(deployment).toBeTruthy();
     expect(deployment?.environment).toBe("PRODUCTION");
@@ -215,12 +203,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should ignore deployment_status for non-tracked environments", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -246,21 +231,21 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
-      select: { deploymentStatus: true, deployedToStagingAt: true, deployedToProductionAt: true },
+      select: {deployment_status: true,deployed_to_staging_at: true,deployed_to_production_at: true },
     });
     expect(updatedTask?.deploymentStatus).toBeNull();
     expect(updatedTask?.deployedToStagingAt).toBeNull();
     expect(updatedTask?.deployedToProductionAt).toBeNull();
 
-    const deployment = await db.deployment.findFirst({
-      where: { taskId: task.id },
+    const deployment = await db.deployments.findFirst({
+      where: {task_id: task.id },
     });
     expect(deployment).toBeNull();
 
@@ -272,12 +257,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
     
-    const task1 = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task1 = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message1 = await createTestChatMessage({ taskId: task1.id, message: "Test message 1" });
+    const message1 = await createTestChatMessage({task_id: task1.id, message: "Test message 1" });
     await createTestArtifact({
       messageId: message1.id,
       type: "PULL_REQUEST",
@@ -288,12 +270,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       },
     });
 
-    const task2 = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task2 = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message2 = await createTestChatMessage({ taskId: task2.id, message: "Test message 2" });
+    const message2 = await createTestChatMessage({task_id: task2.id, message: "Test message 2" });
     await createTestArtifact({
       messageId: message2.id,
       type: "PULL_REQUEST",
@@ -319,26 +298,25 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const updatedTask1 = await db.task.findUnique({
+    const updatedTask1 = await db.tasks.findUnique({
       where: { id: task1.id },
-      select: { deploymentStatus: true },
+      select: {deployment_status: true },
     });
     expect(updatedTask1?.deploymentStatus).toBe("staging");
 
-    const updatedTask2 = await db.task.findUnique({
+    const updatedTask2 = await db.tasks.findUnique({
       where: { id: task2.id },
-      select: { deploymentStatus: true },
+      select: {deployment_status: true },
     });
     expect(updatedTask2?.deploymentStatus).toBe("staging");
 
-    const deployments = await db.deployment.findMany({
-      where: { 
-        taskId: { in: [task1.id, task2.id] }
+    const deployments = await db.deployments.findMany({
+      where: {task_id: { in: [task1.id, task2.id] }
       },
     });
     expect(deployments).toHaveLength(2);
@@ -350,12 +328,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should handle failed deployments", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -381,22 +356,22 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const deployment = await db.deployment.findFirst({
-      where: { taskId: task.id },
+    const deployment = await db.deployments.findFirst({
+      where: {task_id: task.id },
     });
     expect(deployment).toBeTruthy();
     expect(deployment?.status).toBe("FAILURE");
     expect(deployment?.completedAt).toBeTruthy();
     
     // Task status should NOT be updated for failures
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
-      select: { deploymentStatus: true },
+      select: {deployment_status: true },
     });
     expect(updatedTask?.deploymentStatus).toBeNull();
     
@@ -407,12 +382,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should handle in-progress deployments", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id, 
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -438,13 +410,13 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const deployment = await db.deployment.findFirst({
-      where: { taskId: task.id },
+    const deployment = await db.deployments.findFirst({
+      where: {task_id: task.id },
     });
     expect(deployment).toBeTruthy();
     expect(deployment?.status).toBe("IN_PROGRESS");
@@ -470,12 +442,12 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(202);
     
-    const deployments = await db.deployment.findMany();
+    const deployments = await db.deployments.findMany();
     expect(deployments).toHaveLength(0);
 
     // Verify Pusher was NOT called
@@ -503,7 +475,7 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
+    const response = await POST(request, { params: {workspace_id: testSetup.workspace.id } });
 
     // Assert
     expect(response.status).toBe(401);
@@ -512,12 +484,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should include deployment fields in task query for task list display", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id,
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -543,18 +512,15 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       "deployment_status"
     );
 
-    await POST(stagingRequest, { params: { workspaceId: testSetup.workspace.id } });
+    await POST(stagingRequest, { params: {workspace_id: testSetup.workspace.id } });
 
     // Query task with deployment fields (simulating task list query)
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
       select: {
         id: true,
         title: true,
-        status: true,
-        deploymentStatus: true,
-        deployedToStagingAt: true,
-        deployedToProductionAt: true,
+        status: true,deployment_status: true,deployed_to_staging_at: true,deployed_to_production_at: true,
       },
     });
 
@@ -568,12 +534,9 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   it("should show production badge after production deployment webhook", async () => {
     // Setup
     const testSetup = await createWebhookTestScenario();
-    const task = await createTestTask({ 
-      workspaceId: testSetup.workspace.id,
-      repositoryId: testSetup.repository.id,
-      createdById: testSetup.user.id 
+    const task = await createTestTask({workspace_id: testSetup.workspace.id,repository_id: testSetup.repository.id,created_by_id: testSetup.user.id 
     });
-    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    const message = await createTestChatMessage({task_id: task.id, message: "Test message" });
     await createTestArtifact({
       messageId: message.id,
       type: "PULL_REQUEST",
@@ -597,7 +560,7 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       testSetup.repository.githubWebhookId!,
       "deployment_status"
     );
-    await POST(stagingRequest, { params: { workspaceId: testSetup.workspace.id } });
+    await POST(stagingRequest, { params: {workspace_id: testSetup.workspace.id } });
 
     // Then deploy to production
     const productionPayload = createDeploymentStatusPayload("success", "production");
@@ -612,17 +575,14 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
       testSetup.repository.githubWebhookId!,
       "deployment_status"
     );
-    await POST(productionRequest, { params: { workspaceId: testSetup.workspace.id } });
+    await POST(productionRequest, { params: {workspace_id: testSetup.workspace.id } });
 
     // Query task as task list would
-    const updatedTask = await db.task.findUnique({
+    const updatedTask = await db.tasks.findUnique({
       where: { id: task.id },
       select: {
         id: true,
-        title: true,
-        deploymentStatus: true,
-        deployedToStagingAt: true,
-        deployedToProductionAt: true,
+        title: true,deployment_status: true,deployed_to_staging_at: true,deployed_to_production_at: true,
       },
     });
 

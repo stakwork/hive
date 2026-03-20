@@ -9,8 +9,7 @@ vi.mock("next-auth/next", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    repository: {
+  db: {repositories: {
       findUnique: vi.fn(),
     },
   },
@@ -39,7 +38,7 @@ import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { getServiceConfig } from "@/config/services";
 
 const mockGetServerSession = getServerSession as Mock;
-const mockDbRepositoryFindUnique = db.repository.findUnique as Mock;
+const mockDbRepositoryFindUnique = db.repositories.findUnique as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubWebhookCallbackUrl = getGithubWebhookCallbackUrl as Mock;
 const mockGetServiceConfig = getServiceConfig as Mock;

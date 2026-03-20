@@ -34,7 +34,7 @@ export async function PUT(
     }
 
     // Get current task for comparison and workspace info
-    const currentTask = await db.task.findFirst({
+    const currentTask = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -71,7 +71,7 @@ export async function PUT(
     }
 
     // Update the task title
-    const updatedTask = await db.task.update({
+    const updatedTask = await db.tasks.update({
       where: {
         id: taskId,
         deleted: false,

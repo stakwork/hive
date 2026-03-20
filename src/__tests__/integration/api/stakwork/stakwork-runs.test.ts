@@ -75,7 +75,7 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
   beforeEach(async () => {
     await resetDatabase();
 
-    user = await db.user.create({
+    user = await db.users.create({
       data: {
         id: generateUniqueId("user"),
         email: `owner-${generateUniqueId()}@test.com`,
@@ -83,34 +83,29 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
       },
     });
 
-    workspace = await db.workspace.create({
+    workspace = await db.workspaces.create({
       data: {
         name: `Test WS ${generateUniqueId()}`,
-        slug: generateUniqueSlug("gen-ws"),
-        ownerId: user.id,
+        slug: generateUniqueSlug("gen-ws"),owner_id: user.id,
       },
     });
 
-    await db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" },
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: user.id, role: "OWNER" },
     });
 
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         // Provide required architecture so the guard is the only blocker
         architecture: "Some architecture text",
       },
     });
 
     // Create a default phase so TASK_GENERATION can resolve it
-    await db.phase.create({
+    await db.phases.create({
       data: {
-        name: "Phase 1",
-        featureId: feature.id,
+        name: "Phase 1",feature_id: feature.id,
         order: 0,
       },
     });
@@ -122,14 +117,10 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
 
   it("returns 409 with existingRunId when a PENDING TASK_GENERATION run already exists", async () => {
     // Seed an active run directly in the DB
-    const activeRun = await db.stakworkRun.create({
+    const activeRun = await db.stakwork_runs.create({
       data: {
-        type: StakworkRunType.TASK_GENERATION,
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        status: WorkflowStatus.PENDING,
-        webhookUrl: "http://example.com/webhook",
-        dataType: "string",
+        type: StakworkRunType.TASK_GENERATION,workspace_id: workspace.id,feature_id: feature.id,
+        status: WorkflowStatus.PENDING,webhook_url: "http://example.com/webhook",data_type: "string",
       },
     });
 
@@ -137,10 +128,7 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
       BASE_URL,
       user,
       {
-        type: "TASK_GENERATION",
-        featureId: feature.id,
-        workspaceId: workspace.id,
-        autoAccept: true,
+        type: "TASK_GENERATION",feature_id: feature.id,workspace_id: workspace.id,auto_accept: true,
         params: { skipClarifyingQuestions: true },
       }
     );
@@ -154,15 +142,10 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
   });
 
   it("returns 409 with existingRunId when an IN_PROGRESS TASK_GENERATION run already exists", async () => {
-    const activeRun = await db.stakworkRun.create({
+    const activeRun = await db.stakwork_runs.create({
       data: {
-        type: StakworkRunType.TASK_GENERATION,
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        status: WorkflowStatus.IN_PROGRESS,
-        projectId: 123,
-        webhookUrl: "http://example.com/webhook",
-        dataType: "string",
+        type: StakworkRunType.TASK_GENERATION,workspace_id: workspace.id,feature_id: feature.id,
+        status: WorkflowStatus.IN_PROGRESS,project_id: 123,webhook_url: "http://example.com/webhook",data_type: "string",
       },
     });
 
@@ -170,10 +153,7 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
       BASE_URL,
       user,
       {
-        type: "TASK_GENERATION",
-        featureId: feature.id,
-        workspaceId: workspace.id,
-        autoAccept: true,
+        type: "TASK_GENERATION",feature_id: feature.id,workspace_id: workspace.id,auto_accept: true,
         params: { skipClarifyingQuestions: true },
       }
     );
@@ -187,14 +167,10 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
 
   it("does NOT block a second request once the existing run is COMPLETED", async () => {
     // A completed run should not trigger the guard
-    await db.stakworkRun.create({
+    await db.stakwork_runs.create({
       data: {
-        type: StakworkRunType.TASK_GENERATION,
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        status: WorkflowStatus.COMPLETED,
-        webhookUrl: "http://example.com/webhook",
-        dataType: "string",
+        type: StakworkRunType.TASK_GENERATION,workspace_id: workspace.id,feature_id: feature.id,
+        status: WorkflowStatus.COMPLETED,webhook_url: "http://example.com/webhook",data_type: "string",
       },
     });
 
@@ -202,10 +178,7 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
       BASE_URL,
       user,
       {
-        type: "TASK_GENERATION",
-        featureId: feature.id,
-        workspaceId: workspace.id,
-        autoAccept: true,
+        type: "TASK_GENERATION",feature_id: feature.id,workspace_id: workspace.id,auto_accept: true,
         params: { skipClarifyingQuestions: true },
       }
     );

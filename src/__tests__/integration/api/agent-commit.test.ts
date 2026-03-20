@@ -62,7 +62,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
 
   // Helper to create complete test data with all required relationships
-  async function createTestDataWithCommitCapabilities(options: { podId?: string } = {}) {
+  async function createTestDataWithCommitCapabilities(options: {pod_id?: string } = {}) {
     return await db.$transaction(async (tx) => {
       // Create test user
       const user = await tx.user.create({
@@ -74,19 +74,14 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Create GitHub auth for user
       const githubAuth = await tx.gitHubAuth.create({
-        data: {
-          userId: user.id,
-          githubUserId: "12345",
-          githubUsername: "testuser",
+        data: {user_id: user.id,github_user_id: "12345",github_username: "testuser",
           githubNodeId: "test-node-id",
         },
       });
 
       // Create source control org
       const sourceControlOrg = await tx.sourceControlOrg.create({
-        data: {
-          githubLogin: "test-org",
-          githubInstallationId: 123456,
+        data: {github_login: "test-org",github_installation_id: 123456,
           type: "ORG",
           name: "Test Organization",
         },
@@ -95,9 +90,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       // Create source control token (encrypted)
       const encryptedToken = encryptionService.encryptField("source_control_token", "github_pat_test_token");
       await tx.sourceControlToken.create({
-        data: {
-          userId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+        data: {user_id: user.id,source_control_org_id: sourceControlOrg.id,
           token: JSON.stringify(encryptedToken),
           scopes: ["repo", "write:org"],
         },
@@ -107,9 +100,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
-          sourceControlOrgId: sourceControlOrg.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,source_control_org_id: sourceControlOrg.id,
         },
       });
 
@@ -117,35 +108,22 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const encryptedPoolApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key");
       const swarm = await tx.swarm.create({
         data: {
-          name: `test-swarm-${Date.now()}`,
-          swarmId: `swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-          poolName: "test-pool",
-          poolApiKey: JSON.stringify(encryptedPoolApiKey),
-          swarmApiKey: "test-swarm-api-key",
-          swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
+          name: `test-swarm-${Date.now()}`,swarm_id: `swarm-${Date.now()}`,
+          status: "ACTIVE",instance_type: "XL",workspace_id: workspace.id,pool_state: "COMPLETE",pool_name: "test-pool",pool_api_key: JSON.stringify(encryptedPoolApiKey),swarm_api_key: "test-swarm-api-key",swarm_secret_alias: "{{SWARM_TEST_API_KEY}}",
         },
       });
 
       // Create repositories
       const repository = await tx.repository.create({
         data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
+          name: "test-repo",repository_url: "https://github.com/test-org/test-repo",
           branch: "main",
-          status: "SYNCED",
-          workspaceId: workspace.id,
+          status: "SYNCED",workspace_id: workspace.id,
         },
       });
       const feature = await tx.feature.create({
         data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
+          title: "Test Feature",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
         },
       });
 
@@ -154,9 +132,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       if (options.podId) {
         const encryptedPassword = encryptionService.encryptField("password", "test-password");
         pod = await tx.pod.create({
-          data: {
-            podId: options.podId,
-            swarmId: swarm.id,
+          data: {pod_id: options.podId,swarm_id: swarm.id,
             password: JSON.stringify(encryptedPassword),
             portMappings: [3000, 3010, 15551, 15552],
             status: "RUNNING",
@@ -167,16 +143,11 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Create test task with optional podId
       const task = await tx.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Task 2",
-          featureId: feature.id,
+        data: {workspace_id: workspace.id,
+          title: "Task 2",feature_id: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: options.podId,
+          order: 1,created_by_id: user.id,updated_by_id: user.id,pod_id: options.podId,
         },
       });
 
@@ -201,9 +172,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
     test("should return 401 when user not authenticated", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: "test-workspace-id",
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: "test-workspace-id",task_id: "test-task-id",
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -217,9 +186,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         user: { email: "test@example.com", name: "Test User" },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: "test-workspace-id",
-        taskId: "test-task-id",
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: "test-workspace-id",task_id: "test-task-id",
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -237,9 +204,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -249,11 +214,10 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 400 when workspaceId is missing", async () => {
-      const { user, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -263,11 +227,10 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 400 when taskId is missing", async () => {
-      const { user, workspace } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -277,12 +240,10 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 400 when commitMessage is missing", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         branchName: "feature/test",
       });
 
@@ -291,12 +252,10 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 400 when branchName is missing", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
       });
 
@@ -308,13 +267,11 @@ describe("POST /api/agent/commit Integration Tests", () => {
   describe("Authorization Tests", () => {
     test("should return 404 when workspace not found", async () => {
       // Create a task with podId so we can test workspace not found
-      const { task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: "non-existent-workspace-id",
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: "non-existent-workspace-id",task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -324,14 +281,12 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 403 when user is not workspace owner or member", async () => {
-      const { workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -341,15 +296,13 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should allow workspace owner to commit", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Set mock mode to bypass pod communication
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -365,14 +318,12 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should allow workspace member to commit", async () => {
-      const { workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       const memberUser = await createTestUser({ name: "Member User" });
 
       // Add user as workspace member
-      await db.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+      await db.workspace_members.create({
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -382,9 +333,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       // Set mock mode to bypass pod communication
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -403,33 +352,26 @@ describe("POST /api/agent/commit Integration Tests", () => {
   describe("Configuration Tests", () => {
     test("should return 404 when workspace has no swarm", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       // Create task with podId in workspace without swarm
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: "test-pod-id",
+          order: 1,created_by_id: user.id,updated_by_id: user.id,pod_id: "test-pod-id",
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -442,37 +384,28 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
     test("should return 400 when workspace has no source control org", async () => {
       const user = await createTestUser();
-      const workspace = await db.workspace.create({
+      const workspace = await db.workspaces.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
       const encryptedPoolApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key");
-      await db.swarm.create({
+      await db.swarms.create({
         data: {
           name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-          poolApiKey: JSON.stringify(encryptedPoolApiKey),
+          status: "ACTIVE",instance_type: "XL",workspace_id: workspace.id,pool_state: "COMPLETE",pool_api_key: JSON.stringify(encryptedPoolApiKey),
         },
       });
 
       // Create task with podId
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
+      const task = await db.tasks.create({
+        data: {workspace_id: workspace.id,
           title: "Test Task",
           status: "TODO",
           priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: "test-pod-id",
+          order: 1,created_by_id: user.id,updated_by_id: user.id,pod_id: "test-pod-id",
         },
       });
 
@@ -480,15 +413,12 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -500,13 +430,12 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("GitHub Authentication Tests", () => {
     test("should return 401 when GitHub access token not found", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
@@ -515,9 +444,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getUserAppTokens } = await import("@/lib/githubApp");
       vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -530,30 +457,26 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 401 when GitHub username not found", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
 
       // Remove GitHub auth
-      await db.gitHubAuth.deleteMany({ where: { userId: user.id } });
+      await db.github_auth.deleteMany({ where: {user_id: user.id } });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens to return token
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -568,23 +491,20 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Pod Communication Tests", () => {
     test("should successfully commit and push to pod control port", async () => {
-      const { user, workspace, repository, task } = await createTestDataWithCommitCapabilities({
-        podId: "test-pod-id",
+      const { user, workspace, repository, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id",
       });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Mock successful push response with prs
@@ -597,9 +517,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         }),
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit message",
         branchName: "feature/test-branch",
       });
@@ -630,21 +548,19 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should handle commit failure from pod", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Mock failed push response (push includes commit now)
@@ -654,9 +570,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         text: async () => "Internal pod error",
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -670,21 +584,19 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test.skip("should handle push failure from pod", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Mock successful commit but failed push
@@ -699,9 +611,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
           text: async () => "Push rejected",
         } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -715,20 +625,17 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should return 500 when control port not found in pod mappings", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails with missing control port
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [], // Empty port mappings
       } as any);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -743,16 +650,14 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("PR URL Generation Tests", () => {
     test("should generate correct PR URLs for multiple repositories", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
 
       // Add additional repositories
-      await db.repository.create({
+      await db.repositories.create({
         data: {
-          name: "test-repo-2",
-          repositoryUrl: "https://github.com/test-org/test-repo-2",
+          name: "test-repo-2",repository_url: "https://github.com/test-org/test-repo-2",
           branch: "main",
-          status: "SYNCED",
-          workspaceId: workspace.id,
+          status: "SYNCED",workspace_id: workspace.id,
         },
       });
 
@@ -760,16 +665,14 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Mock successful push with multiple PRs
@@ -784,9 +687,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         }),
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/multi-repo",
       });
@@ -800,31 +701,29 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should handle repository URLs with .git suffix", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
 
       // Update repository URL with .git suffix
-      const repository = await db.repository.findFirst({
-        where: { workspaceId: workspace.id },
+      const repository = await db.repositories.findFirst({
+        where: {workspace_id: workspace.id },
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository!.id },
-        data: { repositoryUrl: "https://github.com/test-org/test-repo.git" },
+        data: {repository_url: "https://github.com/test-org/test-repo.git" },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock dependencies
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       mockFetch.mockResolvedValueOnce({
@@ -835,9 +734,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         }),
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -852,16 +749,14 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Error Handling Tests", () => {
     test("should handle getPodDetails failure", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodDetails to throw error
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -874,28 +769,24 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should handle network errors during commit", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock dependencies
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "test-password",
         portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_test_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_test_token",
       });
 
       // Mock network error
       mockFetch.mockRejectedValue(new Error("Network error: ECONNREFUSED"));
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -908,7 +799,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
     });
 
     test("should handle decryption errors gracefully", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock decryptField to throw error
@@ -917,9 +808,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         throw new Error("Decryption failed");
       });
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -934,15 +823,13 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Mock Mode Tests", () => {
     test("should bypass pod communication in mock mode", async () => {
-      const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Set mock mode
       process.env.MOCK_BROWSER_URL = "http://mock.dev";
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "Test commit",
         branchName: "feature/test",
       });
@@ -963,22 +850,19 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Integration Tests", () => {
     test("should complete full commit workflow with all validations", async () => {
-      const { user, workspace, repository, githubAuth, task } = await createTestDataWithCommitCapabilities({
-        podId: "test-pod-id",
+      const { user, workspace, repository, githubAuth, task } = await createTestDataWithCommitCapabilities({pod_id: "test-pod-id",
       });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock all dependencies
       const { getPodDetails } = await import("@/lib/pods");
-      vi.mocked(getPodDetails).mockResolvedValue({
-        podId: "test-pod-id",
+      vi.mocked(getPodDetails).mockResolvedValue({pod_id: "test-pod-id",
         password: "secure-password",
         portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: "github_pat_valid_token",
+      vi.mocked(getUserAppTokens).mockResolvedValue({access_token: "github_pat_valid_token",
         refreshToken: "refresh_token",
       });
 
@@ -992,9 +876,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         }),
       } as Response);
 
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
+      const request = createPostRequest("http://localhost:3000/api/agent/commit", {workspace_id: workspace.id,task_id: task.id,
         commitMessage: "feat: add integration test coverage",
         branchName: "feature/integration-tests",
       });

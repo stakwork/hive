@@ -41,15 +41,12 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
     test("updates lastAccessedAt for existing member", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
       
       // Create member with initial lastAccessedAt set to 1 hour ago
       const initialTime = new Date(Date.now() - 60 * 60 * 1000);
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: member.id,
-        role: "DEVELOPER",
-        lastAccessedAt: initialTime,
+      await createTestMembership({workspace_id: workspace.id,user_id: member.id,
+        role: "DEVELOPER",last_accessed_at: initialTime,
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
@@ -66,10 +63,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       expect(response.status).toBe(204);
 
       // Verify lastAccessedAt was updated
-      const updatedMember = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      const updatedMember = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: member.id,
         },
       });
 
@@ -82,13 +77,11 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
     test("creates WorkspaceMember record for owner with lastAccessedAt", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Verify no member record exists for owner initially
-      const initialRecord = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: owner.id,
+      const initialRecord = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: owner.id,
         },
       });
       expect(initialRecord).toBeNull();
@@ -107,10 +100,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       expect(response.status).toBe(204);
 
       // Verify WorkspaceMember record was created for owner
-      const ownerMember = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: owner.id,
+      const ownerMember = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: owner.id,
         },
       });
 
@@ -123,27 +114,21 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
     test("creates WorkspaceMember record with VIEWER role for non-owner member", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
       
       // Create member record without lastAccessedAt
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: member.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: member.id,
         role: "DEVELOPER",
       });
 
       // Delete the record to test creation
-      await db.workspaceMember.deleteMany({
-        where: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: workspace.id,user_id: member.id,
         },
       });
 
       // Re-add the member but through the access endpoint
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: member.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: member.id,
         role: "DEVELOPER",
       });
 
@@ -160,10 +145,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
       expect(response.status).toBe(204);
 
-      const memberRecord = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      const memberRecord = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: member.id,
         },
       });
 
@@ -193,12 +176,12 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
     test("returns 404 for soft-deleted workspace", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Soft-delete the workspace
-      await db.workspace.update({
+      await db.workspaces.update({
         where: { id: workspace.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
@@ -220,7 +203,7 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
     test("returns 403 for user without access", async () => {
       const owner = await createTestUser();
       const nonMember = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(
         createAuthenticatedSession(nonMember)
@@ -243,14 +226,11 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
     test("returns 403 for member who has left the workspace", async () => {
       const owner = await createTestUser();
       const formerMember = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Create member who has left
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: formerMember.id,
-        role: "DEVELOPER",
-        leftAt: new Date(),
+      await createTestMembership({workspace_id: workspace.id,user_id: formerMember.id,
+        role: "DEVELOPER",left_at: new Date(),
       });
 
       getMockedSession().mockResolvedValue(
@@ -273,7 +253,7 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
     test("rejects unauthenticated requests", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
@@ -291,7 +271,7 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
     test("updates lastAccessedAt multiple times correctly", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -305,10 +285,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       });
       expect(response1.status).toBe(204);
 
-      const firstAccess = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: owner.id,
+      const firstAccess = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: owner.id,
         },
       });
       expect(firstAccess).toBeDefined();
@@ -327,10 +305,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       });
       expect(response2.status).toBe(204);
 
-      const secondAccess = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: owner.id,
+      const secondAccess = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: owner.id,
         },
       });
       expect(secondAccess).toBeDefined();
@@ -341,7 +317,7 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
 
     test("handles concurrent access updates correctly", async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -365,10 +341,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       });
 
       // Should still have only one member record
-      const memberRecords = await db.workspaceMember.findMany({
-        where: {
-          workspaceId: workspace.id,
-          userId: owner.id,
+      const memberRecords = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id,user_id: owner.id,
         },
       });
 
@@ -379,12 +353,10 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
     test("preserves existing role when updating lastAccessedAt", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      const workspace = await createTestWorkspace({owner_id: owner.id });
 
       // Create member with specific role
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: member.id,
+      await createTestMembership({workspace_id: workspace.id,user_id: member.id,
         role: "ADMIN",
       });
 
@@ -402,10 +374,8 @@ describe.skip("Workspace Access API - Integration Tests (DISABLED - See comment 
       expect(response.status).toBe(204);
 
       // Verify role was preserved
-      const updatedMember = await db.workspaceMember.findFirst({
-        where: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      const updatedMember = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: member.id,
         },
       });
 

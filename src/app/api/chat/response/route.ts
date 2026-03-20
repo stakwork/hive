@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     let taskMode: string | undefined;
     let task: { id: string; workspaceId: string; mode: string; assigneeId: string | null; createdById: string; title: string } | null = null;
     if (taskId) {
-      task = await db.task.findFirst({
+      task = await db.tasks.findFirst({
         where: {
           id: taskId,
           deleted: false,
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       taskMode = task.mode;
     }
 
-    const chatMessage = await db.chatMessage.create({
+    const chatMessage = await db.chat_messages.create({
       data: {
         taskId,
         featureId: featureId || undefined,
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
             if (!originalWorkflowJson && taskId && taskMode === "workflow_editor") {
               // Look for WORKFLOW artifacts in this task's history
-              const previousWorkflowArtifacts = await db.artifact.findMany({
+              const previousWorkflowArtifacts = await db.artifacts.findMany({
                 where: {
                   type: ArtifactType.WORKFLOW,
                   message: {
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
                   ...(taskMode === "workflow_editor" && originalWorkflowJson ? { originalWorkflowJson } : {}),
                 };
 
-                await db.artifact.update({
+                await db.artifacts.update({
                   where: { id: dbArtifact.id },
                   data: {
                     content: updatedContent as unknown as Prisma.InputJsonValue,
@@ -267,7 +267,7 @@ export async function POST(request: NextRequest) {
               if (parsed.architecture) updateData.architecture = parsed.architecture;
 
               if (Object.keys(updateData).length > 0) {
-                await db.feature.update({
+                await db.features.update({
                   where: { id: featureId },
                   data: updateData,
                 });
@@ -275,25 +275,25 @@ export async function POST(request: NextRequest) {
 
               // Store user stories as a single UserStory record with all markdown content
               if (parsed.userStories) {
-                const existingStory = await db.userStory.findFirst({
+                const existingStory = await db.user_stories.findFirst({
                   where: { featureId },
                   orderBy: { order: "asc" },
                 });
 
                 if (existingStory) {
-                  await db.userStory.update({
+                  await db.user_stories.update({
                     where: { id: existingStory.id },
                     data: { title: parsed.userStories },
                   });
                 } else {
                   // Get workspace owner for audit fields
-                  const feature = await db.feature.findUnique({
+                  const feature = await db.features.findUnique({
                     where: { id: featureId },
                     select: { workspace: { select: { ownerId: true } } },
                   });
                   const ownerId = feature?.workspace?.ownerId;
                   if (ownerId) {
-                    await db.userStory.create({
+                    await db.user_stories.create({
                       data: {
                         title: parsed.userStories,
                         featureId,
@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
       for (const dataUrl of screenshots) {
         try {
           const { s3Key, buffer, hash } = await processScreenshotUpload(dataUrl, task.workspaceId);
-          const attachment = await db.attachment.create({
+          const attachment = await db.attachments.create({
             data: {
               messageId: chatMessage.id,
               path: s3Key,
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
       for (const url of recordings) {
         try {
           const { s3Key, buffer, hash } = await processRecordingUpload(url, task.workspaceId);
-          const attachment = await db.attachment.create({
+          const attachment = await db.attachments.create({
             data: {
               messageId: chatMessage.id,
               path: s3Key,
@@ -402,7 +402,7 @@ export async function POST(request: NextRequest) {
               updateData.agentPassword = JSON.stringify(encrypted);
             }
 
-            const updatedTask = await db.task.update({
+            const updatedTask = await db.tasks.update({
               where: { id: taskId },
               data: updateData,
               include: {
@@ -419,7 +419,7 @@ export async function POST(request: NextRequest) {
             // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
             if (podId) {
               try {
-                await db.pod.updateMany({
+                await db.pods.updateMany({
                   where: { podId, deletedAt: null },
                   data: {
                     usageStatus: PodUsageStatus.USED,
@@ -479,7 +479,7 @@ export async function POST(request: NextRequest) {
 
     if (featureId) {
       try {
-        await db.feature.update({
+        await db.features.update({
           where: { id: featureId },
           data: {
             workflowStatus: WorkflowStatus.COMPLETED,
@@ -503,13 +503,13 @@ export async function POST(request: NextRequest) {
 
       // Fire plan-page notifications based on artifact types (fire-and-forget)
       try {
-        const feature = await db.feature.findUnique({
+        const feature = await db.features.findUnique({
           where: { id: featureId },
           select: { createdById: true, workspaceId: true, title: true, workspace: { select: { slug: true } } },
         });
         if (feature) {
           const planUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${featureId}`;
-          const targetUser = await db.user.findUnique({
+          const targetUser = await db.users.findUnique({
             where: { id: feature.createdById },
             select: { sphinxAlias: true, name: true },
           });
@@ -565,11 +565,11 @@ export async function POST(request: NextRequest) {
       if (!hasPlanArtifact) {
         try {
           const targetUserId = task.assigneeId ?? task.createdById;
-          const workspace = await db.workspace.findUnique({
+          const workspace = await db.workspaces.findUnique({
             where: { id: task.workspaceId },
             select: { slug: true },
           });
-          const targetUser = await db.user.findUnique({
+          const targetUser = await db.users.findUnique({
             where: { id: targetUserId },
             select: { sphinxAlias: true, name: true },
           });

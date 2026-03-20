@@ -13,22 +13,18 @@ import {
 
 // Mock all external dependencies - must be called before imports
 vi.mock("@/lib/db", () => ({
-  db: {
-    chatMessage: {
+  db: {chat_messages: {
       create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
-    },
-    user: {
+    },users: {
       findUnique: vi.fn(),
-    },
-    task: {
+    },tasks: {
       create: vi.fn(),
       update: vi.fn(),
       findFirst: vi.fn(),
       findUnique: vi.fn(),
-    },
-    workspace: {
+    },workspaces: {
       findUnique: vi.fn(),
     },
   },
@@ -93,7 +89,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
     });
 
     // Setup user mock
-    mockDb.user.findUnique = vi.fn().mockResolvedValue(createMockUser());
+    mockDb.users.findUnique = vi.fn().mockResolvedValue(createMockUser());
   });
 
   afterEach(() => {
@@ -113,12 +109,12 @@ describe("createChatMessageAndTriggerStakwork", () => {
         status: "SENT",
       });
 
-      mockDb.task.findUnique = vi.fn()
+      mockDb.tasks.findUnique = vi.fn()
         .mockResolvedValueOnce(task) // For fetching task
         .mockResolvedValueOnce({ status: TaskStatus.TODO }); // For status check before update
       
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(chatMessage);
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(chatMessage);
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
@@ -147,7 +143,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
         }),
       });
       
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           taskId: task.id,
           message,
@@ -157,7 +153,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
         include: expect.any(Object),
       });
 
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: task.id },
           data: expect.objectContaining({
@@ -178,8 +174,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
         { type: "function", name: "login" },
       ];
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -199,7 +195,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert
-      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+      expect(mockDb.chat_messages.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           contextTags: JSON.stringify(contextTags),
         }),
@@ -211,7 +207,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
   describe("Task Not Found", () => {
     it("should throw error when task is not found", async () => {
       // Arrange
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(null);
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(null);
 
       // Act & Assert
       await expect(
@@ -229,9 +225,9 @@ describe("createChatMessageAndTriggerStakwork", () => {
     it("should throw error when user is not found", async () => {
       // Arrange
       const task = createMockTask();
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.user.findUnique = vi.fn().mockResolvedValue(null);
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.users.findUnique = vi.fn().mockResolvedValue(null);
 
       // Act & Assert
       await expect(
@@ -250,8 +246,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -282,8 +278,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -324,8 +320,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -338,8 +334,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Act - Test each mode
       for (const mode of ["live", "unit", "integration"] as const) {
         vi.clearAllMocks();
-        mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-        mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+        mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+        mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
         
         await createChatMessageAndTriggerStakwork({
           taskId: task.id,
@@ -368,11 +364,11 @@ describe("createChatMessageAndTriggerStakwork", () => {
       const task = createMockTask();
       const stakworkProjectId = 12345;
 
-      mockDb.task.findUnique = vi.fn()
+      mockDb.tasks.findUnique = vi.fn()
         .mockResolvedValueOnce(task)
         .mockResolvedValueOnce({ status: TaskStatus.TODO });
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -391,7 +387,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: task.id },
           data: expect.objectContaining({
@@ -408,9 +404,9 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -429,18 +425,18 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert — no workflowStatus update should occur
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     it("should not set task status to IN_PROGRESS when task is already IN_PROGRESS", async () => {
       // Arrange — Stakwork returns a project_id, but task is already IN_PROGRESS
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn()
+      mockDb.tasks.findUnique = vi.fn()
         .mockResolvedValueOnce(task)                                       // first: fetch task
         .mockResolvedValueOnce({ status: TaskStatus.IN_PROGRESS });        // second: status check
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -459,7 +455,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert — workflowStatus updated (project_id present) but task.status not included
-      expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect(mockDb.tasks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: task.id },
           data: expect.objectContaining({
@@ -468,7 +464,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           }),
         })
       );
-      const updateCall = mockDb.task.update.mock.calls[0];
+      const updateCall = mockDb.tasks.update.mock.calls[0];
       expect(updateCall[0].data.status).toBeUndefined();
     });
   });
@@ -478,9 +474,9 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -499,16 +495,16 @@ describe("createChatMessageAndTriggerStakwork", () => {
       expect(result.stakworkData).toEqual({
         error: "Error: Network error",
       });
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     it("should handle Stakwork API HTTP errors — leave workflowStatus unchanged", async () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -528,16 +524,16 @@ describe("createChatMessageAndTriggerStakwork", () => {
 
       // Assert — non-2xx returns error with no projectId, so no status update
       expect(result.stakworkData).toEqual({ error: "Bad Request" });
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
 
     it("should leave workflowStatus unchanged when Stakwork returns success: true but no project_id", async () => {
       // Arrange
       const task = createMockTask();
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
-      mockDb.task.update = vi.fn().mockResolvedValue({});
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.update = vi.fn().mockResolvedValue({});
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",
@@ -556,7 +552,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert — no project_id in response means no status update
-      expect(mockDb.task.update).not.toHaveBeenCalled();
+      expect(mockDb.tasks.update).not.toHaveBeenCalled();
     });
   });
 
@@ -570,8 +566,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
         requirements: "Implement Stripe checkout",
       };
 
-      mockDb.task.findUnique = vi.fn().mockResolvedValue(task);
-      mockDb.chatMessage.create = vi.fn().mockResolvedValue(createMockChatMessage());
+      mockDb.tasks.findUnique = vi.fn().mockResolvedValue(task);
+      mockDb.chat_messages.create = vi.fn().mockResolvedValue(createMockChatMessage());
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         pat: "github_pat_test123",

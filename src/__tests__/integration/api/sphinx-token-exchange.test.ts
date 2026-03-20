@@ -20,7 +20,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     vi.clearAllMocks();
     
     // Clean up any existing test data
-    await db.account.deleteMany({ where: { provider: "sphinx" } });
+    await db.accounts.deleteMany({ where: { provider: "sphinx" } });
     
     // Create test user for each test
     const user = await createTestUser();
@@ -33,8 +33,8 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
   afterEach(async () => {
     // Clean up test user after each test
     if (testUserId) {
-      await db.account.deleteMany({ where: { userId: testUserId } });
-      await db.user.delete({ where: { id: testUserId } }).catch(() => {
+      await db.accounts.deleteMany({ where: {user_id: testUserId } });
+      await db.users.delete({ where: { id: testUserId } }).catch(() => {
         // User may not exist for some tests, ignore errors
       });
     }
@@ -48,9 +48,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       const result = await invokeRoute(POST, {
@@ -144,9 +144,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       // Mock successful signature verification
@@ -210,9 +210,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       const result = await invokeRoute(POST, {
@@ -239,9 +239,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         otherPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: otherUser.id },
-        data: { lightningPubkey: JSON.stringify(otherEncryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(otherEncryptedPubkey) },
       });
 
       // Link testUser with testPubkey
@@ -250,9 +250,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       const result = await invokeRoute(POST, {
@@ -282,9 +282,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
       const userWithoutPubkey = await createTestUser();
 
       // Ensure no pubkey set
-      await db.user.update({
+      await db.users.update({
         where: { id: userWithoutPubkey.id },
-        data: { lightningPubkey: null },
+        data: {lightning_pubkey: null },
       });
 
       // Link testUser with testPubkey
@@ -293,9 +293,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
 
       const result = await invokeRoute(POST, {
@@ -322,9 +322,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
     it("should handle invalid encrypted pubkey gracefully", async () => {
       // Set invalid encrypted data (not valid JSON)
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: "invalid-encrypted-data" },
+        data: {lightning_pubkey: "invalid-encrypted-data" },
       });
 
       const result = await invokeRoute(POST, {
@@ -351,9 +351,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
     });
 
@@ -375,7 +375,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should return JWT that can be decoded by NextAuth", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -403,7 +403,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
     });
 
     it("should include user email and name in JWT", async () => {
-      const user = await db.user.findUnique({ where: { id: testUserId } });
+      const user = await db.users.findUnique({ where: { id: testUserId } });
 
       const result = await invokeRoute(POST, {
         method: "POST",
@@ -428,7 +428,7 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
     it("should handle user with null email and name", async () => {
       // Update user to have null email and name
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
         data: { email: null, name: null },
       });
@@ -479,9 +479,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
     it("should handle encryption service errors gracefully", async () => {
       // Set malformed encrypted data
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: '{"invalid": "json"}' },
+        data: {lightning_pubkey: '{"invalid": "json"}' },
       });
 
       const result = await invokeRoute(POST, {
@@ -508,9 +508,9 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
         testPubkey
       );
 
-      await db.user.update({
+      await db.users.update({
         where: { id: testUserId },
-        data: { lightningPubkey: JSON.stringify(encryptedPubkey) },
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey) },
       });
     });
 

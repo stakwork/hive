@@ -11,7 +11,7 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
     throw new Error("Phase not found or access denied");
   }
 
-  const phaseWithTasks = await db.phase.findUnique({
+  const phaseWithTasks = await db.phases.findUnique({
     where: { id: phaseId },
     select: {
       id: true,
@@ -135,7 +135,7 @@ export async function createPhase(featureId: string, userId: string, data: Creat
 
   const nextOrder = await calculateNextOrder(db.phase, { featureId });
 
-  const phase = await db.phase.create({
+  const phase = await db.phases.create({
     data: {
       name: data.name.trim(),
       description: data.description?.trim() || null,
@@ -193,7 +193,7 @@ export async function updatePhase(phaseId: string, userId: string, data: UpdateP
     updateData.order = data.order;
   }
 
-  const updatedPhase = await db.phase.update({
+  const updatedPhase = await db.phases.update({
     where: { id: phaseId },
     data: updateData,
     select: {
@@ -223,7 +223,7 @@ export async function deletePhase(phaseId: string, userId: string): Promise<void
     throw new Error("Phase not found or access denied");
   }
 
-  await db.phase.update({
+  await db.phases.update({
     where: { id: phaseId },
     data: {
       deleted: true,
@@ -251,7 +251,7 @@ export async function reorderPhases(
 
   await db.$transaction(
     phases.map((phase) =>
-      db.phase.update({
+      db.phases.update({
         where: {
           id: phase.id,
           featureId: featureId,
@@ -261,7 +261,7 @@ export async function reorderPhases(
     ),
   );
 
-  const updatedPhases = await db.phase.findMany({
+  const updatedPhases = await db.phases.findMany({
     where: { featureId, deleted: false },
     select: {
       id: true,

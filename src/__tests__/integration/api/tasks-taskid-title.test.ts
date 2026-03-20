@@ -42,8 +42,7 @@ async function createTaskTestSetup() {
     const workspace = await tx.workspace.create({
       data: {
         name: "Test Task Workspace",
-        slug: `task-workspace-${generateUniqueId()}`,
-        ownerId: owner.id,
+        slug: `task-workspace-${generateUniqueId()}`,owner_id: owner.id,
       },
     });
 
@@ -52,12 +51,8 @@ async function createTaskTestSetup() {
       data: {
         id: generateUniqueId("task"),
         title: "Original Task Title",
-        description: "Test task description",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        status: TaskStatus.IN_PROGRESS,
-        workflowStatus: WorkflowStatus.PENDING,
+        description: "Test task description",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
+        status: TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.PENDING,
         priority: "MEDIUM",
         deleted: false,
       },
@@ -71,23 +66,19 @@ async function createTaskTestSetup() {
 
 // Helper to create test task with options
 async function createTestTask(
-  workspaceId: string,
-  ownerId: string,
+workspace_id: string,owner_id: string,
   options?: {
     title?: string;
     deleted?: boolean;
   }
 ) {
-  return await db.task.create({
+  return await db.tasks.create({
     data: {
       id: generateUniqueId("task"),
       title: options?.title || "Test Task",
       description: "Test description",
-      workspaceId,
-      createdById: ownerId,
-      updatedById: ownerId,
-      status: TaskStatus.TODO,
-      workflowStatus: WorkflowStatus.PENDING,
+      workspaceId,created_by_id: ownerId,updated_by_id: ownerId,
+      status: TaskStatus.TODO,workflow_status: WorkflowStatus.PENDING,
       deleted: options?.deleted || false,
     },
   });
@@ -132,7 +123,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response);
@@ -148,7 +139,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectUnauthorized(response);
@@ -164,7 +155,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 200);
@@ -180,7 +171,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: "non-existent-task" }),
+        params: Promise.resolve({task_id: "non-existent-task" }),
       });
 
       await expectNotFound(response);
@@ -202,7 +193,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: deletedTask.id }),
+        params: Promise.resolve({task_id: deletedTask.id }),
       });
 
       await expectNotFound(response);
@@ -220,7 +211,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should succeed without workspace membership checks
@@ -245,7 +236,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectError(response, "Title is required", 400);
@@ -261,7 +252,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Empty string fails the !title check
@@ -278,7 +269,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Route trims whitespace, resulting in empty title
@@ -298,7 +289,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -317,7 +308,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -338,15 +329,15 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       await expectSuccess(response, 200);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
-        select: { title: true, updatedAt: true },
+        select: { title: true,updated_at: true },
       });
 
       expect(updatedTask).toBeDefined();
@@ -366,7 +357,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -398,18 +389,17 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify other fields unchanged
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: {
           title: true,
           description: true,
           status: true,
-          priority: true,
-          workflowStatus: true,
+          priority: true,workflow_status: true,
         },
       });
 
@@ -434,12 +424,12 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
-        select: { updatedAt: true },
+        select: {updated_at: true },
       });
 
       expect(updatedTask!.updatedAt.getTime()).toBeGreaterThan(
@@ -461,15 +451,14 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify task channel broadcast
       expect(mockPusherTrigger).toHaveBeenCalledWith(
         `task-${task.id}`,
         "TASK_TITLE_UPDATE",
-        expect.objectContaining({
-          taskId: task.id,
+        expect.objectContaining({task_id: task.id,
           newTitle: newTitle,
         }),
       );
@@ -487,15 +476,14 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify workspace channel broadcast
       expect(mockPusherTrigger).toHaveBeenCalledWith(
         `workspace-${workspace.slug}`,
         "WORKSPACE_TASK_TITLE_UPDATE",
-        expect.objectContaining({
-          taskId: task.id,
+        expect.objectContaining({task_id: task.id,
           newTitle: newTitle,
         }),
       );
@@ -513,7 +501,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify both channels received broadcasts
@@ -542,15 +530,14 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Verify workspace channel includes previous title
       expect(mockPusherTrigger).toHaveBeenCalledWith(
         `workspace-${workspace.slug}`,
         "WORKSPACE_TASK_TITLE_UPDATE",
-        expect.objectContaining({
-          taskId: task.id,
+        expect.objectContaining({task_id: task.id,
           newTitle: newTitle,
           previousTitle: originalTitle,
         }),
@@ -570,14 +557,14 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should still succeed even if Pusher fails
       await expectSuccess(response, 200);
 
       // Verify database update occurred despite Pusher error
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: { title: true },
       });
@@ -590,9 +577,9 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
     test("returns 500 for database errors", async () => {
       const { task } = await createTaskTestSetup();
 
-      // Force database error by mocking db.task.update
-      const originalUpdate = db.task.update;
-      db.task.update = vi
+      // Force database error by mocking db.tasks.update
+      const originalUpdate = db.tasks.update;
+      db.tasks.update = vi
         .fn()
         .mockRejectedValue(new Error("Database connection error"));
 
@@ -603,11 +590,11 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Restore original function
-      db.task.update = originalUpdate;
+      db.tasks.update = originalUpdate;
 
       await expectError(response, "Failed to update task title", 500);
     });
@@ -622,7 +609,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -646,7 +633,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: "invalid-id" }),
+        params: Promise.resolve({task_id: "invalid-id" }),
       });
 
       expect(response.status).toBe(404);
@@ -676,8 +663,8 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const [response1, response2] = await Promise.all([
-        PUT(request1, { params: Promise.resolve({ taskId: task.id }) }),
-        PUT(request2, { params: Promise.resolve({ taskId: task.id }) }),
+        PUT(request1, { params: Promise.resolve({task_id: task.id }) }),
+        PUT(request2, { params: Promise.resolve({task_id: task.id }) }),
       ]);
 
       // Both requests should succeed
@@ -685,7 +672,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       await expectSuccess(response2, 200);
 
       // Final title should be one of the two updates
-      const finalTask = await db.task.findUnique({
+      const finalTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: { title: true },
       });
@@ -707,7 +694,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -717,7 +704,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       expect(data.data.title.length).toBe(1000);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: { title: true },
       });
@@ -737,7 +724,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const data = await expectSuccess(response, 200);
@@ -756,7 +743,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       const afterUpdate = Date.now();
@@ -789,14 +776,14 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
         );
 
         const response = await PUT(request, {
-          params: Promise.resolve({ taskId: task.id }),
+          params: Promise.resolve({task_id: task.id }),
         });
 
         await expectSuccess(response, 200);
       }
 
       // Verify final title is last update
-      const finalTask = await db.task.findUnique({
+      const finalTask = await db.tasks.findUnique({
         where: { id: task.id },
         select: { title: true },
       });
@@ -821,7 +808,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should succeed with only token, no session
@@ -840,7 +827,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response = await PUT(request, {
-        params: Promise.resolve({ taskId: task.id }),
+        params: Promise.resolve({task_id: task.id }),
       });
 
       // Should succeed without workspace membership validation
@@ -869,7 +856,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response1 = await PUT(request1, {
-        params: Promise.resolve({ taskId: activeTask.id }),
+        params: Promise.resolve({task_id: activeTask.id }),
       });
 
       await expectSuccess(response1, 200);
@@ -882,7 +869,7 @@ describe("PUT /api/tasks/[taskId]/title - Integration Tests", () => {
       );
 
       const response2 = await PUT(request2, {
-        params: Promise.resolve({ taskId: deletedTask.id }),
+        params: Promise.resolve({task_id: deletedTask.id }),
       });
 
       await expectNotFound(response2);

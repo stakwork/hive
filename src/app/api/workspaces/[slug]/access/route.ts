@@ -17,7 +17,7 @@ export async function POST(
 
   try {
     // Find the workspace
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -37,7 +37,7 @@ export async function POST(
 
     // Check if user is owner or member
     const isOwner = workspace.ownerId === userId;
-    const isMember = !isOwner && await db.workspaceMember.findFirst({
+    const isMember = !isOwner && await db.workspace_members.findFirst({
       where: {
         workspaceId: workspace.id,
         userId,
@@ -53,7 +53,7 @@ export async function POST(
     }
 
     // Update or create WorkspaceMember record with lastAccessedAt timestamp
-    await db.workspaceMember.upsert({
+    await db.workspace_members.upsert({
       where: {
         workspaceId_userId: {
           workspaceId: workspace.id,

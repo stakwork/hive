@@ -9,14 +9,14 @@ describe("Seed Database - Auto-Merge Integration", () => {
     // Create prerequisite data (users and workspaces) before seeding auto-merge scenarios
     const user1 = await createTestUser({ name: "Test User 1" });
     const user2 = await createTestUser({ name: "Test User 2" });
-    await createTestWorkspace({ name: "Test Workspace", ownerId: user1.id });
+    await createTestWorkspace({ name: "Test Workspace",owner_id: user1.id });
     
     // Seed the auto-merge test scenarios
     await seedAutoMergeTestScenarios();
   });
 
   it("should have Payment Integration feature with 3 sequential autoMerge tasks", async () => {
-    const feature = await db.feature.findFirst({
+    const feature = await db.features.findFirst({
       where: { title: "Payment Integration" },
       include: {
         phases: {
@@ -51,7 +51,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
   });
 
   it("should have User Profile Enhancement feature with mixed autoMerge settings", async () => {
-    const feature = await db.feature.findFirst({
+    const feature = await db.features.findFirst({
       where: { title: "User Profile Enhancement" },
       include: {
         phases: {
@@ -81,7 +81,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
   });
 
   it("should have edge case tasks with PR artifacts", async () => {
-    const edgeCaseTasks = await db.task.findMany({
+    const edgeCaseTasks = await db.tasks.findMany({
       where: {
         title: {
           contains: "open PR",
@@ -112,7 +112,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
   });
 
   it("should have tasks with correct priorities and statuses", async () => {
-    const paymentTasks = await db.task.findMany({
+    const paymentTasks = await db.tasks.findMany({
       where: {
         feature: {
           title: "Payment Integration",
@@ -135,7 +135,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
   });
 
   it("should have at least 10 auto-merge test tasks total", async () => {
-    const autoMergeTasks = await db.task.findMany({
+    const autoMergeTasks = await db.tasks.findMany({
       where: {
         OR: [
           {

@@ -30,7 +30,7 @@ export async function PUT(
 
     const { id } = await params;
 
-    const repository = await db.repository.findUnique({
+    const repository = await db.repositories.findUnique({
       where: { id },
     });
 
@@ -44,7 +44,7 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateRepositorySchema.parse(body);
 
-    const updatedRepository = await db.repository.update({
+    const updatedRepository = await db.repositories.update({
       where: { id },
       data: validatedData,
     });

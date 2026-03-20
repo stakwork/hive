@@ -46,8 +46,7 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
       workspace = scenario.workspace;
 
       // Create swarm
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `test-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
@@ -161,15 +160,13 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       memberAdmin = scenario.members[2];
 
       // Create swarm
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `auth-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       // Create test pods for this swarm
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.UNUSED,
       });
@@ -303,8 +300,7 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
       owner = scenario.owner;
       workspace = scenario.workspace;
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `service-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
@@ -324,8 +320,7 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
   it("should successfully fetch pool status", async () => {
     // Create 5 RUNNING/UNUSED pods
     for (let i = 0; i < 5; i++) {
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.UNUSED,
       });
@@ -333,28 +328,24 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
 
     // Create 2 RUNNING/USED pods
     for (let i = 0; i < 2; i++) {
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.USED,
       });
     }
 
     // Create 2 PENDING pods
-    await createTestPod({
-      swarmId: swarm.id,
+    await createTestPod({swarm_id: swarm.id,
       status: PodStatus.PENDING,
       usageStatus: PodUsageStatus.UNUSED,
     });
-    await createTestPod({
-      swarmId: swarm.id,
+    await createTestPod({swarm_id: swarm.id,
       status: PodStatus.STARTING,
       usageStatus: PodUsageStatus.UNUSED,
     });
 
     // Create 1 FAILED pod
-    await createTestPod({
-      swarmId: swarm.id,
+    await createTestPod({swarm_id: swarm.id,
       status: PodStatus.FAILED,
       usageStatus: PodUsageStatus.UNUSED,
     });
@@ -383,23 +374,20 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
   it("should exclude TERMINATING and MOTHBALLED pods from counts", async () => {
     // Create 3 RUNNING pods
     for (let i = 0; i < 3; i++) {
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.UNUSED,
       });
     }
 
     // Create 1 TERMINATING pod (should be excluded)
-    await createTestPod({
-      swarmId: swarm.id,
+    await createTestPod({swarm_id: swarm.id,
       status: PodStatus.TERMINATING,
       usageStatus: PodUsageStatus.UNUSED,
     });
 
     // Create 1 MOTHBALLED pod (should be excluded)
-    await createTestPod({
-      swarmId: swarm.id,
+    await createTestPod({swarm_id: swarm.id,
       status: PodStatus.MOTHBALLED,
       usageStatus: PodUsageStatus.UNUSED,
     });
@@ -424,8 +412,7 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
     // Create 5 RUNNING pods
     const pods = [];
     for (let i = 0; i < 5; i++) {
-      const pod = await createTestPod({
-        swarmId: swarm.id,
+      const pod = await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.UNUSED,
       });
@@ -433,13 +420,13 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
     }
 
     // Soft-delete 2 pods
-    await db.pod.update({
+    await db.pods.update({
       where: { id: pods[0].id },
-      data: { deletedAt: new Date() },
+      data: {deleted_at: new Date() },
     });
-    await db.pod.update({
+    await db.pods.update({
       where: { id: pods[1].id },
-      data: { deletedAt: new Date() },
+      data: {deleted_at: new Date() },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -494,25 +481,21 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       owner = scenario.owner;
       workspace = scenario.workspace;
 
-      swarm = await createTestSwarm({
-        workspaceId: workspace.id,
+      swarm = await createTestSwarm({workspace_id: workspace.id,
         name: `response-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
       // Create some test pods
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.USED,
       });
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.RUNNING,
         usageStatus: PodUsageStatus.UNUSED,
       });
-      await createTestPod({
-        swarmId: swarm.id,
+      await createTestPod({swarm_id: swarm.id,
         status: PodStatus.PENDING,
         usageStatus: PodUsageStatus.UNUSED,
       });
@@ -569,8 +552,7 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       owner: { name: "Empty Pool Owner" },
     });
 
-    const newSwarm = await createTestSwarm({
-      workspaceId: newScenario.workspace.id,
+    const newSwarm = await createTestSwarm({workspace_id: newScenario.workspace.id,
       name: `empty-swarm-${generateUniqueId("swarm")}`,
       status: "ACTIVE",
     });
@@ -604,39 +586,27 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       owner: { name: "Queued Tasks Owner" },
     });
 
-    await createTestSwarm({
-      workspaceId: newScenario.workspace.id,
+    await createTestSwarm({workspace_id: newScenario.workspace.id,
       name: `queued-swarm-${generateUniqueId("swarm")}`,
       status: "ACTIVE",
     });
 
     // Create 2 queued tasks (TODO + TASK_COORDINATOR)
-    await db.task.createMany({
+    await db.tasks.createMany({
       data: [
         {
-          title: `Queued Task 1 ${generateUniqueId("task")}`,
-          workspaceId: newScenario.workspace.id,
-          createdById: newScenario.owner.id,
-          updatedById: newScenario.owner.id,
-          status: "TODO",
-          systemAssigneeType: "TASK_COORDINATOR",
+          title: `Queued Task 1 ${generateUniqueId("task")}`,workspace_id: newScenario.workspace.id,created_by_id: newScenario.owner.id,updated_by_id: newScenario.owner.id,
+          status: "TODO",system_assignee_type: "TASK_COORDINATOR",
           deleted: false,
         },
         {
-          title: `Queued Task 2 ${generateUniqueId("task")}`,
-          workspaceId: newScenario.workspace.id,
-          createdById: newScenario.owner.id,
-          updatedById: newScenario.owner.id,
-          status: "TODO",
-          systemAssigneeType: "TASK_COORDINATOR",
+          title: `Queued Task 2 ${generateUniqueId("task")}`,workspace_id: newScenario.workspace.id,created_by_id: newScenario.owner.id,updated_by_id: newScenario.owner.id,
+          status: "TODO",system_assignee_type: "TASK_COORDINATOR",
           deleted: false,
         },
         // This one should NOT be counted (not TASK_COORDINATOR)
         {
-          title: `Normal Task ${generateUniqueId("task")}`,
-          workspaceId: newScenario.workspace.id,
-          createdById: newScenario.owner.id,
-          updatedById: newScenario.owner.id,
+          title: `Normal Task ${generateUniqueId("task")}`,workspace_id: newScenario.workspace.id,created_by_id: newScenario.owner.id,updated_by_id: newScenario.owner.id,
           status: "TODO",
           deleted: false,
         },
@@ -666,19 +636,15 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       owner: { name: "No Queue Owner" },
     });
 
-    await createTestSwarm({
-      workspaceId: newScenario.workspace.id,
+    await createTestSwarm({workspace_id: newScenario.workspace.id,
       name: `no-queue-swarm-${generateUniqueId("swarm")}`,
       status: "ACTIVE",
     });
 
     // Only non-coordinator tasks
-    await db.task.create({
+    await db.tasks.create({
       data: {
-        title: `Regular Task ${generateUniqueId("task")}`,
-        workspaceId: newScenario.workspace.id,
-        createdById: newScenario.owner.id,
-        updatedById: newScenario.owner.id,
+        title: `Regular Task ${generateUniqueId("task")}`,workspace_id: newScenario.workspace.id,created_by_id: newScenario.owner.id,updated_by_id: newScenario.owner.id,
         status: "TODO",
         deleted: false,
       },

@@ -50,7 +50,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
-  const task = await db.task.create({
+  const task = await db.tasks.create({
     data: {
       title: title.trim(),
       description: description?.trim() || null,
@@ -172,7 +172,7 @@ export async function sendMessageToStakwork(params: {
   const { taskId, message, userId, contextTags = [], attachments = [], generateChatTitle, featureContext } = params;
 
   // Get task with workspace and swarm details
-  const task = await db.task.findFirst({
+  const task = await db.tasks.findFirst({
     where: {
       id: taskId,
       deleted: false,
@@ -240,7 +240,7 @@ export async function startTaskWorkflow(params: {
   const { taskId, userId, mode = "live", includeHistory = false } = params;
 
   // Get task with workspace and swarm details
-  const task = await db.task.findFirst({
+  const task = await db.tasks.findFirst({
     where: {
       id: taskId,
       deleted: false,
@@ -361,7 +361,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
   // Fetch task if not provided
   let task = providedTask;
   if (!task) {
-    task = await db.task.findUnique({
+    task = await db.tasks.findUnique({
       where: { id: taskId },
       include: {
         repository: {
@@ -386,7 +386,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
   }
 
   // Create the chat message (replicating chat message creation logic)
-  const chatMessage = await db.chatMessage.create({
+  const chatMessage = await db.chat_messages.create({
     data: {
       taskId,
       message,
@@ -406,7 +406,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
   });
 
   // Get user details for Stakwork integration
-  const user = await db.user.findUnique({
+  const user = await db.users.findUnique({
     where: { id: userId },
     select: {
       name: true,
@@ -474,7 +474,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
 
     if (stakworkData.projectId) {
       // Update task status to IN_PROGRESS if it's currently TODO
-      const currentTask = await db.task.findUnique({
+      const currentTask = await db.tasks.findUnique({
         where: { id: taskId },
         select: { status: true },
       });

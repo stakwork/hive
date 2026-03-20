@@ -14,13 +14,12 @@ export async function createTestWhiteboardMessage(
   options: CreateTestWhiteboardMessageOptions
 ): Promise<WhiteboardMessage> {
   const uniqueId = generateUniqueId("wbmsg");
-  return db.whiteboardMessage.create({
+  return db.whiteboard_messages.create({
     data: {
       whiteboardId: options.whiteboardId,
       role: options.role ?? "USER",
       content: options.content ?? `Test message ${uniqueId}`,
-      status: options.status ?? "SENT",
-      userId: options.userId ?? null,
+      status: options.status ?? "SENT",user_id: options.userId ?? null,
     },
   });
 }

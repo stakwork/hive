@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Ensure workspace is linked to SourceControlOrg before proceeding
     console.log(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`);
-    const workspaceData = await db.workspace.findUnique({
+    const workspaceData = await db.workspaces.findUnique({
       where: { id: workspaceId },
       include: { sourceControlOrg: true },
     });
@@ -83,13 +83,13 @@ export async function POST(request: NextRequest) {
         console.log(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`);
 
         // Look for existing SourceControlOrg for this GitHub owner
-        const sourceControlOrg = await db.sourceControlOrg.findUnique({
+        const sourceControlOrg = await db.source_control_orgs.findUnique({
           where: { githubLogin: githubOwner },
         });
 
         if (sourceControlOrg) {
           // Link workspace to existing SourceControlOrg
-          await db.workspace.update({
+          await db.workspaces.update({
             where: { id: workspaceId },
             data: { sourceControlOrgId: sourceControlOrg.id },
           });
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     const result = await db.$transaction(async (tx) => {
       // Check for existing swarm
       console.log(`[SWARM_CREATE] Checking for existing swarm in workspace ${workspaceId}`);
-      const existingSwarm = await tx.swarm.findFirst({
+      const existingSwarm = await tx.swarms.findFirst({
         where: {
           workspaceId: workspaceId,
         },
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
       console.log(`[SWARM_CREATE] No existing swarm found, creating placeholder for workspace ${workspaceId}`);
       // Create placeholder swarm record immediately to reserve the workspace
-      const placeholderSwarm = await tx.swarm.create({
+      const placeholderSwarm = await tx.swarms.create({
         data: {
           workspaceId,
           name: randomUUID(), // Temporary name
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
         const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
         const branch = repositoryDefaultBranch || "main";
 
-        const createdRepo = await tx.repository.create({
+        const createdRepo = await tx.repositories.create({
           data: {
             name: repoName,
             repositoryUrl,
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
 
       // If external API fails, mark the placeholder as failed
       console.log(`[SWARM_CREATE] Marking placeholder ${result.swarm.id} as FAILED`);
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: result.swarm.id },
         data: {
           status: SwarmStatus.FAILED,

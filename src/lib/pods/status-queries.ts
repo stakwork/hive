@@ -21,7 +21,7 @@ export async function getPoolStatusFromPods(
 
   // Fetch pods and queued task count in parallel
   const [pods, queuedCount] = await Promise.all([
-    db.pod.findMany({
+    db.pods.findMany({
       where: baseFilter,
       select: {
         status: true,
@@ -29,7 +29,7 @@ export async function getPoolStatusFromPods(
         updatedAt: true,
       },
     }),
-    db.task.count({
+    db.tasks.count({
       where: {
         AND: [
           { workspaceId },

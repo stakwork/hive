@@ -67,17 +67,14 @@ describe('Workspace Logo API Integration Tests', () => {
         data: {
           id: generateUniqueId('workspace'),
           name: 'Test Workspace',
-          slug: generateUniqueId('test-workspace'),
-          ownerId: ownerUser.id,
+          slug: generateUniqueId('test-workspace'),owner_id: ownerUser.id,
         },
       })
 
       // If role is not OWNER, create a workspace member with the specified role
       if (role !== WorkspaceRole.OWNER) {
         await tx.workspaceMember.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            userId: testUser.id,
+          data: {workspace_id: testWorkspace.id,user_id: testUser.id,
             role,
           },
         })
@@ -470,7 +467,7 @@ describe('Workspace Logo API Integration Tests', () => {
         expect(body.success).toBe(true)
         expect(body.logoKey).toBe('workspace-logos/test/123.jpg')
 
-        const workspace = await db.workspace.findUnique({
+        const workspace = await db.workspaces.findUnique({
           where: { id: testWorkspace.id },
         })
         expect(workspace?.logoKey).toBe('workspace-logos/test/123.jpg')
@@ -479,9 +476,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should delete old logo when uploading new one', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/old.jpg' },
+          data: {logo_key: 'workspace-logos/test/old.jpg' },
         })
 
         
@@ -552,9 +549,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should return presigned URL for workspace with logo', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -594,9 +591,9 @@ describe('Workspace Logo API Integration Tests', () => {
           WorkspaceRole.VIEWER
         )
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -616,9 +613,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should generate 1 hour expiry for download URL', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -659,9 +656,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should allow OWNER to delete logo', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -681,9 +678,9 @@ describe('Workspace Logo API Integration Tests', () => {
           WorkspaceRole.ADMIN
         )
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -703,9 +700,9 @@ describe('Workspace Logo API Integration Tests', () => {
           WorkspaceRole.DEVELOPER
         )
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -724,11 +721,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should delete logo from S3 and clear database fields', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: {
-            logoKey: 'workspace-logos/test/123.jpg',
-            logoUrl: 'https://example.com/logo.jpg',
+          data: {logo_key: 'workspace-logos/test/123.jpg',logo_url: 'https://example.com/logo.jpg',
           },
         })
 
@@ -749,7 +744,7 @@ describe('Workspace Logo API Integration Tests', () => {
           'workspace-logos/test/123.jpg'
         )
 
-        const workspace = await db.workspace.findUnique({
+        const workspace = await db.workspaces.findUnique({
           where: { id: testWorkspace.id },
         })
         expect(workspace?.logoKey).toBeNull()
@@ -774,9 +769,9 @@ describe('Workspace Logo API Integration Tests', () => {
       test('should handle S3 deletion failures gracefully', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
 
-        await db.workspace.update({
+        await db.workspaces.update({
           where: { id: testWorkspace.id },
-          data: { logoKey: 'workspace-logos/test/123.jpg' },
+          data: {logo_key: 'workspace-logos/test/123.jpg' },
         })
 
         
@@ -790,7 +785,7 @@ describe('Workspace Logo API Integration Tests', () => {
 
         expect(response.status).toBe(200)
 
-        const workspace = await db.workspace.findUnique({
+        const workspace = await db.workspaces.findUnique({
           where: { id: testWorkspace.id },
         })
         expect(workspace?.logoKey).toBeNull()

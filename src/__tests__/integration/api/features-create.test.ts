@@ -56,8 +56,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
 
     beforeEach(async () => {
       user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
+      workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -145,8 +144,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
 
     beforeEach(async () => {
       user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
+      workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -203,8 +201,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
 
     beforeEach(async () => {
       user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
+      workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -269,8 +266,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
 
     beforeEach(async () => {
       user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
+      workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });
@@ -327,8 +323,7 @@ describe("POST /api/features/create-feature - Feature Extraction Endpoint", () =
 
     beforeEach(async () => {
       user = await createTestUser();
-      workspace = await createTestWorkspace({
-        ownerId: user.id,
+      workspace = await createTestWorkspace({owner_id: user.id,
         name: "Test Workspace",
         slug: "test-workspace",
       });

@@ -33,7 +33,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: { workspaceId: workspace.id },
       select: { id: true, poolApiKey: true },
     });

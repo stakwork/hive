@@ -33,19 +33,17 @@ function createCronRequest(secret = "test-cron-secret"): NextRequest {
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 async function createBaseScenario() {
-  const owner = await db.user.create({
+  const owner = await db.users.create({
     data: {
       email: "dispatcher-owner@test.com",
-      name: "Owner",
-      lightningPubkey: "pubkey-owner-123",
+      name: "Owner",lightning_pubkey: "pubkey-owner-123",
     },
   });
 
-  const workspace = await db.workspace.create({
+  const workspace = await db.workspaces.create({
     data: {
       name: "Dispatcher Test Workspace",
-      slug: `dispatcher-ws-${Date.now()}`,
-      ownerId: owner.id,
+      slug: `dispatcher-ws-${Date.now()}`,owner_id: owner.id,
     },
   });
 
@@ -54,17 +52,15 @@ async function createBaseScenario() {
 
 async function createPendingNotification(opts: {
   targetUserId: string;
-  taskId?: string;
-  featureId?: string;
+task_id?: string;
+feature_id?: string;
   notificationType: NotificationTriggerType;
   sendAfter: Date;
   message?: string;
 }) {
-  return db.notificationTrigger.create({
+  return db.notification_triggers.create({
     data: {
-      targetUserId: opts.targetUserId,
-      taskId: opts.taskId ?? null,
-      featureId: opts.featureId ?? null,
+      targetUserId: opts.targetUserId,task_id: opts.taskId ?? null,feature_id: opts.featureId ?? null,
       notificationType: opts.notificationType,
       status: NotificationTriggerStatus.PENDING,
       notificationMethod: NotificationMethod.SPHINX,
@@ -132,18 +128,14 @@ describe("GET /api/cron/notification-dispatcher", () => {
     const { owner, workspace } = await createBaseScenario();
 
     // Create a due pending record that would be processed
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Test Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Test Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
     await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() - 60_000), // 1 minute ago
     });
@@ -162,8 +154,8 @@ describe("GET /api/cron/notification-dispatcher", () => {
     const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
     expect(sendDirectMessage).not.toHaveBeenCalled();
 
-    const record = await db.notificationTrigger.findFirst({
-      where: { taskId: task.id },
+    const record = await db.notification_triggers.findFirst({
+      where: {task_id: task.id },
     });
     expect(record?.status).toBe(NotificationTriggerStatus.PENDING);
   });
@@ -173,18 +165,14 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("does NOT process a PENDING record whose sendAfter is in the future", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Future Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Future Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
     await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() + 10 * 60_000), // 10 minutes in the future
     });
@@ -197,8 +185,8 @@ describe("GET /api/cron/notification-dispatcher", () => {
     expect(body.dispatched).toBe(0);
     expect(body.cancelled).toBe(0);
 
-    const record = await db.notificationTrigger.findFirst({
-      where: { taskId: task.id },
+    const record = await db.notification_triggers.findFirst({
+      where: {task_id: task.id },
     });
     expect(record?.status).toBe(NotificationTriggerStatus.PENDING);
   });
@@ -208,18 +196,14 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("cancels TASK_ASSIGNED notification when task.status is DONE", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Done Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Done Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.DONE,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() - 60_000), // 1 minute ago
       message: "test msg",
@@ -236,7 +220,7 @@ describe("GET /api/cron/notification-dispatcher", () => {
     const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
     expect(sendDirectMessage).not.toHaveBeenCalled();
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.CANCELLED);
@@ -245,25 +229,21 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("cancels TASK_ASSIGNED notification when task.status is CANCELLED", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Cancelled Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Cancelled Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.CANCELLED,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() - 60_000),
     });
 
     await GET(createCronRequest());
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.CANCELLED);
@@ -274,18 +254,14 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("sends TASK_ASSIGNED notification when task.status is IN_PROGRESS", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Active Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Active Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() - 60_000),
       message: "You have been assigned a task",
@@ -307,7 +283,7 @@ describe("GET /api/cron/notification-dispatcher", () => {
       { routeHint: undefined },
     );
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.SENT);
@@ -319,18 +295,13 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("cancels WORKFLOW_HALTED notification when feature.workflowStatus is IN_PROGRESS", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Test Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Test Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,workflow_status: WorkflowStatus.IN_PROGRESS,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      featureId: feature.id,
+      targetUserId: owner.id,feature_id: feature.id,
       notificationType: NotificationTriggerType.WORKFLOW_HALTED,
       sendAfter: new Date(Date.now() - 60_000),
       message: "Workflow was halted",
@@ -346,7 +317,7 @@ describe("GET /api/cron/notification-dispatcher", () => {
     const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
     expect(sendDirectMessage).not.toHaveBeenCalled();
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.CANCELLED);
@@ -357,18 +328,13 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("sends WORKFLOW_HALTED notification when feature.workflowStatus is still HALTED", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Halted Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        workflowStatus: WorkflowStatus.HALTED,
+        title: "Halted Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,workflow_status: WorkflowStatus.HALTED,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      featureId: feature.id,
+      targetUserId: owner.id,feature_id: feature.id,
       notificationType: NotificationTriggerType.WORKFLOW_HALTED,
       sendAfter: new Date(Date.now() - 60_000),
       message: "Workflow is halted, please review",
@@ -389,7 +355,7 @@ describe("GET /api/cron/notification-dispatcher", () => {
       { routeHint: undefined },
     );
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.SENT);
@@ -400,25 +366,20 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("cancels PLAN_AWAITING_CLARIFICATION when feature.workflowStatus is no longer HALTED", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const feature = await db.feature.create({
+    const feature = await db.features.create({
       data: {
-        title: "Resumed Feature",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
-        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        title: "Resumed Feature",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,workflow_status: WorkflowStatus.IN_PROGRESS,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      featureId: feature.id,
+      targetUserId: owner.id,feature_id: feature.id,
       notificationType: NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
       sendAfter: new Date(Date.now() - 60_000),
     });
 
     await GET(createCronRequest());
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.CANCELLED);
@@ -429,25 +390,21 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("cancels GRAPH_CHAT_RESPONSE when task.status is DONE", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Done Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Done Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.DONE,
       },
     });
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.GRAPH_CHAT_RESPONSE,
       sendAfter: new Date(Date.now() - 60_000),
     });
 
     await GET(createCronRequest());
 
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect(updated?.status).toBe(NotificationTriggerStatus.CANCELLED);
@@ -476,19 +433,15 @@ describe("GET /api/cron/notification-dispatcher", () => {
   test("calling dispatchPendingNotifications twice concurrently processes each due row exactly once", async () => {
     const { owner, workspace } = await createBaseScenario();
 
-    const task = await db.task.create({
+    const task = await db.tasks.create({
       data: {
-        title: "Concurrent Test Task",
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: "Concurrent Test Task",workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         status: TaskStatus.IN_PROGRESS,
       },
     });
 
     const notification = await createPendingNotification({
-      targetUserId: owner.id,
-      taskId: task.id,
+      targetUserId: owner.id,task_id: task.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       sendAfter: new Date(Date.now() - 60_000),
       message: "You have been assigned a task",
@@ -505,7 +458,7 @@ describe("GET /api/cron/notification-dispatcher", () => {
     expect(result1.failed + result2.failed).toBe(0);
 
     // The notification record should be in a terminal state (SENT or CANCELLED)
-    const updated = await db.notificationTrigger.findUnique({
+    const updated = await db.notification_triggers.findUnique({
       where: { id: notification.id },
     });
     expect([

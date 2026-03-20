@@ -43,7 +43,7 @@ export async function requireAuthOrApiToken(
   }
 
   // Look up workspace owner as acting user
-  const workspace = await db.workspace.findUnique({
+  const workspace = await db.workspaces.findUnique({
     where: { id: workspaceId },
     select: {
       owner: {

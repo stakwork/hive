@@ -72,7 +72,7 @@ export async function GET(
   try {
     const { featureId } = await params;
 
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
@@ -85,7 +85,7 @@ export async function GET(
     const sortField = validSortFields.includes(sortBy) ? sortBy : "updatedAt";
     const sortOrder = sortField === "order" ? "asc" : "desc";
 
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       include: {
         workspace: {
@@ -237,7 +237,7 @@ export async function PATCH(
     const { featureId } = await params;
     const body = await request.json();
 
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
@@ -280,7 +280,7 @@ export async function DELETE(
   try {
     const { featureId } = await params;
 
-    const featureLookup = await db.feature.findUnique({
+    const featureLookup = await db.features.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });

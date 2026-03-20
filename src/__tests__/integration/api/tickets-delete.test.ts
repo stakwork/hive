@@ -32,37 +32,27 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     owner = await createTestUser({ email: 'owner@test.com' });
     workspace = await createTestWorkspace({
       name: 'Test Workspace',
-      slug: 'test-workspace',
-      ownerId: owner.id,
+      slug: 'test-workspace',owner_id: owner.id,
     });
 
     // Create workspace membership for owner
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: owner.id,
+    await db.workspace_members.create({
+      data: {workspace_id: workspace.id,user_id: owner.id,
         role: 'OWNER',
       },
     });
 
     // Create a feature (required for roadmap tasks)
-    feature = await db.feature.create({
+    feature = await db.features.create({
       data: {
-        title: 'Test Feature',
-        workspaceId: workspace.id,
-        createdById: owner.id,
-        updatedById: owner.id,
+        title: 'Test Feature',workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
       },
     });
 
     // Create a test task for deletion
     testTask = await createTestTask({
       title: 'Test Task',
-      description: 'Task to be deleted',
-      workspaceId: workspace.id,
-      featureId: feature.id,
-        createdById: owner.id,
-      featureId: feature.id,
+      description: 'Task to be deleted',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,feature_id: feature.id,
     });
   });
 
@@ -124,10 +114,8 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('allows workspace ADMIN to delete task', async () => {
       const admin = await createTestUser({ email: 'admin@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: admin.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: admin.id,
           role: 'ADMIN',
         },
       });
@@ -150,10 +138,8 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('allows workspace MEMBER to delete task', async () => {
       const member = await createTestUser({ email: 'member@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: 'DEVELOPER',
         },
       });
@@ -176,10 +162,8 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('allows workspace VIEWER to delete task', async () => {
       const viewer = await createTestUser({ email: 'viewer@test.com' });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: viewer.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: viewer.id,
           role: 'VIEWER',
         },
       });
@@ -205,18 +189,11 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     test('removes deleted task ID from single dependent task', async () => {
       // Create taskA and taskB where B depends on A
       const taskA = await createTestTask({
-        title: 'Task A',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task A',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskB = await createTestTask({
-        title: 'Task B',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id],
+        title: 'Task B',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id],
       });
 
       // Delete taskA
@@ -240,26 +217,15 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     test('removes deleted task ID from multiple dependent tasks', async () => {
       // Create taskA, taskB, taskC where B and C both depend on A
       const taskA = await createTestTask({
-        title: 'Task A',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task A',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskB = await createTestTask({
-        title: 'Task B',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id],
+        title: 'Task B',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id],
       });
 
       const taskC = await createTestTask({
-        title: 'Task C',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id],
+        title: 'Task C',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id],
       });
 
       // Delete taskA
@@ -284,25 +250,15 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     test('removes only deleted task ID from tasks with mixed dependencies', async () => {
       // Create taskA, taskB, taskC where C depends on both A and B
       const taskA = await createTestTask({
-        title: 'Task A',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task A',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskB = await createTestTask({
-        title: 'Task B',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task B',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskC = await createTestTask({
-        title: 'Task C',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id, taskB.id],
+        title: 'Task C',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id, taskB.id],
       });
 
       // Delete taskA only
@@ -325,10 +281,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('handles deletion of task with no dependents gracefully', async () => {
       const isolatedTask = await createTestTask({
-        title: 'Isolated Task',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Isolated Task',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const request = createAuthenticatedDeleteRequest(
@@ -348,18 +301,11 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('handles deletion of task that is itself a dependent', async () => {
       const taskA = await createTestTask({
-        title: 'Task A',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task A',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskB = await createTestTask({
-        title: 'Task B (depends on A)',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id],
+        title: 'Task B (depends on A)',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id],
       });
 
       // Delete taskB (which depends on taskA)
@@ -471,22 +417,15 @@ describe('DELETE /api/tickets/[ticketId]', () => {
   describe('Related Entity Handling', () => {
     test('does not delete parent feature when task is deleted', async () => {
       // Create a feature
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: 'Test Feature',
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: 'Test Feature',workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
       // Create task linked to feature
       const taskWithFeature = await createTestTask({
-        title: 'Task with Feature',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        featureId: feature.id,
+        title: 'Task with Feature',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,feature_id: feature.id,
       });
 
       // Delete task
@@ -501,7 +440,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       await expectSuccess(response, 200);
 
       // Verify feature still exists
-      const featureAfter = await db.feature.findUnique({
+      const featureAfter = await db.features.findUnique({
         where: { id: feature.id },
       });
       expect(featureAfter).toBeDefined();
@@ -510,34 +449,26 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('handles task deletion when associated phase is deleted', async () => {
       // Create a feature first (required for phase)
-      const feature = await db.feature.create({
+      const feature = await db.features.create({
         data: {
-          title: 'Test Feature',
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
+          title: 'Test Feature',workspace_id: workspace.id,created_by_id: owner.id,updated_by_id: owner.id,
         },
       });
 
       // Create a phase
-      const phase = await db.phase.create({
+      const phase = await db.phases.create({
         data: {
-          name: 'Test Phase',
-          featureId: feature.id,
+          name: 'Test Phase',feature_id: feature.id,
         },
       });
 
       // Create task linked to phase
       const taskWithPhase = await createTestTask({
-        title: 'Task with Phase',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        phaseId: phase.id,
+        title: 'Task with Phase',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,phase_id: phase.id,
       });
 
       // Delete phase (Prisma schema has onDelete: SetNull)
-      await db.phase.delete({
+      await db.phases.delete({
         where: { id: phase.id },
       });
 
@@ -575,7 +506,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       expect(taskAfter?.workspaceId).toBe(workspace.id);
 
       // Verify workspace still exists and is unaffected
-      const workspaceAfter = await db.workspace.findUnique({
+      const workspaceAfter = await db.workspaces.findUnique({
         where: { id: workspace.id },
       });
       expect(workspaceAfter).toBeDefined();
@@ -586,34 +517,19 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     test('handles deletion of task with multiple dependencies in dependency chain', async () => {
       // Create chain: A -> B -> C -> D (each depends on previous)
       const taskA = await createTestTask({
-        title: 'Task A',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task A',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const taskB = await createTestTask({
-        title: 'Task B',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskA.id],
+        title: 'Task B',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskA.id],
       });
 
       const taskC = await createTestTask({
-        title: 'Task C',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskB.id],
+        title: 'Task C',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskB.id],
       });
 
       const taskD = await createTestTask({
-        title: 'Task D',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [taskC.id],
+        title: 'Task D',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [taskC.id],
       });
 
       // Delete taskB (middle of chain)
@@ -642,20 +558,14 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('handles deletion when multiple tasks depend on same parent', async () => {
       const parent = await createTestTask({
-        title: 'Parent Task',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Parent Task',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       // Create 5 children all depending on parent
       const children = await Promise.all(
         Array.from({ length: 5 }, (_, i) =>
           createTestTask({
-            title: `Child Task ${i + 1}`,
-            workspaceId: workspace.id,
-            createdById: owner.id,
-            dependsOnTaskIds: [parent.id],
+            title: `Child Task ${i + 1}`,workspace_id: workspace.id,created_by_id: owner.id,depends_on_task_ids: [parent.id],
           })
         )
       );
@@ -681,11 +591,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
     test('correctly handles task with empty dependsOnTaskIds array', async () => {
       const taskWithEmptyDeps = await createTestTask({
-        title: 'Task with empty deps',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
-        dependsOnTaskIds: [],
+        title: 'Task with empty deps',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,depends_on_task_ids: [],
       });
 
       const request = createAuthenticatedDeleteRequest(
@@ -707,31 +613,22 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       // Create second workspace
       const workspace2 = await createTestWorkspace({
         name: 'Workspace 2',
-        slug: 'workspace-2',
-        ownerId: owner.id,
+        slug: 'workspace-2',owner_id: owner.id,
       });
 
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace2.id,
-          userId: owner.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace2.id,user_id: owner.id,
           role: 'OWNER',
         },
       });
 
       // Create tasks in both workspaces
       const task1 = await createTestTask({
-        title: 'Task in Workspace 1',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task in Workspace 1',workspace_id: workspace.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       const task2 = await createTestTask({
-        title: 'Task in Workspace 2',
-        workspaceId: workspace2.id,
-        featureId: feature.id,
-        createdById: owner.id,
+        title: 'Task in Workspace 2',workspace_id: workspace2.id,feature_id: feature.id,created_by_id: owner.id,
       });
 
       // Delete task from workspace1

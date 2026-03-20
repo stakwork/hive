@@ -6,11 +6,9 @@ import { mockData } from "@/__tests__/utils/test-helpers";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findMany: vi.fn(),
-    },
-    workspaceMember: {
+    },workspace_members: {
       findMany: vi.fn(),
     },
   },
@@ -64,8 +62,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         { workspaceId: "ws2" }, // 2 members in ws2
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships) // First call for memberships
         .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
         .mockResolvedValueOnce(memberCounts); // Third call for member counts
@@ -75,14 +73,14 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       expect(result).toHaveLength(2);
       
       // Verify query only targets the specific user
-      expect(db.workspace.findMany).toHaveBeenCalledWith({
+      expect(db.workspaces.findMany).toHaveBeenCalledWith({
         where: {
           ownerId: testUserId,
           deleted: false,
         },
       });
 
-      expect(db.workspaceMember.findMany).toHaveBeenCalledWith({
+      expect(db.workspace_members.findMany).toHaveBeenCalledWith({
         where: {
           userId: testUserId,
           leftAt: null,
@@ -152,8 +150,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -186,8 +184,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -227,8 +225,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         }),
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -258,8 +256,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       }));
 
-      (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -299,8 +297,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         { workspaceId: "ws-with-members" },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships (empty)
         .mockResolvedValueOnce([]) // Second call for owner memberships (empty)
         .mockResolvedValueOnce(memberCounts); // Third call for member counts
@@ -326,8 +324,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([]) // First call for memberships (empty)
         .mockResolvedValueOnce([]) // Second call for owner memberships (empty)
         .mockResolvedValueOnce([]); // Third call for member counts (empty)
@@ -342,8 +340,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
 
   describe("Edge Cases and Error Scenarios", () => {
     test("should return empty array when user has no workspaces", async () => {
-      (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -356,7 +354,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
 
     test("should handle database errors gracefully", async () => {
       const dbError = new Error("Database connection failed");
-      (db.workspace.findMany as Mock).mockRejectedValue(dbError);
+      (db.workspaces.findMany as Mock).mockRejectedValue(dbError);
 
       await expect(getUserWorkspaces(testUserId)).rejects.toThrow("Database connection failed");
     });
@@ -386,8 +384,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(malformedMemberships)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -419,8 +417,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(activeMemberships) // First call for memberships
         .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -450,8 +448,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -499,8 +497,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue(ownedWorkspaces);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(memberships)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]); // Third call for member counts
@@ -565,8 +563,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
         { workspaceId: "ws1" },
       ];
 
-      (db.workspace.findMany as Mock).mockResolvedValue([mockWorkspace]);
-      (db.workspaceMember.findMany as Mock)
+      (db.workspaces.findMany as Mock).mockResolvedValue([mockWorkspace]);
+      (db.workspace_members.findMany as Mock)
         .mockResolvedValueOnce(mockMemberships)
         .mockResolvedValueOnce(ownerLastAccessedAt)
         .mockResolvedValueOnce(memberCounts);

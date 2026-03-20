@@ -40,8 +40,7 @@ describe("Workspace API - Integration Tests", () => {
           const slug = data.workspace.slug;
           expect(data.workspace).toMatchObject({
             name: "Test Workspace",
-            slug,
-            ownerId: user.id,
+            slug,owner_id: user.id,
           });
         },
       },
@@ -50,8 +49,7 @@ describe("Workspace API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
-            await createTestWorkspace({
-              ownerId: user.id,
+            await createTestWorkspace({owner_id: user.id,
               name: `Workspace ${index + 1}`,
               slug: generateUniqueSlug(`workspace-${index + 1}`),
             });
@@ -73,16 +71,15 @@ describe("Workspace API - Integration Tests", () => {
           const user = await createTestUser();
           const workspaces = [];
           for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
-            const workspace = await createTestWorkspace({
-              ownerId: user.id,
+            const workspace = await createTestWorkspace({owner_id: user.id,
               name: `Workspace ${index + 1}`,
               slug: generateUniqueSlug(`workspace-${index + 1}`),
             });
             workspaces.push(workspace);
           }
-          await db.workspace.update({
+          await db.workspaces.update({
             where: { id: workspaces[0].id },
-            data: { deleted: true, deletedAt: new Date() },
+            data: { deleted: true,deleted_at: new Date() },
           });
           return { user };
         },
@@ -100,8 +97,7 @@ describe("Workspace API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("duplicate");
-          await createTestWorkspace({
-            ownerId: user.id,
+          await createTestWorkspace({owner_id: user.id,
             name: "First Workspace",
             slug,
           });

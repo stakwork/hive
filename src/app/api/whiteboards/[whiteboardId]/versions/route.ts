@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 const MAX_VERSIONS = 10;
 
 async function checkWhiteboardAccess(whiteboardId: string, userId: string) {
-  const whiteboard = await db.whiteboard.findUnique({
+  const whiteboard = await db.whiteboards.findUnique({
     where: { id: whiteboardId },
     include: {
       workspace: {
@@ -49,7 +49,7 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const versions = await db.whiteboardVersion.findMany({
+    const versions = await db.whiteboard_versions.findMany({
       where: { whiteboardId },
       orderBy: { createdAt: "desc" },
       take: MAX_VERSIONS,
@@ -86,7 +86,7 @@ export async function POST(
     const { elements, appState, files, label } = body;
 
     const newVersion = await db.$transaction(async (tx) => {
-      const created = await tx.whiteboardVersion.create({
+      const created = await tx.whiteboard_versions.create({
         data: {
           whiteboardId,
           elements: elements ?? [],
@@ -97,7 +97,7 @@ export async function POST(
       });
 
       // Prune: keep only the MAX_VERSIONS newest
-      const allVersions = await tx.whiteboardVersion.findMany({
+      const allVersions = await tx.whiteboard_versions.findMany({
         where: { whiteboardId },
         orderBy: { createdAt: "asc" },
         select: { id: true },
@@ -105,7 +105,7 @@ export async function POST(
 
       if (allVersions.length > MAX_VERSIONS) {
         const toDelete = allVersions.slice(0, allVersions.length - MAX_VERSIONS);
-        await tx.whiteboardVersion.deleteMany({
+        await tx.whiteboard_versions.deleteMany({
           where: { id: { in: toDelete.map((v) => v.id) } },
         });
       }

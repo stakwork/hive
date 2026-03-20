@@ -11,7 +11,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   beforeEach(async () => {
     // Create test user
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: "test-workspace-switching@example.com",
         name: "Test User",
@@ -19,80 +19,62 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     });
 
     // Create workspace 1 with specific tasks
-    workspace1 = await db.workspace.create({
+    workspace1 = await db.workspaces.create({
       data: {
         name: "Workspace One",
-        slug: "workspace-one",
-        ownerId: testUser.id,
+        slug: "workspace-one",owner_id: testUser.id,
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        userId: testUser.id,
-        workspaceId: workspace1.id,
+    await db.workspace_members.create({
+      data: {user_id: testUser.id,workspace_id: workspace1.id,
         role: "OWNER",
       },
     });
 
     workspace1Tasks = await Promise.all([
-      db.task.create({
+      db.tasks.create({
         data: {
           title: "Workspace 1 - Task A",
-          description: "Task specific to workspace 1",
-          workspaceId: workspace1.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "Task specific to workspace 1",workspace_id: workspace1.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
         },
       }),
-      db.task.create({
+      db.tasks.create({
         data: {
           title: "Workspace 1 - Task B",
-          description: "Another task for workspace 1",
-          workspaceId: workspace1.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "Another task for workspace 1",workspace_id: workspace1.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "IN_PROGRESS",
         },
       }),
     ]);
 
     // Create workspace 2 with different tasks
-    workspace2 = await db.workspace.create({
+    workspace2 = await db.workspaces.create({
       data: {
         name: "Workspace Two",
-        slug: "workspace-two",
-        ownerId: testUser.id,
+        slug: "workspace-two",owner_id: testUser.id,
       },
     });
 
-    await db.workspaceMember.create({
-      data: {
-        userId: testUser.id,
-        workspaceId: workspace2.id,
+    await db.workspace_members.create({
+      data: {user_id: testUser.id,workspace_id: workspace2.id,
         role: "OWNER",
       },
     });
 
     workspace2Tasks = await Promise.all([
-      db.task.create({
+      db.tasks.create({
         data: {
           title: "Workspace 2 - Task X",
-          description: "Task specific to workspace 2",
-          workspaceId: workspace2.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "Task specific to workspace 2",workspace_id: workspace2.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "TODO",
         },
       }),
-      db.task.create({
+      db.tasks.create({
         data: {
           title: "Workspace 2 - Task Y",
-          description: "Another task for workspace 2",
-          workspaceId: workspace2.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          description: "Another task for workspace 2",workspace_id: workspace2.id,created_by_id: testUser.id,updated_by_id: testUser.id,
           status: "DONE",
         },
       }),
@@ -104,23 +86,21 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     const workspaceIds = [workspace1?.id, workspace2?.id].filter(Boolean);
     
     if (workspaceIds.length > 0) {
-      await db.task.deleteMany({
-        where: {
-          workspaceId: {
+      await db.tasks.deleteMany({
+        where: {workspace_id: {
             in: workspaceIds,
           },
         },
       });
 
-      await db.workspaceMember.deleteMany({
-        where: {
-          workspaceId: {
+      await db.workspace_members.deleteMany({
+        where: {workspace_id: {
             in: workspaceIds,
           },
         },
       });
 
-      await db.workspace.deleteMany({
+      await db.workspaces.deleteMany({
         where: {
           id: {
             in: workspaceIds,
@@ -130,7 +110,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     }
 
     if (testUser?.id) {
-      await db.user.deleteMany({
+      await db.users.deleteMany({
         where: {
           id: testUser.id,
         },
@@ -140,7 +120,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should load correct workspace data when fetching workspace 1", async () => {
     // Fetch workspace 1
-    const fetchedWorkspace = await db.workspace.findUnique({
+    const fetchedWorkspace = await db.workspaces.findUnique({
       where: { slug: workspace1.slug },
       include: {
         members: true,
@@ -164,7 +144,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should load correct workspace data when fetching workspace 2", async () => {
     // Fetch workspace 2
-    const fetchedWorkspace = await db.workspace.findUnique({
+    const fetchedWorkspace = await db.workspaces.findUnique({
       where: { slug: workspace2.slug },
       include: {
         members: true,
@@ -188,7 +168,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should maintain data isolation when switching between workspaces", async () => {
     // Fetch workspace 1 data
-    const workspace1Data = await db.workspace.findUnique({
+    const workspace1Data = await db.workspaces.findUnique({
       where: { slug: workspace1.slug },
       include: { tasks: true },
     });
@@ -197,7 +177,7 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     expect(workspace1Data?.tasks.every(t => t.workspaceId === workspace1.id)).toBe(true);
 
     // Simulate workspace switch - fetch workspace 2 data
-    const workspace2Data = await db.workspace.findUnique({
+    const workspace2Data = await db.workspaces.findUnique({
       where: { slug: workspace2.slug },
       include: { tasks: true },
     });
@@ -215,11 +195,9 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should correctly update lastAccessedAt when switching workspaces", async () => {
     // Get initial lastAccessedAt for workspace 1
-    const initialMember1 = await db.workspaceMember.findUnique({
+    const initialMember1 = await db.workspace_members.findUnique({
       where: {
-        workspaceId_userId: {
-          workspaceId: workspace1.id,
-          userId: testUser.id,
+        workspaceId_userId: {workspace_id: workspace1.id,user_id: testUser.id,
         },
       },
     });
@@ -230,24 +208,19 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // Update lastAccessedAt for workspace 1 (simulating workspace switch)
-    await db.workspaceMember.update({
+    await db.workspace_members.update({
       where: {
-        workspaceId_userId: {
-          workspaceId: workspace1.id,
-          userId: testUser.id,
+        workspaceId_userId: {workspace_id: workspace1.id,user_id: testUser.id,
         },
       },
-      data: {
-        lastAccessedAt: new Date(),
+      data: {last_accessed_at: new Date(),
       },
     });
 
     // Verify lastAccessedAt was updated
-    const updatedMember1 = await db.workspaceMember.findUnique({
+    const updatedMember1 = await db.workspace_members.findUnique({
       where: {
-        workspaceId_userId: {
-          workspaceId: workspace1.id,
-          userId: testUser.id,
+        workspaceId_userId: {workspace_id: workspace1.id,user_id: testUser.id,
         },
       },
     });
@@ -262,23 +235,18 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     // Wait and update workspace 2
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    await db.workspaceMember.update({
+    await db.workspace_members.update({
       where: {
-        workspaceId_userId: {
-          workspaceId: workspace2.id,
-          userId: testUser.id,
+        workspaceId_userId: {workspace_id: workspace2.id,user_id: testUser.id,
         },
       },
-      data: {
-        lastAccessedAt: new Date(),
+      data: {last_accessed_at: new Date(),
       },
     });
 
-    const updatedMember2 = await db.workspaceMember.findUnique({
+    const updatedMember2 = await db.workspace_members.findUnique({
       where: {
-        workspaceId_userId: {
-          workspaceId: workspace2.id,
-          userId: testUser.id,
+        workspaceId_userId: {workspace_id: workspace2.id,user_id: testUser.id,
         },
       },
     });
@@ -296,11 +264,11 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should return correct workspace when querying by slug", async () => {
     // Query workspace 1
-    const ws1 = await db.workspace.findUnique({
+    const ws1 = await db.workspaces.findUnique({
       where: { slug: "workspace-one" },
       include: {
         members: {
-          where: { userId: testUser.id },
+          where: {user_id: testUser.id },
         },
       },
     });
@@ -310,11 +278,11 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     expect(ws1?.members[0]?.role).toBe("OWNER");
 
     // Query workspace 2
-    const ws2 = await db.workspace.findUnique({
+    const ws2 = await db.workspaces.findUnique({
       where: { slug: "workspace-two" },
       include: {
         members: {
-          where: { userId: testUser.id },
+          where: {user_id: testUser.id },
         },
       },
     });
@@ -326,9 +294,8 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
 
   it("should fetch only tasks belonging to the current workspace", async () => {
     // Fetch tasks for workspace 1
-    const ws1Tasks = await db.task.findMany({
-      where: {
-        workspaceId: workspace1.id,
+    const ws1Tasks = await db.tasks.findMany({
+      where: {workspace_id: workspace1.id,
       },
     });
 
@@ -338,9 +305,8 @@ describe("Workspace Switching - Data Isolation Integration Tests", () => {
     expect(ws1Tasks.map(t => t.title)).toContain("Workspace 1 - Task B");
 
     // Fetch tasks for workspace 2
-    const ws2Tasks = await db.task.findMany({
-      where: {
-        workspaceId: workspace2.id,
+    const ws2Tasks = await db.tasks.findMany({
+      where: {workspace_id: workspace2.id,
       },
     });
 

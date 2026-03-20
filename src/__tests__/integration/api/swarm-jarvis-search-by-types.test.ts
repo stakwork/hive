@@ -41,8 +41,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
   // Helper to create authenticated POST request
   const createAuthenticatedPostRequest = async (
-    userId: string,
-    workspaceId: string,
+user_id: string,workspace_id: string,
     body: unknown
   ) => {
     const { POST } = await import(
@@ -68,7 +67,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
   // Helper to create unauthenticated POST request
   const createUnauthenticatedPostRequest = async (
-    workspaceId: string,
+workspace_id: string,
     body: unknown
   ) => {
     const { POST } = await import(
@@ -94,23 +93,20 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
     vi.clearAllMocks();
 
     // Create test user
-    testUser = await db.user.create({
+    testUser = await db.users.create({
       data: {
         email: `test-${Date.now()}@example.com`,
-        name: "Test User",
-        emailVerified: new Date(),
+        name: "Test User",email_verified: new Date(),
       },
     });
 
     // Create test workspace
-    testWorkspace = await db.workspace.create({
+    testWorkspace = await db.workspaces.create({
       data: {
         name: "Test Workspace",
-        slug: `test-workspace-${Date.now()}`,
-        ownerId: testUser.id,
+        slug: `test-workspace-${Date.now()}`,owner_id: testUser.id,
         members: {
-          create: {
-            userId: testUser.id,
+          create: {user_id: testUser.id,
             role: WorkspaceRole.OWNER,
           },
         },
@@ -122,12 +118,9 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       "swarmApiKey",
       "test-api-key-123"
     );
-    testSwarm = await db.swarm.create({
+    testSwarm = await db.swarms.create({
       data: {
-        name: "test-swarm",
-        swarmUrl: "https://test-swarm.sphinx.chat:8444",
-        swarmApiKey: JSON.stringify(encryptedApiKey),
-        workspaceId: testWorkspace.id,
+        name: "test-swarm",swarm_url: "https://test-swarm.sphinx.chat:8444",swarm_api_key: JSON.stringify(encryptedApiKey),workspace_id: testWorkspace.id,
       },
     });
 
@@ -142,12 +135,12 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
   afterEach(async () => {
     // Cleanup test data
-    await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspaceMember.deleteMany({
-      where: { workspaceId: testWorkspace.id },
+    await db.swarms.deleteMany({ where: {workspace_id: testWorkspace.id } });
+    await db.workspace_members.deleteMany({
+      where: {workspace_id: testWorkspace.id },
     });
-    await db.workspace.deleteMany({ where: { id: testWorkspace.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    await db.workspaces.deleteMany({ where: { id: testWorkspace.id } });
+    await db.users.deleteMany({ where: { id: testUser.id } });
   });
 
   describe("Authentication", () => {
@@ -329,8 +322,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       expect(data.data.nodes[0].node_type).toBe("Function");
 
       // Verify swarmApiRequest was called with correct parameters
-      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({
-        swarmUrl: expect.stringContaining("8444"),
+      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({swarm_url: expect.stringContaining("8444"),
         endpoint: "graph/search/latest-by-types",
         method: "POST",
         apiKey: expect.any(String),
@@ -426,8 +418,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       );
 
       // Verify request includes optional fields
-      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({
-        swarmUrl: expect.any(String),
+      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({swarm_url: expect.any(String),
         endpoint: "graph/search/latest-by-types",
         method: "POST",
         apiKey: expect.any(String),
@@ -482,7 +473,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
     test("returns mock response when swarm is not configured", async () => {
       // Delete swarm to simulate no configuration
-      await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
+      await db.swarms.deleteMany({ where: {workspace_id: testWorkspace.id } });
 
       const response = await createAuthenticatedPostRequest(
         testUser.id,
@@ -504,9 +495,9 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
     test("returns mock response when swarmUrl is missing", async () => {
       // Update swarm to have null swarmUrl
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: testSwarm.id },
-        data: { swarmUrl: null },
+        data: {swarm_url: null },
       });
 
       const response = await createAuthenticatedPostRequest(
@@ -526,9 +517,9 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
     test("returns mock response when swarmApiKey is missing", async () => {
       // Update swarm to have null swarmApiKey
-      await db.swarm.update({
+      await db.swarms.update({
         where: { id: testSwarm.id },
-        data: { swarmApiKey: null },
+        data: {swarm_api_key: null },
       });
 
       const response = await createAuthenticatedPostRequest(
@@ -581,8 +572,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       expect(response.status).toBe(200);
 
       // Verify swarmApiRequest was called with custom URL
-      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({
-        swarmUrl: "https://custom-swarm.example.com:8444",
+      expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith({swarm_url: "https://custom-swarm.example.com:8444",
         endpoint: "graph/search/latest-by-types",
         method: "POST",
         apiKey: expect.any(String),
@@ -683,8 +673,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
 
       // Verify URL construction
       expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          swarmUrl: expect.stringContaining(".sphinx.chat:8444"),
+        expect.objectContaining({swarm_url: expect.stringContaining(".sphinx.chat:8444"),
           endpoint: "graph/search/latest-by-types",
         })
       );
@@ -993,8 +982,8 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
   describe("Error Handling", () => {
     test("handles database query errors gracefully", async () => {
       // Mock database error
-      const originalFindFirst = db.swarm.findFirst;
-      db.swarm.findFirst = vi
+      const originalFindFirst = db.swarms.findFirst;
+      db.swarms.findFirst = vi
         .fn()
         .mockRejectedValue(new Error("Database error"));
 
@@ -1010,7 +999,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       expect(data.message).toBe("Failed to search by types");
 
       // Restore original function
-      db.swarm.findFirst = originalFindFirst;
+      db.swarms.findFirst = originalFindFirst;
     });
 
     test("handles S3 service initialization error", async () => {
@@ -1121,19 +1110,16 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
     roles.forEach((role) => {
       test(`allows ${role} role to search by types`, async () => {
         // Create test user with specific role
-        const roleUser = await db.user.create({
+        const roleUser = await db.users.create({
           data: {
             email: `${role.toLowerCase()}-${Date.now()}@example.com`,
-            name: `${role} User`,
-            emailVerified: new Date(),
+            name: `${role} User`,email_verified: new Date(),
           },
         });
 
         // Add user to workspace with role
-        await db.workspaceMember.create({
-          data: {
-            userId: roleUser.id,
-            workspaceId: testWorkspace.id,
+        await db.workspace_members.create({
+          data: {user_id: roleUser.id,workspace_id: testWorkspace.id,
             role: role,
           },
         });
@@ -1156,10 +1142,10 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
         expect(data.success).toBe(true);
 
         // Cleanup
-        await db.workspaceMember.deleteMany({
-          where: { userId: roleUser.id },
+        await db.workspace_members.deleteMany({
+          where: {user_id: roleUser.id },
         });
-        await db.user.delete({ where: { id: roleUser.id } });
+        await db.users.delete({ where: { id: roleUser.id } });
       });
     });
   });

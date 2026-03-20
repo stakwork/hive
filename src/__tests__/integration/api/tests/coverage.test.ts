@@ -28,19 +28,14 @@ describe("GET /api/tests/coverage Integration Tests", () => {
   async function createTestWorkspaceWithSwarm() {
     const user = await createTestUser({ name: "Test User" });
     const workspace = await createTestWorkspace({
-      name: "Test Workspace",
-      ownerId: user.id,
+      name: "Test Workspace",owner_id: user.id,
     });
 
     // Create swarm with encrypted API key in proper format
-    const swarm = await db.swarm.create({
+    const swarm = await db.swarms.create({
       data: {
-        name: `swarm-${workspace.id}`,
-        swarmId: "test-swarm-id",
-        swarmUrl: "https://test.sphinx.chat/api",
-        workspaceId: workspace.id,
-        status: "ACTIVE",
-        swarmApiKey: JSON.stringify({
+        name: `swarm-${workspace.id}`,swarm_id: "test-swarm-id",swarm_url: "https://test.sphinx.chat/api",workspace_id: workspace.id,
+        status: "ACTIVE",swarm_api_key: JSON.stringify({
           data: "encrypted-test-key",
           iv: "test-iv",
           tag: "test-tag",
@@ -61,7 +56,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -121,7 +116,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -163,7 +158,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -193,7 +188,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -240,7 +235,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id, ignoreDirs: "node_modules,dist" }
+        {workspace_id: workspace.id, ignoreDirs: "node_modules,dist" }
       );
 
       const response = await GET(request);
@@ -268,8 +263,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { 
-          workspaceId: workspace.id,
+        {workspace_id: workspace.id,
           unitGlob: "**/*.test.ts",
           integrationGlob: "**/*.integration.ts",
           e2eGlob: "**/*.e2e.ts"
@@ -288,15 +282,14 @@ describe("GET /api/tests/coverage Integration Tests", () => {
     test("should return 404 when swarm is not found", async () => {
       const user = await createTestUser({ name: "Test User" });
       const workspace = await createTestWorkspace({
-        name: "Test Workspace",
-        ownerId: user.id,
+        name: "Test Workspace",owner_id: user.id,
       });
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -310,16 +303,13 @@ describe("GET /api/tests/coverage Integration Tests", () => {
     test("should return 400 when swarm is missing URL or API key", async () => {
       const user = await createTestUser({ name: "Test User" });
       const workspace = await createTestWorkspace({
-        name: "Test Workspace",
-        ownerId: user.id,
+        name: "Test Workspace",owner_id: user.id,
       });
 
       // Create swarm without URL
-      await db.swarm.create({
+      await db.swarms.create({
         data: {
-          name: `swarm-${workspace.id}`,
-          swarmId: "test-swarm-id",
-          workspaceId: workspace.id,
+          name: `swarm-${workspace.id}`,swarm_id: "test-swarm-id",workspace_id: workspace.id,
           status: "ACTIVE",
         },
       });
@@ -328,7 +318,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -352,7 +342,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);
@@ -370,10 +360,8 @@ describe("GET /api/tests/coverage Integration Tests", () => {
       const member = await createTestUser({ name: "Member User" });
 
       // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         },
       });
@@ -393,7 +381,7 @@ describe("GET /api/tests/coverage Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/coverage",
-        { workspaceId: workspace.id }
+        {workspace_id: workspace.id }
       );
 
       const response = await GET(request);

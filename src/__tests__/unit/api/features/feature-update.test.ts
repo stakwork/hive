@@ -41,7 +41,7 @@ describe("PATCH /api/features/[featureId] - Pusher broadcast", () => {
     } as any);
 
     // Mock feature lookup with workspace structure for validateFeatureAccess
-    dbMock.feature.findUnique.mockResolvedValue({
+    dbMock.features.findUnique.mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
       title: "Old Title",
@@ -69,7 +69,7 @@ describe("PATCH /api/features/[featureId] - Pusher broadcast", () => {
     } as any);
 
     // Mock successful update - must include phases array for updateFeature transform
-    dbMock.feature.update.mockResolvedValue({
+    dbMock.features.update.mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
       title: "New Title",
@@ -179,7 +179,7 @@ describe("PATCH /api/features/[featureId] - Pusher broadcast", () => {
     expect(data.success).toBe(true);
     expect(data.data.title).toBe("New Title");
 
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({
@@ -221,7 +221,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     } as any);
 
     // Mock feature lookup with workspace structure for validateFeatureAccess
-    dbMock.feature.findUnique.mockResolvedValue({
+    dbMock.features.findUnique.mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
       title: "Old Title",
@@ -249,7 +249,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     } as any);
 
     // Mock successful update - must include phases array for updateFeature transform
-    dbMock.feature.update.mockResolvedValue({
+    dbMock.features.update.mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
       title: "New Title",
@@ -274,7 +274,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     } as any);
 
     // Mock user lookup for assignee validation (returns null by default, override in specific tests)
-    dbMock.user.findFirst.mockResolvedValue(null);
+    dbMock.users.findFirst.mockResolvedValue(null);
   });
 
   it("should set planUpdatedAt when updating brief", async () => {
@@ -282,7 +282,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({
@@ -298,7 +298,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({
@@ -314,7 +314,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({
@@ -333,7 +333,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({
@@ -350,7 +350,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.not.objectContaining({
@@ -365,7 +365,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.not.objectContaining({
@@ -380,7 +380,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.not.objectContaining({
@@ -392,7 +392,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
 
   it("should NOT set planUpdatedAt when updating only assigneeId", async () => {
     // Mock the assignee user lookup that updateFeature performs
-    dbMock.user.findFirst.mockResolvedValue({
+    dbMock.users.findFirst.mockResolvedValue({
       id: "user-456",
       name: "Assignee User",
       email: "assignee@example.com",
@@ -402,7 +402,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.not.objectContaining({
@@ -421,7 +421,7 @@ describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
     const response = await PATCH(request, { params: featureParams });
 
     expect(response.status).toBe(200);
-    expect(dbMock.feature.update).toHaveBeenCalledWith(
+    expect(dbMock.features.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "feature-123" },
         data: expect.objectContaining({

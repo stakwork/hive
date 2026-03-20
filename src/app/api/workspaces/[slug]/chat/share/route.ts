@@ -75,7 +75,7 @@ export async function POST(
     }
 
     // Get workspace ID
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -118,7 +118,7 @@ export async function POST(
     // If conversationId provided, update existing conversation
     if (body.conversationId) {
       // Verify conversation exists and user has access
-      const existing = await db.sharedConversation.findFirst({
+      const existing = await db.shared_conversations.findFirst({
         where: {
           id: body.conversationId,
           workspaceId: workspace.id,
@@ -134,7 +134,7 @@ export async function POST(
       }
 
       // Update existing conversation
-      sharedConversation = await db.sharedConversation.update({
+      sharedConversation = await db.shared_conversations.update({
         where: {
           id: body.conversationId,
         },
@@ -150,7 +150,7 @@ export async function POST(
       });
     } else {
       // Create new shared conversation
-      sharedConversation = await db.sharedConversation.create({
+      sharedConversation = await db.shared_conversations.create({
         data: {
           workspaceId: workspace.id,
           userId,

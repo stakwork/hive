@@ -28,7 +28,7 @@ export async function GET(
     const searchQuery = query.trim();
 
     // Verify workspace access
-    const workspace = await db.workspace.findFirst({
+    const workspace = await db.workspaces.findFirst({
       where: {
         slug,
         deleted: false,
@@ -62,7 +62,7 @@ export async function GET(
     // Search across all entity types in parallel
     const [tasks, features, phases] = await Promise.all([
       // Search Tasks (both standalone and roadmap tasks)
-      db.task.findMany({
+      db.tasks.findMany({
         where: {
           workspaceId: workspace.id,
           deleted: false,
@@ -104,7 +104,7 @@ export async function GET(
       }),
 
       // Search Features
-      db.feature.findMany({
+      db.features.findMany({
         where: {
           workspaceId: workspace.id,
           deleted: false,
@@ -138,7 +138,7 @@ export async function GET(
       }),
 
       // Search Phases
-      db.phase.findMany({
+      db.phases.findMany({
         where: {
           deleted: false,
           feature: {

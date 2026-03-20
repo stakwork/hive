@@ -29,7 +29,7 @@ export async function buildFeatureContext(
   featureId: string,
   phaseId: string
 ): Promise<FeatureContext> {
-  const feature = await db.feature.findUnique({
+  const feature = await db.features.findUnique({
     where: { id: featureId },
     include: {
       userStories: {
@@ -38,7 +38,7 @@ export async function buildFeatureContext(
     },
   });
 
-  const phase = await db.phase.findUnique({
+  const phase = await db.phases.findUnique({
     where: { id: phaseId },
     include: {
       tasks: {

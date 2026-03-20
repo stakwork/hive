@@ -215,18 +215,13 @@ describe('GET /api/cron/pod-repair', () => {
     it('should process eligible workspaces with pool configuration', async () => {
       // Create test user and workspace using factories
       const user = await createTestUser({ email: 'test@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'test-workspace' 
       });
 
       // Create swarm with pool configuration
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key', // Important: must have poolApiKey for eligibility
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key', // Important: must have poolApiKey for eligibility
+container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       const request = createMockRequest('Bearer test-secret-123');
@@ -241,26 +236,19 @@ describe('GET /api/cron/pod-repair', () => {
     it('should respect MAX_REPAIR_ATTEMPTS limit', async () => {
       // Create test user and workspace
       const user = await createTestUser({ email: 'maxtest@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'max-test-workspace' 
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Create 10 existing repair attempts (max limit)
       for (let i = 0; i < 10; i++) {
-        await db.stakworkRun.create({
-          data: {
-            workspaceId: workspace.id,
+        await db.stakwork_runs.create({
+          data: {workspace_id: workspace.id,
             type: StakworkRunType.POD_REPAIR,
-            status: WorkflowStatus.COMPLETED,
-            webhookUrl: 'https://example.com/webhook',
+            status: WorkflowStatus.COMPLETED,webhook_url: 'https://example.com/webhook',
           },
         });
       }
@@ -277,16 +265,12 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should skip workspaces without containerFiles setup', async () => {
       const user = await createTestUser({ email: 'nocontainer@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'no-container-workspace' 
       });
 
       // Create swarm WITHOUT containerFiles setup
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        containerFilesSetUp: false,
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',container_files_set_up: false,
       });
 
       const request = createMockRequest('Bearer test-secret-123');
@@ -301,16 +285,12 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should skip workspaces without pool API key', async () => {
       const user = await createTestUser({ email: 'nopool@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'no-pool-workspace' 
       });
 
       // Create swarm WITHOUT pool API key
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
         // No swarmApiKey = no poolApiKey
       });
 
@@ -326,18 +306,11 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should skip workspaces with COMPLETED podState', async () => {
       const user = await createTestUser({ email: 'completed@example.com' });
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: 'completed-pods-workspace'
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
-        podState: 'COMPLETED',
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },pod_state: 'COMPLETED',
       });
 
       const request = createMockRequest('Bearer test-secret-123');
@@ -353,27 +326,18 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should skip if repair workflow is already in progress', async () => {
       const user = await createTestUser({ email: 'inprogress@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'inprogress-workspace' 
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Create an IN_PROGRESS repair run
-      await db.stakworkRun.create({
-        data: {
-          workspaceId: workspace.id,
+      await db.stakwork_runs.create({
+        data: {workspace_id: workspace.id,
           type: StakworkRunType.POD_REPAIR,
-          status: WorkflowStatus.IN_PROGRESS,
-          projectId: 999,
-          webhookUrl: 'https://example.com/webhook',
+          status: WorkflowStatus.IN_PROGRESS,project_id: 999,webhook_url: 'https://example.com/webhook',
         },
       });
 
@@ -429,17 +393,11 @@ describe('GET /api/cron/pod-repair', () => {
   describe('Frontend Availability Check', () => {
     it('should call staklink-start when jlist is unavailable', async () => {
       const user = await createTestUser({ email: 'jlistfail@example.com' });
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: 'jlist-fail-workspace'
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -479,17 +437,11 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should trigger repair when frontend is not available', async () => {
       const user = await createTestUser({ email: 'frontendfail@example.com' });
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: 'frontend-fail-workspace'
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -547,17 +499,11 @@ describe('GET /api/cron/pod-repair', () => {
 
     it('should validate frontend when all checks pass and no failed processes', async () => {
       const user = await createTestUser({ email: 'frontendok@example.com' });
-      const workspace = await createTestWorkspace({
-        ownerId: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id,
         slug: 'frontend-ok-workspace'
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        poolApiKey: 'test-pool-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',pool_api_key: 'test-pool-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pod
@@ -615,16 +561,11 @@ describe('GET /api/cron/pod-repair', () => {
     it('should handle errors gracefully and continue processing', async () => {
       // Create workspace that will cause an error
       const user = await createTestUser({ email: 'error@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'error-workspace' 
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool manager to throw error
@@ -645,16 +586,11 @@ describe('GET /api/cron/pod-repair', () => {
       delete process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID;
 
       const user = await createTestUser({ email: 'nowfid@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
+      const workspace = await createTestWorkspace({owner_id: user.id, 
         slug: 'no-wfid-workspace' 
       });
 
-      await createTestSwarm({
-        workspaceId: workspace.id,
-        swarmApiKey: 'test-api-key',
-        containerFilesSetUp: true,
-        containerFiles: { 'test.json': Buffer.from('test').toString('base64') },
+      await createTestSwarm({workspace_id: workspace.id,swarm_api_key: 'test-api-key',container_files_set_up: true,container_files: { 'test.json': Buffer.from('test').toString('base64') },
       });
 
       // Mock pool with non-running pods

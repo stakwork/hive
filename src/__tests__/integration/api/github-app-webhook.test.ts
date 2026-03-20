@@ -68,8 +68,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Signature Verification", () => {
     test("should accept webhook with valid HMAC-SHA256 signature", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "test-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "test-user",
       });
       await createTestSourceControlToken(user.id);
 
@@ -128,8 +127,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
     });
 
     test("should verify signature using timing-safe comparison", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "timing-test-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "timing-test-user",
       });
       await createTestSourceControlToken(user.id);
 
@@ -214,8 +212,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Event Type Filtering", () => {
     test.skip("should process github_app_authorization events", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "event-test-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "event-test-user",
       });
       const { token } = await createTestSourceControlToken(user.id);
 
@@ -235,15 +232,14 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify token was deleted
-      const deletedToken = await db.sourceControlToken.findUnique({
+      const deletedToken = await db.source_control_tokens.findUnique({
         where: { id: token.id },
       });
       expect(deletedToken).toBeNull();
     });
 
     test("should ignore non-github_app_authorization events", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "other-event-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "other-event-user",
       });
       const { token } = await createTestSourceControlToken(user.id);
 
@@ -263,15 +259,14 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify token was NOT deleted (wrong event type)
-      const unchangedToken = await db.sourceControlToken.findUnique({
+      const unchangedToken = await db.source_control_tokens.findUnique({
         where: { id: token.id },
       });
       expect(unchangedToken).toBeDefined();
     });
 
     test("should only process revoked action for github_app_authorization", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "created-action-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "created-action-user",
       });
       const { token } = await createTestSourceControlToken(user.id);
 
@@ -291,7 +286,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify token was NOT deleted (action is 'created', not 'revoked')
-      const unchangedToken = await db.sourceControlToken.findUnique({
+      const unchangedToken = await db.source_control_tokens.findUnique({
         where: { id: token.id },
       });
       expect(unchangedToken).toBeDefined();
@@ -300,18 +295,13 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Token Cleanup", () => {
     test.skip("should delete all source control tokens for revoked user", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "revoke-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "revoke-user",
       });
 
       // Create multiple tokens for the same user
-      const { token: token1 } = await createTestSourceControlToken(user.id, {
-        githubLogin: "org1",
-        installationId: 111111,
+      const { token: token1 } = await createTestSourceControlToken(user.id, {github_login: "org1",installation_id: 111111,
       });
-      const { token: token2 } = await createTestSourceControlToken(user.id, {
-        githubLogin: "org2",
-        installationId: 222222,
+      const { token: token2 } = await createTestSourceControlToken(user.id, {github_login: "org2",installation_id: 222222,
       });
 
       const payload = createGitHubAppAuthPayload("revoked", "revoke-user");
@@ -329,10 +319,10 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify both tokens were deleted
-      const deletedToken1 = await db.sourceControlToken.findUnique({
+      const deletedToken1 = await db.source_control_tokens.findUnique({
         where: { id: token1.id },
       });
-      const deletedToken2 = await db.sourceControlToken.findUnique({
+      const deletedToken2 = await db.source_control_tokens.findUnique({
         where: { id: token2.id },
       });
 
@@ -341,8 +331,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
     });
 
     test("should handle revocation when user has no tokens", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "no-tokens-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "no-tokens-user",
       });
       // Don't create any tokens
 
@@ -381,11 +370,9 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
     });
 
     test.skip("should not delete tokens for other users", async () => {
-      const user1 = await createTestUserWithGitHubAuth({
-        githubUsername: "user1",
+      const user1 = await createTestUserWithGitHubAuth({github_username: "user1",
       });
-      const user2 = await createTestUserWithGitHubAuth({
-        githubUsername: "user2",
+      const user2 = await createTestUserWithGitHubAuth({github_username: "user2",
       });
 
       const { token: token1 } = await createTestSourceControlToken(user1.id);
@@ -407,13 +394,13 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(200);
 
       // Verify user1's token deleted
-      const deletedToken1 = await db.sourceControlToken.findUnique({
+      const deletedToken1 = await db.source_control_tokens.findUnique({
         where: { id: token1.id },
       });
       expect(deletedToken1).toBeNull();
 
       // Verify user2's token NOT deleted
-      const unchangedToken2 = await db.sourceControlToken.findUnique({
+      const unchangedToken2 = await db.source_control_tokens.findUnique({
         where: { id: token2.id },
       });
       expect(unchangedToken2).toBeDefined();
@@ -422,8 +409,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Database State Verification", () => {
     test.skip("should maintain database consistency after token deletion", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "consistency-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "consistency-user",
       });
       await createTestSourceControlToken(user.id);
 
@@ -440,7 +426,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       await POST(request as NextRequest);
 
       // Verify user still exists
-      const existingUser = await db.user.findUnique({
+      const existingUser = await db.users.findUnique({
         where: { id: user.id },
         include: { sourceControlTokens: true },
       });
@@ -450,8 +436,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
     });
 
     test.skip("should handle concurrent revocation requests safely", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "concurrent-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "concurrent-user",
       });
       const { token } = await createTestSourceControlToken(user.id);
 
@@ -481,7 +466,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response2.status).toBe(200);
 
       // Verify token deleted only once
-      const deletedToken = await db.sourceControlToken.findUnique({
+      const deletedToken = await db.source_control_tokens.findUnique({
         where: { id: token.id },
       });
       expect(deletedToken).toBeNull();
@@ -490,13 +475,12 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Error Handling", () => {
     test.skip("should handle database connection errors gracefully", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "db-error-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "db-error-user",
       });
       await createTestSourceControlToken(user.id);
 
       // Mock database error
-      const originalFindUnique = db.user.findUnique;
+      const originalFindUnique = db.users.findUnique;
       vi.spyOn(db.user, "findUnique").mockRejectedValue(
         new Error("Database connection failed")
       );
@@ -517,7 +501,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       expect(response.status).toBe(500);
 
       // Restore mock
-      db.user.findUnique = originalFindUnique;
+      db.users.findUnique = originalFindUnique;
     });
 
     test.skip("should handle missing GITHUB_WEBHOOK_SECRET environment variable", async () => {
@@ -546,8 +530,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
   describe("Response Format", () => {
     test("should return correct response format for successful processing", async () => {
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "response-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "response-user",
       });
       await createTestSourceControlToken(user.id);
 
@@ -590,8 +573,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
     test("should log revocation event details", async () => {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      const user = await createTestUserWithGitHubAuth({
-        githubUsername: "audit-user",
+      const user = await createTestUserWithGitHubAuth({github_username: "audit-user",
       });
       await createTestSourceControlToken(user.id);
 

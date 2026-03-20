@@ -30,7 +30,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
   });
 
   // Helper to create authenticated request
-  const createAuthenticatedRequest = (body: object, userId: string = "user-123") => {
+  const createAuthenticatedRequest = (body: object,user_id: string = "user-123") => {
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: userId, email: "test@example.com", name: "Test User" },
       expires: new Date(Date.now() + 86400000).toISOString(),
@@ -140,9 +140,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     test("should return 401 when user is not authenticated", async () => {
       const { repository } = await createWebhookTestScenario();
 
-      const request = createUnauthenticatedRequest({
-        workspaceId: repository.workspaceId,
-        repositoryUrl: repository.repositoryUrl,
+      const request = createUnauthenticatedRequest({workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
       });
 
       const response = await POST(request);
@@ -166,9 +164,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(111222333);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -181,8 +177,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Request Validation", () => {
     test("should return 400 when workspaceId is missing", async () => {
-      const request = createAuthenticatedRequest({
-        repositoryUrl: "https://github.com/test-org/test-repo",
+      const request = createAuthenticatedRequest({repository_url: "https://github.com/test-org/test-repo",
       });
 
       const response = await POST(request);
@@ -194,8 +189,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should return 400 when both repositoryUrl and repositoryId are missing", async () => {
-      const request = createAuthenticatedRequest({
-        workspaceId: "workspace-123",
+      const request = createAuthenticatedRequest({workspace_id: "workspace-123",
       });
 
       const response = await POST(request);
@@ -217,9 +211,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation();
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -240,9 +232,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation();
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryId: repository.id,
+        {workspace_id: repository.workspaceId,repository_id: repository.id,
         },
         workspace.ownerId
       );
@@ -258,9 +248,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const { workspace } = await createWebhookTestScenario();
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: workspace.id,
-          repositoryId: "nonexistent-repo-id",
+        {workspace_id: workspace.id,repository_id: "nonexistent-repo-id",
         },
         workspace.ownerId
       );
@@ -277,18 +265,15 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const { repository, workspace } = await createWebhookTestScenario();
       
       // Create another workspace
-      const differentWorkspace = await db.workspace.create({
+      const differentWorkspace = await db.workspaces.create({
         data: {
           name: "Different Workspace",
-          slug: `different-workspace-${Date.now()}`,
-          ownerId: workspace.ownerId,
+          slug: `different-workspace-${Date.now()}`,owner_id: workspace.ownerId,
         },
       });
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: differentWorkspace.id,
-          repositoryId: repository.id,
+        {workspace_id: differentWorkspace.id,repository_id: repository.id,
         },
         workspace.ownerId
       );
@@ -306,12 +291,11 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     test("should create webhook and persist to database with encryption", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
         // Repository without webhook initially
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
       
       // Directly update to remove webhook data
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -328,9 +312,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(webhookId);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -344,7 +326,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data.data.webhookId).toBe(webhookId);
 
       // Verify database persistence
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -378,9 +360,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockExistingWebhook(existingWebhookId);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -393,7 +373,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data.data.webhookId).toBe(existingWebhookId);
 
       // Verify no new webhook was created in database
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -415,9 +395,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(newWebhookId);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -429,7 +407,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data.data.webhookId).toBe(newWebhookId);
 
       // Verify database was updated with new webhook
-      const updatedRepo = await db.repository.findUnique({
+      const updatedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -440,11 +418,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
   describe("GitHub API Error Handling", () => {
     test("should return 500 when GitHub API returns insufficient permissions error", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -460,9 +437,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockInsufficientPermissions();
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -477,11 +452,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should return 500 when GitHub API returns server error", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -497,9 +471,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockGitHubAPIError();
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -517,9 +489,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -536,11 +506,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
   describe("Encryption Integration", () => {
     test("should properly encrypt webhook secret for storage", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -556,9 +525,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(555666777);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -566,7 +533,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       await POST(request);
 
       // Verify secret is stored encrypted
-      const storedRepo = await db.repository.findUnique({
+      const storedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -586,12 +553,11 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const encrypted = encryptionService.encryptField("githubWebhookSecret", plainSecret);
 
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: "webhook-888",
-        webhookSecret: null as any, // Will set manually
+        githubWebhookId: "webhook-888",webhook_secret: null as any, // Will set manually
       });
 
       // Manually set encrypted secret
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: "webhook-888",
@@ -607,9 +573,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockExistingWebhook(888);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -620,7 +584,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(response.status).toBe(200);
 
       // Verify stored secret remains unchanged
-      const unchangedRepo = await db.repository.findUnique({
+      const unchangedRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -636,11 +600,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
   describe("Complete Integration Scenarios", () => {
     test("should complete full webhook setup flow with repositoryUrl", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -657,9 +620,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(webhookId);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -673,7 +634,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data.data.webhookId).toBe(webhookId);
 
       // Verify database state
-      const finalRepo = await db.repository.findUnique({
+      const finalRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -693,11 +654,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should complete full webhook setup flow with repositoryId", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -714,9 +674,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(webhookId);
 
       const request = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryId: repository.id,
+        {workspace_id: repository.workspaceId,repository_id: repository.id,
         },
         workspace.ownerId
       );
@@ -730,7 +688,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data.data.webhookId).toBe(webhookId);
 
       // Verify repository lookup was performed correctly
-      const finalRepo = await db.repository.findUnique({
+      const finalRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 
@@ -740,11 +698,10 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should handle multiple sequential webhook ensure calls idempotently", async () => {
       const { repository, workspace } = await createWebhookTestScenario({
-        githubWebhookId: null as any,
-        webhookSecret: null as any,
+        githubWebhookId: null as any,webhook_secret: null as any,
       });
 
-      await db.repository.update({
+      await db.repositories.update({
         where: { id: repository.id },
         data: {
           githubWebhookId: null,
@@ -763,9 +720,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockSuccessfulWebhookCreation(webhookId);
 
       const request1 = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -780,9 +735,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       mockGitHubAPI.mockExistingWebhook(webhookId);
 
       const request2 = createAuthenticatedRequest(
-        {
-          workspaceId: repository.workspaceId,
-          repositoryUrl: repository.repositoryUrl,
+        {workspace_id: repository.workspaceId,repository_url: repository.repositoryUrl,
         },
         workspace.ownerId
       );
@@ -794,7 +747,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       expect(data2.data.webhookId).toBe(webhookId);
 
       // Verify webhook ID didn't change
-      const finalRepo = await db.repository.findUnique({
+      const finalRepo = await db.repositories.findUnique({
         where: { id: repository.id },
       });
 

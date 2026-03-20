@@ -26,7 +26,7 @@ describe("Pod Queries", () => {
     const timestamp = Date.now();
 
     // Create a test user
-    const user = await db.user.create({
+    const user = await db.users.create({
       data: {
         email: `test-user-${timestamp}@example.com`,
         name: `Test User ${timestamp}`,
@@ -35,37 +35,33 @@ describe("Pod Queries", () => {
     testUserId = user.id;
 
     // Create a test workspace first
-    const workspace = await db.workspace.create({
+    const workspace = await db.workspaces.create({
       data: {
         name: `Test Workspace ${timestamp}`,
-        slug: `test-workspace-${timestamp}`,
-        ownerId: testUserId,
+        slug: `test-workspace-${timestamp}`,owner_id: testUserId,
       },
     });
     testWorkspaceId = workspace.id;
 
     // Create a test swarm (required for pods foreign key) linked to workspace
-    const swarm = await db.swarm.create({
+    const swarm = await db.swarms.create({
       data: {
         name: `test-swarm-${timestamp}`,
-        status: "ACTIVE",
-        workspaceId: testWorkspaceId,
+        status: "ACTIVE",workspace_id: testWorkspaceId,
       },
     });
     testSwarmId = swarm.id;
 
     // Clean up any existing test data
-    await db.task.deleteMany({
-      where: {
-        podId: {
+    await db.tasks.deleteMany({
+      where: {pod_id: {
           contains: "test-pod",
         },
       },
     });
 
-    await db.pod.deleteMany({
-      where: {
-        podId: {
+    await db.pods.deleteMany({
+      where: {pod_id: {
           contains: "test-pod",
         },
       },
@@ -74,17 +70,15 @@ describe("Pod Queries", () => {
 
   afterEach(async () => {
     // Clean up test data
-    await db.task.deleteMany({
-      where: {
-        podId: {
+    await db.tasks.deleteMany({
+      where: {pod_id: {
           contains: "test-pod",
         },
       },
     });
 
-    await db.pod.deleteMany({
-      where: {
-        podId: {
+    await db.pods.deleteMany({
+      where: {pod_id: {
           contains: "test-pod",
         },
       },
@@ -92,7 +86,7 @@ describe("Pod Queries", () => {
 
     // Clean up test swarm
     if (testSwarmId) {
-      await db.swarm.delete({
+      await db.swarms.delete({
         where: { id: testSwarmId },
       }).catch(() => {
         // Ignore errors if already deleted
@@ -101,7 +95,7 @@ describe("Pod Queries", () => {
 
     // Clean up test workspace and user
     if (testWorkspaceId) {
-      await db.workspace.delete({
+      await db.workspaces.delete({
         where: { id: testWorkspaceId },
       }).catch(() => {
         // Ignore errors if already deleted
@@ -109,7 +103,7 @@ describe("Pod Queries", () => {
     }
 
     if (testUserId) {
-      await db.user.delete({
+      await db.users.delete({
         where: { id: testUserId },
       }).catch(() => {
         // Ignore errors if already deleted
@@ -122,10 +116,8 @@ describe("Pod Queries", () => {
   describe("claimAvailablePod", () => {
     it("should claim first RUNNING + UNUSED pod and mark it USED", async () => {
       // Create 3 RUNNING + UNUSED pods
-      const pod1 = await db.pod.create({
-        data: {
-          podId: `test-pod-1-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod1 = await db.pods.create({
+        data: {pod_id: `test-pod-1-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-1",
@@ -133,10 +125,8 @@ describe("Pod Queries", () => {
         },
       });
 
-      await db.pod.create({
-        data: {
-          podId: `test-pod-2-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-2-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-2",
@@ -154,7 +144,7 @@ describe("Pod Queries", () => {
       expect(claimedPod?.usageStatusMarkedAt).toBeInstanceOf(Date);
 
       // Verify database state
-      const verifyPod = await db.pod.findUnique({
+      const verifyPod = await db.pods.findUnique({
         where: { id: pod1.id },
       });
 
@@ -164,10 +154,8 @@ describe("Pod Queries", () => {
 
     it("should return null when no pods available", async () => {
       // Create only USED or non-RUNNING pods
-      await db.pod.create({
-        data: {
-          podId: `test-pod-used-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-used-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedBy: "another-user",
@@ -175,10 +163,8 @@ describe("Pod Queries", () => {
         },
       });
 
-      await db.pod.create({
-        data: {
-          podId: `test-pod-pending-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-pending-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.PENDING,
           usageStatus: PodUsageStatus.UNUSED,
         },
@@ -191,21 +177,16 @@ describe("Pod Queries", () => {
 
     it("should exclude soft-deleted pods", async () => {
       // Create a soft-deleted pod
-      await db.pod.create({
-        data: {
-          podId: `test-pod-deleted-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-deleted-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
-          usageStatus: PodUsageStatus.UNUSED,
-          deletedAt: new Date(),
+          usageStatus: PodUsageStatus.UNUSED,deleted_at: new Date(),
         },
       });
 
       // Create a valid pod
-      const validPod = await db.pod.create({
-        data: {
-          podId: `test-pod-valid-${Date.now()}`,
-          swarmId: testSwarmId,
+      const validPod = await db.pods.create({
+        data: {pod_id: `test-pod-valid-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
         },
@@ -219,10 +200,8 @@ describe("Pod Queries", () => {
 
     it("should handle race conditions without double-claiming", async () => {
       // Create only 1 RUNNING + UNUSED pod
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-race-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-race-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password",
@@ -253,7 +232,7 @@ describe("Pod Queries", () => {
       expect(failedClaims).toHaveLength(4);
 
       // Verify the pod is claimed by exactly one user
-      const verifyPod = await db.pod.findUnique({
+      const verifyPod = await db.pods.findUnique({
         where: { id: pod.id },
       });
 
@@ -266,23 +245,17 @@ describe("Pod Queries", () => {
 
     it("should claim oldest pod first (ORDER BY created_at ASC)", async () => {
       // Create pods with slight time delays
-      const oldestPod = await db.pod.create({
-        data: {
-          podId: `test-pod-oldest-${Date.now()}`,
-          swarmId: testSwarmId,
+      const oldestPod = await db.pods.create({
+        data: {pod_id: `test-pod-oldest-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
-          usageStatus: PodUsageStatus.UNUSED,
-          createdAt: new Date("2024-01-01"),
+          usageStatus: PodUsageStatus.UNUSED,created_at: new Date("2024-01-01"),
         },
       });
 
-      await db.pod.create({
-        data: {
-          podId: `test-pod-newer-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-newer-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
-          usageStatus: PodUsageStatus.UNUSED,
-          createdAt: new Date("2024-01-02"),
+          usageStatus: PodUsageStatus.UNUSED,created_at: new Date("2024-01-02"),
         },
       });
 
@@ -293,27 +266,22 @@ describe("Pod Queries", () => {
 
     it("should only claim pods from specified swarm", async () => {
       // Create another workspace and swarm
-      const otherWorkspace = await db.workspace.create({
+      const otherWorkspace = await db.workspaces.create({
         data: {
           name: `Other Test Workspace ${Date.now()}`,
-          slug: `other-test-workspace-${Date.now()}`,
-          ownerId: testUserId,
+          slug: `other-test-workspace-${Date.now()}`,owner_id: testUserId,
         },
       });
 
-      const otherSwarm = await db.swarm.create({
+      const otherSwarm = await db.swarms.create({
         data: {
-          name: `Other Test Swarm ${Date.now()}`,
-          swarmId: `other-swarm-${Date.now()}`,
-          workspaceId: otherWorkspace.id,
+          name: `Other Test Swarm ${Date.now()}`,swarm_id: `other-swarm-${Date.now()}`,workspace_id: otherWorkspace.id,
         },
       });
 
       // Create pod in different swarm
-      await db.pod.create({
-        data: {
-          podId: `test-pod-other-swarm-${Date.now()}`,
-          swarmId: otherSwarm.id,
+      await db.pods.create({
+        data: {pod_id: `test-pod-other-swarm-${Date.now()}`,swarm_id: otherSwarm.id,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
         },
@@ -325,16 +293,14 @@ describe("Pod Queries", () => {
       expect(claimedPod).toBeNull();
 
       // Cleanup
-      await db.pod.deleteMany({ where: { swarmId: otherSwarm.id } });
-      await db.swarm.delete({ where: { id: otherSwarm.id } });
-      await db.workspace.delete({ where: { id: otherWorkspace.id } });
+      await db.pods.deleteMany({ where: {swarm_id: otherSwarm.id } });
+      await db.swarms.delete({ where: { id: otherSwarm.id } });
+      await db.workspaces.delete({ where: { id: otherWorkspace.id } });
     });
 
     it("should exclude PENDING status pods", async () => {
-      await db.pod.create({
-        data: {
-          podId: `test-pod-pending-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-pending-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.PENDING,
           usageStatus: PodUsageStatus.UNUSED,
         },
@@ -346,10 +312,8 @@ describe("Pod Queries", () => {
     });
 
     it("should exclude FAILED status pods", async () => {
-      await db.pod.create({
-        data: {
-          podId: `test-pod-failed-${Date.now()}`,
-          swarmId: testSwarmId,
+      await db.pods.create({
+        data: {pod_id: `test-pod-failed-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.FAILED,
           usageStatus: PodUsageStatus.UNUSED,
         },
@@ -363,10 +327,8 @@ describe("Pod Queries", () => {
 
   describe("getPodDetails", () => {
     it("should return password and portMappings", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-details-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-details-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-123",
@@ -382,15 +344,12 @@ describe("Pod Queries", () => {
     });
 
     it("should return null for soft-deleted pods", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-deleted-details-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-deleted-details-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password",
-          portMappings: [3000],
-          deletedAt: new Date(),
+          portMappings: [3000],deleted_at: new Date(),
         },
       });
 
@@ -406,10 +365,8 @@ describe("Pod Queries", () => {
     });
 
     it("should handle null password and portMappings", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-nulls-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-nulls-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: null,
@@ -427,10 +384,8 @@ describe("Pod Queries", () => {
 
   describe("releasePodById", () => {
     it("should clear usage status and task associations", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-release-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-release-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date(),
@@ -440,7 +395,7 @@ describe("Pod Queries", () => {
       });
 
       // Create a task associated with this pod
-      const task = await db.task.create({
+      const task = await db.tasks.create({
         data: {
           title: "Test Task",
           workspace: {
@@ -451,8 +406,7 @@ describe("Pod Queries", () => {
           },
           updatedBy: {
             connect: { id: testUserId },
-          },
-          podId: pod.podId,
+          },pod_id: pod.podId,
         },
       });
 
@@ -465,7 +419,7 @@ describe("Pod Queries", () => {
       expect(releasedPod?.usageStatusReason).toBeNull();
 
       // Verify task's podId and agentPassword are cleared
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: task.id },
       });
 
@@ -474,10 +428,8 @@ describe("Pod Queries", () => {
     });
 
     it("should use transaction (both pod and task updates)", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-transaction-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-transaction-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date(),
@@ -487,24 +439,20 @@ describe("Pod Queries", () => {
 
       // Create multiple tasks with agentPassword set
       const [task1, task2] = await Promise.all([
-        db.task.create({
+        db.tasks.create({
           data: {
             title: "Task 1",
             workspace: { connect: { id: testWorkspaceId } },
             createdBy: { connect: { id: testUserId } },
-            updatedBy: { connect: { id: testUserId } },
-            podId: pod.podId,
-            agentPassword: "encrypted-password-1",
+            updatedBy: { connect: { id: testUserId } },pod_id: pod.podId,agent_password: "encrypted-password-1",
           },
         }),
-        db.task.create({
+        db.tasks.create({
           data: {
             title: "Task 2",
             workspace: { connect: { id: testWorkspaceId } },
             createdBy: { connect: { id: testUserId } },
-            updatedBy: { connect: { id: testUserId } },
-            podId: pod.podId,
-            agentPassword: "encrypted-password-2",
+            updatedBy: { connect: { id: testUserId } },pod_id: pod.podId,agent_password: "encrypted-password-2",
           },
         }),
       ]);
@@ -514,17 +462,16 @@ describe("Pod Queries", () => {
       expect(releasedPod).not.toBeNull();
 
       // Verify all tasks have podId cleared
-      const tasksWithPod = await db.task.count({
-        where: {
-          podId: pod.podId,
+      const tasksWithPod = await db.tasks.count({
+        where: {pod_id: pod.podId,
         },
       });
 
       expect(tasksWithPod).toBe(0);
 
       // Verify all tasks also have agentPassword cleared
-      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
-      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+      const updatedTask1 = await db.tasks.findUnique({ where: { id: task1.id } });
+      const updatedTask2 = await db.tasks.findUnique({ where: { id: task2.id } });
       expect(updatedTask1?.agentPassword).toBeNull();
       expect(updatedTask2?.agentPassword).toBeNull();
     });
@@ -536,15 +483,12 @@ describe("Pod Queries", () => {
     });
 
     it("should return null for soft-deleted pods", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-deleted-release-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-deleted-release-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date(),
-          usageStatusMarkedBy: testUserId,
-          deletedAt: new Date(),
+          usageStatusMarkedBy: testUserId,deleted_at: new Date(),
         },
       });
 
@@ -554,10 +498,8 @@ describe("Pod Queries", () => {
     });
 
     it("should handle pods with no associated tasks", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-no-tasks-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-no-tasks-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date(),
@@ -572,10 +514,8 @@ describe("Pod Queries", () => {
     });
 
     it("should clear all usage status fields atomically", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-atomic-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-atomic-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date("2024-01-01"),
@@ -597,10 +537,8 @@ describe("Pod Queries", () => {
     it("should return correct status fields", async () => {
       const markedAt = new Date("2024-01-01T12:00:00Z");
 
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-status-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-status-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: markedAt,
@@ -617,15 +555,12 @@ describe("Pod Queries", () => {
     });
 
     it("should return null for soft-deleted pods", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-deleted-status-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-deleted-status-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.USED,
           usageStatusMarkedAt: new Date(),
-          usageStatusMarkedBy: testUserId,
-          deletedAt: new Date(),
+          usageStatusMarkedBy: testUserId,deleted_at: new Date(),
         },
       });
 
@@ -641,10 +576,8 @@ describe("Pod Queries", () => {
     });
 
     it("should handle UNUSED pods with null marked fields", async () => {
-      const pod = await db.pod.create({
-        data: {
-          podId: `test-pod-unused-status-${Date.now()}`,
-          swarmId: testSwarmId,
+      const pod = await db.pods.create({
+        data: {pod_id: `test-pod-unused-status-${Date.now()}`,swarm_id: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           usageStatusMarkedAt: null,

@@ -19,10 +19,7 @@ vi.mock("@/services/pool-manager/sync", () => ({
 // Mock WebhookService to avoid GitHub token requirement in tests
 vi.mock("@/services/github/WebhookService", () => ({
   WebhookService: vi.fn().mockImplementation(() => ({
-    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({
-      repositoryId: "mock-repo-id",
-      defaultBranch: "main",
-      webhookId: 12345,
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({repository_id: "mock-repo-id",default_branch: "main",webhook_id: 12345,
     }),
   })),
 }));
@@ -151,39 +148,28 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-ws"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-ws"),owner_id: user.id,
         },
       });
 
       // Create repository for repoName extraction
       const repository = await tx.repository.create({
-        data: {
-          workspaceId: workspace.id,
-          repositoryUrl: "https://github.com/testorg/acme",
+        data: {workspace_id: workspace.id,repository_url: "https://github.com/testorg/acme",
           branch: "main",
           name: "acme",
         },
       });
 
       const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
+        data: {workspace_id: workspace.id,
           name: generateUniqueId("swarm"),
-          status: "ACTIVE",
-          swarmUrl: "https://test.sphinx.chat",
-          poolCpu: "2",
-          poolMemory: "8Gi",
-          poolApiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-pool-key")),
+          status: "ACTIVE",swarm_url: "https://test.sphinx.chat",pool_cpu: "2",pool_memory: "8Gi",pool_api_key: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-pool-key")),
           environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
-          services: DEFAULT_SERVICES,
-          containerFiles: {
+          services: DEFAULT_SERVICES,container_files: {
             "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG),
             Dockerfile: toBase64(DEFAULT_DOCKERFILE),
             "docker-compose.yml": toBase64(DEFAULT_DOCKER_COMPOSE),
-          },
-          agentRequestId: null,
-          agentStatus: null,
+          },agent_request_id: null,agent_status: null,
         },
       });
 
@@ -208,7 +194,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       expect(response.data.environmentVariables).toEqual(PLAINTEXT_ENV);
 
       // Verify DB remains encrypted
-      const swarm = await db.swarm.findFirst({
+      const swarm = await db.swarms.findFirst({
         where: { name: testData.swarm.name },
       });
       const stored = swarm?.environmentVariables as unknown as string;
@@ -223,7 +209,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: { Dockerfile: newDockerfile } }
+          {container_files: { Dockerfile: newDockerfile } }
         );
 
         const res = await PUT_STAK(req, {
@@ -233,8 +219,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(response.success).toBe(true);
 
         // Verify in database
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
 
@@ -258,7 +244,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: { "docker-compose.yml": newDockerCompose } }
+          {container_files: { "docker-compose.yml": newDockerCompose } }
         );
 
         const res = await PUT_STAK(req, {
@@ -266,8 +252,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
 
@@ -282,8 +268,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          {
-            containerFiles: {
+          {container_files: {
               Dockerfile: newDockerfile,
               "docker-compose.yml": newDockerCompose,
             },
@@ -295,8 +280,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
 
@@ -313,7 +298,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: { "pm2.config.js": newPm2Config } }
+          {container_files: { "pm2.config.js": newPm2Config } }
         );
 
         const res = await PUT_STAK(req, {
@@ -327,8 +312,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         const services = swarm?.services as any[];
@@ -365,8 +350,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         const services = swarm?.services as any[];
@@ -391,8 +376,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
           {
-            services: newServices,
-            containerFiles: { "pm2.config.js": newPm2Config },
+            services: newServices,container_files: { "pm2.config.js": newPm2Config },
           }
         );
 
@@ -401,8 +385,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         const services = swarm?.services as any[];
@@ -436,8 +420,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const services = swarm?.services as any[];
 
@@ -467,8 +451,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const response = await expectSuccess(res, 200);
         expect(response.data.name).toBe(newName);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         expect(swarm?.name).toBe(newName);
 
@@ -484,7 +468,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { swarmUrl: newUrl }
+          {swarm_url: newUrl }
         );
 
         const res = await PUT_STAK(req, {
@@ -493,8 +477,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const response = await expectSuccess(res, 200);
         expect(response.data.swarmUrl).toBe(newUrl);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         expect(swarm?.swarmUrl).toBe(newUrl);
       });
@@ -502,7 +486,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       it("updates poolCpu and poolMemory only", async () => {
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { poolCpu: "4", poolMemory: "8Gi" }
+          {pool_cpu: "4",pool_memory: "8Gi" }
         );
 
         const res = await PUT_STAK(req, {
@@ -510,8 +494,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         expect(swarm?.poolCpu).toBe("4");
         expect(swarm?.poolMemory).toBe("8Gi");
@@ -523,8 +507,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
     describe("edge cases", () => {
       it("makes no changes on empty request", async () => {
-        const originalSwarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const originalSwarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
 
         const req = createPutRequest(
@@ -537,8 +521,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
 
         expect(swarm?.name).toBe(originalSwarm?.name);
@@ -563,8 +547,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         // Empty services array explicitly clears all services
         // (enables deleting all services from UI)
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const services = swarm?.services as any[];
         expect(services).toHaveLength(0);
@@ -573,7 +557,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       it("handles empty containerFiles object gracefully", async () => {
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: {} }
+          {container_files: {} }
         );
 
         const res = await PUT_STAK(req, {
@@ -582,8 +566,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         await expectSuccess(res, 200);
 
         // Empty containerFiles should not change existing files
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         expect(Object.keys(containerFiles)).toHaveLength(3);
@@ -611,7 +595,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: { "pm2.config.js": toBase64(pm2WithAdvanced) } }
+          {container_files: { "pm2.config.js": toBase64(pm2WithAdvanced) } }
         );
 
         const res = await PUT_STAK(req, {
@@ -619,8 +603,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const services = swarm?.services as any[];
 
@@ -653,8 +637,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         const services = swarm?.services as any[];
@@ -694,8 +678,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
           {
-            services: newServices,
-            containerFiles: { "pm2.config.js": toBase64(conflictingPm2) },
+            services: newServices,container_files: { "pm2.config.js": toBase64(conflictingPm2) },
           }
         );
 
@@ -704,8 +687,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        const swarm = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const services = swarm?.services as any[];
         const containerFiles = swarm?.containerFiles as Record<string, string>;
@@ -740,7 +723,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req1 = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
-          { containerFiles: { "pm2.config.js": toBase64(pm2WithInstances) } }
+          {container_files: { "pm2.config.js": toBase64(pm2WithInstances) } }
         );
 
         await PUT_STAK(req1, {
@@ -748,8 +731,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
 
         // Step 2: Read services from DB
-        const swarm1 = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm1 = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const services = swarm1?.services as any[];
         const apiService = services.find((s: any) => s.name === "api");
@@ -767,8 +750,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
 
         // Step 4: Verify PM2 still has instances: 4
-        const swarm2 = await db.swarm.findUnique({
-          where: { workspaceId: testData.workspace.id },
+        const swarm2 = await db.swarms.findUnique({
+          where: {workspace_id: testData.workspace.id },
         });
         const containerFiles = swarm2?.containerFiles as Record<string, string>;
         const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
@@ -791,7 +774,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const userId = generateUniqueId();
         const workspaceSlug = generateUniqueSlug();
 
-        const user = await db.user.create({
+        const user = await db.users.create({
           data: {
             id: userId,
             email: `${userId}@example.com`,
@@ -799,44 +782,33 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
           },
         });
 
-        const workspace = await db.workspace.create({
+        const workspace = await db.workspaces.create({
           data: {
             name: "Test Workspace",
-            slug: workspaceSlug,
-            ownerId: user.id,
+            slug: workspaceSlug,owner_id: user.id,
           },
         });
 
-        await db.workspaceMember.create({
-          data: {
-            userId: user.id,
-            workspaceId: workspace.id,
+        await db.workspace_members.create({
+          data: {user_id: user.id,workspace_id: workspace.id,
             role: "OWNER",
           },
         });
 
-        const repository = await db.repository.create({
-          data: {
-            workspaceId: workspace.id,
-            repositoryUrl: "https://github.com/test/repo",
+        const repository = await db.repositories.create({
+          data: {workspace_id: workspace.id,repository_url: "https://github.com/test/repo",
             name: "test-repo",
             branch: "main",
           },
         });
 
-        const swarm = await db.swarm.create({
-          data: {
-            workspaceId: workspace.id,
+        const swarm = await db.swarms.create({
+          data: {workspace_id: workspace.id,
             name: "Test Swarm",
-            description: "Original description",
-            poolName: "test-pool",
-            poolApiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-api-key")),
-            services: JSON.stringify(DEFAULT_SERVICES),
-            containerFiles: {
+            description: "Original description",pool_name: "test-pool",pool_api_key: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-api-key")),
+            services: JSON.stringify(DEFAULT_SERVICES),container_files: {
               "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG),
-            },
-            poolCpu: "2",
-            poolMemory: "4Gi",
+            },pool_cpu: "2",pool_memory: "4Gi",
             environmentVariables: JSON.stringify([
               { name: "NODE_ENV", value: "production" },
             ]),
@@ -870,7 +842,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
 
         // Verify description was still saved
-        const updatedSwarm = await db.swarm.findUnique({
+        const updatedSwarm = await db.swarms.findUnique({
           where: { id: infraTestData.swarm.id },
         });
         expect(updatedSwarm?.description).toBe("Updated description only");
@@ -896,7 +868,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
 
         // Verify name was still saved
-        const updatedSwarm = await db.swarm.findUnique({
+        const updatedSwarm = await db.swarms.findUnique({
           where: { id: infraTestData.swarm.id },
         });
         expect(updatedSwarm?.name).toBe("Updated name only");
@@ -933,9 +905,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         // Verify sync WAS called
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
-          expect.objectContaining({
-            workspaceId: infraTestData.workspace.id,
-            swarmId: infraTestData.swarm.id,
+          expect.objectContaining({workspace_id: infraTestData.workspace.id,swarm_id: infraTestData.swarm.id,
           })
         );
       });
@@ -945,8 +915,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
-          {
-            poolCpu: "4",
+          {pool_cpu: "4",
           }
         );
 
@@ -959,8 +928,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         // Verify sync WAS called
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
-          expect.objectContaining({
-            poolCpu: "4",
+          expect.objectContaining({pool_cpu: "4",
           })
         );
       });
@@ -970,8 +938,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
-          {
-            poolMemory: "8Gi",
+          {pool_memory: "8Gi",
           }
         );
 
@@ -984,8 +951,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         // Verify sync WAS called
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledWith(
-          expect.objectContaining({
-            poolMemory: "8Gi",
+          expect.objectContaining({pool_memory: "8Gi",
           })
         );
       });
@@ -1018,8 +984,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${infraTestData.workspace.slug}/stakgraph`,
-          {
-            containerFiles: {
+          {container_files: {
               "pm2.config.js": toBase64(UPDATED_PM2_CONFIG),
             },
           }

@@ -31,7 +31,7 @@ describe("Voice Signatures API - Integration Tests", () => {
     describe("Authentication", () => {
       test("returns 401 when no auth is provided (no session, no token)", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         try {
           const request = createGetRequest(
@@ -46,14 +46,14 @@ describe("Voice Signatures API - Integration Tests", () => {
           const data = await response.json();
           expect(data.error).toBe("Unauthorized");
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
 
       test("returns 401 with invalid x-api-token header", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         try {
           const baseRequest = createGetRequest(
@@ -77,17 +77,17 @@ describe("Voice Signatures API - Integration Tests", () => {
           const data = await response.json();
           expect(data.error).toBe("Unauthorized");
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
 
       test("returns 200 with valid x-api-token header", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signature on owner
-        await db.user.update({
+        await db.users.update({
           where: { id: owner.id },
           data: { voiceSignatureKey: "voice-signatures/owner-signature.wav" },
         });
@@ -117,17 +117,17 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(data.speakers.length).toBe(1);
           expect(data.speakers[0].label).toBe(owner.id);
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
 
       test("returns 200 with valid session auth (fallback path)", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signature on owner
-        await db.user.update({
+        await db.users.update({
           where: { id: owner.id },
           data: { voiceSignatureKey: "voice-signatures/owner-signature.wav" },
         });
@@ -149,8 +149,8 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(data.speakers.length).toBe(1);
           expect(data.speakers[0].label).toBe(owner.id);
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
     });
@@ -174,7 +174,7 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(data.success).toBe(false);
           expect(data.message).toBe("Workspace not found");
         } finally {
-          await db.user.delete({ where: { id: owner.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
     });
@@ -182,10 +182,10 @@ describe("Voice Signatures API - Integration Tests", () => {
     describe("Voice Signature Filtering", () => {
       test("workspace owner with voice signature is included in speakers", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signature on owner
-        await db.user.update({
+        await db.users.update({
           where: { id: owner.id },
           data: { voiceSignatureKey: "voice-signatures/owner-signature.wav" },
         });
@@ -207,8 +207,8 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(data.speakers[0].name).toBe(owner.name);
           expect(data.speakers[0].audio_filepath).toContain("voice-signatures/owner-signature.wav");
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
 
@@ -216,23 +216,19 @@ describe("Voice Signatures API - Integration Tests", () => {
         const owner = await createTestUser();
         const memberWithSignature = await createTestUser({ email: "member1@example.com" });
         const memberWithoutSignature = await createTestUser({ email: "member2@example.com" });
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signature only on memberWithSignature
-        await db.user.update({
+        await db.users.update({
           where: { id: memberWithSignature.id },
           data: { voiceSignatureKey: "voice-signatures/member1-signature.wav" },
         });
 
         // Create memberships
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: memberWithSignature.id,
+        await createTestMembership({workspace_id: workspace.id,user_id: memberWithSignature.id,
           role: "DEVELOPER",
         });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: memberWithoutSignature.id,
+        await createTestMembership({workspace_id: workspace.id,user_id: memberWithoutSignature.id,
           role: "DEVELOPER",
         });
 
@@ -252,9 +248,9 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(data.speakers[0].label).toBe(memberWithSignature.id);
           expect(data.speakers.some((s: any) => s.label === memberWithoutSignature.id)).toBe(false);
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.deleteMany({
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.deleteMany({
             where: { id: { in: [owner.id, memberWithSignature.id, memberWithoutSignature.id] } },
           });
         }
@@ -264,27 +260,23 @@ describe("Voice Signatures API - Integration Tests", () => {
         const owner = await createTestUser();
         const member1 = await createTestUser({ email: "member1@example.com" });
         const member2 = await createTestUser({ email: "member2@example.com" });
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signatures on owner and member1
-        await db.user.update({
+        await db.users.update({
           where: { id: owner.id },
           data: { voiceSignatureKey: "voice-signatures/owner-signature.wav" },
         });
-        await db.user.update({
+        await db.users.update({
           where: { id: member1.id },
           data: { voiceSignatureKey: "voice-signatures/member1-signature.wav" },
         });
 
         // Create memberships
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: member1.id,
+        await createTestMembership({workspace_id: workspace.id,user_id: member1.id,
           role: "DEVELOPER",
         });
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: member2.id,
+        await createTestMembership({workspace_id: workspace.id,user_id: member2.id,
           role: "DEVELOPER",
         });
 
@@ -307,9 +299,9 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(labels).toContain(member1.id);
           expect(labels).not.toContain(member2.id);
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.deleteMany({
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.deleteMany({
             where: { id: { in: [owner.id, member1.id, member2.id] } },
           });
         }
@@ -319,10 +311,10 @@ describe("Voice Signatures API - Integration Tests", () => {
     describe("Response Format", () => {
       test("response shape matches NeMo enrollment manifest format", async () => {
         const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Set voice signature on owner
-        await db.user.update({
+        await db.users.update({
           where: { id: owner.id },
           data: { voiceSignatureKey: "voice-signatures/owner-signature.wav" },
         });
@@ -358,20 +350,18 @@ describe("Voice Signatures API - Integration Tests", () => {
           expect(speaker.label).toBe(owner.id);
           expect(speaker.name).toBe(owner.name);
         } finally {
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.delete({ where: { id: owner.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.delete({ where: { id: owner.id } });
         }
       });
 
       test("returns empty speakers array when no members have voice signatures", async () => {
         const owner = await createTestUser();
         const member = await createTestUser({ email: "member@example.com" });
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        const workspace = await createTestWorkspace({owner_id: owner.id });
 
         // Create membership without voice signatures
-        await createTestMembership({
-          workspaceId: workspace.id,
-          userId: member.id,
+        await createTestMembership({workspace_id: workspace.id,user_id: member.id,
           role: "DEVELOPER",
         });
 
@@ -389,9 +379,9 @@ describe("Voice Signatures API - Integration Tests", () => {
           const data = await response.json();
           expect(data.speakers).toHaveLength(0);
         } finally {
-          await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
-          await db.workspace.delete({ where: { id: workspace.id } });
-          await db.user.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
+          await db.workspace_members.deleteMany({ where: {workspace_id: workspace.id } });
+          await db.workspaces.delete({ where: { id: workspace.id } });
+          await db.users.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
         }
       });
     });

@@ -25,7 +25,7 @@ export async function PUT(
     const { branch, summary } = body;
 
     // Validate task exists
-    const task = await db.task.findFirst({
+    const task = await db.tasks.findFirst({
       where: {
         id: taskId,
         deleted: false,
@@ -72,7 +72,7 @@ export async function PUT(
     }
 
     // Update task
-    const updatedTask = await db.task.update({
+    const updatedTask = await db.tasks.update({
       where: { id: taskId },
       data: updateData,
       select: {

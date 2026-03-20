@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     // 3️⃣ Query PR artifacts from last 72 hours
     const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
 
-    const artifacts = await db.artifact.findMany({
+    const artifacts = await db.artifacts.findMany({
       where: {
         type: "PULL_REQUEST",
         createdAt: {

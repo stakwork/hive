@@ -26,12 +26,12 @@ describe("Sphinx CredentialsProvider", () => {
   afterEach(async () => {
     // Cleanup test data
     if (testUserId) {
-      await db.account.deleteMany({ where: { userId: testUserId } });
-      await db.user.delete({ where: { id: testUserId } }).catch(() => {});
+      await db.accounts.deleteMany({ where: {user_id: testUserId } });
+      await db.users.delete({ where: { id: testUserId } }).catch(() => {});
     }
     if (githubUserId) {
-      await db.account.deleteMany({ where: { userId: githubUserId } });
-      await db.user.delete({ where: { id: githubUserId } }).catch(() => {});
+      await db.accounts.deleteMany({ where: {user_id: githubUserId } });
+      await db.users.delete({ where: { id: githubUserId } }).catch(() => {});
     }
     await db.sphinxChallenge.deleteMany({ where: { k1: testChallenge } });
   });
@@ -206,8 +206,7 @@ describe("Sphinx CredentialsProvider", () => {
 
       const account: Account = {
         provider: "sphinx",
-        type: "credentials",
-        providerAccountId: testPubkey,
+        type: "credentials",provider_account_id: testPubkey,
       } as any;
 
       const signInCallback = authOptions.callbacks?.signIn;
@@ -218,9 +217,9 @@ describe("Sphinx CredentialsProvider", () => {
         expect(result).toBe(true);
 
         // Verify user was created
-        const createdUser = await db.user.findFirst({
-          where: { lightningPubkey: { not: null } },
-          orderBy: { createdAt: "desc" },
+        const createdUser = await db.users.findFirst({
+          where: {lightning_pubkey: { not: null } },
+          orderBy: {created_at: "desc" },
         });
         expect(createdUser).toBeDefined();
         expect(createdUser?.lightningPubkey).toBeDefined();
@@ -233,9 +232,8 @@ describe("Sphinx CredentialsProvider", () => {
         expect(decryptedPubkey).toBe(testPubkey);
 
         // Verify account record was created
-        const accountRecord = await db.account.findFirst({
-          where: {
-            userId: createdUser!.id,
+        const accountRecord = await db.accounts.findFirst({
+          where: {user_id: createdUser!.id,
             provider: "sphinx",
           },
         });
@@ -249,21 +247,16 @@ describe("Sphinx CredentialsProvider", () => {
     it("should log in existing Sphinx user (Scenario 1)", async () => {
       // Create existing Sphinx user
       const encryptedPubkey = encryptionService.encryptField("lightningPubkey", testPubkey);
-      const existingUser = await db.user.create({
-        data: {
-          lightningPubkey: JSON.stringify(encryptedPubkey),
-          name: "Existing Sphinx User",
-          emailVerified: new Date(),
-          lastLoginAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+      const existingUser = await db.users.create({
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey),
+          name: "Existing Sphinx User",email_verified: new Date(),last_login_at: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
         },
       });
 
-      await db.account.create({
-        data: {
-          userId: existingUser.id,
+      await db.accounts.create({
+        data: {user_id: existingUser.id,
           type: "credentials",
-          provider: "sphinx",
-          providerAccountId: testPubkey,
+          provider: "sphinx",provider_account_id: testPubkey,
         },
       });
 
@@ -276,8 +269,7 @@ describe("Sphinx CredentialsProvider", () => {
 
       const account: Account = {
         provider: "sphinx",
-        type: "credentials",
-        providerAccountId: testPubkey,
+        type: "credentials",provider_account_id: testPubkey,
       } as any;
 
       const signInCallback = authOptions.callbacks?.signIn;
@@ -291,7 +283,7 @@ describe("Sphinx CredentialsProvider", () => {
         expect(user.id).toBe(existingUser.id);
 
         // Verify lastLoginAt was updated
-        const updatedUser = await db.user.findUnique({
+        const updatedUser = await db.users.findUnique({
           where: { id: existingUser.id },
         });
         expect(updatedUser?.lastLoginAt?.getTime()).toBeGreaterThan(
@@ -302,20 +294,17 @@ describe("Sphinx CredentialsProvider", () => {
 
     it("should link Sphinx to existing GitHub user (Scenario 2)", async () => {
       // Create existing GitHub user
-      const githubUser = await db.user.create({
+      const githubUser = await db.users.create({
         data: {
           name: "GitHub User",
-          email: "github@example.com",
-          emailVerified: new Date(),
+          email: "github@example.com",email_verified: new Date(),
         },
       });
 
-      await db.account.create({
-        data: {
-          userId: githubUser.id,
+      await db.accounts.create({
+        data: {user_id: githubUser.id,
           type: "oauth",
-          provider: "github",
-          providerAccountId: "12345",
+          provider: "github",provider_account_id: "12345",
         },
       });
 
@@ -329,8 +318,7 @@ describe("Sphinx CredentialsProvider", () => {
 
       const account: Account = {
         provider: "sphinx",
-        type: "credentials",
-        providerAccountId: testPubkey,
+        type: "credentials",provider_account_id: testPubkey,
       } as any;
 
       const signInCallback = authOptions.callbacks?.signIn;
@@ -341,7 +329,7 @@ describe("Sphinx CredentialsProvider", () => {
         expect(result).toBe(true);
 
         // Verify Lightning pubkey was added to existing user
-        const updatedUser = await db.user.findUnique({
+        const updatedUser = await db.users.findUnique({
           where: { id: githubUser.id },
         });
         expect(updatedUser?.lightningPubkey).toBeDefined();
@@ -354,9 +342,8 @@ describe("Sphinx CredentialsProvider", () => {
         expect(decryptedPubkey).toBe(testPubkey);
 
         // Verify Sphinx account record was created
-        const sphinxAccount = await db.account.findFirst({
-          where: {
-            userId: githubUser.id,
+        const sphinxAccount = await db.accounts.findFirst({
+          where: {user_id: githubUser.id,
             provider: "sphinx",
           },
         });
@@ -364,9 +351,8 @@ describe("Sphinx CredentialsProvider", () => {
         expect(sphinxAccount?.providerAccountId).toBe(testPubkey);
 
         // Verify GitHub account still exists
-        const githubAccount = await db.account.findFirst({
-          where: {
-            userId: githubUser.id,
+        const githubAccount = await db.accounts.findFirst({
+          where: {user_id: githubUser.id,
             provider: "github",
           },
         });
@@ -385,8 +371,7 @@ describe("Sphinx CredentialsProvider", () => {
 
       const account: Account = {
         provider: "sphinx",
-        type: "credentials",
-        providerAccountId: testPubkey,
+        type: "credentials",provider_account_id: testPubkey,
       } as any;
 
       const signInCallback = authOptions.callbacks?.signIn;
@@ -397,9 +382,9 @@ describe("Sphinx CredentialsProvider", () => {
         expect(result).toBe(true);
 
         // Cleanup
-        const createdUser = await db.user.findFirst({
-          where: { lightningPubkey: { not: null } },
-          orderBy: { createdAt: "desc" },
+        const createdUser = await db.users.findFirst({
+          where: {lightning_pubkey: { not: null } },
+          orderBy: {created_at: "desc" },
         });
         if (createdUser) {
           testUserId = createdUser.id;
@@ -412,11 +397,9 @@ describe("Sphinx CredentialsProvider", () => {
     it("should include decrypted Lightning pubkey in session for Sphinx users", async () => {
       // Create Sphinx user
       const encryptedPubkey = encryptionService.encryptField("lightningPubkey", testPubkey);
-      const sphinxUser = await db.user.create({
-        data: {
-          lightningPubkey: JSON.stringify(encryptedPubkey),
-          name: "Sphinx User",
-          emailVerified: new Date(),
+      const sphinxUser = await db.users.create({
+        data: {lightning_pubkey: JSON.stringify(encryptedPubkey),
+          name: "Sphinx User",email_verified: new Date(),
         },
       });
 
@@ -450,11 +433,10 @@ describe("Sphinx CredentialsProvider", () => {
 
     it("should not include Lightning pubkey for GitHub-only users", async () => {
       // Create GitHub-only user (no Lightning pubkey)
-      const githubUser = await db.user.create({
+      const githubUser = await db.users.create({
         data: {
           name: "GitHub User",
-          email: "github@example.com",
-          emailVerified: new Date(),
+          email: "github@example.com",email_verified: new Date(),
         },
       });
 
@@ -491,11 +473,9 @@ describe("Sphinx CredentialsProvider", () => {
       // NOTE: The current FieldEncryptionService.decryptField() returns invalid
       // data as-is instead of throwing, so the lightningPubkey will be present
       // but will contain the invalid data string. This is a known limitation.
-      const sphinxUser = await db.user.create({
-        data: {
-          lightningPubkey: "invalid-encrypted-data",
-          name: "Sphinx User",
-          emailVerified: new Date(),
+      const sphinxUser = await db.users.create({
+        data: {lightning_pubkey: "invalid-encrypted-data",
+          name: "Sphinx User",email_verified: new Date(),
         },
       });
 

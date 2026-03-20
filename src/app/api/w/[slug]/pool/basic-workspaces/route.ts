@@ -33,7 +33,7 @@ export async function GET(
     }
 
     const { db } = await import("@/lib/db");
-    const swarm = await db.swarm.findFirst({
+    const swarm = await db.swarms.findFirst({
       where: {
         workspaceId: workspace.id,
       },

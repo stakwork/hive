@@ -42,7 +42,7 @@ export async function POST(
     }
 
     // Fetch feature with workspace info
-    const feature = await db.feature.findUnique({
+    const feature = await db.features.findUnique({
       where: { id: featureId },
       select: {
         title: true,
@@ -79,7 +79,7 @@ export async function POST(
     }
 
     // Fetch all invitees in one query, then restore the caller's order
-    const inviteesRaw = await db.user.findMany({
+    const inviteesRaw = await db.users.findMany({
       where: { id: { in: ids } },
       select: { id: true, sphinxAlias: true },
     });

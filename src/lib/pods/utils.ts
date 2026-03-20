@@ -450,7 +450,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
   async function clearTaskPodFields() {
     if (!clearTaskFields) return;
     try {
-      await db.task.update({
+      await db.tasks.update({
         where: { id: taskId },
         data: { podId: null, agentPassword: null },
       });
@@ -475,7 +475,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
 
     // Fetch workspace for repository reset if needed
     const workspace = resetRepositories
-      ? await db.workspace.findFirst({
+      ? await db.workspaces.findFirst({
           where: { id: workspaceId },
           include: {
             repositories: true,
@@ -564,7 +564,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     // Update task workflow status if needed
     if (clearTaskFields && newWorkflowStatus && result.taskCleared) {
       try {
-        await db.task.update({
+        await db.tasks.update({
           where: { id: taskId },
           data: {
             workflowStatus: newWorkflowStatus,

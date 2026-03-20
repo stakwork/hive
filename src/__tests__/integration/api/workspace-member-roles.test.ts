@@ -38,8 +38,7 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     const targetUser = await createTestUser({
       name: "Target User",
-      withGitHubAuth: true,
-      githubUsername: "testuser",
+      withGitHubAuth: true,github_username: "testuser",
     });
 
     return {
@@ -61,8 +60,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         // Mock session with real admin user
         getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          githubUsername: "testuser",
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {github_username: "testuser",
           role: role,
         });
 
@@ -77,7 +75,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         }
 
         // Verify workspace and admin user exist in database
-        const workspaceInDb = await db.workspace.findUnique({
+        const workspaceInDb = await db.workspaces.findUnique({
           where: { id: workspace.id },
         });
         expect(workspaceInDb).toBeTruthy();
@@ -90,8 +88,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {github_username: "testuser",
         role: WorkspaceRole.OWNER,
       });
 
@@ -102,8 +99,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       await expectError(response, "Invalid role", 400);
 
       // Verify no member was added to database
-      const members = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id },
+      const members = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id },
       });
       expect(members).toHaveLength(0);
     });
@@ -113,8 +110,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {github_username: "testuser",
         role: WorkspaceRole.STAKEHOLDER,
       });
 
@@ -125,8 +121,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       await expectError(response, "Invalid role", 400);
 
       // Verify no member was added to database
-      const members = await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id },
+      const members = await db.workspace_members.findMany({
+        where: {workspace_id: workspace.id },
       });
       expect(members).toHaveLength(0);
     });
@@ -139,8 +135,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         
         getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          githubUsername: "testuser",
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {github_username: "testuser",
           role: role,
         });
 
@@ -151,8 +146,8 @@ describe("Workspace Member Role API Integration Tests", () => {
         await expectError(response, "Invalid role", 400);
 
         // Verify no member was added to database
-        const members = await db.workspaceMember.findMany({
-          where: { workspaceId: workspace.id },
+        const members = await db.workspace_members.findMany({
+          where: {workspace_id: workspace.id },
         });
         expect(members).toHaveLength(0);
       }
@@ -164,8 +159,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       // Mock no session
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {github_username: "testuser",
         role: WorkspaceRole.DEVELOPER,
       });
 
@@ -181,8 +175,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {
-        githubUsername: "testuser",
+      const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {github_username: "testuser",
         role: WorkspaceRole.DEVELOPER,
       });
 
@@ -200,10 +193,8 @@ describe("Workspace Member Role API Integration Tests", () => {
         const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
 
         // First add user as a member with STAKEHOLDER role (not in AssignableMemberRoles)
-        await db.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: targetUser.id,
+        await db.workspace_members.create({
+          data: {workspace_id: workspace.id,user_id: targetUser.id,
             role: WorkspaceRole.STAKEHOLDER,
           },
         });
@@ -215,7 +206,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         });
 
         const response = await PATCH(request, { 
-          params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+          params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
         });
 
         // Should not be rejected for invalid role
@@ -225,8 +216,8 @@ describe("Workspace Member Role API Integration Tests", () => {
         }
 
         // Verify member still exists in database
-        const member = await db.workspaceMember.findFirst({
-          where: { workspaceId: workspace.id, userId: targetUser.id },
+        const member = await db.workspace_members.findFirst({
+          where: {workspace_id: workspace.id,user_id: targetUser.id },
         });
         expect(member).toBeTruthy();
       }
@@ -236,10 +227,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
       
       // Add user as a member first
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: targetUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: targetUser.id,
           role: WorkspaceRole.DEVELOPER,
         },
       });
@@ -251,14 +240,14 @@ describe("Workspace Member Role API Integration Tests", () => {
       });
 
       const response = await PATCH(request, { 
-        params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
       });
 
       await expectError(response, "Invalid role", 400);
 
       // Verify original role was not changed in database
-      const member = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: targetUser.id },
+      const member = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: targetUser.id },
       });
       expect(member?.role).toBe(WorkspaceRole.DEVELOPER);
     });
@@ -267,10 +256,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
       
       // Add user as a member first
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: targetUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: targetUser.id,
           role: WorkspaceRole.PM,
         },
       });
@@ -282,14 +269,14 @@ describe("Workspace Member Role API Integration Tests", () => {
       });
 
       const response = await PATCH(request, { 
-        params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
       });
 
       await expectError(response, "Invalid role", 400);
 
       // Verify original role was not changed in database
-      const member = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: targetUser.id },
+      const member = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: targetUser.id },
       });
       expect(member?.role).toBe(WorkspaceRole.PM);
     });
@@ -301,10 +288,8 @@ describe("Workspace Member Role API Integration Tests", () => {
         const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
         
         // Add user as a member first
-        await db.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: targetUser.id,
+        await db.workspace_members.create({
+          data: {workspace_id: workspace.id,user_id: targetUser.id,
             role: WorkspaceRole.DEVELOPER,
           },
         });
@@ -316,14 +301,14 @@ describe("Workspace Member Role API Integration Tests", () => {
         });
 
         const response = await PATCH(request, { 
-          params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+          params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
         });
 
         await expectError(response, "Invalid role", 400);
 
         // Verify original role was not changed in database
-        const member = await db.workspaceMember.findFirst({
-          where: { workspaceId: workspace.id, userId: targetUser.id },
+        const member = await db.workspace_members.findFirst({
+          where: {workspace_id: workspace.id,user_id: targetUser.id },
         });
         expect(member?.role).toBe(WorkspaceRole.DEVELOPER);
       }
@@ -336,10 +321,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       // Add target user as a member first
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: targetUser.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: targetUser.id,
           role: WorkspaceRole.DEVELOPER,
         },
       });
@@ -352,14 +335,14 @@ describe("Workspace Member Role API Integration Tests", () => {
       });
 
       const response = await PATCH(request, { 
-        params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
+        params: Promise.resolve({ slug: workspace.slug,user_id: targetUser.id })
       });
 
       await expectForbidden(response, "Admin access required");
 
       // Verify role was not changed in database
-      const member = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: targetUser.id },
+      const member = await db.workspace_members.findFirst({
+        where: {workspace_id: workspace.id,user_id: targetUser.id },
       });
       expect(member?.role).toBe(WorkspaceRole.DEVELOPER);
     });

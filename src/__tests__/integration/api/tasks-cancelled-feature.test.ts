@@ -9,59 +9,51 @@ import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { expectSuccess } from "@/__tests__/support/helpers/api-assertions";
 
 async function createTestFeature(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options: { title: string; status?: string }
 ) {
-  return db.feature.create({
+  return db.features.create({
     data: {
       id: generateUniqueId("feature"),
       title: options.title,
       status: (options.status as any) || "BACKLOG",
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
     },
   });
 }
 
 async function createTestTask(
-  workspaceId: string,
-  userId: string,
+workspace_id: string,user_id: string,
   options: {
     title: string;
-    featureId?: string | null;
+feature_id?: string | null;
     status?: TaskStatus;
   }
 ) {
-  return db.task.create({
+  return db.tasks.create({
     data: {
       id: generateUniqueId("task"),
       title: options.title,
-      workspaceId,
-      createdById: userId,
-      updatedById: userId,
-      status: options.status || TaskStatus.IN_PROGRESS,
-      workflowStatus: WorkflowStatus.PENDING,
-      featureId: options.featureId ?? null,
+      workspaceId,created_by_id: userId,updated_by_id: userId,
+      status: options.status || TaskStatus.IN_PROGRESS,workflow_status: WorkflowStatus.PENDING,feature_id: options.featureId ?? null,
     },
   });
 }
 
 async function cleanup(workspaceIds: string[], userIds: string[]) {
-  await db.task.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.tasks.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.feature.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.features.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspaceMember.deleteMany({
-    where: { workspaceId: { in: workspaceIds } },
+  await db.workspace_members.deleteMany({
+    where: {workspace_id: { in: workspaceIds } },
   });
-  await db.workspace.deleteMany({
+  await db.workspaces.deleteMany({
     where: { id: { in: workspaceIds } },
   });
-  await db.user.deleteMany({
+  await db.users.deleteMany({
     where: { id: { in: userIds } },
   });
 }
@@ -69,7 +61,7 @@ async function cleanup(workspaceIds: string[], userIds: string[]) {
 describe("GET /api/tasks - Cancelled Feature Filtering", () => {
   test("excludes tasks from cancelled features", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     const cancelledFeature = await createTestFeature(
       testWorkspace.id,
@@ -83,16 +75,13 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
     );
 
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Task on cancelled feature",
-      featureId: cancelledFeature.id,
+      title: "Task on cancelled feature",feature_id: cancelledFeature.id,
     });
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Task on active feature",
-      featureId: activeFeature.id,
+      title: "Task on active feature",feature_id: activeFeature.id,
     });
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Task with no feature",
-      featureId: null,
+      title: "Task with no feature",feature_id: null,
     });
 
     try {
@@ -114,7 +103,7 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
 
   test("works with search filter and cancelled feature exclusion", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     const cancelledFeature = await createTestFeature(
       testWorkspace.id,
@@ -123,12 +112,10 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
     );
 
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Searchable cancelled task",
-      featureId: cancelledFeature.id,
+      title: "Searchable cancelled task",feature_id: cancelledFeature.id,
     });
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Searchable active task",
-      featureId: null,
+      title: "Searchable active task",feature_id: null,
     });
 
     try {
@@ -149,7 +136,7 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
 
   test("works with visibility rules (Recent tab) and cancelled feature exclusion", async () => {
     const testUser = await createTestUser({ name: "Test User" });
-    const testWorkspace = await createTestWorkspace({ ownerId: testUser.id });
+    const testWorkspace = await createTestWorkspace({owner_id: testUser.id });
 
     const cancelledFeature = await createTestFeature(
       testWorkspace.id,
@@ -159,13 +146,11 @@ describe("GET /api/tasks - Cancelled Feature Filtering", () => {
 
     // IN_PROGRESS status passes visibility filter (non-TODO)
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Active visible task",
-      featureId: null,
+      title: "Active visible task",feature_id: null,
       status: TaskStatus.IN_PROGRESS,
     });
     await createTestTask(testWorkspace.id, testUser.id, {
-      title: "Cancelled visible task",
-      featureId: cancelledFeature.id,
+      title: "Cancelled visible task",feature_id: cancelledFeature.id,
       status: TaskStatus.IN_PROGRESS,
     });
 

@@ -15,11 +15,9 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
+  db: {workspaces: {
       findFirst: vi.fn(),
-    },
-    stakworkRun: {
+    },stakwork_runs: {
       findMany: vi.fn(),
     },
   },
@@ -138,11 +136,11 @@ const TestHelpers = {
   setupWorkspaceQuery: (
     workspaceRow: { id: string; stakworkApiKey: string | null } | null,
   ) => {
-    (mockDb.workspace.findFirst as Mock).mockResolvedValue(workspaceRow);
+    (mockDb.workspaces.findFirst as Mock).mockResolvedValue(workspaceRow);
   },
 
   setupStakworkRuns: (runs: any[]) => {
-    (mockDb.stakworkRun.findMany as Mock).mockResolvedValue(runs);
+    (mockDb.stakwork_runs.findMany as Mock).mockResolvedValue(runs);
   },
 
   setupEncryptionService: (decryptedValue: string | null, shouldThrow: boolean = false) => {

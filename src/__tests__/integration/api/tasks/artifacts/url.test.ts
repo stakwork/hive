@@ -30,7 +30,7 @@ vi.mock('@/lib/auth/nextauth', () => ({
 
 describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   // Helper to create request with proper URL
-  const createRequest = (taskId: string, artifactId: string) => {
+  const createRequest = (taskId: string,artifact_id: string) => {
     const url = new URL(`http://localhost/api/tasks/${taskId}/artifacts/${artifactId}/url`);
     return new Request(url.toString());
   };
@@ -38,12 +38,12 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
   beforeEach(async () => {
     // Clean up database before each test
-    await db.artifact.deleteMany();
-    await db.chatMessage.deleteMany();
-    await db.task.deleteMany();
-    await db.workspaceMember.deleteMany();
-    await db.workspace.deleteMany();
-    await db.user.deleteMany();
+    await db.artifacts.deleteMany();
+    await db.chat_messages.deleteMany();
+    await db.tasks.deleteMany();
+    await db.workspace_members.deleteMany();
+    await db.workspaces.deleteMany();
+    await db.users.deleteMany();
     
     // Reset mocks
     vi.clearAllMocks();
@@ -55,13 +55,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Authentication', () => {
     it('should reject requests without authentication', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -75,7 +72,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
       const request = new Request(url.toString());
       const response = await GET(
         request,
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(401);
@@ -87,13 +84,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Authorization', () => {
     it('should reject requests from non-workspace members', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -107,7 +101,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(403);
@@ -117,13 +111,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should allow workspace members to retrieve artifact URLs', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -133,10 +124,8 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       // Create a workspace member
       const member = await createTestUser({ email: 'member@example.com' });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: member.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: member.id,
           role: 'DEVELOPER',
         },
       });
@@ -145,7 +134,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(200);
@@ -156,13 +145,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should allow viewers to retrieve artifact URLs', async () => {
       const owner = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: owner.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: owner.id,
+      const workspace = await createTestWorkspace({owner_id: owner.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: owner.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -172,10 +158,8 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       // Create a viewer
       const viewer = await createTestUser({ email: 'viewer@example.com' });
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: viewer.id,
+      await db.workspace_members.create({
+        data: {workspace_id: workspace.id,user_id: viewer.id,
           role: 'VIEWER',
         },
       });
@@ -184,7 +168,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(200);
@@ -197,13 +181,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Valid Requests', () => {
     it('should successfully retrieve artifact URL for task owner', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -215,7 +196,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(200);
@@ -226,13 +207,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should call S3Service with correct parameters', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -244,7 +222,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(mockGeneratePresignedDownloadUrl).toHaveBeenCalledWith('uploads/user-123/file.webm', 3600);
@@ -252,13 +230,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should handle audio media type', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -271,7 +246,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(200);
@@ -283,17 +258,15 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Error Handling', () => {
     it('should return 404 for invalid artifact ID', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
 
       vi.mocked(getServerSession).mockResolvedValue({ user: { id: user.id, email: user.email } });
 
       const response = await GET(
         createRequest(task.id, "invalid-artifact-id"),
-        { params: Promise.resolve({ taskId: task.id, artifactId: 'invalid-artifact-id' }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: 'invalid-artifact-id' }) }
       );
 
       expect(response.status).toBe(404);
@@ -303,16 +276,13 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should return 400 when artifact does not belong to task', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const workspace = await createTestWorkspace({owner_id: user.id });
       
       // Create first task with artifact
-      const task1 = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task1 = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: 'Task 1',
       });
-      const message1 = await createTestChatMessage({
-        taskId: task1.id,
+      const message1 = await createTestChatMessage({task_id: task1.id,
         message: 'Test message 1',
       });
       const artifact = await createTestArtifact({
@@ -321,9 +291,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
       });
 
       // Create second task
-      const task2 = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const task2 = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
         title: 'Task 2',
       });
 
@@ -332,7 +300,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
       // Try to access task1's artifact via task2's URL
       const response = await GET(
         createRequest(task2.id, artifact.id),
-        { params: Promise.resolve({ taskId: task2.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task2.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(400);
@@ -342,13 +310,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should return 400 for non-media artifact type', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -361,7 +326,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(400);
@@ -371,18 +336,15 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should return 400 when artifact content lacks S3 key', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       
       // Create artifact with invalid content (no s3Key)
-      const artifact = await db.artifact.create({
+      const artifact = await db.artifacts.create({
         data: {
           messageId: message.id,
           type: 'MEDIA',
@@ -394,7 +356,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(400);
@@ -404,13 +366,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should handle S3 service errors gracefully', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       const artifact = await createTestArtifact({
@@ -425,7 +384,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(500);
@@ -435,13 +394,13 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should return 400 for missing task ID', async () => {
       const user = await createTestUser();
-      await createTestWorkspace({ ownerId: user.id });
+      await createTestWorkspace({owner_id: user.id });
 
       vi.mocked(getServerSession).mockResolvedValue({ user: { id: user.id, email: user.email } });
 
       const response = await GET(
         createRequest("", "some-id"),
-        { params: Promise.resolve({ taskId: '', artifactId: 'some-id' }) }
+        { params: Promise.resolve({task_id: '',artifact_id: 'some-id' }) }
       );
 
       expect(response.status).toBe(400);
@@ -451,13 +410,13 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should return 400 for missing artifact ID', async () => {
       const user = await createTestUser();
-      await createTestWorkspace({ ownerId: user.id });
+      await createTestWorkspace({owner_id: user.id });
 
       vi.mocked(getServerSession).mockResolvedValue({ user: { id: user.id, email: user.email } });
 
       const response = await GET(
         createRequest("some-task", ""),
-        { params: Promise.resolve({ taskId: 'some-task', artifactId: '' }) }
+        { params: Promise.resolve({task_id: 'some-task',artifact_id: '' }) }
       );
 
       expect(response.status).toBe(400);
@@ -469,13 +428,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Multiple Artifacts', () => {
     it('should retrieve correct URL for specific artifact when task has multiple artifacts', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
 
@@ -506,7 +462,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
       // Request first artifact
       const response1 = await GET(
         createRequest(task.id, artifact1.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact1.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact1.id }) }
       );
       expect(response1.status).toBe(200);
       const data1 = await response1.json();
@@ -515,7 +471,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
       // Request second artifact
       const response2 = await GET(
         createRequest(task.id, artifact2.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact2.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact2.id }) }
       );
       expect(response2.status).toBe(200);
       const data2 = await response2.json();
@@ -526,18 +482,15 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
   describe('Edge Cases', () => {
     it('should handle artifact with null content gracefully', async () => {
       const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
+      const workspace = await createTestWorkspace({owner_id: user.id });
+      const task = await createTestTask({workspace_id: workspace.id,created_by_id: user.id,
       });
-      const message = await createTestChatMessage({
-        taskId: task.id,
+      const message = await createTestChatMessage({task_id: task.id,
         message: 'Test message',
       });
       
       // Create artifact with null content
-      const artifact = await db.artifact.create({
+      const artifact = await db.artifacts.create({
         data: {
           messageId: message.id,
           type: 'MEDIA',
@@ -549,7 +502,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest(task.id, artifact.id),
-        { params: Promise.resolve({ taskId: task.id, artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: task.id,artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(400);
@@ -559,10 +512,10 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
     it('should handle message without task association', async () => {
       const user = await createTestUser();
-      await createTestWorkspace({ ownerId: user.id });
+      await createTestWorkspace({owner_id: user.id });
       
       // Create orphan message without task
-      const message = await db.chatMessage.create({
+      const message = await db.chat_messages.create({
         data: {
           message: 'Orphan message',
           role: 'USER',
@@ -578,7 +531,7 @@ describe('GET /api/tasks/[taskId]/artifacts/[artifactId]/url', () => {
 
       const response = await GET(
         createRequest("some-task-id", artifact.id),
-        { params: Promise.resolve({ taskId: 'some-task-id', artifactId: artifact.id }) }
+        { params: Promise.resolve({task_id: 'some-task-id',artifact_id: artifact.id }) }
       );
 
       expect(response.status).toBe(400);

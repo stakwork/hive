@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch logs and total count in parallel
     const [logs, total] = await Promise.all([
-      db.agentLog.findMany({
+      db.agent_logs.findMany({
         where,
         orderBy: { createdAt: "desc" },
         take: limit,
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      db.agentLog.count({ where }),
+      db.agent_logs.count({ where }),
     ]);
 
     // Flatten the feature title from either the StakworkRun relation or direct feature relation

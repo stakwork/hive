@@ -43,10 +43,10 @@ describe("PUT /api/tasks/[taskId]/title", () => {
     process.env.API_TOKEN = API_TOKEN;
 
     // Clean up test data
-    await db.task.deleteMany({});
-    await db.workspaceMember.deleteMany({});
-    await db.workspace.deleteMany({});
-    await db.user.deleteMany({});
+    await db.tasks.deleteMany({});
+    await db.workspace_members.deleteMany({});
+    await db.workspaces.deleteMany({});
+    await db.users.deleteMany({});
   });
 
   describe("Authentication", () => {
@@ -58,7 +58,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
       
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -76,7 +76,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
       
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -96,7 +96,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         {}
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -114,7 +114,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: 123 }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -132,7 +132,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "test-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "test-task-id" }) });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -152,7 +152,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: "non-existent-task-id" }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: "non-existent-task-id" }) });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -172,11 +172,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -185,10 +183,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: true, // Soft-deleted task
           },
         });
@@ -206,14 +201,14 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error).toBe("Task not found");
 
       // Verify task was not updated in database
-      const taskInDb = await db.task.findUnique({
+      const taskInDb = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(taskInDb?.title).toBe("Original Title");
@@ -234,11 +229,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -247,10 +240,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -269,7 +259,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: newTitle }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -279,7 +269,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
       expect(data.data.workspaceId).toBe(testData.workspace.id);
 
       // Verify database persistence
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.title).toBe(newTitle);
@@ -299,11 +289,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -312,10 +300,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -334,14 +319,14 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: titleWithWhitespace }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.title).toBe("Updated Title");
 
       // Verify trimmed title in database
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.title).toBe("Updated Title");
@@ -360,11 +345,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -373,10 +356,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -396,7 +376,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "Original Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -408,7 +388,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
       expect(mockedPusherServer.trigger).not.toHaveBeenCalled();
 
       // Verify updatedAt timestamp was not changed
-      const taskInDb = await db.task.findUnique({
+      const taskInDb = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(taskInDb?.updatedAt.getTime()).toBe(originalUpdatedAt.getTime());
@@ -429,11 +409,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -442,10 +420,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -464,7 +439,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: newTitle }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
@@ -472,8 +447,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
       expect(mockedPusherServer.trigger).toHaveBeenCalledWith(
         `task-${testData.task.id}`,
         "task-title-update",
-        expect.objectContaining({
-          taskId: testData.task.id,
+        expect.objectContaining({task_id: testData.task.id,
           newTitle: newTitle,
           previousTitle: "Original Title",
           timestamp: expect.any(Date),
@@ -494,11 +468,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -507,10 +479,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -529,7 +498,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: newTitle }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
@@ -537,8 +506,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
       expect(mockedPusherServer.trigger).toHaveBeenCalledWith(
         "workspace-test-workspace",
         "workspace-task-title-update",
-        expect.objectContaining({
-          taskId: testData.task.id,
+        expect.objectContaining({task_id: testData.task.id,
           newTitle: newTitle,
           previousTitle: "Original Title",
           timestamp: expect.any(Date),
@@ -559,11 +527,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -572,10 +538,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -594,7 +557,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: newTitle }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
@@ -622,11 +585,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -635,10 +596,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -657,7 +615,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: newTitle }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       // Request should still succeed
       expect(response.status).toBe(200);
@@ -665,7 +623,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
       expect(data.success).toBe(true);
 
       // Verify database was still updated
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.title).toBe(newTitle);
@@ -686,11 +644,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -699,10 +655,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -725,12 +678,12 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
       // Verify updatedAt was changed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.updatedAt.getTime()).toBeGreaterThan(
@@ -751,11 +704,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -764,10 +715,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
           },
         });
@@ -785,12 +733,12 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
       // Verify workspace relationship is intact
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
         include: { workspace: true },
       });
@@ -811,11 +759,9 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         const workspace = await tx.workspace.create({
           data: {
             name: "Test Workspace",
-            slug: "test-workspace",
-            ownerId: user.id,
+            slug: "test-workspace",owner_id: user.id,
             members: {
-              create: {
-                userId: user.id,
+              create: {user_id: user.id,
                 role: "OWNER",
               },
             },
@@ -824,10 +770,7 @@ describe("PUT /api/tasks/[taskId]/title", () => {
 
         const task = await tx.task.create({
           data: {
-            title: "Original Title",
-            workspaceId: workspace.id,
-            createdById: user.id,
-            updatedById: user.id,
+            title: "Original Title",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,
             deleted: false,
             status: "TODO",
             description: "Original description",
@@ -847,12 +790,12 @@ describe("PUT /api/tasks/[taskId]/title", () => {
         { title: "New Title" }
       );
 
-      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+      const response = await PUT(request, { params: Promise.resolve({task_id: testData.task.id }) });
 
       expect(response.status).toBe(200);
 
       // Verify only title was changed
-      const updatedTask = await db.task.findUnique({
+      const updatedTask = await db.tasks.findUnique({
         where: { id: testData.task.id },
       });
       expect(updatedTask?.title).toBe("New Title");

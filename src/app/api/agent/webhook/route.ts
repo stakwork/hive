@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   console.log("[Webhook] Processing request for taskId:", taskId);
 
   // 3. Load task with workspace/swarm relations (need poolApiKey, podId for diff generation)
-  const task = await db.task.findUnique({
+  const task = await db.tasks.findUnique({
     where: { id: taskId },
     select: {
       agentWebhookSecret: true,
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
   try {
     switch (body.type) {
       case "text": {
-        const msg = await db.chatMessage.create({
+        const msg = await db.chat_messages.create({
           data: {
             taskId,
             message: body.text,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       case "tool-call": {
         const input = JSON.stringify(body.input, null, 2);
         const logContent = `🔧 tool-call: ${body.toolName}\n${input}`;
-        const msg = await db.chatMessage.create({
+        const msg = await db.chat_messages.create({
           data: {
             taskId,
             message: `<logs>${logContent}</logs>`,
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       case "tool-result": {
         const output = typeof body.output === "string" ? body.output : JSON.stringify(body.output, null, 2);
         const logContent = `✅ tool-result: ${body.toolName}\n${output}`;
-        const msg = await db.chatMessage.create({
+        const msg = await db.chat_messages.create({
           data: {
             taskId,
             message: `<logs>${logContent}</logs>`,

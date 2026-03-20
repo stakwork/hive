@@ -41,8 +41,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
+          slug: generateUniqueSlug("test-workspace"),owner_id: user.id,
         },
       });
 
@@ -52,12 +51,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
           title: "Test Task",
           description: "Test task for messages",
           status: "IN_PROGRESS",
-          priority: "MEDIUM",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          workflowStatus: "IN_PROGRESS",
-          stakworkProjectId: 12345,
+          priority: "MEDIUM",workspace_id: workspace.id,created_by_id: user.id,updated_by_id: user.id,workflow_status: "IN_PROGRESS",stakwork_project_id: 12345,
         },
       });
 
@@ -74,10 +68,8 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         data: {
           message: "First message in chronological order",
           role: ChatRole.USER,
-          status: ChatStatus.SENT,
-          taskId: task.id,
-          timestamp: firstMessageTime,
-          contextTags: JSON.stringify([
+          status: ChatStatus.SENT,task_id: task.id,
+          timestamp: firstMessageTime,context_tags: JSON.stringify([
             { type: "FEATURE_BRIEF", id: "feature-1" },
             { type: "PRODUCT_BRIEF", id: "product-1" },
           ]),
@@ -92,8 +84,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
             language: "javascript",
             code: "console.log('test artifact 1');",
           },
-          messageId: message1.id,
-          createdAt: firstArtifactTime,
+          messageId: message1.id,created_at: firstArtifactTime,
         },
       });
 
@@ -113,10 +104,8 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         data: {
           message: "Second message replying to first",
           role: ChatRole.ASSISTANT,
-          status: ChatStatus.SENT,
-          taskId: task.id,
-          timestamp: secondMessageTime,
-          contextTags: JSON.stringify([]),
+          status: ChatStatus.SENT,task_id: task.id,
+          timestamp: secondMessageTime,context_tags: JSON.stringify([]),
           replyId: message1.id, // Threading reference
         },
       });
@@ -126,8 +115,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         data: {
           type: ArtifactType.CODE,
           content: { code: "console.log('artifact 2a');" },
-          messageId: message2.id,
-          createdAt: secondArtifact2Time, // Later
+          messageId: message2.id,created_at: secondArtifact2Time, // Later
         },
       });
 
@@ -135,8 +123,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         data: {
           type: ArtifactType.FORM,
           content: { actionText: "Submit", options: [] },
-          messageId: message2.id,
-          createdAt: secondArtifact1Time, // Earlier
+          messageId: message2.id,created_at: secondArtifact1Time, // Earlier
         },
       });
 
@@ -158,9 +145,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
       // Add member to workspace
       await tx.workspaceMember.create({
-        data: {
-          userId: memberUser.id,
-          workspaceId: workspace.id,
+        data: {user_id: memberUser.id,workspace_id: workspace.id,
           role: "DEVELOPER",
         },
       });
@@ -192,7 +177,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -206,7 +191,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -223,7 +208,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: "" }),
+        params: Promise.resolve({task_id: "" }),
       });
 
       expect(response?.status).toBe(400);
@@ -239,7 +224,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: nonExistentId }),
+        params: Promise.resolve({task_id: nonExistentId }),
       });
 
       expect(response?.status).toBe(404);
@@ -249,9 +234,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
     it("should return 404 for soft-deleted tasks", async () => {
       // Soft-delete the task
-      await db.task.update({
+      await db.tasks.update({
         where: { id: testTask.id },
-        data: { deleted: true, deletedAt: new Date() },
+        data: { deleted: true,deleted_at: new Date() },
       });
 
       const request = createAuthenticatedGetRequest(
@@ -260,7 +245,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(404);
@@ -277,7 +262,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(403);
@@ -292,7 +277,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -308,7 +293,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -326,7 +311,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -360,7 +345,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -368,10 +353,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
       expect(data.data.task).toMatchObject({
         id: testTask.id,
-        title: "Test Task",
-        workspaceId: testWorkspace.id,
-        workflowStatus: "IN_PROGRESS",
-        stakworkProjectId: 12345,
+        title: "Test Task",workspace_id: testWorkspace.id,workflow_status: "IN_PROGRESS",stakwork_project_id: 12345,
       });
     });
   });
@@ -384,7 +366,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -412,7 +394,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -444,7 +426,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -469,7 +451,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -503,7 +485,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -531,7 +513,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -549,14 +531,11 @@ describe("GET /api/tasks/[taskId]/messages", () => {
 
     it("should return empty messages array for task with no messages", async () => {
       // Create a new task without messages
-      const emptyTask = await db.task.create({
+      const emptyTask = await db.tasks.create({
         data: {
           title: "Empty Task",
           status: "TODO",
-          priority: "LOW",
-          workspaceId: testWorkspace.id,
-          createdById: testUser.id,
-          updatedById: testUser.id,
+          priority: "LOW",workspace_id: testWorkspace.id,created_by_id: testUser.id,updated_by_id: testUser.id,
         },
       });
 
@@ -566,7 +545,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: emptyTask.id }),
+        params: Promise.resolve({task_id: emptyTask.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -588,7 +567,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: invalidTaskId }),
+        params: Promise.resolve({task_id: invalidTaskId }),
       });
 
       // Should handle gracefully with proper error response
@@ -607,7 +586,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
       );
 
       const response = await GET(request, {
-        params: Promise.resolve({ taskId: testTask.id }),
+        params: Promise.resolve({task_id: testTask.id }),
       });
 
       expect(response?.status).toBe(200);
