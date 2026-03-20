@@ -55,6 +55,7 @@ interface ChatInputProps {
   isPlanChat?: boolean;
   currentWorkspaceSlug?: string;
   streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatInput({
@@ -78,6 +79,7 @@ export function ChatInput({
   isPlanChat = false,
   currentWorkspaceSlug,
   streamContext = null,
+  isSuperAdmin = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -411,14 +413,14 @@ export function ChatInput({
       const before = input.slice(0, cursor);
       const after = input.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setInput(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       // Restore focus and position cursor after the inserted slug
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },
@@ -439,6 +441,11 @@ export function ChatInput({
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Tab") {
         e.preventDefault();
         insertMention(filteredWorkspaces[mentionIndex].slug);
         return;
@@ -483,7 +490,7 @@ export function ChatInput({
             <div className={cn("px-4 py-2 md:px-6")}>
               {isTerminalState && onRetry ? (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
                   <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
                     {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                     Retry
@@ -491,7 +498,7 @@ export function ChatInput({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
                 </div>
               )}
             </div>

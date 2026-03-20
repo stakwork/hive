@@ -72,8 +72,12 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: any) => <>{children}</>,
 }));
 
+let lastWorkflowStatusBadgeProps: Record<string, unknown> = {};
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge", () => ({
-  WorkflowStatusBadge: () => <div data-testid="workflow-status-badge">Status</div>,
+  WorkflowStatusBadge: (props: Record<string, unknown>) => {
+    lastWorkflowStatusBadgeProps = props;
+    return <div data-testid="workflow-status-badge">Status</div>;
+  },
 }));
 
 vi.mock("@/components/InputDebugAttachment", () => ({
@@ -751,6 +755,31 @@ describe("ChatInput - Task Mode", () => {
         />
       );
       expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
+    });
+
+    test("forwards isSuperAdmin=false to WorkflowStatusBadge by default", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(false);
+    });
+
+    test("forwards isSuperAdmin=true to WorkflowStatusBadge when passed", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+          isSuperAdmin={true}
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(true);
     });
   });
 
