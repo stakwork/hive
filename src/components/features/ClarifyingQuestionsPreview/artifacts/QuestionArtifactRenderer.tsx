@@ -14,13 +14,23 @@ export function QuestionArtifactRenderer({
   className,
 }: QuestionArtifactRendererProps) {
   switch (artifact.type) {
-    case "mermaid":
+    case "mermaid": {
+      const code =
+        typeof artifact.data === "string"
+          ? artifact.data
+          : typeof artifact.data === "object" &&
+              artifact.data !== null &&
+              !Array.isArray(artifact.data) &&
+              typeof (artifact.data as Record<string, unknown>).code === "string"
+            ? ((artifact.data as Record<string, unknown>).code as string)
+            : "";
       return (
         <MermaidDiagram
-          code={artifact.data as string}
+          code={code}
           className={className}
         />
       );
+    }
 
     case "comparison_table":
       return (
