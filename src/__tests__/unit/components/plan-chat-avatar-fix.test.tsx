@@ -29,6 +29,10 @@ vi.mock("@/hooks/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ isSuperAdmin: false }),
+}));
+
 vi.mock("@/hooks/usePlanPresence", () => ({
   usePlanPresence: () => ({ collaborators: [] }),
 }));
