@@ -8,6 +8,7 @@ export interface AgentTextEvent {
 export interface AgentToolCallEvent {
   type: "tool_call";
   toolName: string;
+  input?: Record<string, unknown> | null;
 }
 
 export type AgentEvent = AgentTextEvent | AgentToolCallEvent;
@@ -44,7 +45,7 @@ export function useAgentEvents(
         if (data.type === "text") {
           setLatestEvent({ type: "text", text: data.text ?? "" });
         } else if (data.type === "tool_call") {
-          setLatestEvent({ type: "tool_call", toolName: data.toolName ?? data.tool_name ?? "" });
+          setLatestEvent({ type: "tool_call", toolName: data.toolName ?? data.tool_name ?? "", input: data.input ?? null });
         } else if (data.type === "done") {
           setStatus("done");
           es.close();

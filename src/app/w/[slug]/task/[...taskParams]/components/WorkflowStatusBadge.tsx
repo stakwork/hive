@@ -98,7 +98,15 @@ export function WorkflowStatusBadge({
 
   const eventText =
     latestEvent?.type === "tool_call"
-      ? `🔧 ${latestEvent.toolName}`
+      ? (() => {
+          const inp = latestEvent.input;
+          const inputStr = (() => {
+            if (!inp) return "";
+            const [key, val] = Object.entries(inp)[0] ?? [];
+            return key !== undefined ? ` — ${key}: ${String(val)}` : "";
+          })();
+          return `🔧 ${latestEvent.toolName}${inputStr}`;
+        })()
       : latestEvent?.type === "text"
         ? latestEvent.text.slice(0, 80)
         : null;
