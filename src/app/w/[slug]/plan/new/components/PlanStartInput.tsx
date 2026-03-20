@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,8 @@ interface PlanStartInputProps {
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
-  const [isExiting, setIsExiting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
-  const wasLoadingRef = useRef(false);
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -69,19 +67,6 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       setValue(newValue);
     }
   }, [transcript]);
-
-  // Reset isExiting when loading finishes (error recovery).
-  // Gate on wasLoadingRef so the reset only fires after a real loading cycle
-  // (true → false), not immediately when isExiting flips true with isLoading still false.
-  useEffect(() => {
-    if (isLoading) {
-      wasLoadingRef.current = true;
-    }
-    if (!isLoading && isExiting && wasLoadingRef.current) {
-      setIsExiting(false);
-      wasLoadingRef.current = false;
-    }
-  }, [isLoading, isExiting]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -127,12 +112,12 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const hasText = value.trim().length > 0;
 
   const handleSubmit = () => {
-    if (hasText && !isExiting) {
+    if (hasText && !isLoading) {
       if (isListening) {
         stopListening();
       }
       resetTranscript();
-      setIsExiting(true);
+      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
     }
   };
 
@@ -175,43 +160,10 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
-      <motion.h1
-        className="text-4xl font-bold text-foreground mb-10 text-center"
-        animate={isExiting ? { opacity: 0, y: -20 } : {}}
-        transition={{ duration: 0.15 }}
-      >
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={title}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {title}
-          </motion.span>
-        </AnimatePresence>
-      </motion.h1>
-      <motion.div
-        className="w-full max-w-2xl"
-        animate={
-          isExiting
-            ? {
-                x: "calc(-50vw + 160px)",
-                y: "calc(-45vh + 80px)",
-                scale: 0.38,
-                opacity: 0.85,
-                borderRadius: "12px",
-              }
-            : {}
-        }
-        transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-        onAnimationComplete={() => {
-          if (isExiting) {
-            onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
-          }
-        }}
-      >
+      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
+        {title}
+      </h1>
+      <div className="w-full max-w-2xl">
         <Card className="relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group">
           <motion.div
             key="plan"
@@ -358,7 +310,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             </div>
           </div>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }
