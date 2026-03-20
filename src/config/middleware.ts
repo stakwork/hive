@@ -47,6 +47,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/tasks/*/recording", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
   { path: "/api/webhook/pool-manager", strategy: "prefix", access: "webhook" },
+  { path: "/api/w/*/pool/workspaces", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members/*", strategy: "pattern", access: "webhook" },
