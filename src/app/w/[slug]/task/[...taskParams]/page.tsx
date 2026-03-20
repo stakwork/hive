@@ -151,7 +151,7 @@ export default function TaskChatPage() {
 
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, false);
 
   // Reconciliation polling: recover stuck IN_PROGRESS workflow status on page/tab load
   const { workflowData: reconcilingWorkflowData } = useWorkflowPolling(
