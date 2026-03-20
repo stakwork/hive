@@ -106,6 +106,7 @@ const mockRunData = {
   id: 9999,
   name: "Test Run 9999",
   workflow_id: 123,
+  created_at: new Date().toISOString(), // recent — isRecentRun = true
 };
 
 // Helper to set up fetch mock with no-run (404/fail) by default
@@ -544,6 +545,67 @@ describe("WorkflowsPage", () => {
       await waitFor(() => {
         expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
         expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
+      });
+    });
+
+    it("should not show Debug this run button when run created_at is older than 1 year", async () => {
+      const user = userEvent.setup();
+      const staleDate = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString();
+      const staleRunData = { ...mockRunData, created_at: staleDate };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project: staleRunData } }),
+      });
+
+      mockUseWorkflowVersions.mockReturnValue({
+        versions: [],
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
+      await user.type(input, "9999");
+
+      await waitFor(() => {
+        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
+      });
+    });
+
+    it("should not show disambiguation prompt when run is stale but workflow exists", async () => {
+      const user = userEvent.setup();
+      const staleDate = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString();
+      const staleRunData = { ...mockRunData, created_at: staleDate };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project: staleRunData } }),
+      });
+
+      mockUseWorkflowNodes.mockReturnValue({
+        workflows: mockWorkflows,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      mockUseWorkflowVersions.mockReturnValue({
+        versions: mockVersions,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<WorkflowsPage />);
+      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
+      await user.type(input, "123");
+
+      await waitFor(() => {
+        // Disambiguation prompt must not appear
+        expect(
+          screen.queryByText(/found both a Run and a Workflow/i)
+        ).not.toBeInTheDocument();
+        // Debug this run must not appear
+        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
       });
     });
   });
