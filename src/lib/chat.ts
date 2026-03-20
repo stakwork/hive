@@ -166,9 +166,9 @@ export interface MediaContent {
 }
 
 export interface StreamContent {
-  request_id: string;
-  events_token: string;
-  base_url: string;
+  requestId: string;
+  eventsToken: string;
+  baseUrl: string;
 }
 
 export interface BountyContent {
