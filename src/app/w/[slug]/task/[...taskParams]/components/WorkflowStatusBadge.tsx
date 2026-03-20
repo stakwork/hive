@@ -2,15 +2,23 @@
 
 import React from "react";
 import { WorkflowStatus } from "@/lib/chat";
+import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { cn } from "@/lib/utils";
 import { AlertCircle, ExternalLink, Pause, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+
+export interface StreamContext {
+  requestId: string;
+  eventsToken: string;
+  baseUrl: string;
+}
 
 interface WorkflowStatusBadgeProps {
   status: WorkflowStatus | null | undefined;
   className?: string;
   stakworkProjectId?: string | null;
   lastLogLine?: string;
+  streamContext?: StreamContext | null;
 }
 
 const statusConfig: Record<string, {
@@ -53,7 +61,14 @@ export function WorkflowStatusBadge({
   className,
   stakworkProjectId,
   lastLogLine,
+  streamContext = null,
 }: WorkflowStatusBadgeProps) {
+  const { latestEvent } = useAgentEvents(
+    streamContext?.requestId ?? null,
+    streamContext?.eventsToken ?? null,
+    streamContext?.baseUrl ?? null,
+  );
+
   const effectiveStatus = status || WorkflowStatus.PENDING;
   const config = statusConfig[effectiveStatus];
 
@@ -78,8 +93,15 @@ export function WorkflowStatusBadge({
     ? (lastLogLine || config.label)
     : config.label;
 
-  const content = (
-    <>
+  const eventText =
+    latestEvent?.type === "tool_call"
+      ? `🔧 ${latestEvent.toolName}`
+      : latestEvent?.type === "text"
+        ? latestEvent.text.slice(0, 80)
+        : null;
+
+  const labelRow = (
+    <div className="flex items-center gap-1.5">
       {Icon ? (
         <Icon className={cn("h-3.5 w-3.5 shrink-0", config.iconColor)} />
       ) : (
@@ -118,7 +140,24 @@ export function WorkflowStatusBadge({
       {isClickable && (
         <ExternalLink className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground transition-all" />
       )}
-    </>
+    </div>
+  );
+
+  const eventRow = (
+    <AnimatePresence mode="wait">
+      {isInProgress && eventText && (
+        <motion.span
+          key={eventText}
+          initial={{ y: 12, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -12, opacity: 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+          className="text-xs text-muted-foreground/70 truncate block"
+        >
+          {eventText}
+        </motion.span>
+      )}
+    </AnimatePresence>
   );
 
   if (isClickable) {
@@ -127,21 +166,23 @@ export function WorkflowStatusBadge({
         href={stakworkUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className={cn("group flex items-center gap-1.5 cursor-pointer", className)}
+        className={cn("group flex flex-col gap-0.5 cursor-pointer", className)}
         aria-label={`${displayLabel} — view on Stakwork`}
       >
-        {content}
+        {labelRow}
+        {eventRow}
       </a>
     );
   }
 
   return (
     <div
-      className={cn("flex items-center gap-1.5", className)}
+      className={cn("flex flex-col gap-0.5", className)}
       role="status"
       aria-label={displayLabel || effectiveStatus.toLowerCase().replace("_", " ")}
     >
-      {content}
+      {labelRow}
+      {eventRow}
     </div>
   );
 }
