@@ -57,6 +57,7 @@ export default function TaskChatPage() {
   const router = useRouter();
   const { id: workspaceId, workspace } = useWorkspace();
   const { data: session } = useSession();
+  const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
   const isMobile = useIsMobile();
   const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST) && workspace?.slug === "hive";
 
@@ -1932,6 +1933,7 @@ Plan and implement the real feature from this branch.`;
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <AgentChatArea
@@ -1963,6 +1965,7 @@ Plan and implement the real feature from this branch.`;
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
                     stakworkProjectId={projectId}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 )}
               </div>
@@ -1996,6 +1999,7 @@ Plan and implement the real feature from this branch.`;
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
                       stakworkProjectId={projectId}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -2008,6 +2012,7 @@ Plan and implement the real feature from this branch.`;
                       taskId={currentTaskId || undefined}
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -2041,6 +2046,7 @@ Plan and implement the real feature from this branch.`;
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
                 stakworkProjectId={projectId}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -2058,6 +2064,7 @@ Plan and implement the real feature from this branch.`;
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                     onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                     browserRefreshTrigger={browserRefreshTrigger}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <ChatArea
@@ -2093,6 +2100,7 @@ Plan and implement the real feature from this branch.`;
                     isPrototypeTask={isPrototypeTask}
                     isSavingPlan={isSavingPlan}
                     onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 )}
               </div>
@@ -2130,6 +2138,7 @@ Plan and implement the real feature from this branch.`;
                       isPrototypeTask={isPrototypeTask}
                       isSavingPlan={isSavingPlan}
                       onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -2145,6 +2154,7 @@ Plan and implement the real feature from this branch.`;
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                       onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                       browserRefreshTrigger={browserRefreshTrigger}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -2182,6 +2192,7 @@ Plan and implement the real feature from this branch.`;
                 isPrototypeTask={isPrototypeTask}
                 isSavingPlan={isSavingPlan}
                 onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           )}
