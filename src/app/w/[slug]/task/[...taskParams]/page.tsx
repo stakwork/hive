@@ -41,6 +41,7 @@ import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useStreamContext } from "@/hooks/useStreamContext";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
@@ -148,6 +149,8 @@ export default function TaskChatPage() {
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
+  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
 
   // Reconciliation polling: recover stuck IN_PROGRESS workflow status on page/tab load
@@ -193,7 +196,9 @@ export default function TaskChatPage() {
     if (hasActionArtifact) {
       setIsChainVisible(false);
     }
-  }, [taskMode]);
+
+    onStreamMessage(message);
+  }, [taskMode, onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
@@ -206,7 +211,8 @@ export default function TaskChatPage() {
         setBrowserRefreshTrigger(prev => prev + 1);
       }
     }
-  }, [taskMode]);
+    onStreamStatusUpdate(update);
+  }, [taskMode, onStreamStatusUpdate]);
 
   // When reconciliation polling returns a terminal state, persist it to the DB and update UI
   useEffect(() => {
@@ -2100,6 +2106,7 @@ Plan and implement the real feature from this branch.`;
                     isSavingPlan={isSavingPlan}
                     onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                     isSuperAdmin={isSuperAdmin}
+                    streamContext={streamContext}
                   />
                 )}
               </div>
@@ -2138,6 +2145,7 @@ Plan and implement the real feature from this branch.`;
                       isSavingPlan={isSavingPlan}
                       onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                       isSuperAdmin={isSuperAdmin}
+                      streamContext={streamContext}
                     />
                   </div>
                 </ResizablePanel>
@@ -2192,6 +2200,7 @@ Plan and implement the real feature from this branch.`;
                 isSavingPlan={isSavingPlan}
                 onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
                 isSuperAdmin={isSuperAdmin}
+                streamContext={streamContext}
               />
             </div>
           )}
