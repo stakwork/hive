@@ -110,7 +110,7 @@ describe("WorkflowStatusBadge", () => {
 
     test("renders tool_call event line when IN_PROGRESS with tool_call latestEvent", () => {
       mockUseAgentEvents.mockReturnValueOnce({
-        latestEvent: { type: "tool_call", toolName: "search_files" },
+        latestEvent: { type: "tool_call", toolName: "search_files", input: null },
         status: "streaming",
       });
       render(
@@ -121,6 +121,41 @@ describe("WorkflowStatusBadge", () => {
         />
       );
       expect(screen.getByText("🔧 search_files")).toBeInTheDocument();
+    });
+
+    test("renders tool_call event with input args appended", () => {
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: {
+          type: "tool_call",
+          toolName: "developer__shell",
+          input: { command: "ls -la /workspaces" },
+        },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="99999"
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.getByText("🔧 developer__shell — command: ls -la /workspaces")).toBeInTheDocument();
+    });
+
+    test("renders tool_call event without suffix when input is null", () => {
+      mockUseAgentEvents.mockReturnValueOnce({
+        latestEvent: { type: "tool_call", toolName: "search_files", input: null },
+        status: "streaming",
+      });
+      render(
+        <WorkflowStatusBadge
+          status={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="99999"
+          streamContext={streamCtx}
+        />
+      );
+      expect(screen.getByText("🔧 search_files")).toBeInTheDocument();
+      expect(screen.queryByText(/—/)).not.toBeInTheDocument();
     });
 
     test("renders text event line when IN_PROGRESS with text latestEvent", () => {
@@ -238,7 +273,7 @@ describe("WorkflowStatusBadge", () => {
 
     test("renders tool_call event line when IN_PROGRESS with tool_call latestEvent", () => {
       mockUseAgentEvents.mockReturnValueOnce({
-        latestEvent: { type: "tool_call", toolName: "search_files" },
+        latestEvent: { type: "tool_call", toolName: "search_files", input: null },
         status: "streaming",
       });
       render(
