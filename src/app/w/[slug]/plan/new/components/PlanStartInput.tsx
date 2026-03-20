@@ -27,6 +27,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const [isExiting, setIsExiting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
+  const wasLoadingRef = useRef(false);
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -69,10 +70,16 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
     }
   }, [transcript]);
 
-  // Reset isExiting when loading finishes (error recovery)
+  // Reset isExiting when loading finishes (error recovery).
+  // Gate on wasLoadingRef so the reset only fires after a real loading cycle
+  // (true → false), not immediately when isExiting flips true with isLoading still false.
   useEffect(() => {
-    if (!isLoading && isExiting) {
+    if (isLoading) {
+      wasLoadingRef.current = true;
+    }
+    if (!isLoading && isExiting && wasLoadingRef.current) {
       setIsExiting(false);
+      wasLoadingRef.current = false;
     }
   }, [isLoading, isExiting]);
 
