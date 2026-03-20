@@ -104,13 +104,13 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setValue(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },
