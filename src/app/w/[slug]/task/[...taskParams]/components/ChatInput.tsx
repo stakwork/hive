@@ -413,14 +413,14 @@ export function ChatInput({
       const before = input.slice(0, cursor);
       const after = input.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setInput(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       // Restore focus and position cursor after the inserted slug
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },
@@ -441,6 +441,11 @@ export function ChatInput({
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Tab") {
         e.preventDefault();
         insertMention(filteredWorkspaces[mentionIndex].slug);
         return;
