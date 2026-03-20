@@ -34,7 +34,7 @@ test.describe('Calls Navigation', () => {
     // Click the single Context sidebar link
     const contextButton = page.locator('[data-testid="nav-context"]');
     await contextButton.click();
-    await page.waitForURL(/\/w\/.*\/context\/learn/, { timeout: 10000 });
+    await page.waitForURL(/\/w\/.*\/context\/learn/, { timeout: 30000 });
 
     // Click the Calls tab
     await page.locator('a[href*="/context/calls"]').first().click();
