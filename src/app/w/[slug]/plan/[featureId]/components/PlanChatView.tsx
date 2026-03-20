@@ -14,7 +14,9 @@ import {
   ChatStatus,
   createChatMessage,
   WorkflowStatus,
+  type StreamContent,
 } from "@/lib/chat";
+import type { StreamContext } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import { diffWords } from "diff";
@@ -98,6 +100,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [streamContext, setStreamContext] = useState<StreamContext | null>(null);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
@@ -290,6 +293,17 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       return [...msgs, message];
     });
     setIsLoading(false);
+
+    // Extract STREAM artifact to drive live event subscription
+    const streamArtifact = message.artifacts?.find((a) => a.type === "STREAM");
+    if (streamArtifact?.content) {
+      const content = streamArtifact.content as StreamContent;
+      setStreamContext({
+        requestId: content.request_id,
+        eventsToken: content.events_token,
+        baseUrl: content.base_url,
+      });
+    }
   }, []);
 
   const handleWorkflowStatusUpdate = useCallback(
@@ -303,6 +317,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       ) {
         setIsLoading(false);
         setIsChainVisible(false);
+        setStreamContext(null);
       }
     },
     [],
@@ -518,6 +533,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     stakworkProjectId: projectId,
     onRetry: handleRetry,
     isRetrying,
+    streamContext,
   };
 
   const artifactsPanelProps = {

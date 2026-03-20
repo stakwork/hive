@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback } from "react";
 export interface RecentWorkflow {
   id: number;
   name: string;
+  updated_at: string | null;
+  last_modified_by: string | null;
 }
 
 interface UseRecentWorkflowsResult {

@@ -46,6 +46,8 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
     vi.clearAllMocks();
     // Default: no session
     getMockedSession().mockResolvedValue(null);
+    // Ensure mock mode is off by default so tests hit real code paths
+    process.env.USE_MOCKS = "false";
   });
 
   // ── Authentication ─────────────────────────────────────────────────────────

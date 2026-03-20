@@ -165,6 +165,12 @@ export interface MediaContent {
   uploadedAt: string; // ISO timestamp
 }
 
+export interface StreamContent {
+  request_id: string;
+  events_token: string;
+  base_url: string;
+}
+
 export interface BountyContent {
   status: "PENDING" | "READY";
   bountyTitle: string;
@@ -200,7 +206,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
-    | BountyContent;
+    | BountyContent
+    | StreamContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -283,7 +290,8 @@ export function createArtifact(data: {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
-    | BountyContent;
+    | BountyContent
+    | StreamContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
