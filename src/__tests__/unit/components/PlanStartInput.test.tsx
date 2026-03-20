@@ -47,9 +47,30 @@ vi.mock("@/hooks/useWorkspace", () => ({
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
+    div: ({
+      children,
+      onAnimationComplete: _onAnimationComplete,
+      animate: _animate,
+      transition: _transition,
+      initial: _initial,
+      exit: _exit,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement> & {
+      onAnimationComplete?: () => void;
+      animate?: unknown;
+      transition?: unknown;
+      initial?: unknown;
+      exit?: unknown;
+    }) => <div {...props}>{children}</div>,
+    h1: ({
+      children,
+      animate: _animate,
+      transition: _transition,
+      ...props
+    }: React.HTMLAttributes<HTMLHeadingElement> & {
+      animate?: unknown;
+      transition?: unknown;
+    }) => <h1 {...props}>{children}</h1>,
     span: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => (
       <span {...props}>{children}</span>
     ),
@@ -192,6 +213,57 @@ describe("PlanStartInput", () => {
       await userEvent.type(textarea, "@test");
 
       expect(screen.queryByTestId("mention-item-test-ws")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("submit behaviour — text persistence and isExiting", () => {
+    test("onSubmit is NOT called synchronously when submit button is clicked", async () => {
+      // framer-motion is mocked — onAnimationComplete is stripped, so onSubmit
+      // should NOT be called during handleSubmit itself.
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "My feature idea");
+
+      const submitBtn = screen.getByTestId("plan-start-submit");
+      fireEvent.click(submitBtn);
+
+      // onSubmit should NOT have been called yet (only fires from onAnimationComplete)
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    test("textarea value is preserved after handleSubmit fires (no premature clear)", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "My feature idea");
+
+      const submitBtn = screen.getByTestId("plan-start-submit");
+      fireEvent.click(submitBtn);
+
+      // Text must still be visible — setValue("") removed
+      expect(textarea.value).toBe("My feature idea");
+    });
+
+    test("textarea is disabled when isLoading is true", () => {
+      render(<PlanStartInput onSubmit={onSubmit} isLoading={true} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is enabled when isLoading is false", () => {
+      render(<PlanStartInput onSubmit={onSubmit} isLoading={false} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      expect(textarea).not.toBeDisabled();
+    });
+
+    test("onSubmit is not called for empty/whitespace-only text", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "   ");
+
+      const submitBtn = screen.getByTestId("plan-start-submit");
+      fireEvent.click(submitBtn);
+
+      expect(onSubmit).not.toHaveBeenCalled();
     });
   });
 });
