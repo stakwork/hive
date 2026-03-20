@@ -65,6 +65,7 @@ export function WorkflowStatusBadge({
   streamContext = null,
   isSuperAdmin = false,
 }: WorkflowStatusBadgeProps) {
+  console.log("[WorkflowStatusBadge] render", { streamContext, status });
   const { latestEvent } = useAgentEvents(
     streamContext?.requestId ?? null,
     streamContext?.eventsToken ?? null,
