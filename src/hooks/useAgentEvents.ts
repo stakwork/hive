@@ -24,14 +24,17 @@ export function useAgentEvents(
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    console.log("[useAgentEvents] effect fired", { requestId, baseUrl, hasToken: !!token });
     if (!requestId || !token || !baseUrl) {
+      console.log("[useAgentEvents] bailing out — missing params");
       return;
     }
 
+    const url = `${baseUrl}/events/${requestId}?token=${encodeURIComponent(token)}`;
+    console.log("[useAgentEvents] opening EventSource", url);
     setStatus("streaming");
     setLatestEvent(null);
 
-    const url = `${baseUrl}/events/${requestId}?token=${encodeURIComponent(token)}`;
     const es = new EventSource(url);
     esRef.current = es;
 
