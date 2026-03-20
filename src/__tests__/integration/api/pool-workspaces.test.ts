@@ -13,20 +13,17 @@ import {
   expectSuccess,
   expectUnauthorized,
   expectNotFound,
+  getMockedSession,
+  createAuthenticatedSession,
 } from "@/__tests__/support/helpers";
+import { getToken } from "next-auth/jwt";
 import type { User, Workspace, Swarm } from "@prisma/client";
 import type { PoolWorkspacesResponse, VMData } from "@/types";
-import { NextResponse } from "next/server";
 
-// Mock middleware utilities
-vi.mock("@/lib/middleware/utils", () => ({
-  getMiddlewareContext: vi.fn(),
-  requireAuth: vi.fn(),
-  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
+// Mock next-auth/jwt for Bearer token tests
+vi.mock("next-auth/jwt", () => ({
+  getToken: vi.fn(),
 }));
-
-import { requireAuth } from "@/lib/middleware/utils";
-const getMockedRequireAuth = vi.mocked(requireAuth);
 
 describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
   let owner: User;
@@ -55,12 +52,8 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
   });
 
   it("should return 401 for unauthenticated requests", async () => {
-    getMockedRequireAuth.mockReturnValue(
-      NextResponse.json(
-        { error: "Unauthorized", kind: "unauthorized" },
-        { status: 401 }
-      )
-    );
+    getMockedSession().mockResolvedValue(null);
+    vi.mocked(getToken).mockResolvedValue(null);
 
     const request = createGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`
@@ -73,11 +66,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
   });
 
   it("should return 400 when workspace slug is missing", async () => {
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
     const request = createGetRequest("/api/w//pool/workspaces");
     const response = await GET(request, {
@@ -90,11 +79,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
   });
 
   it("should return 404 for non-existent workspace", async () => {
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
     const request = createGetRequest(
       "/api/w/nonexistent-workspace/pool/workspaces"
@@ -112,11 +97,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
       owner: { name: "No Swarm Owner" },
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: newScenario.owner.id,
-      email: newScenario.owner.email!,
-      name: newScenario.owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(newScenario.owner));
 
     const request = createGetRequest(
       `/api/w/${newScenario.workspace.slug}/pool/workspaces`
@@ -138,11 +119,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
       data: { poolApiKey: null },
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
     const request = createGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`
@@ -155,6 +132,44 @@ describe("GET /api/w/[slug]/pool/workspaces - Authentication", () => {
     const data = await response.json();
     expect(data.success).toBe(false);
     expect(data.message).toBe("Pool not configured for this workspace");
+  });
+
+  it("should return 200 when authenticated via Bearer token", async () => {
+    getMockedSession().mockResolvedValue(null);
+    vi.mocked(getToken).mockResolvedValue({ id: owner.id } as any);
+
+    vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockResolvedValue({
+      pool_name: "test-pool",
+      workspaces: [],
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${workspace.slug}/pool/workspaces`,
+      owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+  });
+
+  it("should return 401 when both session and Bearer token are absent", async () => {
+    getMockedSession().mockResolvedValue(null);
+    vi.mocked(getToken).mockResolvedValue(null);
+
+    const request = createGetRequest(
+      `/api/w/${workspace.slug}/pool/workspaces`
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBe("Unauthorized");
   });
 });
 
@@ -234,15 +249,12 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
   });
 
   it("should return 403 for non-member access", async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
+
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`,
       nonMember
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: nonMember.id,
-      email: nonMember.email!,
-      name: nonMember.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -252,15 +264,12 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
   });
 
   it("should allow VIEWER role to access pool workspaces", async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(memberViewer));
+
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`,
       memberViewer
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberViewer.id,
-      email: memberViewer.email!,
-      name: memberViewer.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -274,15 +283,12 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
   });
 
   it("should allow DEVELOPER role to access pool workspaces", async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(memberDeveloper));
+
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`,
       memberDeveloper
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberDeveloper.id,
-      email: memberDeveloper.email!,
-      name: memberDeveloper.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -294,15 +300,12 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
   });
 
   it("should allow ADMIN role to access pool workspaces", async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(memberAdmin));
+
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`,
       memberAdmin
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberAdmin.id,
-      email: memberAdmin.email!,
-      name: memberAdmin.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -314,15 +317,12 @@ describe("GET /api/w/[slug]/pool/workspaces - Authorization", () => {
   });
 
   it("should allow OWNER role to access pool workspaces", async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/workspaces`,
       owner
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -354,11 +354,7 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       poolApiKey: "test-pool-api-key-service",
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
   });
 
   afterEach(() => {
@@ -547,11 +543,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
       poolApiKey: "test-pool-api-key-response",
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
   });
 
   afterEach(() => {
@@ -770,4 +762,3 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     expect(vm2?.usage_status).toBe("used");
   });
 });
-
