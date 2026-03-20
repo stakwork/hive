@@ -1,9 +1,0 @@
-{
-  "name": "hive",
-  "version": "0.1.0",
-  "description": "Hive MCP CLI — invoke Hive tools from the terminal",
-  "type": "module",
-  "bin": { "hive": "../bin/hive.mjs" },
-  "dependencies": { "@ai-sdk/mcp": "^1.0.19" },
-  "engines": { "node": ">=18" }
-}

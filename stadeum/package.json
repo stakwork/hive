@@ -1,0 +1,9 @@
+{
+  "name": "stadeum",
+  "version": "0.1.0",
+  "description": "Stadeum MCP CLI — invoke Hive tools from the terminal",
+  "type": "module",
+  "bin": { "stadeum": "./stadeum.mjs" },
+  "dependencies": { "@ai-sdk/mcp": "^1.0.19" },
+  "engines": { "node": ">=18" }
+}

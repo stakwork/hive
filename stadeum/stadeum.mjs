@@ -51,10 +51,14 @@ async function main() {
   try {
     if (!toolName || toolName === '--help' || toolName === '-h') {
       const { tools } = await client.listTools();
+      process.stdout.write('Usage: node stadeum.mjs <tool> [key=value ...]\n\n');
+      process.stdout.write('Arguments are passed as key=value pairs, e.g.:\n');
+      process.stdout.write('  node stadeum.mjs read_feature featureId=abc123\n');
+      process.stdout.write('  node stadeum.mjs send_message taskId=abc123 message="hello world"\n\n');
       process.stdout.write('Available tools:\n\n');
       for (const t of tools) {
         const params = formatParams(t.inputSchema);
-        process.stdout.write(`  hive ${t.name}${params ? ' ' + params : ''}\n`);
+        process.stdout.write(`  stadeum ${t.name}${params ? ' ' + params : ''}\n`);
         if (t.description) {
           process.stdout.write(`    ${t.description}\n`);
         }
