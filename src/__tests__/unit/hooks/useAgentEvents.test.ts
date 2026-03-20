@@ -76,7 +76,7 @@ describe("useAgentEvents", () => {
       MockEventSource.instances[0].emit({ type: "tool_call", toolName: "search_files" });
     });
 
-    expect(result.current.latestEvent).toEqual({ type: "tool_call", toolName: "search_files" });
+    expect(result.current.latestEvent).toEqual({ type: "tool_call", toolName: "search_files", input: null });
   });
 
   it("replaces (not accumulates) latestEvent on each new event", () => {
@@ -89,7 +89,7 @@ describe("useAgentEvents", () => {
     expect(result.current.latestEvent).toEqual({ type: "text", text: "First" });
 
     act(() => { es.emit({ type: "tool_call", toolName: "read_file" }); });
-    expect(result.current.latestEvent).toEqual({ type: "tool_call", toolName: "read_file" });
+    expect(result.current.latestEvent).toEqual({ type: "tool_call", toolName: "read_file", input: null });
 
     act(() => { es.emit({ type: "text", text: "Second" }); });
     expect(result.current.latestEvent).toEqual({ type: "text", text: "Second" });
@@ -154,5 +154,41 @@ describe("useAgentEvents", () => {
     expect(MockEventSource.instances[0].url).toContain(
       encodeURIComponent("tok+special=chars")
     );
+  });
+
+  it("captures input on tool_call event", () => {
+    const { result } = renderHook(() =>
+      useAgentEvents("req-1", "tok-1", "https://agent.example.com")
+    );
+
+    act(() => {
+      MockEventSource.instances[0].emit({
+        type: "tool_call",
+        toolName: "developer__shell",
+        input: { command: "ls -la" },
+      });
+    });
+
+    expect(result.current.latestEvent).toEqual({
+      type: "tool_call",
+      toolName: "developer__shell",
+      input: { command: "ls -la" },
+    });
+  });
+
+  it("sets input to null when absent on tool_call event", () => {
+    const { result } = renderHook(() =>
+      useAgentEvents("req-1", "tok-1", "https://agent.example.com")
+    );
+
+    act(() => {
+      MockEventSource.instances[0].emit({ type: "tool_call", toolName: "search_files" });
+    });
+
+    expect(result.current.latestEvent).toEqual({
+      type: "tool_call",
+      toolName: "search_files",
+      input: null,
+    });
   });
 });
