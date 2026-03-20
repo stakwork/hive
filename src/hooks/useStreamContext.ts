@@ -18,11 +18,11 @@ export function useStreamContext() {
     console.log("[useStreamContext] onMessage", { hasArtifacts: !!message.artifacts?.length, streamArtifactType: streamArtifact?.type, streamContent: streamArtifact?.content });
     if (streamArtifact?.content) {
       const content = streamArtifact.content as StreamContent;
-      console.log("[useStreamContext] setting streamContext", { requestId: content.request_id, baseUrl: content.base_url });
+      console.log("[useStreamContext] setting streamContext", { requestId: content.requestId, baseUrl: content.baseUrl });
       setStreamContext({
-        requestId: content.request_id,
-        eventsToken: content.events_token,
-        baseUrl: content.base_url,
+        requestId: content.requestId,
+        eventsToken: content.eventsToken,
+        baseUrl: content.baseUrl,
       });
     }
   }
