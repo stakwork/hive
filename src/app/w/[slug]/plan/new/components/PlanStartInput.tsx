@@ -24,6 +24,7 @@ interface PlanStartInputProps {
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
@@ -67,6 +68,13 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       setValue(newValue);
     }
   }, [transcript]);
+
+  // Reset isExiting when loading finishes (error recovery)
+  useEffect(() => {
+    if (!isLoading && isExiting) {
+      setIsExiting(false);
+    }
+  }, [isLoading, isExiting]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -112,13 +120,12 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const hasText = value.trim().length > 0;
 
   const handleSubmit = () => {
-    if (hasText) {
+    if (hasText && !isExiting) {
       if (isListening) {
         stopListening();
       }
       resetTranscript();
-      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
-      setValue("");
+      setIsExiting(true);
     }
   };
 
@@ -161,7 +168,11 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
-      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
+      <motion.h1
+        className="text-4xl font-bold text-foreground mb-10 text-center"
+        animate={isExiting ? { opacity: 0, y: -20 } : {}}
+        transition={{ duration: 0.15 }}
+      >
         <AnimatePresence mode="wait">
           <motion.span
             key={title}
@@ -173,8 +184,27 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             {title}
           </motion.span>
         </AnimatePresence>
-      </h1>
-      <div className="w-full max-w-2xl">
+      </motion.h1>
+      <motion.div
+        className="w-full max-w-2xl"
+        animate={
+          isExiting
+            ? {
+                x: "calc(-50vw + 160px)",
+                y: "calc(-45vh + 80px)",
+                scale: 0.38,
+                opacity: 0.85,
+                borderRadius: "12px",
+              }
+            : {}
+        }
+        transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+        onAnimationComplete={() => {
+          if (isExiting) {
+            onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
+          }
+        }}
+      >
         <Card className="relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group">
           <motion.div
             key="plan"
@@ -225,6 +255,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                   }
                 }}
                 onKeyDown={handleKeyDown}
+                disabled={isLoading}
                 className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
                 autoFocus
                 data-testid="plan-start-input"
@@ -320,7 +351,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             </div>
           </div>
         </Card>
-      </div>
+      </motion.div>
     </div>
   );
 }
