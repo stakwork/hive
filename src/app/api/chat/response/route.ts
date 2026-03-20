@@ -479,24 +479,8 @@ export async function POST(request: NextRequest) {
 
     if (featureId) {
       try {
-        await db.feature.update({
-          where: { id: featureId },
-          data: {
-            workflowStatus: WorkflowStatus.COMPLETED,
-            workflowCompletedAt: new Date(),
-          },
-        });
-      } catch (error) {
-        console.error("Error updating feature workflow status:", error);
-      }
-
-      try {
         const channelName = getFeatureChannelName(featureId);
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
-        await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, {
-          taskId: featureId,
-          workflowStatus: WorkflowStatus.COMPLETED,
-        });
       } catch (error) {
         console.error("Error broadcasting feature update to Pusher:", error);
       }
