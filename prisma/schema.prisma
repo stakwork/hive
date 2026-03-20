@@ -787,8 +787,8 @@ model Whiteboard {
   createdAt   DateTime            @default(now()) @map("created_at")
   updatedAt   DateTime            @updatedAt @map("updated_at")
   featureId   String?             @unique @map("feature_id")
-  createdById String?             @map("created_by_id")
   version     Int                 @default(0)
+  createdById String?             @map("created_by_id")
   messages    WhiteboardMessage[]
   versions    WhiteboardVersion[]
   createdBy   User?               @relation("WhiteboardCreator", fields: [createdById], references: [id])
