@@ -1413,6 +1413,7 @@ export default function TaskChatPage() {
           console.log("Project ID:", result.workflow.project_id);
           setProjectId(result.workflow.project_id);
           setIsChainVisible(true);
+          setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
           clearLogs();
 
           // Create a WORKFLOW artifact with the project_id
@@ -1463,6 +1464,7 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
 
+        setWorkflowStatus(WorkflowStatus.PENDING);
         toast.error("Error", { description: "Failed to send message. Please try again." });
       } finally {
         setIsLoading(false);
