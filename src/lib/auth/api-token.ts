@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import { validateApiKey } from "@/lib/api-keys";
 import type { MiddlewareUser } from "@/types/middleware";
 
 /**
@@ -68,42 +67,4 @@ export async function requireAuthOrApiToken(
   };
 }
 
-/**
- * Dual auth: tries session auth first, falls back to Bearer workspace API key (hive_...).
- * When using Bearer API key, resolves the key creator as the acting user.
- *
- * @param request - The incoming request
- * @returns The authenticated user or an error response
- */
-export async function requireAuthOrBearerApiKey(
-  request: NextRequest,
-): Promise<MiddlewareUser | NextResponse> {
-  // 1. Try session auth first
-  const context = getMiddlewareContext(request);
-  const sessionResult = requireAuth(context);
-  if (!(sessionResult instanceof NextResponse)) return sessionResult;
 
-  // 2. Extract Bearer token
-  const authHeader = request.headers.get("authorization");
-  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!bearerToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // 3. Validate workspace API key
-  const result = await validateApiKey(bearerToken);
-  if (!result) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // 4. Resolve key creator as acting user
-  const user = await db.user.findUnique({
-    where: { id: result.apiKey.createdById },
-    select: { id: true, email: true, name: true },
-  });
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  return { id: user.id, email: user.email || "", name: user.name || "" };
-}

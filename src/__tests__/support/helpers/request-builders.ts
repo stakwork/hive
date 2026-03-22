@@ -240,21 +240,4 @@ export function createAuthenticatedDeleteRequest(
   return addMiddlewareHeaders(baseRequest, user);
 }
 
-/**
- * Creates a PATCH request with an Authorization: Bearer header (for workspace API key auth)
- */
-export function createBearerPatchRequest(
-  url: string,
-  body: object,
-  bearerToken: string,
-): NextRequest {
-  const absoluteUrl = url.startsWith("http") ? url : `http://localhost${url}`;
-  return new NextRequest(absoluteUrl, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${bearerToken}`,
-    },
-    body: JSON.stringify(body),
-  });
-}
+
