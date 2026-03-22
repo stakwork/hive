@@ -451,12 +451,12 @@ model SharedConversation {
   messages          Json
   provenanceData    Json?     @map("provenance_data")
   followUpQuestions Json      @map("follow_up_questions")
-  settings          Json?     @default("{}")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   isShared          Boolean   @default(false) @map("is_shared")
   lastMessageAt     DateTime? @map("last_message_at")
   source            String?
+  settings          Json?     @default("{}")
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
