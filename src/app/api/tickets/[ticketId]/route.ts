@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthOrBearerApiKey } from "@/lib/auth/api-token";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
 import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
@@ -39,8 +40,7 @@ export async function PATCH(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
+    const userOrResponse = await requireAuthOrBearerApiKey(request);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { ticketId } = await params;

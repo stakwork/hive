@@ -27,3 +27,6 @@ export * from "./graphFactory";
 
 // Whiteboard factories
 export * from "./whiteboard-message.factory";
+
+// API key factories
+export * from "./api-key.factory";

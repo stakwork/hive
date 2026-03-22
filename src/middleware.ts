@@ -136,6 +136,13 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, "api-token");
     }
 
+    // Allow Bearer hive_ workspace API keys to bypass session auth
+    // The route handler is fully responsible for validating the key value
+    const authHeader = request.headers.get("authorization");
+    if (isApiRoute && authHeader?.startsWith("Bearer hive_")) {
+      return continueRequest(requestHeaders, "api-token");
+    }
+
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
       const token = await getToken({

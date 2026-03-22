@@ -92,4 +92,16 @@ describe("middleware", () => {
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("public");
     expect(response.headers.get(MIDDLEWARE_HEADERS.USER_ID)).toBeNull();
   });
+
+  it("bypasses getToken for Bearer hive_ tokens on API routes", async () => {
+    const response = await middleware(
+      createRequest("/api/tickets/some-id", {
+        Authorization: "Bearer hive_test_abc123",
+      })
+    );
+
+    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("api-token");
+  });
 });
