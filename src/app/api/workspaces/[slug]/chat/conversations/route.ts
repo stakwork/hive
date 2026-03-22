@@ -254,6 +254,7 @@ export async function POST(
         isShared: false, // Not shared by default
         lastMessageAt,
         source: body.source || null,
+        settings: body.settings as any || {},
       },
       select: {
         id: true,
@@ -262,6 +263,7 @@ export async function POST(
         messages: true,
         provenanceData: true,
         followUpQuestions: true,
+        settings: true,
         source: true,
         isShared: true,
         createdAt: true,
@@ -284,6 +286,7 @@ export async function POST(
       messages: conversation.messages,
       provenanceData: conversation.provenanceData,
       followUpQuestions: conversation.followUpQuestions,
+      settings: conversation.settings,
       isShared: conversation.isShared,
       lastMessageAt: conversation.lastMessageAt?.toISOString() || null,
       source: conversation.source,
