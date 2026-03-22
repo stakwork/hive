@@ -47,12 +47,11 @@ export async function GET(
       );
     }
 
-    // Get conversation - user must own it
+    // Get conversation - accessible to any workspace member (owner can edit, others read-only)
     const conversation = await db.sharedConversation.findFirst({
       where: {
         id: conversationId,
         workspaceId: workspace.id,
-        userId,
       },
       select: {
         id: true,
@@ -60,6 +59,7 @@ export async function GET(
         messages: true,
         provenanceData: true,
         followUpQuestions: true,
+        settings: true,
         isShared: true,
         lastMessageAt: true,
         source: true,
@@ -90,6 +90,7 @@ export async function GET(
       messages: conversation.messages,
       provenanceData: conversation.provenanceData,
       followUpQuestions: conversation.followUpQuestions,
+      settings: conversation.settings as any,
       isShared: conversation.isShared,
       lastMessageAt: conversation.lastMessageAt?.toISOString() || null,
       source: conversation.source,
@@ -202,6 +203,7 @@ export async function PUT(
         lastMessageAt: newLastMessageAt,
         ...(body.title && { title: body.title }),
         ...(body.source && { source: body.source }),
+        ...(body.settings !== undefined && { settings: body.settings as any }),
       },
       select: {
         id: true,
@@ -209,6 +211,7 @@ export async function PUT(
         messages: true,
         provenanceData: true,
         followUpQuestions: true,
+        settings: true,
         isShared: true,
         lastMessageAt: true,
         source: true,
@@ -232,6 +235,7 @@ export async function PUT(
       messages: updated.messages,
       provenanceData: updated.provenanceData,
       followUpQuestions: updated.followUpQuestions,
+      settings: updated.settings as any,
       isShared: updated.isShared,
       lastMessageAt: updated.lastMessageAt?.toISOString() || null,
       source: updated.source,
