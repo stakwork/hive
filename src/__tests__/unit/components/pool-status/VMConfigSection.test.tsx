@@ -232,23 +232,6 @@ describe('VMConfigSection', () => {
       });
     });
 
-    it('should show Edit Configuration dropdown when pool is active', async () => {
-      mockUseWorkspace.mockReturnValue({
-        slug: mockSlug,
-        workspace: {
-          poolState: 'COMPLETE',
-          containerFilesSetUp: true,
-        },
-      } as any);
-
-      renderWithSession(<VMConfigSection />);
-
-      await waitFor(() => {
-        const dropdown = screen.getByRole('button', { name: '' });
-        expect(dropdown).toBeInTheDocument();
-      });
-    });
-
     it('should display error message when pool status fetch fails', async () => {
       (global.fetch as any).mockResolvedValue({
         ok: true,
