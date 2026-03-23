@@ -230,7 +230,7 @@ export function PodRepairSection() {
                   {isSuperAdmin && run.projectId && (
                     <StakworkRunDropdown
                       projectId={run.projectId.toString()}
-                      hiveUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${slug}/stakgraph`}
+                      hiveUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${slug}/settings?tab=pool`}
                       variant="link"
                     />
                   )}
