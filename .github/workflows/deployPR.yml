@@ -312,6 +312,10 @@ jobs:
             "20260313120000_fix_mocks_enabled_default" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='repositories' AND column_name='mocks_enabled' AND column_default='false';"
 
+          resolve_migration \
+            "20260228185557_default_ticket_sweep_enabled" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_configs' AND column_name='ticket_sweep_enabled' AND column_default='true';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
