@@ -133,7 +133,6 @@ describe("SettingsTabs", () => {
     expect(screen.getByTestId("environment-form")).toBeInTheDocument();
     expect(screen.getByTestId("services-form")).toBeInTheDocument();
     expect(screen.getByTestId("file-tabs")).toBeInTheDocument();
-    expect(screen.getByTestId("rerun-ingest")).toBeInTheDocument();
     expect(screen.getByTestId("pod-repair-section")).toBeInTheDocument();
   });
 
@@ -149,12 +148,11 @@ describe("SettingsTabs", () => {
     expect(mockLoadSettings).not.toHaveBeenCalled();
   });
 
-  it("renders Infrastructure tab content (Neo4j only) when ?tab=infrastructure", () => {
-    mockSearchParams = new URLSearchParams("tab=infrastructure");
+  it("renders Graph tab content when ?tab=graph", () => {
+    mockSearchParams = new URLSearchParams("tab=graph");
     render(<SettingsTabs {...defaultProps} />);
     expect(screen.getByTestId("neo4j-config-settings")).toBeInTheDocument();
-    expect(screen.queryByTestId("vm-config-section")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("rerun-ingest")).not.toBeInTheDocument();
+    expect(screen.getByTestId("rerun-ingest")).toBeInTheDocument();
   });
 
   it("renders Integrations tab content when ?tab=integrations", () => {
@@ -192,8 +190,8 @@ describe("SettingsTabs", () => {
     const user = userEvent.setup();
     render(<SettingsTabs {...defaultProps} />);
 
-    await user.click(screen.getByRole("tab", { name: "Infrastructure" }));
-    expect(mockReplace).toHaveBeenCalledWith("?tab=infrastructure", { scroll: false });
+    await user.click(screen.getByRole("tab", { name: "Graph" }));
+    expect(mockReplace).toHaveBeenCalledWith("?tab=graph", { scroll: false });
   });
 
   it("calls router.replace with ?tab=pool when Pool tab is clicked", async () => {
