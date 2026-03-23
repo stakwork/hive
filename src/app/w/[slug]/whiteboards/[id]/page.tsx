@@ -260,6 +260,16 @@ export default function WhiteboardDetailPage() {
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
 
+      // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        return;
+      }
+
       // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
       if (onChangeSaveTimeoutRef.current) {
         clearTimeout(onChangeSaveTimeoutRef.current);
