@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { getInitialAppState } from "@/lib/excalidraw-config";
 
 /**
  * Unit tests for whiteboard auto-fit on initial load.
@@ -128,5 +129,27 @@ describe("Whiteboard page — auto-fit on initial load", () => {
     );
 
     clearTimeout(timer);
+  });
+});
+
+describe("initialAppState zoom override", () => {
+  it("forces zoom to { value: 1 } when whiteboard has no elements", () => {
+    const savedAppState = { zoom: { value: 30 } }; // simulates 3000%
+    const hasElements = false;
+    const initialAppState = {
+      ...getInitialAppState(savedAppState),
+      ...(!hasElements ? { zoom: { value: 1 } } : {}),
+    };
+    expect(initialAppState.zoom).toEqual({ value: 1 });
+  });
+
+  it("preserves zoom from appState when whiteboard has elements", () => {
+    const savedAppState = { zoom: { value: 30 } };
+    const hasElements = true;
+    const initialAppState = {
+      ...getInitialAppState(savedAppState),
+      ...(!hasElements ? { zoom: { value: 1 } } : {}),
+    };
+    expect(initialAppState.zoom).toEqual({ value: 30 });
   });
 });
