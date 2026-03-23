@@ -3,13 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeOrDate } from "@/lib/date-utils";
-import { Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
+import { Clock, Server, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
 import { PoolStatusResponse } from "@/types";
@@ -110,37 +109,18 @@ export function VMConfigSection() {
 
   return (
     <Card className="relative" data-testid="vm-config-section">
-      {isPoolActive && (
-        <div className="absolute top-4 right-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/w/${slug}/stakgraph`} className="cursor-pointer">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Edit Configuration
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Server className="w-5 h-5" />
           Pool Status
         </CardTitle>
-        <CardDescription>
-          {isPoolActive
-            ? "Manage environment variables and services any time."
-            : servicesReady
+        {!isPoolActive && (
+          <CardDescription>
+            {servicesReady
               ? "Complete your pool setup to get started."
               : "Services are being set up."}
-        </CardDescription>
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent>
         {isPoolActive ? (
