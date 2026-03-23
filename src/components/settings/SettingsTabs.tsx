@@ -23,7 +23,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "sonner";
 import { Loader2, Save, Webhook } from "lucide-react";
 
-const VALID_TABS = ["general", "pool", "infrastructure", "integrations", "developer"] as const;
+const VALID_TABS = ["general", "pool", "graph", "integrations", "developer"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 interface SettingsTabsProps {
@@ -125,7 +125,7 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
       <TabsList>
         <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="pool">Pool</TabsTrigger>
-        <TabsTrigger value="infrastructure">Infrastructure</TabsTrigger>
+        <TabsTrigger value="graph">Graph</TabsTrigger>
         <TabsTrigger value="integrations">Integrations</TabsTrigger>
         <TabsTrigger value="developer">Developer</TabsTrigger>
       </TabsList>
@@ -236,7 +236,6 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
                 )}
               </CardContent>
             </Card>
-            <RerunIngest workspaceId={workspaceId} workspaceName={workspaceName} />
           </div>
           <div className="w-full lg:w-[420px] lg:shrink-0 lg:sticky lg:top-6">
             <PodRepairSection />
@@ -244,9 +243,10 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
         </div>
       </TabsContent>
 
-      <TabsContent value="infrastructure">
+      <TabsContent value="graph">
         <div className="max-w-2xl space-y-6 mt-6">
           <Neo4jConfigSettings />
+          <RerunIngest workspaceId={workspaceId} workspaceName={workspaceName} />
         </div>
       </TabsContent>
 
