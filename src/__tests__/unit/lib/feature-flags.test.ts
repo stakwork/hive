@@ -317,6 +317,68 @@ describe("FEATURE_FLAGS constants", () => {
   });
 });
 
+describe("WHITEBOARD_STAKWORK_POSITIONING feature flag", () => {
+  let originalEnv: typeof process.env;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    delete process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
+  });
+
+  describe("canAccessFeature", () => {
+    test("should return false when env var is unset (default off)", () => {
+      const result = canAccessFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING);
+      expect(result).toBe(false);
+    });
+
+    test("should return false when env var is 'false'", () => {
+      process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING = "false";
+      const result = canAccessFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING);
+      expect(result).toBe(false);
+    });
+
+    test("should return true when FEATURE_WHITEBOARD_STAKWORK_POSITIONING=true", () => {
+      process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING = "true";
+      const result = canAccessFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING);
+      expect(result).toBe(true);
+    });
+
+    test("no role restriction — all WorkspaceRole values return true when enabled", () => {
+      process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING = "true";
+      const roles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "STAKEHOLDER", "ADMIN", "OWNER"];
+      roles.forEach((role) => {
+        expect(canAccessFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING, role)).toBe(true);
+      });
+    });
+  });
+
+  describe("canAccessServerFeature", () => {
+    test("should return false when env var is unset", () => {
+      const result = canAccessServerFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING);
+      expect(result).toBe(false);
+    });
+
+    test("should return true when FEATURE_WHITEBOARD_STAKWORK_POSITIONING=true", () => {
+      process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING = "true";
+      const result = canAccessServerFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING);
+      expect(result).toBe(true);
+    });
+
+    test("canAccessServerFeature returns same result as canAccessFeature", () => {
+      process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING = "true";
+      const clientResult = canAccessFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING, "ADMIN");
+      const serverResult = canAccessServerFeature(FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING, "ADMIN");
+      expect(clientResult).toBe(serverResult);
+      expect(serverResult).toBe(true);
+    });
+  });
+});
+
 describe("CHAT_CODE_FORMATTING feature flag", () => {
   let originalEnv: typeof process.env;
 
