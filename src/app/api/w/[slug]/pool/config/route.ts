@@ -119,7 +119,6 @@ export async function PATCH(
       where: { workspaceId: workspace.id },
       select: {
         id: true,
-        poolName: true,
         poolApiKey: true,
       },
     });
@@ -131,7 +130,7 @@ export async function PATCH(
       );
     }
 
-    if (!swarm.poolName || !swarm.poolApiKey) {
+    if (!swarm.poolApiKey) {
       return NextResponse.json(
         { success: false, message: "Pool configuration incomplete" },
         { status: 400 }
@@ -147,7 +146,7 @@ export async function PATCH(
     // Forward to Pool Manager
     try {
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
-      const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.poolName)}`;
+      const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.id)}`;
 
       const response = await fetch(poolManagerUrl, {
         method: "PUT",
