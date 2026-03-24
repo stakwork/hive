@@ -195,6 +195,9 @@ describe("Pool Config API", () => {
     let fetchSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+      // Mock superadmin check - most PATCH tests use superadmin
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
+
       // Mock global fetch for Pool Manager API calls
       fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
         new Response(JSON.stringify({ success: true }), {
@@ -209,6 +212,7 @@ describe("Pool Config API", () => {
     });
 
     it("should return 403 for non-superadmin user", async () => {
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
       getMockedRequireAuth.mockReturnValue({
         id: regularUser.id,
         email: regularUser.email!,
