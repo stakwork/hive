@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -34,10 +34,13 @@ import { PresignedImage } from "@/components/ui/presigned-image";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
+import { invalidateCachedLogoUrl } from "@/lib/workspace-logo-cache";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import type { WorkspaceWithRole } from "@/types/workspace";
 
 export function WorkspaceSettings() {
   const { workspace, refreshCurrentWorkspace } = useWorkspace();
@@ -47,49 +50,14 @@ export function WorkspaceSettings() {
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchLogoUrl = async () => {
-      if (!workspace?.logoKey || !workspace?.slug) {
-        setLogoUrl(null);
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
-        if (response.ok) {
-          const data = await response.json();
-          setLogoUrl(data.presignedUrl);
-        }
-      } catch (error) {
-        console.error("Error fetching logo URL:", error);
-      }
-    };
-
-    fetchLogoUrl();
-  }, [workspace?.logoKey, workspace?.slug]);
-
-  // Function to refetch the logo URL when the presigned URL expires
-  const refetchLogoUrl = useCallback(async (): Promise<string | null> => {
-    if (!workspace?.slug) return null;
-
-    try {
-      const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
-      if (response.ok) {
-        const data = await response.json();
-        setLogoUrl(data.presignedUrl);
-        return data.presignedUrl;
-      }
-      return null;
-    } catch (error) {
-      console.error("Error refetching logo URL:", error);
-      return null;
-    }
-  }, [workspace?.slug]);
+  const { logoUrls, refetchLogo } = useWorkspaceLogos(
+    workspace ? [workspace as unknown as WorkspaceWithRole] : []
+  );
+  const logoUrl = workspace ? (logoUrls[workspace.id] ?? null) : null;
 
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
