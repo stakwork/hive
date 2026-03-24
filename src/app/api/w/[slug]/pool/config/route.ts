@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { EncryptionService } from "@/lib/encryption";
-import { isSuperAdmin, config } from "@/config/env";
+import { config } from "@/config/env";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -82,16 +82,10 @@ export async function PATCH(
       );
     }
 
-    // Check if user is super admin
     const { db } = await import("@/lib/db");
-    const githubAuth = await db.gitHubAuth.findUnique({
-      where: { userId: userOrResponse.id },
-    });
 
-    const githubUsername = githubAuth?.githubUsername ?? "";
-    const userIsSuperAdmin = isSuperAdmin(githubUsername);
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
-    // Check if user is superadmin
     if (!userIsSuperAdmin) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Superadmin access required" },
