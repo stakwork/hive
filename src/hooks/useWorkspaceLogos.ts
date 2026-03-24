@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { getCachedLogoUrl, setCachedLogoUrl } from "@/lib/workspace-logo-cache";
 import type { WorkspaceWithRole } from "@/types/workspace";
 
 interface WorkspaceLogosMap {
@@ -12,13 +13,18 @@ export function useWorkspaceLogos(workspaces: WorkspaceWithRole[]) {
   const [loading, setLoading] = useState(false);
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
-  // Function to fetch a single workspace logo
+  // Fetch a single workspace logo, checking the cache first
   const fetchWorkspaceLogo = useCallback(async (workspaceId: string, slug: string): Promise<string | null> => {
+    const cached = getCachedLogoUrl(workspaceId);
+    if (cached) return cached;
+
     try {
       const response = await fetch(`/api/workspaces/${slug}/image`);
       if (response.ok) {
         const data = await response.json();
-        return data.presignedUrl;
+        const url: string = data.presignedUrl;
+        setCachedLogoUrl(workspaceId, url);
+        return url;
       }
       return null;
     } catch (error) {
@@ -27,20 +33,26 @@ export function useWorkspaceLogos(workspaces: WorkspaceWithRole[]) {
     }
   }, []);
 
-  // Function to refetch a single logo and update state
+  // Force-refresh a single logo, bypassing the cache
   const refetchLogo = useCallback(async (workspaceId: string): Promise<string | null> => {
     const workspace = workspaces.find(ws => ws.id === workspaceId);
     if (!workspace) return null;
 
-    const newUrl = await fetchWorkspaceLogo(workspaceId, workspace.slug);
-    if (newUrl) {
-      setLogoUrls(prev => ({
-        ...prev,
-        [workspaceId]: newUrl,
-      }));
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+      if (response.ok) {
+        const data = await response.json();
+        const newUrl: string = data.presignedUrl;
+        setCachedLogoUrl(workspaceId, newUrl);
+        setLogoUrls(prev => ({ ...prev, [workspaceId]: newUrl }));
+        return newUrl;
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error refetching logo for workspace ${workspace.slug}:`, error);
+      return null;
     }
-    return newUrl;
-  }, [workspaces, fetchWorkspaceLogo]);
+  }, [workspaces]);
 
   useEffect(() => {
     if (!canAccessWorkspaceLogo || workspaces.length === 0) {
