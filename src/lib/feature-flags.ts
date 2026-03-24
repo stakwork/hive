@@ -6,6 +6,7 @@ export const FEATURE_FLAGS = {
   WORKSPACE_LOGO: 'WORKSPACE_LOGO',
   BOUNTY_REQUEST: 'BOUNTY_REQUEST',
   CHAT_CODE_FORMATTING: 'CHAT_CODE_FORMATTING',
+  WHITEBOARD_STAKWORK_POSITIONING: 'WHITEBOARD_STAKWORK_POSITIONING',
 } as const;
 
 export type FeatureFlag = typeof FEATURE_FLAGS[keyof typeof FEATURE_FLAGS];
@@ -28,6 +29,9 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     case FEATURE_FLAGS.CHAT_CODE_FORMATTING:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING === 'true';
       break;
+    case FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING:
+      isEnabled = process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -39,6 +43,7 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     [FEATURE_FLAGS.WORKSPACE_LOGO]: [],
     [FEATURE_FLAGS.BOUNTY_REQUEST]: [],
     [FEATURE_FLAGS.CHAT_CODE_FORMATTING]: [],
+    [FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING]: [],
   };
 
   const allowedRoles = roleRequirements[feature];
@@ -65,6 +70,9 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     case FEATURE_FLAGS.CHAT_CODE_FORMATTING:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING === 'true';
       break;
+    case FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING:
+      isEnabled = process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -76,6 +84,7 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     [FEATURE_FLAGS.WORKSPACE_LOGO]: [],
     [FEATURE_FLAGS.BOUNTY_REQUEST]: [],
     [FEATURE_FLAGS.CHAT_CODE_FORMATTING]: [],
+    [FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING]: [],
   };
 
   const allowedRoles = roleRequirements[feature];
