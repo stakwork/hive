@@ -47,6 +47,8 @@ export async function POST(
         id: true,
         poolApiKey: true,
         description: true,
+        swarmUrl: true,
+        swarmSecretAlias: true,
       },
     });
 
@@ -93,7 +95,9 @@ export async function POST(
       pod.password || "",
       [],
       message,
-      swarm.description || undefined
+      swarm.description || undefined,
+      swarm.swarmUrl || null,
+      swarm.swarmSecretAlias || null
     );
 
     return NextResponse.json({ success: true, runId, projectId });
