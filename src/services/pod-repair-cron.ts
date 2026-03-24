@@ -62,6 +62,8 @@ export async function getEligibleWorkspaces() {
           podState: true,
           pendingRepairTrigger: true,
           description: true,
+          swarmUrl: true,
+          swarmSecretAlias: true,
         },
       },
     },
@@ -324,7 +326,9 @@ export async function triggerPodRepair(
   podPassword: string,
   failedServices: string[],
   message?: string,
-  description?: string
+  description?: string,
+  swarmUrl?: string | null,
+  swarmSecretAlias?: string | null
 ): Promise<{ runId: string; projectId: number | null }> {
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_REPAIR&workspace_id=${workspaceId}`;
@@ -396,6 +400,8 @@ export async function triggerPodRepair(
               containerFiles: containerConfig?.containerFiles || null,
               excludedRepos: excludedRepos.length > 0 ? excludedRepos : null,
               tokenReference: getStakworkTokenReference(),
+              swarmUrl: swarmUrl || null,
+              swarmSecretAlias: swarmSecretAlias || null,
             },
           },
         },
@@ -516,7 +522,9 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             readyPod.password || "",
             [], // No specific failed services - this is a setup repair
             `Repository added: ${pending.repoName}. If this new repo is connected or integrated with the existing repo(s), see if anything needs to be changed in the configs to properly connect the repos. If nothing needs to be changed then simply do not return any changed files!`,
-            workspace.swarm?.description || undefined
+            workspace.swarm?.description || undefined,
+            workspace.swarm?.swarmUrl || null,
+            workspace.swarm?.swarmSecretAlias || null
           );
           
           // Clear the pending trigger
@@ -694,7 +702,9 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             pod.password || "",
             servicesToRepair,
             frontendError || undefined,
-            workspace.swarm?.description || undefined
+            workspace.swarm?.description || undefined,
+            workspace.swarm?.swarmUrl || null,
+            workspace.swarm?.swarmSecretAlias || null
           );
           result.repairsTriggered++;
           continue;
@@ -726,7 +736,9 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
             pod.password || "",
             [PROCESS_NAMES.FRONTEND],
             validationResult.message,
-            workspace.swarm?.description || undefined
+            workspace.swarm?.description || undefined,
+            workspace.swarm?.swarmUrl || null,
+            workspace.swarm?.swarmSecretAlias || null
           );
           result.validationsFailedWithRepair++;
           result.repairsTriggered++;
