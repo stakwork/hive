@@ -319,7 +319,7 @@ describe("Pool Config API", () => {
 
       // Verify Pool Manager was called
       expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`/pools/${encodeURIComponent(swarm.poolName!)}`),
+        expect.stringContaining(`/pools/${encodeURIComponent(swarm.id)}`),
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
