@@ -657,11 +657,18 @@ export default function WhiteboardDetailPage() {
           )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: whiteboard.elements as readonly ExcalidrawElement[],
-              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-              files: resolvedFilesRef.current,
-            }}
+            initialData={(() => {
+              const hasElements = (whiteboard.elements as unknown[]).length > 0;
+              const initialAppState = {
+                ...getInitialAppState(whiteboard.appState as Partial<AppState>),
+                ...(!hasElements ? { zoom: { value: 1 } } : {}),
+              };
+              return {
+                elements: whiteboard.elements as readonly ExcalidrawElement[],
+                appState: initialAppState as Partial<AppState>,
+                files: resolvedFilesRef.current,
+              };
+            })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}
