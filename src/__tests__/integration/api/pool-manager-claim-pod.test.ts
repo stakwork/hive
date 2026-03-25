@@ -18,8 +18,8 @@ import {
   createTestSwarm,
   createTestTask,
 } from "@/__tests__/support/fixtures";
-import { EncryptionService } from "@/lib/encryption";
 import { db } from "@/lib/db";
+import { PodStatus, PodUsageStatus } from "@prisma/client";
 
 // Mock environment config
 vi.mock("@/config/env", () => ({
@@ -356,6 +356,172 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       });
 
       await expectError(response, "Task already has a pod assigned", 409);
+    });
+
+    test("releases the pod and clears task fields when task claim setup fails after reservation", async () => {
+      const { owner, workspace, swarm } = await createTestWorkspaceScenario({
+        withSwarm: true,
+      });
+
+      const pod = await db.pod.create({
+        data: {
+          podId: `test-pod-rollback-${Date.now()}`,
+          swarmId: swarm!.id,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          password: "plain-password",
+          portMappings: [3000],
+        },
+      });
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: owner.id,
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?taskId=${task.id}`,
+        owner,
+        {},
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectError(response, "Failed to claim pod", 500);
+
+      const [updatedTask, updatedPod] = await Promise.all([
+        db.task.findUnique({
+          where: { id: task.id },
+          select: {
+            podId: true,
+            agentUrl: true,
+            agentPassword: true,
+          },
+        }),
+        db.pod.findUnique({
+          where: { id: pod.id },
+          select: {
+            usageStatus: true,
+            usageStatusMarkedAt: true,
+            usageStatusMarkedBy: true,
+          },
+        }),
+      ]);
+
+      expect(updatedTask).toEqual({
+        podId: null,
+        agentUrl: null,
+        agentPassword: null,
+      });
+      expect(updatedPod).toEqual({
+        usageStatus: PodUsageStatus.UNUSED,
+        usageStatusMarkedAt: null,
+        usageStatusMarkedBy: null,
+      });
+    });
+
+    test("retries a failed task claim without consuming additional pods", async () => {
+      const { owner, workspace, swarm } = await createTestWorkspaceScenario({
+        withSwarm: true,
+      });
+
+      const suffix = Date.now();
+      const [badPod, goodPod] = await Promise.all([
+        db.pod.create({
+          data: {
+            podId: `test-pod-bad-${suffix}`,
+            swarmId: swarm!.id,
+            status: PodStatus.RUNNING,
+            usageStatus: PodUsageStatus.UNUSED,
+            password: "plain-password",
+            portMappings: [3000],
+            createdAt: new Date("2024-01-01T00:00:00Z"),
+          },
+        }),
+        db.pod.create({
+          data: {
+            podId: `test-pod-good-${suffix}`,
+            swarmId: swarm!.id,
+            status: PodStatus.RUNNING,
+            usageStatus: PodUsageStatus.UNUSED,
+            password: "plain-password",
+            portMappings: [3000, 15552],
+            createdAt: new Date("2024-01-02T00:00:00Z"),
+          },
+        }),
+      ]);
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: owner.id,
+      });
+
+      const requestUrl = `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?taskId=${task.id}`;
+      const firstRequest = createAuthenticatedPostRequest(requestUrl, owner, {});
+      const firstResponse = await POST(firstRequest, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+      await expectError(firstResponse, "Failed to claim pod", 500);
+
+      const secondRequest = createAuthenticatedPostRequest(requestUrl, owner, {});
+      const secondResponse = await POST(secondRequest, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+      await expectError(secondResponse, "Failed to claim pod", 500);
+
+      const [updatedTask, pods, usedPods] = await Promise.all([
+        db.task.findUnique({
+          where: { id: task.id },
+          select: {
+            podId: true,
+            agentUrl: true,
+            agentPassword: true,
+          },
+        }),
+        db.pod.findMany({
+          where: {
+            id: {
+              in: [badPod.id, goodPod.id],
+            },
+          },
+          orderBy: { createdAt: "asc" },
+          select: {
+            podId: true,
+            usageStatus: true,
+            usageStatusMarkedAt: true,
+            usageStatusMarkedBy: true,
+          },
+        }),
+        db.pod.count({
+          where: {
+            swarmId: swarm!.id,
+            usageStatus: PodUsageStatus.USED,
+          },
+        }),
+      ]);
+
+      expect(updatedTask).toEqual({
+        podId: null,
+        agentUrl: null,
+        agentPassword: null,
+      });
+      expect(usedPods).toBe(0);
+      expect(pods).toEqual([
+        {
+          podId: badPod.podId,
+          usageStatus: PodUsageStatus.UNUSED,
+          usageStatusMarkedAt: null,
+          usageStatusMarkedBy: null,
+        },
+        {
+          podId: goodPod.podId,
+          usageStatus: PodUsageStatus.UNUSED,
+          usageStatusMarkedAt: null,
+          usageStatusMarkedBy: null,
+        },
+      ]);
     });
   });
 });

@@ -19,6 +19,7 @@ export async function getBasicVMDataFromPods(
       podId: true,
       status: true,
       usageStatus: true,
+      usageStatusMarkedAt: true,
       usageStatusMarkedBy: true,
       password: true,
       createdAt: true,
@@ -27,6 +28,24 @@ export async function getBasicVMDataFromPods(
       createdAt: "desc",
     },
   });
+
+  const taskIdsByPodId = new Map(
+    (
+      await db.task.findMany({
+        where: {
+          deleted: false,
+          archived: false,
+          podId: {
+            in: pods.map((pod) => pod.podId),
+          },
+        },
+        select: {
+          id: true,
+          podId: true,
+        },
+      })
+    ).map((task) => [task.podId!, task.id]),
+  );
 
   return pods.map((pod) => {
     const url = buildPodUrl(pod.podId, POD_PORTS.CONTROL);
@@ -51,9 +70,12 @@ export async function getBasicVMDataFromPods(
     // Map database usageStatus to pool-manager format
     const usage_status = pod.usageStatus === "USED" ? "used" : "unused";
 
-    // Use usageStatusMarkedBy as user_info if VM is in use
+    // Task.podId is the authoritative task-to-pod link during Phase 1.
+    // Fall back to usageStatusMarkedBy for non-task/manual claims.
     const user_info =
-      usage_status === "used" ? pod.usageStatusMarkedBy ?? undefined : undefined;
+      usage_status === "used"
+        ? taskIdsByPodId.get(pod.podId) ?? pod.usageStatusMarkedBy ?? undefined
+        : undefined;
 
     return {
       id: pod.podId,
@@ -62,7 +84,7 @@ export async function getBasicVMDataFromPods(
       internal_state: state, // Use same value as state for basic query
       usage_status,
       user_info: user_info ?? null,
-      marked_at: pod.usageStatusMarkedBy ? pod.createdAt.toISOString() : null,
+      marked_at: pod.usageStatusMarkedAt?.toISOString() ?? null,
       password: pod.password || undefined,
       url,
       repository: undefined, // Not available in basic query

@@ -65,7 +65,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
-import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { claimTaskPodAndSetup, type ServiceInfo } from "@/lib/pods";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -98,12 +98,6 @@ interface PodClaimResult {
   frontend: string;
   ide: string;
   credentials: AgentCredentials;
-}
-
-interface ServiceInfo {
-  name: string;
-  port: number;
-  scripts?: Record<string, string>;
 }
 
 // ============================================================================
@@ -204,49 +198,28 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   const services = workspace.swarm.services as ServiceInfo[] | null;
   const swarmId = workspace.swarm.id as string;
 
-  // Claim pod from pool
-  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(swarmId, taskId, services || undefined);
-
-  const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
-
-  if (!controlUrl) {
-    throw new Error("Pod control port not available");
-  }
-
-  // Update repositories on new pod (non-fatal if fails)
-  if (workspace.repositories.length > 0) {
-    try {
-      await updatePodRepositories(
-        controlUrl,
-        podWorkspace.password,
-        workspace.repositories.map((r) => ({ url: r.repositoryUrl })),
-      );
-      console.log("[Agent] Updated repositories on pod");
-    } catch (repoError) {
-      console.error("[Agent] Error updating repositories (non-fatal):", repoError);
-    }
-  }
-
-  // Store pod credentials on task
-  const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
-  await db.task.update({
-    where: { id: taskId },
-    data: {
-      podId: podWorkspace.id,
-      agentUrl: controlUrl,
-      agentPassword: JSON.stringify(encryptedPassword),
-    },
+  const claimResult = await claimTaskPodAndSetup({
+    taskId,
+    swarmId,
+    services: services || undefined,
+    repositories: workspace.repositories.map((repo) => ({ url: repo.repositoryUrl })),
+    refreshRepositories: true,
+    requireControlPort: true,
   });
 
-  console.log("[Agent] Claimed pod:", podWorkspace.id, "for task:", taskId);
+  if (!claimResult) {
+    throw new Error("Task already has a pod assigned");
+  }
+
+  console.log("[Agent] Claimed pod:", claimResult.podId, "for task:", taskId);
 
   return {
-    podId: podWorkspace.id,
-    frontend,
-    ide: podWorkspace.url || podWorkspace.portMappings["8080"] || "",
+    podId: claimResult.podId,
+    frontend: claimResult.frontend,
+    ide: claimResult.ide || claimResult.workspace.portMappings["8080"] || "",
     credentials: {
-      agentUrl: controlUrl,
-      agentPassword: podWorkspace.password,
+      agentUrl: claimResult.control!,
+      agentPassword: claimResult.password,
     },
   };
 }
@@ -466,6 +439,9 @@ export async function POST(request: NextRequest) {
       }
     } catch (claimError) {
       console.error("[Agent] Failed to claim pod:", claimError);
+      if (claimError instanceof Error && claimError.message === "Task already has a pod assigned") {
+        return NextResponse.json({ error: claimError.message }, { status: 409 });
+      }
       return NextResponse.json({ error: "No pods available" }, { status: 503 });
     }
   } else if (!task.podId && isUsingCustomUrl) {
@@ -473,12 +449,12 @@ export async function POST(request: NextRequest) {
     const mockPodId = "local-dev";
     const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
 
-    // Store mock podId on task
+    // Store custom agent details without creating a fake pod/task link
     await db.task.update({
       where: { id: taskId },
       data: {
-        podId: mockPodId,
         agentUrl: process.env.CUSTOM_GOOSE_URL,
+        agentPassword: null,
       },
     });
 

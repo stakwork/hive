@@ -1,7 +1,17 @@
 import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { JlistProcess } from "@/types/pod-repair";
-import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
+import type { Pod } from "@prisma/client";
+import {
+  attachPodToTaskAtomically,
+  buildPodUrl,
+  claimAvailablePod,
+  claimPodForTaskAtomically,
+  getPodDetails,
+  getPodUsageStatus,
+  releasePodById,
+} from "./queries";
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES } from "./constants";
@@ -95,7 +105,7 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
   return frontend;
 }
 
-interface ServiceInfo {
+export interface ServiceInfo {
   name: string;
   port: number;
   scripts?: {
@@ -107,44 +117,26 @@ interface ServiceInfo {
   };
 }
 
-export async function claimPodAndGetFrontend(
-  swarmId: string,
-  userInfo?: string,
-  services?: ServiceInfo[],
-): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
-  // Claim a pod from the database atomically
-  const pod = await claimAvailablePod(swarmId, userInfo);
+const encryptionService = EncryptionService.getInstance();
 
-  if (!pod) {
-    throw new Error(`No available pods for swarm: ${swarmId}`);
-  }
-
-  console.log(">>> claimed pod", pod.podId);
-
-  // Password is already decrypted from the database
+export function buildPodWorkspace(pod: Pod): PodWorkspace {
   if (!pod.password) {
     throw new Error("Pod password not found");
   }
-  const password = pod.password;
 
-  // Get port mappings as number array
   const portArray = (pod.portMappings as number[] | null) || [];
-
-  // Convert port array to URL dictionary for PodWorkspace compatibility
   const portMappings: Record<string, string> = {};
   for (const port of portArray) {
     portMappings[port.toString()] = buildPodUrl(pod.podId, port);
   }
 
-  // Convert database pod to PodWorkspace format for compatibility
-  const workspace: PodWorkspace = {
+  return {
     id: pod.podId,
-    password,
+    password: pod.password,
     portMappings,
     state: pod.status,
     usage_status: pod.usageStatus,
     marked_at: pod.usageStatusMarkedAt?.toISOString() || "",
-    // Legacy fields - not used but kept for type compatibility
     branches: [],
     created: pod.createdAt.toISOString(),
     customImage: false,
@@ -158,15 +150,17 @@ export async function claimPodAndGetFrontend(
     url: "",
     useDevContainer: false,
   };
+}
 
-  console.log(">>> workspace data", workspace);
-
+export async function discoverPodFrontend(
+  workspace: PodWorkspace,
+  services?: ServiceInfo[],
+): Promise<{ frontend: string; processList?: ProcessInfo[] }> {
   let frontend: string | undefined;
   let processList: ProcessInfo[] | undefined;
 
   const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
 
-  // Always try to fetch process list if control port exists
   if (controlPortUrl) {
     try {
       processList = await getProcessList(controlPortUrl, workspace.password);
@@ -176,23 +170,20 @@ export async function claimPodAndGetFrontend(
     }
   }
 
-  // FIRST: Try to get frontend port from services array if provided
   if (services && services.length > 0) {
     try {
       const frontendService = services.find((svc) => svc.name === "frontend");
 
       if (frontendService?.port) {
         console.log(`>>> Found frontend port ${frontendService.port} from services array`);
-
-        // Try to find the port in port mappings
         frontend = workspace.portMappings[frontendService.port.toString()];
 
         if (frontend) {
           console.log(`>>> Using frontend from services array on port ${frontendService.port}:`, frontend);
-          return { frontend, workspace, processList };
-        } else {
-          console.log(`>>> Port ${frontendService.port} from services not found in port mappings, trying fallbacks`);
+          return { frontend, processList };
         }
+
+        console.log(`>>> Port ${frontendService.port} from services not found in port mappings, trying fallbacks`);
       } else {
         console.log(">>> No frontend service found in services array, trying fallbacks");
       }
@@ -201,33 +192,26 @@ export async function claimPodAndGetFrontend(
     }
   }
 
-  // SECOND: Try to get frontend from process discovery if we have process list
   if (processList) {
     try {
-      // Get the frontend URL from port mappings
       frontend = getFrontendUrl(processList, workspace.portMappings);
     } catch (error) {
       console.error(
         `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
         error,
       );
-      // frontend remains undefined, will try fallback below
     }
   } else if (!controlPortUrl) {
-    // Control port not available, will try fallback
     console.error(
       `>>> Control port (${POD_PORTS.CONTROL}) not found in port mappings, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}`,
     );
   }
 
-  // If frontend not found via process discovery, use fallback
   if (!frontend) {
-    // Fallback to port 3000 if process discovery failed or control port was missing
     frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
     if (!frontend && controlPortUrl) {
-      // Final fallback: try to find frontend port from process list if we have it
-      let frontendPort = POD_PORTS.FRONTEND_FALLBACK as string; // default to 3000 if we can't find it
+      let frontendPort = POD_PORTS.FRONTEND_FALLBACK as string;
 
       if (processList) {
         const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
@@ -237,7 +221,6 @@ export async function claimPodAndGetFrontend(
         }
       }
 
-      // Replace control port with dynamically discovered frontend port in controlPortUrl
       frontend = controlPortUrl.replace(POD_PORTS.CONTROL, frontendPort);
       console.log(
         `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${frontendPort} in controlPortUrl:`,
@@ -251,6 +234,159 @@ export async function claimPodAndGetFrontend(
       throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
     }
   }
+
+  return { frontend, processList };
+}
+
+export interface ClaimAvailablePodSetupOptions {
+  swarmId: string;
+  userInfo?: string;
+  services?: ServiceInfo[];
+  requireControlPort?: boolean;
+}
+
+export interface ClaimAvailablePodSetupResult {
+  podId: string;
+  workspace: PodWorkspace;
+  frontend: string;
+  control: string | null;
+  ide: string | null;
+  password: string;
+  processList?: ProcessInfo[];
+}
+
+export async function claimAvailablePodAndSetup(
+  options: ClaimAvailablePodSetupOptions,
+): Promise<ClaimAvailablePodSetupResult> {
+  const { swarmId, userInfo, services, requireControlPort = false } = options;
+  const pod = await claimAvailablePod(swarmId, userInfo);
+
+  if (!pod) {
+    throw new Error(`No available pods for swarm: ${swarmId}`);
+  }
+
+  try {
+    const workspace = buildPodWorkspace(pod);
+    const { frontend, processList } = await discoverPodFrontend(workspace, services);
+    const control = workspace.portMappings[POD_PORTS.CONTROL] || null;
+
+    if (requireControlPort && !control) {
+      throw new Error("Pod control port not available");
+    }
+
+    return {
+      podId: workspace.id,
+      workspace,
+      frontend,
+      control,
+      ide: workspace.url || null,
+      password: workspace.password,
+      processList,
+    };
+  } catch (error) {
+    try {
+      await releasePodById(pod.podId);
+    } catch (releaseError) {
+      console.error(`Failed to release pod ${pod.podId} after setup failure:`, releaseError);
+    }
+    throw error;
+  }
+}
+
+export interface ClaimTaskPodSetupOptions {
+  taskId: string;
+  swarmId: string;
+  services?: ServiceInfo[];
+  repositories?: Array<{ url: string }>;
+  refreshRepositories?: boolean;
+  requireControlPort?: boolean;
+}
+
+export interface ClaimTaskPodSetupResult extends ClaimAvailablePodSetupResult {}
+
+export async function claimTaskPodAndSetup(
+  options: ClaimTaskPodSetupOptions,
+): Promise<ClaimTaskPodSetupResult | null> {
+  const {
+    taskId,
+    swarmId,
+    services,
+    repositories = [],
+    refreshRepositories = false,
+    requireControlPort = true,
+  } = options;
+
+  const claimedPod = await claimPodForTaskAtomically(swarmId, taskId);
+  if (!claimedPod) {
+    return null;
+  }
+
+  try {
+    const workspace = buildPodWorkspace(claimedPod);
+    const { frontend, processList } = await discoverPodFrontend(workspace, services);
+    const control = workspace.portMappings[POD_PORTS.CONTROL] || null;
+
+    if (requireControlPort && !control) {
+      throw new Error("Pod control port not available");
+    }
+
+    if (refreshRepositories && control && repositories.length > 0) {
+      try {
+        await updatePodRepositories(control, workspace.password, repositories);
+      } catch (repoError) {
+        console.error("[pods] Error updating repositories after claim (non-fatal):", repoError);
+      }
+    }
+
+    const encryptedPassword = JSON.stringify(
+      encryptionService.encryptField("agentPassword", workspace.password),
+    );
+
+    await attachPodToTaskAtomically({
+      taskId,
+      podId: workspace.id,
+      agentUrl: control,
+      agentPassword: encryptedPassword,
+    });
+
+    return {
+      podId: workspace.id,
+      workspace,
+      frontend,
+      control,
+      ide: workspace.url || null,
+      password: workspace.password,
+      processList,
+    };
+  } catch (error) {
+    try {
+      await releasePodById(claimedPod.podId);
+    } catch (releaseError) {
+      console.error(`Failed to release pod ${claimedPod.podId} after task setup failure:`, releaseError);
+    }
+    throw error;
+  }
+}
+
+export async function claimPodAndGetFrontend(
+  swarmId: string,
+  userInfo?: string,
+  services?: ServiceInfo[],
+  preClaimedPod?: import("@prisma/client").Pod,
+): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
+  // Use pre-claimed pod if provided, otherwise claim one
+  const pod = preClaimedPod ?? await claimAvailablePod(swarmId, userInfo);
+
+  if (!pod) {
+    throw new Error(`No available pods for swarm: ${swarmId}`);
+  }
+
+  console.log(">>> claimed pod", pod.podId);
+
+  const workspace = buildPodWorkspace(pod);
+  console.log(">>> workspace data", workspace);
+
+  const { frontend, processList } = await discoverPodFrontend(workspace, services);
 
   return { frontend, workspace, processList };
 }
@@ -452,10 +588,10 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     try {
       await db.task.update({
         where: { id: taskId },
-        data: { podId: null, agentPassword: null },
+        data: { podId: null, agentUrl: null, agentPassword: null },
       });
       result.taskCleared = true;
-      console.log(`[releaseTaskPod] Cleared podId/agentPassword from task ${taskId}`);
+      console.log(`[releaseTaskPod] Cleared podId/agentUrl/agentPassword from task ${taskId}`);
     } catch (error) {
       console.error(`[releaseTaskPod] Failed to clear task pod fields:`, error);
     }
