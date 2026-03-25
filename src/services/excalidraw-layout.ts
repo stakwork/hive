@@ -26,6 +26,11 @@ export interface ParsedComponent {
   layer?: number | null;
   color?: string | null;
   backgroundColor?: string | null;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  createdBy?: "user" | "ai";
 }
 
 export interface ParsedConnection {
@@ -921,7 +926,14 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
       shape = "rect";
     }
 
-    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor });
+    const elX = typeof el.x === "number" ? el.x : undefined;
+    const elY = typeof el.y === "number" ? el.y : undefined;
+    const elWidth = typeof el.width === "number" ? el.width : undefined;
+    const elHeight = typeof el.height === "number" ? el.height : undefined;
+    const customData = el.customData as Record<string, unknown> | undefined;
+    const createdBy: "user" | "ai" = customData?.source === "ai" ? "ai" : "user";
+
+    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor, x: elX, y: elY, width: elWidth, height: elHeight, createdBy });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -995,7 +1007,12 @@ export function serializeDiagramContext(
     ].filter(Boolean).join(", ");
     const extraInfo = extras ? `, ${extras}` : "";
     const typeLabel = c.type || "component";
-    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})`);
+    const pos =
+      c.x != null && c.y != null && c.width != null && c.height != null
+        ? ` @ (x: ${Math.round(c.x)}, y: ${Math.round(c.y)}, w: ${Math.round(c.width)}, h: ${Math.round(c.height)})`
+        : "";
+    const author = c.createdBy === "ai" ? " [ai-generated]" : " [user-created]";
+    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})${pos}${author}`);
   }
 
   if (parsed.connections.length > 0) {

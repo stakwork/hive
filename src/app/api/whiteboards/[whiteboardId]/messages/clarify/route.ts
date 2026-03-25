@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { createDiagramStakworkRun } from "@/services/stakwork-run";
+import { serializeDiagramContext } from "@/services/excalidraw-layout";
 
 export async function POST(
   request: NextRequest,
@@ -43,6 +44,8 @@ export async function POST(
         },
       },
     });
+
+
 
     if (!whiteboard) {
       return NextResponse.json({ error: "Whiteboard not found" }, { status: 404 });
@@ -128,6 +131,10 @@ export async function POST(
 
     const layout = body.layout || "layered";
 
+    const diagramContext = serializeDiagramContext(
+      (whiteboard.elements as Record<string, unknown>[] | null) ?? []
+    );
+
     const run = await createDiagramStakworkRun({
       workspaceId: whiteboard.featureId
         ? whiteboard.feature!.workspaceId
@@ -138,6 +145,7 @@ export async function POST(
       layout,
       userId: user.id,
       currentMessageId: message.id,
+      diagramContext: diagramContext ?? undefined,
     });
 
     return NextResponse.json(
