@@ -9,7 +9,8 @@ import { db } from "@/lib/db";
 import { POST } from "@/app/api/chat/response/route";
 import { NextRequest } from "next/server";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
-import { NotificationTriggerType, NotificationTriggerStatus } from "@prisma/client";
+import { NotificationTriggerType, NotificationTriggerStatus, PodUsageStatus } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
 
 // Mock Sphinx delivery
 vi.mock("@/lib/sphinx/direct-message", () => ({
@@ -200,5 +201,169 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     expect(record!.sendAfter).not.toBeNull();
     expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
     expect(record!.message).toBeTruthy();
+  });
+
+  it("does not mutate task pod fields when an artifact references a nonexistent pod", async () => {
+    const task = await db.task.create({
+      data: {
+        title: "Missing pod task",
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        updatedById: owner.id,
+      },
+    });
+
+    const req = makeRequest({
+      taskId: task.id,
+      message: "IDE opened",
+      artifacts: [
+        {
+          type: "IDE",
+          content: {
+            url: "https://ide.test",
+            podId: "missing-pod-id",
+          },
+        },
+      ],
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const [updatedTask, claimedPodCount] = await Promise.all([
+      db.task.findUnique({
+        where: { id: task.id },
+        select: {
+          podId: true,
+          agentUrl: true,
+          agentPassword: true,
+        },
+      }),
+      db.pod.count({
+        where: {
+          usageStatusMarkedBy: task.id,
+        },
+      }),
+    ]);
+
+    expect(updatedTask).toEqual({
+      podId: null,
+      agentUrl: null,
+      agentPassword: null,
+    });
+    expect(claimedPodCount).toBe(0);
+  });
+
+  it("attaches a valid artifact pod to the task and mirrors pod usage state", async () => {
+    const { createTestSwarm } = await import("@/__tests__/support/factories/swarm.factory");
+    const { createTestPod } = await import("@/__tests__/support/factories/pod.factory");
+    const encryptionService = EncryptionService.getInstance();
+
+    const swarm = await createTestSwarm({
+      workspaceId: workspace.id,
+      status: "ACTIVE",
+    });
+
+    const pod = await createTestPod({
+      swarmId: swarm.id,
+      password: "plain-pod-password",
+      portMappings: [3000, 15552],
+    });
+
+    const task = await db.task.create({
+      data: {
+        title: "Attach artifact pod task",
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        updatedById: owner.id,
+      },
+    });
+
+    const req = makeRequest({
+      taskId: task.id,
+      message: "IDE opened",
+      artifacts: [
+        {
+          type: "IDE",
+          content: {
+            url: "https://ide.test",
+            podId: pod.podId,
+            agentPassword: "artifact-secret",
+          },
+        },
+      ],
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const [updatedTask, updatedPod] = await Promise.all([
+      db.task.findUnique({
+        where: { id: task.id },
+        select: {
+          podId: true,
+          agentUrl: true,
+          agentPassword: true,
+        },
+      }),
+      db.pod.findUnique({
+        where: { id: pod.id },
+        select: {
+          usageStatus: true,
+          usageStatusMarkedBy: true,
+        },
+      }),
+    ]);
+
+    expect(updatedTask?.podId).toBe(pod.podId);
+    expect(updatedTask?.agentUrl).toBeNull();
+    expect(updatedTask?.agentPassword).toBeTruthy();
+    expect(encryptionService.decryptField("agentPassword", updatedTask!.agentPassword!)).toBe("artifact-secret");
+    expect(updatedPod).toEqual({
+      usageStatus: PodUsageStatus.USED,
+      usageStatusMarkedBy: task.id,
+    });
+  });
+
+  it("does not store agentPassword when the task podId points to a missing pod", async () => {
+    const task = await db.task.create({
+      data: {
+        title: "Stale pod task",
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        updatedById: owner.id,
+        podId: "stale-pod-id",
+      },
+    });
+
+    const req = makeRequest({
+      taskId: task.id,
+      message: "IDE reopened",
+      artifacts: [
+        {
+          type: "IDE",
+          content: {
+            url: "https://ide.test",
+            agentPassword: "artifact-secret",
+          },
+        },
+      ],
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const updatedTask = await db.task.findUnique({
+      where: { id: task.id },
+      select: {
+        podId: true,
+        agentPassword: true,
+      },
+    });
+
+    expect(updatedTask).toEqual({
+      podId: "stale-pod-id",
+      agentPassword: null,
+    });
   });
 });

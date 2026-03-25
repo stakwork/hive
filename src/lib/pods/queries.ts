@@ -137,62 +137,184 @@ export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
 }
 
 /**
- * Atomically claim an available pod for a user
- * Uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
+ * Atomically claim a pod for a specific task, preventing race conditions.
+ * Uses a transaction with SELECT FOR UPDATE on the task row to serialize
+ * concurrent requests for the same taskId, preventing multiple pods from
+ * being claimed for one task. The task's podId is persisted inside the same
+ * transaction so later claims immediately observe the assignment.
  *
  * @param swarmId - The swarm ID to claim a pod from
- * @param userId - The user ID claiming the pod
- * @returns The claimed pod or null if none available
+ * @param taskId - The task ID to claim a pod for
+ * @returns The claimed pod, or null if the task already has a pod assigned
+ * @throws Error if no pods are available
  */
-export async function claimAvailablePod(swarmId: string, userInfo?: string): Promise<Pod | null> {
-  // Use raw SQL for atomic SELECT FOR UPDATE SKIP LOCKED
-  interface RawPodResult {
-    id: string;
-    pod_id: string;
-    swarm_id: string;
-    status: PodStatus;
-    usage_status: PodUsageStatus;
-    usage_status_marked_at: Date | null;
-    usage_status_marked_by: string | null;
-    usage_status_reason: string | null;
-    password: string | null;
-    port_mappings: any;
-    flagged_for_recreation: boolean;
-    flagged_at: Date | null;
-    flagged_reason: string | null;
-    last_health_check: Date | null;
-    health_status: string | null;
-    created_at: Date;
-    updated_at: Date;
-    deleted_at: Date | null;
-  }
+export async function claimPodForTaskAtomically(swarmId: string, taskId: string): Promise<Pod | null> {
+  return db.$transaction(async (tx) => {
+    // Lock the task row to serialize concurrent claims for the same task
+    const taskRows = await tx.$queryRaw<{ pod_id: string | null }[]>`
+      SELECT pod_id FROM tasks WHERE id = ${taskId} FOR UPDATE
+    `;
 
-  const rawPods = await db.$queryRaw<RawPodResult[]>`
-    UPDATE pods
-    SET 
-      usage_status = 'USED'::"PodUsageStatus",
-      usage_status_marked_at = NOW(),
-      usage_status_marked_by = ${userInfo}
-    WHERE id = (
-      SELECT id FROM pods
-      WHERE 
-        swarm_id = ${swarmId}
-        AND status = 'RUNNING'::"PodStatus"
-        AND usage_status = 'UNUSED'::"PodUsageStatus"
-        AND deleted_at IS NULL
-      ORDER BY created_at ASC
+    if (taskRows.length === 0) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    // If task already has a pod, another request won the race
+    if (taskRows[0].pod_id) {
+      return null;
+    }
+
+    // Now claim a pod — safe because we hold the task lock
+    const rawPods = await tx.$queryRaw<RawPodResult[]>`
+      UPDATE pods
+      SET
+        usage_status = 'USED'::"PodUsageStatus",
+        usage_status_marked_at = NOW(),
+        usage_status_marked_by = ${taskId}
+      WHERE id = (
+        SELECT p.id FROM pods p
+        WHERE
+          p.swarm_id = ${swarmId}
+          AND p.status = 'RUNNING'::"PodStatus"
+          AND p.usage_status = 'UNUSED'::"PodUsageStatus"
+          AND p.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM tasks t
+            WHERE t.pod_id = p.pod_id
+          )
+        ORDER BY p.created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING *
+    `;
+
+    if (rawPods.length === 0) {
+      throw new Error(`No available pods for swarm: ${swarmId}`);
+    }
+
+    await tx.task.update({
+      where: { id: taskId },
+      data: { podId: rawPods[0].pod_id },
+    });
+
+    return mapRawPodResult(rawPods[0]);
+  });
+}
+
+export interface AttachPodToTaskOptions {
+  taskId: string;
+  podId: string;
+  agentUrl?: string | null;
+  agentPassword?: string | null;
+}
+
+export interface AttachPodToTaskResult {
+  podId: string;
+  taskId: string;
+  workspaceSlug: string | null;
+}
+
+/**
+ * Attach an existing pod row to a task while keeping task/pod state in sync.
+ * This is the single Phase 1 path for task-side pod assignments outside the
+ * initial claim transaction.
+ */
+export async function attachPodToTaskAtomically(
+  options: AttachPodToTaskOptions,
+): Promise<AttachPodToTaskResult> {
+  const { taskId, podId, agentUrl, agentPassword } = options;
+
+  return db.$transaction(async (tx) => {
+    const taskRows = await tx.$queryRaw<{ pod_id: string | null }[]>`
+      SELECT pod_id FROM tasks WHERE id = ${taskId} FOR UPDATE
+    `;
+
+    if (taskRows.length === 0) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    const podRows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id
+      FROM pods
+      WHERE pod_id = ${podId} AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+
+    if (podRows.length === 0) {
+      throw new Error(`Pod ${podId} not found`);
+    }
+
+    const conflictingTaskRows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id
+      FROM tasks
+      WHERE pod_id = ${podId} AND id <> ${taskId}
       LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING *
-  `;
+      FOR UPDATE
+    `;
 
-  if (rawPods.length === 0) {
-    return null;
-  }
+    if (conflictingTaskRows.length > 0) {
+      throw new Error(`Pod ${podId} is already assigned to task ${conflictingTaskRows[0].id}`);
+    }
 
-  // Map snake_case to camelCase
-  const rawPod = rawPods[0];
+    const currentPodId = taskRows[0].pod_id;
+    if (currentPodId && currentPodId !== podId) {
+      throw new Error(`Task ${taskId} already has a different pod assigned`);
+    }
+
+    const updatedTask = await tx.task.update({
+      where: { id: taskId },
+      data: {
+        podId,
+        ...(agentUrl !== undefined ? { agentUrl } : {}),
+        ...(agentPassword !== undefined ? { agentPassword } : {}),
+      },
+      include: {
+        workspace: {
+          select: { slug: true },
+        },
+      },
+    });
+
+    await tx.pod.update({
+      where: { id: podRows[0].id },
+      data: {
+        usageStatus: PodUsageStatus.USED,
+        usageStatusMarkedAt: new Date(),
+        usageStatusMarkedBy: taskId,
+      },
+    });
+
+    return {
+      podId,
+      taskId,
+      workspaceSlug: updatedTask.workspace?.slug ?? null,
+    };
+  });
+}
+
+interface RawPodResult {
+  id: string;
+  pod_id: string;
+  swarm_id: string;
+  status: PodStatus;
+  usage_status: PodUsageStatus;
+  usage_status_marked_at: Date | null;
+  usage_status_marked_by: string | null;
+  usage_status_reason: string | null;
+  password: string | null;
+  port_mappings: any;
+  flagged_for_recreation: boolean;
+  flagged_at: Date | null;
+  flagged_reason: string | null;
+  last_health_check: Date | null;
+  health_status: string | null;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+}
+
+function mapRawPodResult(rawPod: RawPodResult): Pod {
   return {
     id: rawPod.id,
     podId: rawPod.pod_id,
@@ -213,6 +335,42 @@ export async function claimAvailablePod(swarmId: string, userInfo?: string): Pro
     updatedAt: rawPod.updated_at,
     deletedAt: rawPod.deleted_at,
   } as Pod;
+}
+
+/**
+ * Atomically claim an available pod for a user
+ * Uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
+ *
+ * @param swarmId - The swarm ID to claim a pod from
+ * @param userId - The user ID claiming the pod
+ * @returns The claimed pod or null if none available
+ */
+export async function claimAvailablePod(swarmId: string, userInfo?: string): Promise<Pod | null> {
+  const rawPods = await db.$queryRaw<RawPodResult[]>`
+    UPDATE pods
+    SET
+      usage_status = 'USED'::"PodUsageStatus",
+      usage_status_marked_at = NOW(),
+      usage_status_marked_by = ${userInfo}
+    WHERE id = (
+      SELECT id FROM pods
+      WHERE
+        swarm_id = ${swarmId}
+        AND status = 'RUNNING'::"PodStatus"
+        AND usage_status = 'UNUSED'::"PodUsageStatus"
+        AND deleted_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+  `;
+
+  if (rawPods.length === 0) {
+    return null;
+  }
+
+  return mapRawPodResult(rawPods[0]);
 }
 
 /** Base domain for pod URLs */
@@ -289,6 +447,7 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
       },
       data: {
         podId: null,
+        agentUrl: null,
         agentPassword: null,
       },
     });

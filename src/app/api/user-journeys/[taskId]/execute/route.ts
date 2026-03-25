@@ -26,7 +26,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { claimPodAndGetFrontend, POD_PORTS } from "@/lib/pods";
+import { claimAvailablePodAndSetup, releasePodById } from "@/lib/pods";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import crypto from "crypto";
@@ -36,6 +36,7 @@ export const fetchCache = "force-no-store";
 const encryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  let claimedPodId: string | null = null;
   try {
     // Step 1: Request Validation & Authentication
     const { taskId } = await params;
@@ -110,7 +111,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Step 2: Claim Pod (Reuse Existing Logic)
       const poolId = task.workspace.swarm.id || task.workspace.swarm.poolName;
-      const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", task.workspace.swarm.poolApiKey);
 
       // Get services from swarm
       const services = task.workspace.swarm.services as
@@ -124,7 +124,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       let podResult;
       try {
-        podResult = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
+        podResult = await claimAvailablePodAndSetup({
+          swarmId: poolId as string,
+          userInfo: taskId,
+          services: services || undefined,
+          requireControlPort: true,
+        });
+        claimedPodId = podResult.podId;
       } catch (error) {
         console.error("Failed to claim pod:", error);
         return NextResponse.json(
@@ -137,13 +143,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       // Extract control URL and password from pod result
-      controlUrl = podResult.workspace.portMappings[POD_PORTS.CONTROL];
-      podPassword = podResult.workspace.password;
+      controlUrl = podResult.control!;
+      podPassword = podResult.password;
       frontendUrl = podResult.frontend;
-
-      if (!controlUrl) {
-        return NextResponse.json({ error: "Control port not available on claimed pod" }, { status: 500 });
-      }
     }
 
     // Step 3: Generate One-Time API Key
@@ -200,6 +202,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } catch (error) {
       console.error("Failed to start test execution:", error);
 
+      if (claimedPodId) {
+        try {
+          await releasePodById(claimedPodId);
+          claimedPodId = null;
+        } catch (releaseError) {
+          console.error("Failed to release claimed pod after test start failure:", releaseError);
+        }
+      }
+
       // Revert task status on failure
       try {
         await db.task.update({
@@ -243,6 +254,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   } catch (error) {
     console.error("Unexpected error in test execution endpoint:", error);
+    if (claimedPodId) {
+      try {
+        await releasePodById(claimedPodId);
+      } catch (releaseError) {
+        console.error("Failed to release claimed pod after unexpected error:", releaseError);
+      }
+    }
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

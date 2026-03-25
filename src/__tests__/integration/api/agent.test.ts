@@ -10,7 +10,10 @@ import {
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestTask } from "@/__tests__/support/factories/task.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
+import { createTestSwarm } from "@/__tests__/support/factories/swarm.factory";
+import { createTestPod } from "@/__tests__/support/factories/pod.factory";
 import { db } from "@/lib/db";
+import { PodUsageStatus } from "@prisma/client";
 
 // Mock the gooseWeb provider
 const mockStreamText = vi.fn();
@@ -179,6 +182,85 @@ describe("POST /api/agent Integration Tests", () => {
       const sessionBody = JSON.parse(sessionCall[1].body);
       expect(sessionBody.agent_name).toBeUndefined();
       expect(sessionBody.model).toBe("sonnet");
+    });
+  });
+
+  describe("Pod claim rollback", () => {
+    test("releases the pod and clears task state when claim setup fails after reservation", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        status: "ACTIVE",
+      });
+
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          poolApiKey: "test-pool-api-key",
+        },
+      });
+
+      const pod = await createTestPod({
+        swarmId: swarm.id,
+        portMappings: [3000],
+        password: "plain-password",
+      });
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Rollback task",
+      });
+
+      await db.task.update({
+        where: { id: task.id },
+        data: { mode: "agent" },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest("http://localhost/api/agent", {
+        message: "Start the agent",
+        taskId: task.id,
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(data.error).toBe("No pods available");
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      const [updatedTask, updatedPod] = await Promise.all([
+        db.task.findUnique({
+          where: { id: task.id },
+          select: {
+            podId: true,
+            agentUrl: true,
+            agentPassword: true,
+          },
+        }),
+        db.pod.findUnique({
+          where: { id: pod.id },
+          select: {
+            usageStatus: true,
+            usageStatusMarkedAt: true,
+            usageStatusMarkedBy: true,
+          },
+        }),
+      ]);
+
+      expect(updatedTask).toEqual({
+        podId: null,
+        agentUrl: null,
+        agentPassword: null,
+      });
+      expect(updatedPod).toEqual({
+        usageStatus: PodUsageStatus.UNUSED,
+        usageStatusMarkedAt: null,
+        usageStatusMarkedBy: null,
+      });
     });
   });
 

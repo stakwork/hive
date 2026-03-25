@@ -3,11 +3,13 @@
  * Tests atomic operations, race conditions, and soft-delete filtering
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { db } from "@/lib/db";
 import { PodStatus, PodUsageStatus } from "@prisma/client";
 import {
   claimAvailablePod,
+  attachPodToTaskAtomically,
+  claimPodForTaskAtomically,
   getPodDetails,
   releasePodById,
   getPodUsageStatus,
@@ -361,6 +363,196 @@ describe("Pod Queries", () => {
     });
   });
 
+  describe("claimPodForTaskAtomically", () => {
+    it("should only reserve one pod for concurrent claims on the same task", async () => {
+      const suffix = Date.now();
+
+      await Promise.all(
+        Array.from({ length: 5 }, (_, index) =>
+          db.pod.create({
+            data: {
+              podId: `test-pod-task-race-${suffix}-${index}`,
+              swarmId: testSwarmId,
+              status: PodStatus.RUNNING,
+              usageStatus: PodUsageStatus.UNUSED,
+              password: `password-${index}`,
+              portMappings: [3000, 15552],
+            },
+          }),
+        ),
+      );
+
+      const task = await db.task.create({
+        data: {
+          title: `Concurrent Claim Task ${suffix}`,
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => claimPodForTaskAtomically(testSwarmId, task.id)),
+      );
+
+      const successfulClaims = results.filter((result): result is Pod => result !== null);
+      const failedClaims = results.filter((result) => result === null);
+
+      expect(successfulClaims).toHaveLength(1);
+      expect(failedClaims).toHaveLength(4);
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.podId).toBe(successfulClaims[0].podId);
+
+      const usedPods = await db.pod.findMany({
+        where: {
+          swarmId: testSwarmId,
+          usageStatus: PodUsageStatus.USED,
+        },
+        select: {
+          podId: true,
+          usageStatusMarkedBy: true,
+        },
+      });
+
+      expect(usedPods).toHaveLength(1);
+      expect(usedPods[0]).toEqual({
+        podId: successfulClaims[0].podId,
+        usageStatusMarkedBy: task.id,
+      });
+    });
+  });
+
+  describe("attachPodToTaskAtomically", () => {
+    it("should attach an existing pod to a task and mirror usage state", async () => {
+      const suffix = Date.now();
+      const pod = await db.pod.create({
+        data: {
+          podId: `test-pod-attach-${suffix}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          password: "plain-password",
+          portMappings: [3000, 15552],
+        },
+      });
+
+      const task = await db.task.create({
+        data: {
+          title: `Attach Pod Task ${suffix}`,
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      const result = await attachPodToTaskAtomically({
+        taskId: task.id,
+        podId: pod.podId,
+        agentUrl: "https://control.test",
+        agentPassword: "encrypted-agent-password",
+      });
+
+      expect(result).toEqual({
+        podId: pod.podId,
+        taskId: task.id,
+        workspaceSlug: expect.any(String),
+      });
+
+      const [updatedTask, updatedPod] = await Promise.all([
+        db.task.findUnique({ where: { id: task.id } }),
+        db.pod.findUnique({ where: { id: pod.id } }),
+      ]);
+
+      expect(updatedTask?.podId).toBe(pod.podId);
+      expect(updatedTask?.agentUrl).toBe("https://control.test");
+      expect(updatedTask?.agentPassword).toBe("encrypted-agent-password");
+      expect(updatedPod?.usageStatus).toBe(PodUsageStatus.USED);
+      expect(updatedPod?.usageStatusMarkedBy).toBe(task.id);
+      expect(updatedPod?.usageStatusMarkedAt).toBeInstanceOf(Date);
+    });
+
+    it("should reject nonexistent pods and leave the task unchanged", async () => {
+      const suffix = Date.now();
+      const task = await db.task.create({
+        data: {
+          title: `Attach Missing Pod Task ${suffix}`,
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      await expect(
+        attachPodToTaskAtomically({
+          taskId: task.id,
+          podId: `missing-pod-${suffix}`,
+        }),
+      ).rejects.toThrow(`Pod missing-pod-${suffix} not found`);
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+
+      expect(updatedTask?.podId).toBeNull();
+      expect(updatedTask?.agentUrl).toBeNull();
+      expect(updatedTask?.agentPassword).toBeNull();
+    });
+
+    it("should reject attaching a pod already assigned to another task", async () => {
+      const suffix = Date.now();
+      const pod = await db.pod.create({
+        data: {
+          podId: `test-pod-shared-${suffix}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.USED,
+          usageStatusMarkedAt: new Date(),
+          usageStatusMarkedBy: `task-owner-${suffix}`,
+          password: "plain-password",
+          portMappings: [3000, 15552],
+        },
+      });
+
+      const [existingTask, competingTask] = await Promise.all([
+        db.task.create({
+          data: {
+            title: `Existing Pod Task ${suffix}`,
+            workspace: { connect: { id: testWorkspaceId } },
+            createdBy: { connect: { id: testUserId } },
+            updatedBy: { connect: { id: testUserId } },
+            podId: pod.podId,
+          },
+        }),
+        db.task.create({
+          data: {
+            title: `Competing Pod Task ${suffix}`,
+            workspace: { connect: { id: testWorkspaceId } },
+            createdBy: { connect: { id: testUserId } },
+            updatedBy: { connect: { id: testUserId } },
+          },
+        }),
+      ]);
+
+      await expect(
+        attachPodToTaskAtomically({
+          taskId: competingTask.id,
+          podId: pod.podId,
+        }),
+      ).rejects.toThrow(`Pod ${pod.podId} is already assigned to task ${existingTask.id}`);
+
+      const [reloadedExistingTask, reloadedCompetingTask] = await Promise.all([
+        db.task.findUnique({ where: { id: existingTask.id } }),
+        db.task.findUnique({ where: { id: competingTask.id } }),
+      ]);
+
+      expect(reloadedExistingTask?.podId).toBe(pod.podId);
+      expect(reloadedCompetingTask?.podId).toBeNull();
+    });
+  });
+
   describe("getPodDetails", () => {
     it("should return password and portMappings", async () => {
       const pod = await db.pod.create({
@@ -453,6 +645,8 @@ describe("Pod Queries", () => {
             connect: { id: testUserId },
           },
           podId: pod.podId,
+          agentUrl: "https://control.test",
+          agentPassword: "encrypted-password",
         },
       });
 
@@ -464,12 +658,13 @@ describe("Pod Queries", () => {
       expect(releasedPod?.usageStatusMarkedBy).toBeNull();
       expect(releasedPod?.usageStatusReason).toBeNull();
 
-      // Verify task's podId and agentPassword are cleared
+      // Verify task pod association and credentials are cleared
       const updatedTask = await db.task.findUnique({
         where: { id: task.id },
       });
 
       expect(updatedTask?.podId).toBeNull();
+      expect(updatedTask?.agentUrl).toBeNull();
       expect(updatedTask?.agentPassword).toBeNull();
     });
 
@@ -494,6 +689,7 @@ describe("Pod Queries", () => {
             createdBy: { connect: { id: testUserId } },
             updatedBy: { connect: { id: testUserId } },
             podId: pod.podId,
+            agentUrl: "https://control-1.test",
             agentPassword: "encrypted-password-1",
           },
         }),
@@ -504,6 +700,7 @@ describe("Pod Queries", () => {
             createdBy: { connect: { id: testUserId } },
             updatedBy: { connect: { id: testUserId } },
             podId: pod.podId,
+            agentUrl: "https://control-2.test",
             agentPassword: "encrypted-password-2",
           },
         }),
@@ -525,6 +722,8 @@ describe("Pod Queries", () => {
       // Verify all tasks also have agentPassword cleared
       const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
       const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+      expect(updatedTask1?.agentUrl).toBeNull();
+      expect(updatedTask2?.agentUrl).toBeNull();
       expect(updatedTask1?.agentPassword).toBeNull();
       expect(updatedTask2?.agentPassword).toBeNull();
     });

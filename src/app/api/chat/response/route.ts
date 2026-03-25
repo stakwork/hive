@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma, PodUsageStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
+import { Prisma, NotificationTriggerType } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
+import { attachPodToTaskAtomically } from "@/lib/pods/queries";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
@@ -390,53 +391,69 @@ export async function POST(request: NextRequest) {
 
         if (podId || agentPassword) {
           try {
-            const updateData: { podId?: string; agentPassword?: string } = {};
+            let workspaceSlug: string | null = null;
+            let effectivePodId: string | undefined = podId;
+            const encryptedAgentPassword = agentPassword
+              ? JSON.stringify(EncryptionService.getInstance().encryptField("agentPassword", agentPassword))
+              : undefined;
 
             if (podId) {
-              updateData.podId = podId;
-            }
-
-            if (agentPassword) {
-              const encryptionService = EncryptionService.getInstance();
-              const encrypted = encryptionService.encryptField("agentPassword", agentPassword);
-              updateData.agentPassword = JSON.stringify(encrypted);
-            }
-
-            const updatedTask = await db.task.update({
-              where: { id: taskId },
-              data: updateData,
-              include: {
-                workspace: {
-                  select: { slug: true },
-                },
-              },
-            });
-            console.log(
-              `✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
-            );
-
-            // Sync pods table so pool status stays accurate
-            // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
-            if (podId) {
-              try {
-                await db.pod.updateMany({
-                  where: { podId, deletedAt: null },
-                  data: {
-                    usageStatus: PodUsageStatus.USED,
-                    usageStatusMarkedAt: new Date(),
-                    usageStatusMarkedBy: taskId,
+              const attachedTask = await attachPodToTaskAtomically({
+                taskId,
+                podId,
+                ...(encryptedAgentPassword !== undefined ? { agentPassword: encryptedAgentPassword } : {}),
+              });
+              workspaceSlug = attachedTask.workspaceSlug;
+            } else if (encryptedAgentPassword !== undefined) {
+              const currentTask = await db.task.findUnique({
+                where: { id: taskId },
+                select: {
+                  podId: true,
+                  workspace: {
+                    select: { slug: true },
                   },
-                });
-                console.log(`✅ Synced pods table: marked ${podId} as USED for task ${taskId}`);
-              } catch (podSyncError) {
-                console.error("Failed to sync pods table:", podSyncError);
+                },
+              });
+
+              if (!currentTask?.podId) {
+                throw new Error(`Cannot store agentPassword for task ${taskId} without a valid podId`);
               }
+
+              const existingPod = await db.pod.findFirst({
+                where: {
+                  podId: currentTask.podId,
+                  deletedAt: null,
+                },
+                select: { podId: true },
+              });
+
+              if (!existingPod) {
+                throw new Error(`Cannot store agentPassword for task ${taskId} because pod ${currentTask.podId} does not exist`);
+              }
+
+              effectivePodId = currentTask.podId;
+
+              const updatedTask = await db.task.update({
+                where: { id: taskId },
+                data: {
+                  agentPassword: encryptedAgentPassword,
+                },
+                include: {
+                  workspace: {
+                    select: { slug: true },
+                  },
+                },
+              });
+              workspaceSlug = updatedTask.workspace?.slug ?? null;
             }
+            console.log(
+              `✅ Stored podId=${effectivePodId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
+            );
 
             // Broadcast podId update to both channels for real-time UI updates
             const podUpdatePayload = {
               taskId,
-              podId,
+              podId: effectivePodId,
               timestamp: new Date(),
             };
 
@@ -449,9 +466,9 @@ export async function POST(request: NextRequest) {
             }
 
             // Send to workspace channel (for task list)
-            if (updatedTask.workspace?.slug) {
+            if (workspaceSlug) {
               try {
-                const workspaceChannelName = getWorkspaceChannelName(updatedTask.workspace.slug);
+                const workspaceChannelName = getWorkspaceChannelName(workspaceSlug);
                 await pusherServer.trigger(
                   workspaceChannelName,
                   PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,

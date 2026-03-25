@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import {
+  claimAvailablePodAndSetup,
+  claimTaskPodAndSetup,
+  updatePodRepositories,
+  POD_PORTS,
+} from "@/lib/pods";
 import { POD_BASE_DOMAIN } from "@/lib/pods/queries";
 import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -58,17 +60,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
       const mockPodId = "local-dev";
 
-      // Still save podId and agentUrl to task in dev mode
+      // Store custom agent details without creating a fake pod/task link.
       if (taskId) {
         try {
           await db.task.update({
             where: { id: taskId },
             data: {
-              podId: mockPodId,
               agentUrl: process.env.CUSTOM_GOOSE_URL,
+              agentPassword: null,
             },
           });
-          console.log(`✅ Stored mock podId ${mockPodId} for task ${taskId}`);
+          console.log(`✅ Stored custom agent URL for task ${taskId}`);
         } catch (error) {
           console.error("Failed to store mock pod info:", error);
         }
@@ -126,38 +128,51 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
-    // Guard: reject if the task already has a pod assigned
-    if (taskId) {
-      const existingTask = await db.task.findUnique({
-        where: { id: taskId },
-        select: { podId: true },
-      });
-
-      if (existingTask?.podId) {
-        return NextResponse.json(
-          { success: false, error: "Task already has a pod assigned" },
-          { status: 409 },
-        );
-      }
-    }
-
     // Get services from swarm
     const services = workspace.swarm.services as
       | Array<{ name: string; port: number; scripts?: Record<string, string> }>
       | null
       | undefined;
 
-    const userInfo = taskId || undefined;
+    let frontend: string;
+    let control: string | null;
+    let ide: string | null;
+    let podWorkspace: Awaited<ReturnType<typeof claimAvailablePodAndSetup>>["workspace"];
+    if (taskId) {
+      const result = await claimTaskPodAndSetup({
+        taskId,
+        swarmId,
+        services: services || undefined,
+        repositories: workspace.repositories.map((repo) => ({ url: repo.repositoryUrl })),
+        refreshRepositories: shouldUpdateToLatest,
+        requireControlPort: true,
+      });
 
-    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
-      swarmId,
-      userInfo,
-      services || undefined,
-    );
+      if (!result) {
+        return NextResponse.json(
+          { success: false, error: "Task already has a pod assigned" },
+          { status: 409 },
+        );
+      }
+
+      frontend = result.frontend;
+      podWorkspace = result.workspace;
+      control = result.control;
+      ide = result.ide;
+    } else {
+      const result = await claimAvailablePodAndSetup({
+        swarmId,
+        services: services || undefined,
+      });
+      frontend = result.frontend;
+      podWorkspace = result.workspace;
+      control = result.control;
+      ide = result.ide;
+    }
 
     // If "latest" parameter is provided, update the pod repositories
-    if (shouldUpdateToLatest) {
-      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+    if (shouldUpdateToLatest && !taskId) {
+      const controlPortUrl = control;
 
       if (!controlPortUrl) {
         console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
@@ -176,33 +191,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Extract control and pod URLs
-    const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
     const pod_url = `https://${podWorkspace.id}.${POD_BASE_DOMAIN}`;
-    const ide = podWorkspace.url || null;
 
     console.log(">>> control", control);
-
-    // If taskId is provided, store agent credentials and podId on the task
-    // Use control URL (staklink on port 15552) for agentUrl since /session endpoint is there
-    if (taskId && control) {
-      try {
-        const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
-
-        await db.task.update({
-          where: { id: taskId },
-          data: {
-            podId: podWorkspace.id,
-            agentUrl: control,
-            agentPassword: JSON.stringify(encryptedPassword),
-          },
-        });
-
-        console.log(`✅ Stored podId ${podWorkspace.id} and agent credentials for task ${taskId}`);
-      } catch (error) {
-        console.error("Failed to store pod info:", error);
-      }
-    }
 
     return NextResponse.json(
       {
