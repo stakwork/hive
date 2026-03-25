@@ -9,6 +9,8 @@ import {
   computeUserElementsBoundingBox,
   computePlacementOffset,
   offsetExcalidrawElements,
+  extractParsedDiagram,
+  serializeDiagramContext,
   FONT_SIZE,
   LINE_HEIGHT,
   MIN_WIDTH,
@@ -564,5 +566,131 @@ describe("offsetExcalidrawElements", () => {
     offsetExcalidrawElements(elements, 10, 10);
     expect(elements[0]).toBe(original);
     expect((elements[0] as any).x).toBe(0); // unchanged
+  });
+});
+
+describe("extractParsedDiagram — position and authorship", () => {
+  function makeRectEl(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "rect-1",
+      type: "rectangle",
+      x: 100,
+      y: 200,
+      width: 150,
+      height: 60,
+      isDeleted: false,
+      backgroundColor: "#a5d8ff",
+      strokeColor: "#1971c2",
+      roundness: { type: 3 },
+      boundElements: [{ id: "text-1", type: "text" }],
+      ...overrides,
+    };
+  }
+
+  function makeTextEl(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "text-1",
+      type: "text",
+      x: 110,
+      y: 220,
+      width: 130,
+      height: 20,
+      isDeleted: false,
+      text: "Auth Service",
+      containerId: "rect-1",
+      ...overrides,
+    };
+  }
+
+  test("user-created element: captures x, y, width, height and createdBy=user when no customData", () => {
+    const elements = [makeRectEl(), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram).not.toBeNull();
+    const comp = diagram!.components[0];
+    expect(comp.x).toBe(100);
+    expect(comp.y).toBe(200);
+    expect(comp.width).toBe(150);
+    expect(comp.height).toBe(60);
+    expect(comp.createdBy).toBe("user");
+  });
+
+  test("ai-generated element: createdBy=ai when customData.source === 'ai'", () => {
+    const elements = [makeRectEl({ customData: { source: "ai" } }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram).not.toBeNull();
+    expect(diagram!.components[0].createdBy).toBe("ai");
+  });
+
+  test("element with other customData.source: createdBy=user", () => {
+    const elements = [makeRectEl({ customData: { source: "user" } }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram!.components[0].createdBy).toBe("user");
+  });
+
+  test("element with no customData: createdBy=user", () => {
+    const elements = [makeRectEl({ customData: undefined }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram!.components[0].createdBy).toBe("user");
+  });
+});
+
+describe("serializeDiagramContext — position and authorship output", () => {
+  function makeRectEl(id: string, text: string, x: number, y: number, customData?: Record<string, unknown>) {
+    return [
+      {
+        id,
+        type: "rectangle",
+        x,
+        y,
+        width: 160,
+        height: 60,
+        isDeleted: false,
+        backgroundColor: "#a5d8ff",
+        strokeColor: "#1971c2",
+        roundness: { type: 3 },
+        boundElements: [{ id: `${id}-text`, type: "text" }],
+        customData,
+      },
+      {
+        id: `${id}-text`,
+        type: "text",
+        x: x + 10,
+        y: y + 20,
+        width: 140,
+        height: 20,
+        isDeleted: false,
+        text,
+        containerId: id,
+      },
+    ];
+  }
+
+  test("includes position string for elements with x/y/width/height", () => {
+    const elements = makeRectEl("c1", "Auth Service", 120, 80);
+    const result = serializeDiagramContext(elements);
+    expect(result).not.toBeNull();
+    expect(result).toContain("@ (x: 120, y: 80, w: 160, h: 60)");
+  });
+
+  test("labels user-created elements with [user-created]", () => {
+    const elements = makeRectEl("c1", "Auth Service", 120, 80);
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("[user-created]");
+  });
+
+  test("labels ai-generated elements with [ai-generated]", () => {
+    const elements = makeRectEl("c1", "Database", 400, 80, { source: "ai" });
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("[ai-generated]");
+  });
+
+  test("rounds fractional coordinates", () => {
+    const elements = makeRectEl("c1", "Service", 100.7, 200.3);
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("x: 101, y: 200");
+  });
+
+  test("returns null for empty elements array", () => {
+    expect(serializeDiagramContext([])).toBeNull();
   });
 });
