@@ -4271,6 +4271,62 @@ describe("Stakwork Run Service", () => {
       const callArgs = mockStakworkRequest.mock.calls[0][1];
       expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([]);
     });
+
+    test("should include diagramContext in vars when provided", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const diagramContext =
+        'Components:\n- "Auth Service" (service) @ (x: 120, y: 80, w: 160, h: 60) [user-created]';
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw an auth flow",
+        layout: "layered",
+        userId: "user-1",
+        diagramContext,
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.diagramContext).toBe(diagramContext);
+    });
+
+    test("should not include diagramContext in vars when not provided", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw an auth flow",
+        layout: "layered",
+        userId: "user-1",
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.diagramContext).toBeUndefined();
+    });
   });
 });
 
