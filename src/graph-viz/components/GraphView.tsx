@@ -12,9 +12,9 @@ import { useRef, useMemo, useEffect, useState } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import type { Graph, GraphEdge, ViewState } from "./types";
-import { edgeKey } from "./types";
-import { VIRTUAL_CENTER } from "./extract";
+import type { Graph, GraphEdge, ViewState } from "../graph/types";
+import { edgeKey, isStructuralEdge } from "../graph/types";
+import { VIRTUAL_CENTER } from "../graph/extract";
 import { NodeDetailPanel } from "./NodeDetailPanel";
 import { PulseLayer } from "./PulseLayer";
 
@@ -35,6 +35,10 @@ interface GraphViewProps {
   onDetailNavigate?: (id: number) => void;
   searchMatches?: Set<number> | null;
   pulses?: Pulse[];
+  /** Recently added node IDs → timestamp (for streaming highlight) */
+  recentNodes?: Map<number, number>;
+  /** Cluster proxy node ID that is currently expanded in place */
+  expandedClusterId?: number | null;
 }
 
 const tmpObj = new THREE.Object3D();
@@ -58,7 +62,8 @@ interface RingData {
 
 function smoothstep(t: number): number {
   const c = Math.max(0, Math.min(1, t));
-  return c * c * (3 - 2 * c);
+  // Quintic smoothstep — smoother acceleration and deceleration
+  return c * c * c * (c * (c * 6 - 15) + 10);
 }
 
 
@@ -117,6 +122,13 @@ const glowFragmentShader = /* glsl */ `
     float ringGlow = exp(-ringDist * ringDist * 60.0) * 0.45;
     float outerGlow = exp(-2.5 * max(r - 0.55, 0.0)) * 0.2;
     float innerFill = (1.0 - smoothstep(0.0, 0.55, r)) * 0.04;
+
+    // Hide ring + all ring effects for bare nodes (progress == -2.0 sentinel)
+    float showRing = vProgress < -1.5 ? 0.0 : 1.0;
+    ring *= showRing;
+    ringGlow *= showRing;
+    outerGlow *= showRing;
+    innerFill *= showRing;
 
     // Glow only on selected node (large scale)
     float s = clamp((vScale - 0.5) / 0.1, 0.0, 1.0);
@@ -184,9 +196,9 @@ const _sphere = new THREE.Sphere();
 const _hitPoint = new THREE.Vector3();
 
 
-const SHOW_HELPERS = import.meta.env.VITE_SHOW_HELPERS === "true";
+const SHOW_HELPERS = false;
 
-export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNodeId, onExitWhiteboard, onDetailNavigate, searchMatches, pulses }: GraphViewProps) {
+export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNodeId, onExitWhiteboard, onDetailNavigate, searchMatches, pulses, recentNodes, expandedClusterId }: GraphViewProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
   const highlightLinesRef = useRef<THREE.LineSegments>(null);
@@ -203,6 +215,24 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
   const nodeCount = graph.nodes.length;
 
+  // Stable mesh capacity — only grows (doubles), so InstancedMesh is rarely recreated
+  const meshCapacityRef = useRef(Math.max(nodeCount, 64));
+  const [meshCapacity, setMeshCapacity] = useState(Math.max(nodeCount, 64));
+  useEffect(() => {
+    if (nodeCount > meshCapacityRef.current) {
+      const newCap = Math.max(nodeCount, meshCapacityRef.current * 2);
+      meshCapacityRef.current = newCap;
+      setMeshCapacity(newCap);
+    }
+  }, [nodeCount]);
+  // Track nodeCount and graph for the custom raycast closure (via refs so always current)
+  const nodeCountRef = useRef(nodeCount);
+  nodeCountRef.current = nodeCount;
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  const expandedClusterRef = useRef(expandedClusterId);
+  expandedClusterRef.current = expandedClusterId;
+
   const maxDegree = useMemo(
     () => Math.max(1, ...graph.nodes.map((n) => n.degree)),
     [graph]
@@ -214,7 +244,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   }, [hovered, graph.adj]);
 
 
-  // Current animated state
+  // Current animated state — grow buffers when nodeCount increases
   const currentPos = useRef(new Float32Array(nodeCount * 3));
   const currentScale = useRef(new Float32Array(nodeCount));
   const currentColor = useRef(new Float32Array(nodeCount * 3));
@@ -233,10 +263,52 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   // Per-node nimbus scale (cursor proximity on ring)
   const nimbusScale = useRef(new Float32Array(nodeCount).fill(1));
 
+  // Resize buffers when nodeCount grows (streaming support)
+  const prevNodeCount = useRef(nodeCount);
+  if (nodeCount > prevNodeCount.current) {
+    const grow = <T extends Float32Array>(old: T, perNode: number, fillVal?: number): T => {
+      const next = new Float32Array(nodeCount * perNode) as unknown as T;
+      next.set(old.subarray(0, Math.min(old.length, nodeCount * perNode)));
+      if (fillVal !== undefined) {
+        for (let i = prevNodeCount.current * perNode; i < nodeCount * perNode; i++) {
+          (next as Float32Array)[i] = fillVal;
+        }
+      }
+      return next;
+    };
+    currentPos.current = grow(currentPos.current, 3);
+    currentScale.current = grow(currentScale.current, 1);
+    currentColor.current = grow(currentColor.current, 3);
+    currentAlpha.current = grow(currentAlpha.current, 1);
+    progressArray.current = grow(progressArray.current, 1, -1);
+    fisheyeLabelPos.current = grow(fisheyeLabelPos.current, 3);
+    nimbusScale.current = grow(nimbusScale.current, 1, 1);
+
+    // Update instanced buffer attributes to point to the new arrays
+    const mesh = meshRef.current;
+    if (mesh) {
+      const pAttr = new THREE.InstancedBufferAttribute(progressArray.current, 1);
+      mesh.geometry.setAttribute("instanceProgress", pAttr);
+      progressAttrRef.current = pAttr;
+      const aAttr = new THREE.InstancedBufferAttribute(currentAlpha.current, 1);
+      mesh.geometry.setAttribute("instanceAlpha", aAttr);
+      alphaAttrRef.current = aAttr;
+    }
+
+    prevNodeCount.current = nodeCount;
+  }
+
   // Cursor-reveal: cursor world position on XZ plane
   const cursorXZ = useRef({ x: 0, z: 0 });
   const [fisheyeRevealed, setFisheyeRevealed] = useState<Set<number>>(() => new Set());
   const fisheyeRevealedRef = useRef<Set<number>>(new Set());
+
+  // Clear fisheye state when view mode or selected node changes
+  const viewKey = viewState.mode === "subgraph" ? viewState.selectedNodeId : -1;
+  useEffect(() => {
+    fisheyeRevealedRef.current = new Set();
+    setFisheyeRevealed(new Set());
+  }, [viewKey]);
 
   // Fisheye: precompute ring polar data from layout's childrenOf
   const ringData = useMemo((): RingData | null => {
@@ -290,7 +362,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     return { onRing, centerX, centerZ, baseAngle, radius };
   }, [graph, viewState, nodeCount]);
 
-  // Reuse edge buffers (avoid per-frame allocations)
+  // Reuse edge buffers (avoid per-frame allocations) — grow as needed
   const edgePosRef = useRef<Float32Array>(new Float32Array(Math.max(1, graph.edges.length) * 6));
   const edgeAlphaRef = useRef<Float32Array>(new Float32Array(Math.max(1, graph.edges.length) * 2));
   const hlEdgePosRef = useRef<Float32Array>(new Float32Array(Math.max(1, graph.edges.length) * 6));
@@ -300,6 +372,15 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   // Cross-edge Bézier buffers (8 segments per edge)
   const crossEdgePosRef = useRef<Float32Array>(new Float32Array(256 * 6));
   const crossEdgeAlphaRef = useRef<Float32Array>(new Float32Array(256 * 2));
+
+  // Grow edge buffers when edge count increases
+  const edgeCount = graph.edges.length;
+  if (edgeCount * 6 > edgePosRef.current.length) {
+    edgePosRef.current = new Float32Array(edgeCount * 6);
+    edgeAlphaRef.current = new Float32Array(edgeCount * 2);
+    hlEdgePosRef.current = new Float32Array(edgeCount * 6);
+    hlEdgeAlphaRef.current = new Float32Array(edgeCount * 2);
+  }
   const orbitLinesRef = useRef<THREE.LineSegments>(null);
   const orbitPosRef = useRef<Float32Array>(new Float32Array(512 * 6));
   const orbitAlphaRef = useRef<Float32Array>(new Float32Array(512 * 2));
@@ -337,19 +418,43 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
     // Base color for all nodes — alpha controls depth fading via color multiply
     const BASE_R = 0.45, BASE_G = 0.85, BASE_B = 0.95;
+    // Build cloud member set — cloud dots render small until proxy is selected
+    const cloudMembers = new Set<number>();
+    const regions = graph.unstructuredRegions;
+    if (regions) {
+      for (const region of regions) {
+        for (const mid of region.memberIds) cloudMembers.add(mid);
+      }
+    }
+
+    // Collapsed cloud dot scale (small but visible)
+    const CLOUD_DOT_SCALE = 0.15;
 
     if (viewState.mode === "overview") {
       const depthMap = graph.initialDepthMap;
       for (let i = 0; i < nodeCount; i++) {
         const i3 = i * 3;
+
         const depth = depthMap?.get(i) ?? 0;
 
-        scales[i] = depth === 0 ? SELECTED_SCALE : NODE_SCALE;
-        const a = alphaByDepth(depth);
-        colors[i3] = BASE_R * a;
-        colors[i3 + 1] = BASE_G * a;
-        colors[i3 + 2] = BASE_B * a;
-        alphas[i] = a;
+        // Hide proxy glyph when its cluster is expanded (label stays via label layer)
+        if (i === expandedClusterId) {
+          scales[i] = 0; alphas[i] = 0;
+          colors[i3] = 0; colors[i3 + 1] = 0; colors[i3 + 2] = 0;
+          continue;
+        }
+
+        if (cloudMembers.has(i)) {
+          scales[i] = CLOUD_DOT_SCALE;
+          const a = 0.4;
+          colors[i3] = BASE_R * a; colors[i3 + 1] = BASE_G * a; colors[i3 + 2] = BASE_B * a;
+          alphas[i] = a;
+        } else {
+          scales[i] = depth === 0 ? SELECTED_SCALE : NODE_SCALE;
+          const a = alphaByDepth(depth);
+          colors[i3] = BASE_R * a; colors[i3 + 1] = BASE_G * a; colors[i3 + 2] = BASE_B * a;
+          alphas[i] = a;
+        }
       }
     } else {
       const selectedId = viewState.selectedNodeId;
@@ -359,41 +464,63 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         const i3 = i * 3;
 
         if (!visibleSet.has(i)) {
-          scales[i] = 0;
-          colors[i3] = 0;
-          colors[i3 + 1] = 0;
-          colors[i3 + 2] = 0;
-          alphas[i] = 0;
+          scales[i] = 0; colors[i3] = 0; colors[i3 + 1] = 0; colors[i3 + 2] = 0; alphas[i] = 0;
+          continue;
+        }
+
+        // Hide proxy glyph when its cluster is expanded
+        if (i === expandedClusterId) {
+          scales[i] = 0; alphas[i] = 0;
+          colors[i3] = 0; colors[i3 + 1] = 0; colors[i3 + 2] = 0;
           continue;
         }
 
         const relDepth = i === selectedId ? 0 : (viewState.depthMap.get(i) ?? 999);
 
-        scales[i] = relDepth === 0 ? SELECTED_SCALE : NODE_SCALE;
-        const a = relDepth === -1 ? 0.3 : alphaByDepth(relDepth);
-        colors[i3] = BASE_R * a;
-        colors[i3 + 1] = BASE_G * a;
-        colors[i3 + 2] = BASE_B * a;
-        alphas[i] = a;
+        if (cloudMembers.has(i)) {
+          scales[i] = CLOUD_DOT_SCALE;
+          const a = 0.4;
+          colors[i3] = BASE_R * a; colors[i3 + 1] = BASE_G * a; colors[i3 + 2] = BASE_B * a;
+          alphas[i] = a;
+        } else {
+          scales[i] = relDepth === 0 ? SELECTED_SCALE : NODE_SCALE;
+          const a = relDepth === -1 ? 0.3 : alphaByDepth(relDepth);
+          colors[i3] = BASE_R * a; colors[i3 + 1] = BASE_G * a; colors[i3 + 2] = BASE_B * a;
+          alphas[i] = a;
+        }
       }
     }
 
     return { positions, scales, colors, alphas };
-  }, [graph, viewState, nodeCount, maxDegree]);
+  }, [graph, viewState, nodeCount, maxDegree, expandedClusterId]);
 
   const { treeEdges, crossEdges, targetEdges } = useMemo(() => {
+    // Hide edges touching cloud members of COLLAPSED clusters.
+    // Expanded cluster's members get their edges shown.
+    const cloudSet = new Set<number>();
+    if (graph.unstructuredRegions) {
+      for (const region of graph.unstructuredRegions) {
+        if (region.proxyNodeId === expandedClusterId) continue; // expanded — show edges
+        for (const mid of region.memberIds) cloudSet.add(mid);
+      }
+    }
+    const collapsedSet = cloudSet;
+
     let allEdges: GraphEdge[];
     if (viewState.mode === "overview") {
-      allEdges = graph.edges;
+      // In overview, only show structural edges — hide cross-edges to reduce clutter
+      allEdges = graph.edges.filter((e) => {
+        if (collapsedSet.has(e.src) || collapsedSet.has(e.dst)) return false;
+        return isStructuralEdge(e);
+      });
     } else {
       const visibleSet = new Set(viewState.visibleNodeIds);
       const sel = viewState.selectedNodeId;
       const tes = graph.treeEdgeSet;
       allEdges = graph.edges.filter((e) => {
+        if (collapsedSet.has(e.src) || collapsedSet.has(e.dst)) return false;
         if (!visibleSet.has(e.src) || !visibleSet.has(e.dst)) return false;
-        // Always show edges touching the selected node
         if (e.src === sel || e.dst === sel) return true;
-        // Otherwise only tree edges
         return tes ? tes.has(edgeKey(e.src, e.dst)) : true;
       });
     }
@@ -421,7 +548,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
       }
     }
     return { treeEdges: tree, crossEdges: cross, targetEdges: allEdges };
-  }, [graph, viewState]);
+  }, [graph, viewState, expandedClusterId]);
 
   const selectedId = viewState.mode === "subgraph" ? viewState.selectedNodeId : null;
   const navigationHistory = viewState.mode === "subgraph" ? viewState.navigationHistory : [];
@@ -474,23 +601,54 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     const alphaAttr = new THREE.InstancedBufferAttribute(currentAlpha.current, 1);
     mesh.geometry.setAttribute("instanceAlpha", alphaAttr);
     alphaAttrRef.current = alphaAttr;
-  }, [nodeCount]);
+  }, [meshCapacity]);
 
   // Custom sphere raycast (because planeGeometry is edge-on for triangle tests)
+  // Uses nodeCountRef so it always reads the current count without needing mesh recreation
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
     mesh.raycast = (raycaster, intersects) => {
-      for (let i = 0; i < nodeCount; i++) {
+      const count = nodeCountRef.current;
+      const g = graphRef.current;
+      const nodes = g.nodes;
+      const alphas = currentAlpha.current;
+
+      // Cloud members of COLLAPSED clusters are not hittable (proxy absorbs clicks).
+      // Members of the EXPANDED cluster ARE hittable.
+      const clouds = new Set<number>();
+      const proxyRadius = new Map<number, number>();
+      const expCluster = expandedClusterRef.current;
+      if (g.unstructuredRegions) {
+        for (const r of g.unstructuredRegions) {
+          if (r.proxyNodeId === expCluster) continue; // expanded — members are selectable
+          for (const mid of r.memberIds) clouds.add(mid);
+          proxyRadius.set(r.proxyNodeId, Math.max(r.radius, 3));
+        }
+      }
+      for (let i = 0; i < count; i++) {
+        if (clouds.has(i)) continue;
+
+        // Skip truly invisible nodes (scale 0 already caught below,
+        // this catches alpha-hidden nodes like nodes outside visible set)
+        if (alphas[i] < 0.02) continue;
+
         mesh.getMatrixAt(i, _mat4);
         _mat4.decompose(_pos, _quat, _scale);
         if (_scale.x < 0.01) continue;
 
         _sphere.center.copy(_pos);
-        // Icon nodes have shrunken billboard scale; use base scale for hit testing
-        const baseScale = graph.nodes[i].icon ? _scale.x / 0.3 : _scale.x;
-        _sphere.radius = baseScale * 1.5;
+
+        const pr = proxyRadius.get(i);
+        if (pr !== undefined) {
+          _sphere.radius = pr;
+        } else {
+          // Match billboard shader: hit radius scales with camera distance
+          const camDist = raycaster.ray.origin.distanceTo(_pos);
+          const baseScale = nodes[i]?.icon ? _scale.x / 0.3 : _scale.x;
+          _sphere.radius = baseScale * camDist * 0.08;
+        }
 
         if (raycaster.ray.intersectSphere(_sphere, _hitPoint)) {
           const distance = raycaster.ray.origin.distanceTo(_hitPoint);
@@ -505,13 +663,18 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         }
       }
     };
-  }, [nodeCount]);
+  }, [meshCapacity]);
 
 
   useFrame(({ camera, pointer }, delta) => {
     const mesh = meshRef.current;
     const lines = linesRef.current;
     if (!mesh) return;
+
+    // Only render active instances (meshCapacity may be larger)
+    mesh.count = nodeCount;
+
+    const now = Date.now();
 
     // Build per-node pulse intensity (0 = none, 1 = full)
     const pulseIntensity = new Float32Array(nodeCount);
@@ -536,9 +699,20 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     }
 
     if (transitionProgress.current < 1) {
-      transitionProgress.current = Math.min(1, transitionProgress.current + delta / 0.8);
+      transitionProgress.current = Math.min(1, transitionProgress.current + delta / 1.2);
     }
     const t = smoothstep(transitionProgress.current);
+
+    // Expand cluster members when their proxy is explicitly expanded
+    const selectedProxyMembers = new Set<number>();
+    const regions = graph.unstructuredRegions;
+    if (regions && expandedClusterId != null) {
+      for (const region of regions) {
+        if (region.proxyNodeId === expandedClusterId) {
+          for (const mid of region.memberIds) selectedProxyMembers.add(mid);
+        }
+      }
+    }
 
     // Animate nodes
     for (let i = 0; i < nodeCount; i++) {
@@ -564,7 +738,26 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
       currentAlpha.current[i] += (targets.alphas[i] - currentAlpha.current[i]) * t;
 
       // Update per-instance progress for shader
-      progressArray.current[i] = graph.nodes[i].progress ?? -1;
+      // -2 sentinel = unstructured node → shader hides ring
+      const isUnstructured = graph.unstructuredNodeIds?.has(i) ?? false;
+      const isRelatedToSelected = hoveredRelated?.has(i) ?? false;
+      const isProxySelected = selectedProxyMembers.has(i);
+      const isUnstructuredBare = isUnstructured
+        && !isProxySelected
+        && i !== hovered
+        && !isRelatedToSelected
+        && !(viewState.mode === "subgraph" && i === viewState.selectedNodeId);
+      progressArray.current[i] = isUnstructuredBare ? -2 : (graph.nodes[i].progress ?? -1);
+
+      // When proxy is selected, upgrade cloud dots to regular visible nodes
+      if (isUnstructured && isProxySelected && targets.scales[i] < 0.2) {
+        currentScale.current[i] += (0.4 - currentScale.current[i]) * t;
+        const a = 0.8;
+        currentColor.current[i3] += (0.45 * a - currentColor.current[i3]) * t;
+        currentColor.current[i3 + 1] += (0.85 * a - currentColor.current[i3 + 1]) * t;
+        currentColor.current[i3 + 2] += (0.95 * a - currentColor.current[i3 + 2]) * t;
+        currentAlpha.current[i] += (a - currentAlpha.current[i]) * t;
+      }
 
       // Apply nimbus scale (fisheye proximity effect)
       const nimbus = nimbusScale.current[i];
@@ -612,6 +805,18 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         }
       }
 
+      // Recently-added node highlight (streaming): bright green-white flash fading over 3s
+      if (recentNodes && recentNodes.has(i)) {
+        const addedAt = recentNodes.get(i)!;
+        const age = (now - addedAt) / 3000; // 0→1 over 3 seconds
+        const intensity = Math.max(0, 1 - age);
+        const flash = intensity * intensity; // ease-out
+        tmpColor.r += (0.4 - tmpColor.r) * flash;
+        tmpColor.g += (1.5 - tmpColor.g) * flash;
+        tmpColor.b += (0.8 - tmpColor.b) * flash;
+        s *= 1 + 0.8 * flash;
+      }
+
       // Dim non-whiteboard nodes when detail panel is open
       if (wbNodeId !== null && i !== wbNodeId) {
         tmpColor.multiplyScalar(0.2);
@@ -635,8 +840,8 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
     // Fisheye pass: find nearest ring nodes to cursor, enlarge them, shrink the rest
     if (ringData && !minimap) {
-      const REVEAL_COUNT = 7;
-      const REVEAL_ANGLE = Math.PI * 0.12; // angular window for reveal
+      const REVEAL_COUNT = 12;
+      const REVEAL_ANGLE = Math.PI * 0.18; // angular window for reveal
 
       // Collect ring nodes with angular distance to cursor
       const ringCandidates: { idx: number; ad: number }[] = [];
@@ -780,14 +985,19 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         const ax = currentPos.current[s3], ay = currentPos.current[s3 + 1], az = currentPos.current[s3 + 2];
         const bx = currentPos.current[d3], by = currentPos.current[d3 + 1], bz = currentPos.current[d3 + 2];
 
-        // Control point: midpoint pulled toward origin + Y lift
+        // Control point: midpoint with curvature proportional to edge length.
+        // Short edges (within clusters) are nearly straight.
+        // Long edges get a visible arc toward the origin.
         const mx = (ax + bx) * 0.5;
         const my = (ay + by) * 0.5;
         const mz = (az + bz) * 0.5;
-        // Pull toward origin by 30%
-        const cx = mx * 0.7;
-        const cy = my + 3; // slight Y lift
-        const cz = mz * 0.7;
+        const edgeLen = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2);
+        const midDist = Math.sqrt(mx * mx + mz * mz);
+        // Curve factor: 0 for short edges, up to 0.3 for long ones
+        const curveFactor = midDist > 0.01 ? Math.min(0.3, edgeLen / (midDist * 3)) : 0;
+        const cx = mx * (1 - curveFactor);
+        const cy = my + Math.min(3, edgeLen * 0.1);
+        const cz = mz * (1 - curveFactor);
 
         const alpha = Math.min(currentAlpha.current[e.src], currentAlpha.current[e.dst]);
         const baseIdx = i * SUBDIVS;
@@ -826,31 +1036,73 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     if (hl) {
       const hlCount = highlightedEdges.length;
       if (hlCount > 0) {
+        // Cross-edges need Bézier segments, so allocate for worst case (8 segs per edge)
+        const HL_SUBDIVS = 8;
+        const maxSegs = hlCount * HL_SUBDIVS;
         let hlPos = hlEdgePosRef.current;
-        if (hlPos.length < hlCount * 6) {
-          hlPos = new Float32Array(hlCount * 6);
+        if (hlPos.length < maxSegs * 6) {
+          hlPos = new Float32Array(maxSegs * 6);
           hlEdgePosRef.current = hlPos;
         }
         let hlAlpha = hlEdgeAlphaRef.current;
-        if (hlAlpha.length < hlCount * 2) {
-          hlAlpha = new Float32Array(hlCount * 2);
+        if (hlAlpha.length < maxSegs * 2) {
+          hlAlpha = new Float32Array(maxSegs * 2);
           hlEdgeAlphaRef.current = hlAlpha;
         }
 
+        // Build cross-edge lookup
+        const crossKeys = new Set<string>();
+        const tes = graph.treeEdgeSet;
+        if (tes) {
+          for (const e of highlightedEdges) {
+            if (!tes.has(edgeKey(e.src, e.dst))) crossKeys.add(edgeKey(e.src, e.dst));
+          }
+        }
+
+        let segIdx = 0;
         for (let i = 0; i < hlCount; i++) {
           const e = highlightedEdges[i];
           const s3 = e.src * 3;
           const d3 = e.dst * 3;
-          const base = i * 6;
-          hlPos[base] = currentPos.current[s3];
-          hlPos[base + 1] = currentPos.current[s3 + 1];
-          hlPos[base + 2] = currentPos.current[s3 + 2];
-          hlPos[base + 3] = currentPos.current[d3];
-          hlPos[base + 4] = currentPos.current[d3 + 1];
-          hlPos[base + 5] = currentPos.current[d3 + 2];
-          const ab = i * 2;
-          hlAlpha[ab] = currentAlpha.current[e.src];
-          hlAlpha[ab + 1] = currentAlpha.current[e.dst];
+          const ax = currentPos.current[s3], ay = currentPos.current[s3 + 1], az = currentPos.current[s3 + 2];
+          const bx = currentPos.current[d3], by = currentPos.current[d3 + 1], bz = currentPos.current[d3 + 2];
+          const alpha = Math.min(currentAlpha.current[e.src], currentAlpha.current[e.dst]);
+
+          const isCross = crossKeys.has(edgeKey(e.src, e.dst));
+
+          if (!isCross) {
+            // Straight line — 1 segment
+            const vi = segIdx * 6;
+            hlPos[vi] = ax; hlPos[vi + 1] = ay; hlPos[vi + 2] = az;
+            hlPos[vi + 3] = bx; hlPos[vi + 4] = by; hlPos[vi + 5] = bz;
+            const ai = segIdx * 2;
+            hlAlpha[ai] = alpha; hlAlpha[ai + 1] = alpha;
+            segIdx++;
+          } else {
+            // Bézier curve — same control point logic as cross-edge rendering
+            const mx = (ax + bx) * 0.5, my = (ay + by) * 0.5, mz = (az + bz) * 0.5;
+            const edgeLen = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2);
+            const midDist = Math.sqrt(mx * mx + mz * mz);
+            const curveFactor = midDist > 0.01 ? Math.min(0.3, edgeLen / (midDist * 3)) : 0;
+            const cx = mx * (1 - curveFactor);
+            const cy = my + Math.min(3, edgeLen * 0.1);
+            const cz = mz * (1 - curveFactor);
+
+            for (let s = 0; s < HL_SUBDIVS; s++) {
+              const t0 = s / HL_SUBDIVS, t1 = (s + 1) / HL_SUBDIVS;
+              const omt0 = 1 - t0, omt1 = 1 - t1;
+              const vi = segIdx * 6;
+              hlPos[vi]     = omt0 * omt0 * ax + 2 * omt0 * t0 * cx + t0 * t0 * bx;
+              hlPos[vi + 1] = omt0 * omt0 * ay + 2 * omt0 * t0 * cy + t0 * t0 * by;
+              hlPos[vi + 2] = omt0 * omt0 * az + 2 * omt0 * t0 * cz + t0 * t0 * bz;
+              hlPos[vi + 3] = omt1 * omt1 * ax + 2 * omt1 * t1 * cx + t1 * t1 * bx;
+              hlPos[vi + 4] = omt1 * omt1 * ay + 2 * omt1 * t1 * cy + t1 * t1 * by;
+              hlPos[vi + 5] = omt1 * omt1 * az + 2 * omt1 * t1 * cz + t1 * t1 * bz;
+              const ai = segIdx * 2;
+              hlAlpha[ai] = alpha; hlAlpha[ai + 1] = alpha;
+              segIdx++;
+            }
+          }
         }
 
         const hlGeom = hl.geometry as THREE.BufferGeometry;
@@ -858,7 +1110,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         hlGeom.setAttribute("alpha", new THREE.BufferAttribute(hlAlpha, 1));
         hlGeom.attributes.position.needsUpdate = true;
         hlGeom.attributes.alpha.needsUpdate = true;
-        hlGeom.setDrawRange(0, hlCount * 2);
+        hlGeom.setDrawRange(0, segIdx * 2);
       } else {
         (hl.geometry as THREE.BufferGeometry).setDrawRange(0, 0);
       }
@@ -1088,7 +1340,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     <>
       <instancedMesh
         ref={meshRef}
-        args={[undefined, undefined, nodeCount]}
+        args={[undefined, undefined, meshCapacity]}
         frustumCulled={false}
         onClick={handleClick}
         onPointerOver={handlePointerOver}
@@ -1170,6 +1422,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         />
       </lineSegments>
 
+
       {SHOW_HELPERS && (
         <lineSegments ref={orbitLinesRef} frustumCulled={false}>
           <bufferGeometry />
@@ -1193,16 +1446,45 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         <PulseLayer pulses={pulses} positionsRef={currentPos} />
       )}
 
-      {!minimap && graph.nodes.map((node, i) => {
-        if (targets.scales[i] < 0.01) return null;
+      {/* Limit hover-neighbor labels to avoid overlap in dense areas */}
+      {!minimap && (() => {
+        // Build set of hover-neighbor labels to show (capped, closest first)
+        const MAX_HOVER_LABELS = 6;
+        const shownHoverNeighbors = new Set<number>();
+        if (hovered !== null && hoveredRelated && hoveredRelated.size > MAX_HOVER_LABELS) {
+          const hovPos = graph.nodes[hovered].position;
+          const sorted = [...hoveredRelated]
+            .filter(id => id >= 0 && id < graph.nodes.length)
+            .map(id => {
+              const p = graph.nodes[id].position;
+              const dx = p.x - hovPos.x, dy = p.y - hovPos.y, dz = p.z - hovPos.z;
+              return { id, dist: dx * dx + dy * dy + dz * dz };
+            })
+            .sort((a, b) => a.dist - b.dist);
+          for (let k = 0; k < Math.min(MAX_HOVER_LABELS, sorted.length); k++) {
+            shownHoverNeighbors.add(sorted[k].id);
+          }
+        }
+        const useFilteredHover = hoveredRelated && hoveredRelated.size > MAX_HOVER_LABELS;
 
-        // Label gating: show for depth 0-1, hovered + neighbors, cursor-revealed
+        return graph.nodes.map((node, i) => {
+        const isExpandedProxy = i === expandedClusterId;
+        // Skip invisible nodes, but keep expanded proxy label visible
+        if (targets.scales[i] < 0.01 && !isExpandedProxy) return null;
+
+        // Label gating: show for depth 0-1, hovered + neighbors, cursor-revealed, recent
         const isSelected = viewState.mode === "subgraph" && i === viewState.selectedNodeId;
         const isHovered = i === hovered;
-        const isHoverNeighbor = hoveredRelated?.has(i) ?? false;
+        const isHoverNeighbor = useFilteredHover
+          ? shownHoverNeighbors.has(i)
+          : (hoveredRelated?.has(i) ?? false);
         const isCursorRevealed = fisheyeRevealed.has(i);
         const isSearchMatch = searchMatches?.has(i) ?? false;
-        const isProminent = isSelected || isHovered || isHoverNeighbor || isCursorRevealed || isSearchMatch;
+        const isRecentNode = recentNodes?.has(i) ?? false;
+        const isProminent = isSelected || isHovered || isHoverNeighbor || isCursorRevealed || isSearchMatch || isRecentNode || isExpandedProxy;
+
+        // Unstructured nodes: no label unless hovered, selected, or neighbor of selected
+        if ((graph.unstructuredNodeIds?.has(i) ?? false) && !isHovered && !isSelected && !isHoverNeighbor) return null;
 
         // Depth-based filter: allow depth 0-1, hide deeper unless prominent
         if (!isProminent) {
@@ -1218,17 +1500,25 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         }
 
         const i3 = i * 3;
+        // Use target position if labelPos hasn't grown yet (newly added nodes)
+        const lx = i3 + 2 < labelPos.length ? labelPos[i3] : targets.positions[i3];
+        const ly = i3 + 2 < labelPos.length ? labelPos[i3 + 1] : targets.positions[i3 + 1];
+        const lz = i3 + 2 < labelPos.length ? labelPos[i3 + 2] : targets.positions[i3 + 2];
         const isExecuting = node.status === "executing";
 
-        // Style tiers: search > hovered > selected > cursor-revealed > default
+        // Style tiers: search > hovered > selected > recent > cursor-revealed > default
+        const recentAge = isRecentNode ? (Date.now() - recentNodes!.get(i)!) / 3000 : 1;
+        const recentOpacity = Math.max(0, 1 - recentAge);
         const labelColor = isSearchMatch ? "rgba(255,220,80,0.95)"
           : isHovered ? "rgba(255,255,255,0.95)"
           : isSelected ? "rgba(100,220,255,0.95)"
           : isHoverNeighbor ? "rgba(200,200,200,0.85)"
+          : isRecentNode ? `rgba(100,255,180,${(0.5 + 0.45 * recentOpacity).toFixed(2)})`
           : isCursorRevealed ? "rgba(180,210,240,0.85)"
           : "rgba(190,200,210,0.75)";
         const labelSize = isSearchMatch ? 14
           : isHovered || isSelected ? 14
+          : isRecentNode ? 13
           : isCursorRevealed || isHoverNeighbor ? 12
           : 11;
 
@@ -1246,11 +1536,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
           <group key={node.id}>
             {node.icon && (
               <Html
-                position={[
-                  labelPos[i * 3],
-                  labelPos[i * 3 + 1],
-                  labelPos[i * 3 + 2],
-                ]}
+                position={[lx, ly, lz]}
                 style={{
                   color: iconColor,
                   fontSize: 36,
@@ -1267,33 +1553,37 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
               </Html>
             )}
             <Html
-              position={[
-                labelPos[i * 3],
-                labelPos[i * 3 + 1],
-                labelPos[i * 3 + 2],
-              ]}
+              position={[lx, ly, lz]}
               style={{
-                color: labelColor,
-                fontSize: labelSize,
+                color: isExpandedProxy ? "rgba(100,220,255,0.95)" : labelColor,
+                fontSize: isExpandedProxy ? 13 : labelSize,
                 fontFamily: "'Barlow', sans-serif",
-                fontWeight: isHovered || isSelected ? 600 : 500,
+                fontWeight: isHovered || isSelected || isExpandedProxy ? 600 : 500,
                 letterSpacing: "0.3px",
                 whiteSpace: "nowrap",
-                pointerEvents: "none",
+                pointerEvents: isExpandedProxy ? "auto" : "none",
                 userSelect: "none",
+                cursor: isExpandedProxy ? "pointer" : undefined,
                 textShadow: "0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)",
                 transform: "translate(-50%, 20px)",
               }}
             >
-              {node.label}
+              {isExpandedProxy
+                ? <span onClick={(e) => { e.stopPropagation(); onNodeClick(i); }}>{node.label}</span>
+                : node.label}
             </Html>
           </group>
         );
-      })}
+      });
+      })()}
 
       {!minimap && graph.nodes.map((node, i) => {
         if (node.status !== "executing") return null;
         if (targets.scales[i] < 0.01) return null;
+        const hasProgress = node.progress != null && node.progress >= 0;
+        const badgeText = hasProgress
+          ? `${Math.round(node.progress! * 100)}%`
+          : (node.content || "active");
         return (
           <Html
             key={`prog-${node.id}`}
@@ -1322,7 +1612,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
               textShadow: "0 0 6px rgba(0,255,100,0.6)",
               boxShadow: "0 0 8px rgba(0,255,100,0.15)",
             }}>
-              {`${Math.round((node.progress ?? 0) * 100)}%`}
+              {badgeText}
             </div>
           </Html>
         );
