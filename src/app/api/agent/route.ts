@@ -273,8 +273,12 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   } catch (error) {
     // Release the pod if post-claim setup failed
     try {
-      await releasePodById(claimedPod.podId);
-      console.log(`[Agent] Released pod ${claimedPod.podId} after setup failure`);
+      const released = await releasePodById(claimedPod.podId);
+      if (!released) {
+        console.error(`[Agent] Rollback failed: pod ${claimedPod.podId} not found in database`);
+      } else {
+        console.log(`[Agent] Released pod ${claimedPod.podId} after setup failure`);
+      }
     } catch (releaseError) {
       console.error(`[Agent] Failed to release pod ${claimedPod.podId}:`, releaseError);
     }
