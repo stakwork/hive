@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
-import { POD_BASE_DOMAIN, releasePodById } from "@/lib/pods/queries";
+import { POD_BASE_DOMAIN, releasePodById, claimPodForTaskAtomically } from "@/lib/pods/queries";
+import type { Pod } from "@prisma/client";
 import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -127,35 +128,73 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
-    // Guard: reject if the task already has a pod assigned
-    if (taskId) {
-      const existingTask = await db.task.findUnique({
-        where: { id: taskId },
-        select: { podId: true },
-      });
-
-      if (existingTask?.podId) {
-        return NextResponse.json(
-          { success: false, error: "Task already has a pod assigned" },
-          { status: 409 },
-        );
-      }
-    }
-
     // Get services from swarm
     const services = workspace.swarm.services as
       | Array<{ name: string; port: number; scripts?: Record<string, string> }>
       | null
       | undefined;
 
-    const userInfo = taskId || undefined;
+    let claimedPod: Pod | null = null;
+    let frontend: string;
+    let podWorkspace: Awaited<ReturnType<typeof claimPodAndGetFrontend>>["workspace"];
 
-    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
-      swarmId,
-      userInfo,
-      services || undefined,
-    );
-    claimedPodId = podWorkspace.id;
+    if (taskId) {
+      // Atomic path: lock task row + claim pod + write pod_id in one transaction
+      claimedPod = await claimPodForTaskAtomically(swarmId, taskId);
+
+      if (claimedPod === null) {
+        // Task already has a pod assigned (concurrent request won the race)
+        return NextResponse.json(
+          { success: false, error: "Task already has a pod assigned" },
+          { status: 409 },
+        );
+      }
+
+      claimedPodId = claimedPod.podId;
+
+      // Build the PodWorkspace-compatible shape from the raw pod so the
+      // existing post-claim flow (port mappings, frontend URL, etc.) works unchanged.
+      const portArray = (claimedPod.portMappings as number[] | null) || [];
+      const portMappings: Record<string, string> = {};
+      for (const port of portArray) {
+        portMappings[port.toString()] = `https://${claimedPod.podId}-${port}.${POD_BASE_DOMAIN}`;
+      }
+
+      podWorkspace = {
+        id: claimedPod.podId,
+        password: claimedPod.password ?? "",
+        portMappings,
+        state: claimedPod.status,
+        usage_status: claimedPod.usageStatus,
+        marked_at: claimedPod.usageStatusMarkedAt?.toISOString() ?? "",
+        branches: [],
+        created: claimedPod.createdAt.toISOString(),
+        customImage: false,
+        flagged_for_recreation: claimedPod.flaggedForRecreation,
+        fqdn: "",
+        image: "",
+        primaryRepo: "",
+        repoName: "",
+        repositories: [],
+        subdomain: claimedPod.podId,
+        url: "",
+        useDevContainer: false,
+      };
+
+      // Resolve frontend URL (same fallback logic as claimPodAndGetFrontend)
+      const controlPortUrl = portMappings[POD_PORTS.CONTROL];
+      const frontendPort = services?.find((s) => s.name === "frontend")?.port?.toString();
+      frontend =
+        (frontendPort && portMappings[frontendPort]) ||
+        portMappings[POD_PORTS.FRONTEND_FALLBACK] ||
+        (controlPortUrl ? controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.FRONTEND_FALLBACK) : "");
+    } else {
+      // No taskId — use the original non-atomic path
+      const result = await claimPodAndGetFrontend(swarmId, undefined, services || undefined);
+      frontend = result.frontend;
+      podWorkspace = result.workspace;
+      claimedPodId = podWorkspace.id;
+    }
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {

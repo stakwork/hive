@@ -311,6 +311,117 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
 }
 
 /**
+ * Atomically claim a pod for a specific task, preventing concurrent double-claims.
+ *
+ * Uses a single Postgres transaction that:
+ * 1. Locks the task row (SELECT FOR UPDATE) to serialize concurrent requests
+ * 2. Returns null immediately if pod_id is already set (another request won)
+ * 3. Claims an available pod (UPDATE ... SELECT FOR UPDATE SKIP LOCKED)
+ * 4. Writes pod_id onto the task in the same transaction
+ *
+ * Returns the claimed Pod, or null if the task already has a pod assigned.
+ * Throws if no pods are available or the task does not exist.
+ *
+ * @param swarmId - The swarm to claim a pod from
+ * @param taskId  - The task to atomically link the pod to
+ */
+export async function claimPodForTaskAtomically(swarmId: string, taskId: string): Promise<Pod | null> {
+  interface TaskPodRow {
+    pod_id: string | null;
+  }
+  interface RawPodResult {
+    id: string;
+    pod_id: string;
+    swarm_id: string;
+    status: PodStatus;
+    usage_status: PodUsageStatus;
+    usage_status_marked_at: Date | null;
+    usage_status_marked_by: string | null;
+    usage_status_reason: string | null;
+    password: string | null;
+    port_mappings: unknown;
+    flagged_for_recreation: boolean;
+    flagged_at: Date | null;
+    flagged_reason: string | null;
+    last_health_check: Date | null;
+    health_status: string | null;
+    created_at: Date;
+    updated_at: Date;
+    deleted_at: Date | null;
+  }
+
+  return db.$transaction(async (tx) => {
+    // Step 1: Lock the task row to serialize concurrent claim attempts
+    const taskRows = await tx.$queryRaw<TaskPodRow[]>`
+      SELECT pod_id FROM tasks WHERE id = ${taskId} FOR UPDATE
+    `;
+
+    if (taskRows.length === 0) {
+      throw new Error(`Task not found for pod claim: ${taskId}`);
+    }
+
+    // Another request already won the race — signal caller to return 409
+    if (taskRows[0].pod_id !== null) {
+      return null;
+    }
+
+    // Step 2: Claim an available pod atomically (SKIP LOCKED avoids deadlocks)
+    const rawPods = await tx.$queryRaw<RawPodResult[]>`
+      UPDATE pods
+      SET
+        usage_status = 'USED'::"PodUsageStatus",
+        usage_status_marked_at = NOW(),
+        usage_status_marked_by = ${taskId}
+      WHERE id = (
+        SELECT id FROM pods
+        WHERE
+          swarm_id = ${swarmId}
+          AND status = 'RUNNING'::"PodStatus"
+          AND usage_status = 'UNUSED'::"PodUsageStatus"
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING *
+    `;
+
+    if (rawPods.length === 0) {
+      throw new Error(`No available pods for swarm: ${swarmId}`);
+    }
+
+    const rawPod = rawPods[0];
+
+    // Step 3: Write pod_id onto the task in the same transaction
+    await tx.$queryRaw`
+      UPDATE tasks SET pod_id = ${rawPod.pod_id} WHERE id = ${taskId}
+    `;
+
+    // Map snake_case → camelCase (same pattern as claimAvailablePod)
+    return {
+      id: rawPod.id,
+      podId: rawPod.pod_id,
+      swarmId: rawPod.swarm_id,
+      status: rawPod.status,
+      usageStatus: rawPod.usage_status,
+      usageStatusMarkedAt: rawPod.usage_status_marked_at,
+      usageStatusMarkedBy: rawPod.usage_status_marked_by,
+      usageStatusReason: rawPod.usage_status_reason,
+      password: rawPod.password,
+      portMappings: rawPod.port_mappings,
+      flaggedForRecreation: rawPod.flagged_for_recreation,
+      flaggedAt: rawPod.flagged_at,
+      flaggedReason: rawPod.flagged_reason,
+      lastHealthCheck: rawPod.last_health_check,
+      healthStatus: rawPod.health_status,
+      createdAt: rawPod.created_at,
+      updatedAt: rawPod.updated_at,
+      deletedAt: rawPod.deleted_at,
+    } as Pod;
+  });
+}
+
+/**
  * Get pod usage status information
  *
  * @param podId - The pod ID (workspace identifier) to query

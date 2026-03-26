@@ -1,4 +1,4 @@
-import { describe, test, beforeEach, vi, expect } from "vitest";
+import { describe, test, beforeEach, vi, expect, afterEach } from "vitest";
 import { POST } from "@/app/api/pool-manager/claim-pod/[workspaceId]/route";
 import {
   expectSuccess,
@@ -327,7 +327,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
   });
 
   describe("Task pod guard", () => {
-    test("returns 409 when task already has a pod assigned", async () => {
+    test("returns 409 when task already has a pod assigned (pre-seeded podId)", async () => {
       const { owner, workspace, pods } = await createTestWorkspaceScenario({
         withSwarm: true,
         withPods: true,
@@ -339,7 +339,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         createdById: owner.id,
       });
 
-      // Simulate task already having a pod assigned
+      // Simulate task already having a pod assigned (as if a prior request claimed it)
       await db.task.update({
         where: { id: task.id },
         data: { podId: pods[0].podId },
@@ -356,6 +356,50 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       });
 
       await expectError(response, "Task already has a pod assigned", 409);
+    });
+
+    test("returns 409 when claimPodForTaskAtomically returns null (concurrent race)", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        withPods: true,
+        podCount: 1,
+      });
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: owner.id,
+      });
+
+      // Reset the module registry so the re-import picks up the mock below
+      // (without this, the cached route module still references the real function)
+      vi.resetModules();
+
+      // Mock claimPodForTaskAtomically to simulate the concurrent-race scenario
+      // (another request won the transaction lock and already claimed the pod)
+      vi.doMock("@/lib/pods/queries", async (importOriginal) => {
+        const original = await importOriginal<typeof import("@/lib/pods/queries")>();
+        return {
+          ...original,
+          claimPodForTaskAtomically: vi.fn().mockResolvedValue(null),
+        };
+      });
+
+      // Re-import the route after resetting + mocking so it gets the mock
+      const { POST: PostWithMock } = await import("@/app/api/pool-manager/claim-pod/[workspaceId]/route");
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?taskId=${task.id}`,
+        owner,
+        {},
+      );
+
+      const response = await PostWithMock(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectError(response, "Task already has a pod assigned", 409);
+
+      vi.doUnmock("@/lib/pods/queries");
     });
   });
 });
