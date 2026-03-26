@@ -257,8 +257,12 @@ export async function claimPodAndGetFrontend(
   } catch (error) {
     // Release the pod if anything fails after claiming
     try {
-      await releasePodById(pod.podId);
-      console.log(`>>> Released pod ${pod.podId} after post-claim failure`);
+      const released = await releasePodById(pod.podId);
+      if (!released) {
+        console.error(`>>> Rollback failed: pod ${pod.podId} not found in database`);
+      } else {
+        console.log(`>>> Released pod ${pod.podId} after post-claim failure`);
+      }
     } catch (releaseError) {
       console.error(`>>> Failed to release pod ${pod.podId}:`, releaseError);
     }

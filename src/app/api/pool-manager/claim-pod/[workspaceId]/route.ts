@@ -225,8 +225,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Release the pod if one was claimed but subsequent setup failed
     if (claimedPodId) {
       try {
-        await releasePodById(claimedPodId);
-        console.log(`Released pod ${claimedPodId} after claim setup failure`);
+        const released = await releasePodById(claimedPodId);
+        if (!released) {
+          console.error(`Rollback failed: pod ${claimedPodId} not found in database`);
+        } else {
+          console.log(`Released pod ${claimedPodId} after claim setup failure`);
+        }
       } catch (releaseError) {
         console.error(`Failed to release pod ${claimedPodId}:`, releaseError);
       }
