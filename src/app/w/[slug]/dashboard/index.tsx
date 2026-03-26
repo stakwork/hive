@@ -9,7 +9,6 @@ import { PRMetricsWidget } from "@/components/dashboard/pr-metrics-widget";
 import { TestCoverageStats } from "@/components/dashboard/TestCoverageStats";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
-import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
 import { useTasksHighlight } from "@/hooks/useTasksHighlight";
@@ -92,13 +91,13 @@ function DashboardInner() {
       </div>
 
       <div className="flex-1 min-h-0">
-        <GraphComponent
+        {/* <GraphComponent
           endpoint={`graph/search/latest?limit=5000&top_node_count=5000`}
           enableRotation={true}
           enablePolling={true}
           height="h-full"
           width="w-full"
-        />
+        /> */}
       </div>
 
       {/* Dashboard Chat - only show when onboarding is complete */}

@@ -2,92 +2,456 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
-import { CameraControls } from "@react-three/drei";
+import { CameraControls, Html } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import type CameraControlsImpl from "camera-controls";
-import {
-  buildGraph,
-  computeRadialLayout,
-  extractInitialSubgraph,
-  extractSubgraph,
-  VIRTUAL_CENTER,
-  GraphView,
-  OffscreenIndicators,
-  PrevNodeIndicator,
-  type RawNode,
-  type RawEdge,
-  type ViewState,
-  type Pulse,
-} from "@/graph-viz-kit";
+import { buildGraph, type RawNode, type RawEdge } from "@/graph-viz/graph/buildGraph";
+import { extractSubgraph } from "@/graph-viz/graph/extract";
+import { buildEntityTree } from "@/graph-viz/graph/buildEntityTree";
+import { layoutEntityTree } from "@/graph-viz/graph/layoutEntity";
+import { GraphView, type Pulse } from "@/graph-viz/components/GraphView";
+import { OffscreenIndicators } from "@/graph-viz/components/OffscreenIndicators";
+import { PrevNodeIndicator } from "@/graph-viz/components/PrevNodeIndicator";
+import type { ViewState } from "@/graph-viz/graph/types";
+import { useRouter } from "next/navigation";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceMembers, type WorkspaceMember } from "@/hooks/useWorkspaceMembers";
 
-// ---- Hardcoded sample data ----
-const SAMPLE_NODES: RawNode[] = [
-  { id: "hive", label: "Hive", icon: "\u2318" },
-  { id: "auth", label: "Authentication", icon: "\u2B21", status: "done" },
-  { id: "dashboard", label: "Dashboard", icon: "\u2B21", status: "executing" },
-  { id: "tasks", label: "Task Engine", icon: "\u2B21", status: "executing" },
-  { id: "chat", label: "Chat", icon: "\u2B21", status: "done" },
-  { id: "graph", label: "Graph Viz", icon: "\u2B21", status: "executing" },
-  { id: "auth-login", label: "Login Flow", status: "done" },
-  { id: "auth-oauth", label: "OAuth Providers", status: "done" },
-  { id: "auth-session", label: "Session Mgmt", status: "done" },
-  { id: "dash-metrics", label: "Metrics Cards", status: "done" },
-  { id: "dash-activity", label: "Activity Feed", status: "executing" },
-  { id: "dash-search", label: "Global Search", status: "idle" },
-  { id: "task-create", label: "Task Creation", status: "done" },
-  { id: "task-assign", label: "Auto Assignment", status: "executing" },
-  { id: "task-workflow", label: "Workflow Engine", status: "executing" },
-  { id: "task-ai", label: "AI Task Solver", status: "executing" },
-  { id: "chat-rt", label: "Real-time Sync", status: "done" },
-  { id: "chat-ai", label: "AI Assistant", status: "executing" },
-  { id: "chat-files", label: "File Sharing", status: "idle" },
-  { id: "graph-layout", label: "Radial Layout", status: "done" },
-  { id: "graph-render", label: "3D Renderer", status: "done" },
-  { id: "graph-pulse", label: "Pulse Effects", status: "done" },
-  { id: "graph-nav", label: "Navigation", status: "executing" },
-  { id: "alice", label: "Alice", icon: "\u263A" },
-  { id: "bob", label: "Bob", icon: "\u263A" },
-  { id: "carol", label: "Carol", icon: "\u263A" },
-];
+const ROLE_STATUS: Record<string, "executing" | "done" | "idle"> = {
+  OWNER: "executing",
+  ADMIN: "executing",
+  PM: "executing",
+  DEVELOPER: "done",
+  STAKEHOLDER: "idle",
+  VIEWER: "idle",
+};
 
-const SAMPLE_EDGES: RawEdge[] = [
-  { source: "hive", target: "auth" },
-  { source: "hive", target: "dashboard" },
-  { source: "hive", target: "tasks" },
-  { source: "hive", target: "chat" },
-  { source: "hive", target: "graph" },
-  { source: "auth", target: "auth-login" },
-  { source: "auth", target: "auth-oauth" },
-  { source: "auth", target: "auth-session" },
-  { source: "dashboard", target: "dash-metrics" },
-  { source: "dashboard", target: "dash-activity" },
-  { source: "dashboard", target: "dash-search" },
-  { source: "tasks", target: "task-create" },
-  { source: "tasks", target: "task-assign" },
-  { source: "tasks", target: "task-workflow" },
-  { source: "tasks", target: "task-ai" },
-  { source: "chat", target: "chat-rt" },
-  { source: "chat", target: "chat-ai" },
-  { source: "chat", target: "chat-files" },
-  { source: "graph", target: "graph-layout" },
-  { source: "graph", target: "graph-render" },
-  { source: "graph", target: "graph-pulse" },
-  { source: "graph", target: "graph-nav" },
-  { source: "hive", target: "alice" },
-  { source: "hive", target: "bob" },
-  { source: "hive", target: "carol" },
-  { source: "alice", target: "tasks" },
-  { source: "alice", target: "task-ai" },
-  { source: "bob", target: "dashboard" },
-  { source: "bob", target: "graph" },
-  { source: "carol", target: "auth" },
-  { source: "carol", target: "chat" },
-];
+const FEATURE_STATUS: Record<string, "executing" | "done" | "idle"> = {
+  IN_PROGRESS: "executing",
+  COMPLETED: "done",
+  BACKLOG: "idle",
+  PLANNED: "idle",
+  CANCELLED: "idle",
+  ERROR: "idle",
+  BLOCKED: "idle",
+};
+
+const TASK_STATUS: Record<string, "executing" | "done" | "idle"> = {
+  IN_PROGRESS: "executing",
+  DONE: "done",
+  COMPLETED: "done",
+  TODO: "idle",
+  PENDING: "idle",
+  CANCELLED: "idle",
+  BLOCKED: "idle",
+  ERROR: "idle",
+  HALTED: "idle",
+  FAILED: "idle",
+};
+
+interface FeatureSummary {
+  id: string;
+  title: string;
+  status: string;
+  assignee: { id: string } | null;
+  createdBy: { id: string };
+}
+
+interface TaskSummary {
+  id: string;
+  title: string;
+  status: string;
+  workflowStatus: string | null;
+  assignee: { id: string } | null;
+  createdBy: { id: string };
+  feature: { id: string } | null;
+}
+
+interface WhiteboardSummary {
+  id: string;
+  name: string;
+  featureId: string | null;
+}
+
+interface GraphNodeSummary {
+  ref_id: string;
+  node_type: string;
+  name: string;
+}
+
+interface GraphEdgeSummary {
+  source: string;
+  target: string;
+}
+
+function useWorkspaceFeatures(workspaceId: string | undefined) {
+  const [features, setFeatures] = useState<FeatureSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/features?workspaceId=${workspaceId}&limit=100`);
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (!cancelled) setFeatures(json.data || []);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  return { features, loading };
+}
+
+function useRepositoryNodes(slug: string | undefined) {
+  const [repoNodes, setRepoNodes] = useState<GraphNodeSummary[]>([]);
+  const [repoEdges, setRepoEdges] = useState<GraphEdgeSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!slug) { setLoading(false); return; }
+    let cancelled = false;
+    const nodeTypes = JSON.stringify(["Function", "Endpoint", "File", "Page", "Datamodel"]);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(nodeTypes)}&limit=100&limit_mode=per_type`
+        );
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (!cancelled && json.data) {
+          const nodes = (json.data.nodes || []).map((n: Record<string, unknown>) => ({
+            ref_id: n.ref_id as string,
+            node_type: n.node_type as string,
+            name: (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string,
+          }));
+          const edges = (json.data.edges || []).map((e: Record<string, unknown>) => ({
+            source: e.source as string,
+            target: e.target as string,
+          }));
+          setRepoNodes(nodes);
+          setRepoEdges(edges);
+        }
+      } catch {
+        // ignore - swarm might not be available
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  return { repoNodes, repoEdges, loading };
+}
+
+function useWorkspaceTasks(workspaceId: string | undefined) {
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/tasks?workspaceId=${workspaceId}&limit=100&showAllStatuses=true`);
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (!cancelled) setTasks(json.data || []);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  return { tasks, loading };
+}
+
+function useWorkspaceWhiteboards(workspaceId: string | undefined) {
+  const [whiteboards, setWhiteboards] = useState<WhiteboardSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/whiteboards?workspaceId=${workspaceId}`);
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (!cancelled) setWhiteboards(json.data || []);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  return { whiteboards, loading };
+}
+
+const MAX_LABEL_LENGTH = 30;
+function truncLabel(text: string): string {
+  return text.length > MAX_LABEL_LENGTH ? text.slice(0, MAX_LABEL_LENGTH - 1) + "\u2026" : text;
+}
+
+function buildWorkspaceGraph(
+  workspaceName: string,
+  slug: string,
+  members: WorkspaceMember[],
+  features: FeatureSummary[],
+  repoNodes: GraphNodeSummary[],
+  repoEdges: GraphEdgeSummary[],
+  tasks: TaskSummary[],
+  whiteboards: WhiteboardSummary[],
+): { nodes: RawNode[]; edges: RawEdge[] } {
+  const nodes: RawNode[] = [
+    { id: "workspace", label: workspaceName },
+  ];
+  const edges: RawEdge[] = [];
+
+  // Top-level group nodes
+  nodes.push({ id: "group-members", label: "Members" });
+  nodes.push({ id: "group-features", label: "Features" });
+  edges.push({ source: "workspace", target: "group-members" });
+  edges.push({ source: "workspace", target: "group-features" });
+
+  if (repoNodes.length > 0) {
+    nodes.push({ id: "group-repo", label: "Repository" });
+    edges.push({ source: "workspace", target: "group-repo" });
+  }
+
+  // Members as children of the members group
+  const userIdToMemberId = new Map<string, string>();
+  for (const member of members) {
+    const label = truncLabel(member.user.name || member.user.email || "Unknown");
+    const nodeId = `member-${member.id}`;
+    nodes.push({
+      id: nodeId,
+      label,
+      content: member.role,
+    });
+    edges.push({ source: "group-members", target: nodeId });
+    userIdToMemberId.set(member.userId, nodeId);
+  }
+
+  // Features — auto-cluster by status when > 15
+  const CLUSTER_THRESHOLD = 15;
+
+  if (features.length > CLUSTER_THRESHOLD) {
+    const featureBuckets: Record<string, FeatureSummary[]> = {
+      Active: [],
+      Done: [],
+      Backlog: [],
+    };
+    for (const f of features) {
+      const vis = FEATURE_STATUS[f.status] || "idle";
+      if (vis === "executing") featureBuckets.Active.push(f);
+      else if (vis === "done") featureBuckets.Done.push(f);
+      else featureBuckets.Backlog.push(f);
+    }
+
+    for (const [bucketLabel, bucket] of Object.entries(featureBuckets)) {
+      if (bucket.length === 0) continue;
+      // Skip intermediate node for single-item buckets
+      const parentId = bucket.length === 1 ? "group-features" : `features-${bucketLabel.toLowerCase()}`;
+      if (bucket.length > 1) {
+        nodes.push({ id: parentId, label: `${bucketLabel} (${bucket.length})` });
+        edges.push({ source: "group-features", target: parentId });
+      }
+      for (const feature of bucket) {
+        const featureNodeId = `feature-${feature.id}`;
+        nodes.push({
+          id: featureNodeId,
+          label: truncLabel(feature.title),
+          status: FEATURE_STATUS[feature.status] || "idle",
+          content: feature.status,
+          link: `/w/${slug}/plan/${feature.id}`,
+        });
+        edges.push({ source: parentId, target: featureNodeId });
+        const ownerId = feature.assignee?.id || feature.createdBy.id;
+        const memberNodeId = userIdToMemberId.get(ownerId);
+        if (memberNodeId) {
+          edges.push({ source: memberNodeId, target: featureNodeId, type: "references" });
+        }
+      }
+    }
+  } else {
+    for (const feature of features) {
+      const featureNodeId = `feature-${feature.id}`;
+      nodes.push({
+        id: featureNodeId,
+        label: truncLabel(feature.title),
+        status: FEATURE_STATUS[feature.status] || "idle",
+        content: feature.status,
+        link: `/w/${slug}/plan/${feature.id}`,
+      });
+      edges.push({ source: "group-features", target: featureNodeId });
+      const ownerId = feature.assignee?.id || feature.createdBy.id;
+      const memberNodeId = userIdToMemberId.get(ownerId);
+      if (memberNodeId) {
+        edges.push({ source: memberNodeId, target: featureNodeId, type: "references" });
+      }
+    }
+  }
+
+  // Repository nodes — group by type, then use swarm edges within each group
+  const repoRefIdSet = new Set(repoNodes.map((n) => n.ref_id));
+  const hasParent = new Set<string>();
+
+  // Identify nodes that have a parent via swarm edges
+  for (const edge of repoEdges) {
+    if (repoRefIdSet.has(edge.source) && repoRefIdSet.has(edge.target)) {
+      hasParent.add(edge.target);
+    }
+  }
+
+  // Group orphan nodes (no swarm parent) by node_type
+  const typeGroups = new Map<string, GraphNodeSummary[]>();
+  for (const node of repoNodes) {
+    if (!hasParent.has(node.ref_id)) {
+      const list = typeGroups.get(node.node_type) || [];
+      list.push(node);
+      typeGroups.set(node.node_type, list);
+    }
+  }
+
+  // Create type group nodes under Repository
+  for (const [nodeType, groupNodes] of typeGroups) {
+    const typeGroupId = `repo-type-${nodeType}`;
+    nodes.push({ id: typeGroupId, label: nodeType });
+    edges.push({ source: "group-repo", target: typeGroupId });
+
+    for (const node of groupNodes) {
+      nodes.push({
+        id: `repo-${node.ref_id}`,
+        label: truncLabel(node.name),
+        content: node.node_type,
+      });
+      edges.push({ source: typeGroupId, target: `repo-${node.ref_id}` });
+    }
+  }
+
+  // Non-orphan nodes (have a swarm parent)
+  for (const node of repoNodes) {
+    if (hasParent.has(node.ref_id)) {
+      nodes.push({
+        id: `repo-${node.ref_id}`,
+        label: truncLabel(node.name),
+        content: node.node_type,
+      });
+    }
+  }
+
+  // Swarm edges as structural (tree) edges
+  for (const edge of repoEdges) {
+    if (repoRefIdSet.has(edge.source) && repoRefIdSet.has(edge.target)) {
+      edges.push({
+        source: `repo-${edge.source}`,
+        target: `repo-${edge.target}`,
+      });
+    }
+  }
+
+  // Tasks as a top-level group — auto-cluster by status when > threshold
+  if (tasks.length > 0) {
+    nodes.push({ id: "group-tasks", label: "Tasks" });
+    edges.push({ source: "workspace", target: "group-tasks" });
+
+    const addTaskNode = (task: TaskSummary, parentId: string) => {
+      const taskNodeId = `task-${task.id}`;
+      const taskStatusKey = task.workflowStatus || task.status;
+      nodes.push({
+        id: taskNodeId,
+        label: truncLabel(task.title),
+        status: TASK_STATUS[taskStatusKey] || "idle",
+        content: taskStatusKey,
+        link: `/w/${slug}/task/${task.id}`,
+      });
+      edges.push({ source: parentId, target: taskNodeId });
+      const ownerId = task.assignee?.id || task.createdBy.id;
+      const memberNodeId = userIdToMemberId.get(ownerId);
+      if (memberNodeId) {
+        edges.push({ source: memberNodeId, target: taskNodeId, type: "references" });
+      }
+      if (task.feature) {
+        edges.push({ source: `feature-${task.feature.id}`, target: taskNodeId, type: "references" });
+      }
+    };
+
+    if (tasks.length > CLUSTER_THRESHOLD) {
+      const taskBuckets: Record<string, TaskSummary[]> = {
+        "In Progress": [],
+        Completed: [],
+        Queued: [],
+      };
+      for (const t of tasks) {
+        const vis = TASK_STATUS[t.workflowStatus || t.status] || "idle";
+        if (vis === "executing") taskBuckets["In Progress"].push(t);
+        else if (vis === "done") taskBuckets.Completed.push(t);
+        else taskBuckets.Queued.push(t);
+      }
+
+      for (const [bucketLabel, bucket] of Object.entries(taskBuckets)) {
+        if (bucket.length === 0) continue;
+        const parentId = bucket.length === 1 ? "group-tasks" : `tasks-${bucketLabel.toLowerCase().replace(/\s/g, "-")}`;
+        if (bucket.length > 1) {
+          nodes.push({ id: parentId, label: `${bucketLabel} (${bucket.length})` });
+          edges.push({ source: "group-tasks", target: parentId });
+        }
+        for (const task of bucket) addTaskNode(task, parentId);
+      }
+    } else {
+      for (const task of tasks) addTaskNode(task, "group-tasks");
+    }
+  }
+
+  // Whiteboards as a top-level group
+  if (whiteboards.length > 0) {
+    nodes.push({ id: "group-whiteboards", label: "Whiteboards" });
+    edges.push({ source: "workspace", target: "group-whiteboards" });
+
+    for (const wb of whiteboards) {
+      const wbNodeId = `wb-${wb.id}`;
+      nodes.push({
+        id: wbNodeId,
+        label: truncLabel(wb.name),
+        link: `/w/${slug}/whiteboards/${wb.id}`,
+      });
+      edges.push({ source: "group-whiteboards", target: wbNodeId });
+
+      // Cross edge to parent feature
+      if (wb.featureId) {
+        edges.push({ source: `feature-${wb.featureId}`, target: wbNodeId, type: "references" });
+      }
+    }
+  }
+
+  return { nodes, edges };
+}
 
 const MINIMAP_SIZE = 180;
 const MINIMAP_CAM_HEIGHT = 200;
 
 export function GraphPortal() {
+  const router = useRouter();
+  const { workspace, slug } = useWorkspace();
+  const { members, loading: membersLoading } = useWorkspaceMembers(slug);
+  const { features, loading: featuresLoading } = useWorkspaceFeatures(workspace?.id);
+  const { repoNodes, repoEdges, loading: repoLoading } = useRepositoryNodes(slug);
+  const { tasks, loading: tasksLoading } = useWorkspaceTasks(workspace?.id);
+  const { whiteboards, loading: wbLoading } = useWorkspaceWhiteboards(workspace?.id);
+  const loading = membersLoading || featuresLoading || repoLoading || tasksLoading || wbLoading;
   const [expanded, setExpanded] = useState(false);
   const [fading, setFading] = useState(false);
   const cameraRef = useRef<CameraControlsImpl>(null);
@@ -97,22 +461,27 @@ export function GraphPortal() {
   const simRef = useRef<number | null>(null);
 
   const graph = useMemo(() => {
-    const g = buildGraph(SAMPLE_NODES, SAMPLE_EDGES);
-    const sub = extractInitialSubgraph(g);
-    const { positions, treeEdgeSet, childrenOf } = computeRadialLayout(
-      sub.centerId, sub.neighborsByDepth, g.edges, { parentId: sub.parentId }
+    if (members.length === 0) return null;
+    const { nodes, edges } = buildWorkspaceGraph(
+      workspace?.name || slug || "Workspace",
+      slug || "",
+      members,
+      features,
+      repoNodes,
+      repoEdges,
+      tasks,
+      whiteboards,
     );
-    for (const [id, pos] of positions) {
-      if (id !== VIRTUAL_CENTER) g.nodes[id].position = pos;
-    }
-    g.initialDepthMap = sub.depthMap;
-    g.treeEdgeSet = treeEdgeSet;
-    g.childrenOf = childrenOf;
+    const g = buildGraph(nodes, edges);
+
+    const entityTree = buildEntityTree(g);
+    layoutEntityTree(entityTree, g, "radial");
+    g.entityTree = entityTree;
     return g;
-  }, []);
+  }, [members, features, repoNodes, repoEdges, tasks, whiteboards, workspace?.name, slug]);
 
   const handleNodeClick = useCallback((nodeId: number) => {
-    if (!expanded) return;
+    if (!expanded || !graph) return;
     if (viewState.mode === "subgraph" && viewState.selectedNodeId === nodeId) return;
 
     const sub = extractSubgraph(graph, nodeId, 30, { useAdj: "undirected" });
@@ -188,7 +557,7 @@ export function GraphPortal() {
 
   // Pulse simulation
   useEffect(() => {
-    if (!simulating) {
+    if (!simulating || !graph) {
       if (simRef.current !== null) cancelAnimationFrame(simRef.current);
       simRef.current = null;
       setPulses([]);
@@ -211,6 +580,8 @@ export function GraphPortal() {
     simRef.current = requestAnimationFrame(tick);
     return () => { if (simRef.current !== null) cancelAnimationFrame(simRef.current); };
   }, [simulating, graph]);
+
+  if (loading || !graph) return null;
 
   const containerStyle: React.CSSProperties = expanded
     ? {
@@ -245,7 +616,7 @@ export function GraphPortal() {
   return (
     <div style={containerStyle} onClick={expanded ? undefined : handleExpand}>
       <Canvas
-        camera={{ position: [0, MINIMAP_CAM_HEIGHT, 0.1], fov: 50, near: 0.1, far: 500 }}
+        camera={{ position: [0, MINIMAP_CAM_HEIGHT, 0.1], fov: 50, near: 0.1, far: 2000 }}
         gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent", pointerEvents: expanded ? "auto" : "none" }}
       >
@@ -268,6 +639,51 @@ export function GraphPortal() {
           <>
             <OffscreenIndicators graph={graph} viewState={viewState} onNodeClick={handleNodeClick} />
             <PrevNodeIndicator graph={graph} viewState={viewState} onNodeClick={handleNodeClick} />
+            {viewState.mode === "subgraph" && (() => {
+              const node = graph.nodes[viewState.selectedNodeId];
+              if (!node?.link) return null;
+              const p = node.position;
+              return (
+                <Html position={[p.x, p.y, p.z]} center style={{ pointerEvents: "none" }}>
+                  <button
+                    onClick={() => { handleCollapse(); router.push(node.link!); }}
+                    title={`Open ${node.label}`}
+                    style={{
+                      position: "absolute",
+                      top: -52,
+                      left: 12,
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      border: "1.5px solid rgba(77, 217, 232, 0.5)",
+                      background: "rgba(10, 10, 20, 0.85)",
+                      backdropFilter: "blur(12px)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      pointerEvents: "auto",
+                      boxShadow: "0 0 20px rgba(77, 217, 232, 0.2), inset 0 0 12px rgba(77, 217, 232, 0.05)",
+                      transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = "scale(1.15)";
+                      e.currentTarget.style.boxShadow = "0 0 28px rgba(77, 217, 232, 0.4)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = "scale(1)";
+                      e.currentTarget.style.boxShadow = "0 0 20px rgba(77, 217, 232, 0.2)";
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4dd9e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </button>
+                </Html>
+              );
+            })()}
           </>
         )}
         <EffectComposer>
