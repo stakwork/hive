@@ -127,21 +127,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  playwright-report:
-    name: Merge Playwright Reports
+  playwright:
     runs-on: ubuntu-latest
     if: always()
     needs: playwright-shards
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install Playwright for report merging
         run: npm install --no-save @playwright/test
@@ -182,24 +177,10 @@ jobs:
           path: playwright-report/
           retention-days: 30
 
-  playwright:
-    runs-on: ubuntu-latest
-    if: always()
-    needs:
-      - playwright-shards
-      - playwright-report
-
-    steps:
-      - name: Validate shard and report jobs
+      - name: Validate shard jobs
         run: |
           if [ "${{ needs.playwright-shards.result }}" != "success" ]; then
             echo "One or more Playwright shard jobs failed."
             exit 1
           fi
-
-          if [ "${{ needs.playwright-report.result }}" != "success" ]; then
-            echo "Playwright report merge job failed."
-            exit 1
-          fi
-
           echo "All Playwright shard jobs completed successfully."
