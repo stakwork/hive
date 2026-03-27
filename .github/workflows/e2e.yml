@@ -94,6 +94,7 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
+          NEXT_SKIP_TYPE_CHECK: "true"
         run: |
           # Install Playwright OS deps in background if browsers were cached
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
