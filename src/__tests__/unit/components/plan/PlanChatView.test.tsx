@@ -1188,4 +1188,94 @@ describe("PlanChatView", () => {
       expect(postCalls).toHaveLength(0);
     });
   });
+
+  describe("inputDisabled logic", () => {
+    let capturedChatAreaProps: any = null;
+
+    beforeEach(async () => {
+      capturedChatAreaProps = null;
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+    });
+
+    it("disables input when feature.status is CANCELLED", async () => {
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Test Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "CANCELLED",
+          priority: "MEDIUM",
+          workflowStatus: "COMPLETED",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: false,
+        error: null,
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(capturedChatAreaProps?.inputDisabled).toBe(true);
+    });
+
+    it.each(["BACKLOG", "PLANNED", "IN_PROGRESS", "COMPLETED", "ERROR", "BLOCKED"])(
+      "does not disable input for status %s (workflowStatus not IN_PROGRESS, not loading)",
+      async (status) => {
+        mockUseDetailResource.mockReturnValue({
+          data: {
+            id: "feature-123",
+            title: "Test Feature",
+            brief: null,
+            requirements: null,
+            architecture: null,
+            userStories: [],
+            phases: [],
+            assignee: null,
+            personas: [],
+            diagramUrl: null,
+            diagramS3Key: null,
+            status,
+            priority: "MEDIUM",
+            workflowStatus: "COMPLETED",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          setData: mockSetData,
+          updateData: vi.fn(),
+          loading: false,
+          error: null,
+        });
+
+        render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+        await waitFor(() => {
+          expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+        });
+
+        expect(capturedChatAreaProps?.inputDisabled).toBe(false);
+      }
+    );
+  });
 });
