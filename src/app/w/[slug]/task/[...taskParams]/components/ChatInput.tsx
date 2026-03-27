@@ -470,7 +470,7 @@ export function ChatInput({
     workflowStatus === WorkflowStatus.ERROR;
 
   const showStatusIndicator =
-    (workflowStatus === WorkflowStatus.IN_PROGRESS && !hasPrArtifact) ||
+    workflowStatus === WorkflowStatus.IN_PROGRESS ||
     isTerminalState;
 
   return (
