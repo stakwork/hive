@@ -77,7 +77,16 @@ jobs:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
         run: npx prisma migrate deploy
 
-      - name: Start development server
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**/*.js', 'src/**/*.ts', 'src/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
+            ${{ runner.os }}-nextjs-
+
+      - name: Build and start server
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
@@ -99,7 +108,9 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
-        run: npm run dev &
+        run: |
+          npm run build
+          npm start &
 
       - name: Wait for application to be ready
         run: npx wait-on http://localhost:3000 --timeout 300000
