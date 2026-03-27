@@ -35,7 +35,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
     : `/w/${workspaceSlug}/task/${task.id}`;
 
   const handleArchiveToggle = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent navigation when clicking archive button
+    e.stopPropagation();
+    e.preventDefault(); // Prevent Link navigation when clicking archive button
     setIsUpdating(true);
     try {
       const response = await fetch(`/api/tasks/${task.id}`, {
