@@ -1672,6 +1672,10 @@ Plan and implement the real feature from this branch.`;
           body: JSON.stringify({ retryWorkflow: true }),
         });
         if (!res.ok) throw new Error('Retry failed');
+        const result = await res.json();
+        if (result.task?.workflowStatus) {
+          setWorkflowStatus(result.task.workflowStatus);
+        }
       }
     } catch {
       toast.error('Failed to retry task. Please try again.');
@@ -1882,7 +1886,10 @@ Plan and implement the real feature from this branch.`;
     !started || // Fresh task - can send to kick off
     hasActiveChatForm || // FORM with chat option waiting for response
     workflowStatus === WorkflowStatus.COMPLETED || // Workflow done, can continue
-    workflowStatus === WorkflowStatus.PENDING; // Not started yet
+    workflowStatus === WorkflowStatus.PENDING || // Not started yet
+    workflowStatus === WorkflowStatus.FAILED || // Terminal: allow retry
+    workflowStatus === WorkflowStatus.ERROR || // Terminal: allow retry
+    workflowStatus === WorkflowStatus.HALTED; // Terminal: allow retry
 
   const inputDisabled =
     isLoading ||
