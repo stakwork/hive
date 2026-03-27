@@ -1,313 +1,278 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { authOptions } from "@/lib/auth/nextauth";
 import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
 import {
   ArrowRight,
-  Code,
-  GitBranch,
-  LogIn,
-  Sparkles,
-  TestTube,
-  TrendingUp,
-  Workflow,
+  BarChart3,
+  BotMessageSquare,
+  FlaskConical,
+  GitMerge,
+  Globe,
+  Layers,
+  MessageSquareText,
+  Mic,
+  Network,
+  PencilRuler,
+  Zap,
 } from "lucide-react";
 import { getServerSession } from "next-auth/next";
 import Link from "next/link";
 
-export default async function HomePage() {
-  // Check if user is authenticated and handle workspace redirection
+export default async function AboutPage() {
   const session = await getServerSession(authOptions);
 
   if (session?.user) {
-    // User is authenticated - redirect them to their appropriate workspace or onboarding
     await handleWorkspaceRedirect(session);
-    // This redirect prevents the rest of the page from rendering
     return null;
   }
 
-  // User is not authenticated - show landing page
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header Navigation */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
-                Hive
-              </h1>
-              <NavigationMenu>
-                <NavigationMenuList>
-                  <NavigationMenuItem>
-                    <NavigationMenuTrigger>Features</NavigationMenuTrigger>
-                    <NavigationMenuContent>
-                      <div className="grid gap-3 p-4 w-[500px]">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 hover:bg-accent rounded-md">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Code className="w-4 h-4" />
-                              <h4 className="font-medium">Deep Code Context</h4>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Answer questions about your company and codebase
-                              instantly
-                            </p>
-                          </div>
-                          <div className="p-3 hover:bg-accent rounded-md">
-                            <div className="flex items-center gap-2 mb-1">
-                              <TestTube className="w-4 h-4" />
-                              <h4 className="font-medium">
-                                Test Code Coverage
-                              </h4>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Boost coverage from unit tests to comprehensive
-                              e2e testing
-                            </p>
-                          </div>
-                          <div className="p-3 hover:bg-accent rounded-md">
-                            <div className="flex items-center gap-2 mb-1">
-                              <GitBranch className="w-4 h-4" />
-                              <h4 className="font-medium">
-                                Hosted Testing Environment
-                              </h4>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Test branch changes easily as a PM without dev
-                              setup
-                            </p>
-                          </div>
-                          <div className="p-3 hover:bg-accent rounded-md">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Workflow className="w-4 h-4" />
-                              <h4 className="font-medium">Visual Workflows</h4>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              See inside the black box with visual workflows,
-                              not system prompts
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </NavigationMenuContent>
-                  </NavigationMenuItem>
-                  <NavigationMenuItem>
-                    <Link href="/">Back to main</Link>
-                  </NavigationMenuItem>
-                </NavigationMenuList>
-              </NavigationMenu>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <Link href="/auth/signin">
-                <Button
-                  variant="outline"
-                  className="flex items-center space-x-2"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>Sign In</span>
-                </Button>
-              </Link>
-            </div>
-          </div>
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+          <span className="text-lg font-semibold tracking-tight">Hive</span>
+          <Link href="/auth/signin">
+            <Button variant="outline" size="sm">
+              Sign In
+            </Button>
+          </Link>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="py-20 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <Badge
-            variant="secondary"
-            className="mx-auto mb-6 text-base px-4 py-2 flex items-center gap-2 w-fit"
-          >
-            <Sparkles className="w-4 h-4" />
-            Empowering Modern PMs
+      {/* Hero */}
+      <section className="px-6 py-24 text-center">
+        <div className="mx-auto max-w-3xl">
+          <Badge variant="secondary" className="mb-6 gap-1.5">
+            <Zap className="h-3.5 w-3.5" />
+            AI-First PM Toolkit
           </Badge>
-
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
-            &ldquo;Get Started&rdquo;
+          <h1 className="mb-5 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            Ship features faster with AI that actually understands your codebase
           </h1>
-
-          <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-            Move faster. Break less. Hive gives you deep code clarity so you can
-            ship with speed and confidence.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Link href="/auth/signin">
-              <Button size="lg" className="text-lg px-8 py-6">
-                Start Building Today
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="py-20 px-4 bg-card/50 dark:bg-card/80">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Everything you need to ship with confidence
-            </h2>
-            <p className="text-xl text-muted-foreground">
-              Deep code insights, visual workflows, and seamless testing—built
-              for modern product managers
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow bg-card text-card-foreground">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto bg-blue-100 dark:bg-blue-900">
-                  <Code className="w-8 h-8 text-blue-600 dark:text-blue-300" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">
-                  Deep Code Context
-                </h3>
-                <p className="text-muted-foreground">
-                  Get instant answers about your company and codebase without
-                  bothering developers.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow bg-card text-card-foreground">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto bg-green-100 dark:bg-green-900">
-                  <TestTube className="w-8 h-8 text-green-600 dark:text-green-300" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">
-                  Comprehensive Testing
-                </h3>
-                <p className="text-muted-foreground">
-                  Boost test coverage from basic unit tests to full end-to-end
-                  testing suites.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow bg-card text-card-foreground">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto bg-purple-100 dark:bg-purple-900">
-                  <GitBranch className="w-8 h-8 text-purple-600 dark:text-purple-300" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">
-                  Hosted Testing Environment
-                </h3>
-                <p className="text-muted-foreground">
-                  Test branch changes instantly as a PM—no complex dev setup
-                  required.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow bg-card text-card-foreground">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto bg-orange-100 dark:bg-orange-900">
-                  <Workflow className="w-8 h-8 text-orange-600 dark:text-orange-300" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">Visual Workflows</h3>
-                <p className="text-muted-foreground">
-                  See inside the black box with visual workflows, not confusing
-                  system prompts.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* PM Highlights Section */}
-      <section className="py-20 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl md:text-3xl font-bold mb-4">
-              Trusted by product managers worldwide
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Join thousands of PMs who ship faster with deep code insights
-            </p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-blue-600 dark:text-blue-300 mb-2">
-                2,400+
-              </div>
-              <div className="text-muted-foreground">
-                Code Contexts Analyzed
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-green-600 dark:text-green-300 mb-2">
-                12,000+
-              </div>
-              <div className="text-muted-foreground">Test Cases Generated</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-purple-600 dark:text-purple-300 mb-2">
-                5,800+
-              </div>
-              <div className="text-muted-foreground">Branches Tested</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-orange-600 dark:text-orange-300 mb-2">
-                4,200+
-              </div>
-              <div className="text-muted-foreground">PMs Empowered</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">
-            Ready to ship with confidence?
-          </h2>
-          <p className="text-xl mb-8 opacity-90">
-            Join product managers who move fast, scale safely, and lead with
-            deep code insights.
+          <p className="mb-10 text-lg text-muted-foreground sm:text-xl">
+            Plan with AI, execute autonomously, and collaborate in real time —
+            from idea to pull request without leaving Hive.
           </p>
           <Link href="/auth/signin">
-            <Button size="lg" variant="secondary" className="text-lg px-8 py-6">
-              Get Started Free
-              <ArrowRight className="ml-2 h-5 w-5" />
+            <Button size="lg" className="gap-2">
+              Get Started
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Feature Spotlight 1 — Plan with AI */}
+      <section className="px-6 py-20">
+        <div className="mx-auto grid max-w-5xl gap-12 md:grid-cols-2 md:items-center">
+          <div>
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border bg-muted">
+              <MessageSquareText className="h-5 w-5 text-foreground" />
+            </div>
+            <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
+              Plan with AI
+            </h2>
+            <p className="text-muted-foreground leading-relaxed">
+              Describe a feature in plain English and Hive's AI builds the full
+              plan alongside you — brief, requirements, architecture, and a
+              task breakdown — in a live split-panel view. No tickets to
+              pre-fill, no templates to wrestle with.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-muted/40 p-6 space-y-3">
+            {["Brief", "Requirements", "Architecture", "Tasks"].map((label, i) => (
+              <div
+                key={label}
+                className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3 text-sm font-medium"
+                style={{ opacity: 1 - i * 0.12 }}
+              >
+                <div className="h-2 w-2 rounded-full bg-foreground/30" />
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Spotlight 2 — Autonomous Execution */}
+      <section className="bg-muted/40 px-6 py-20">
+        <div className="mx-auto grid max-w-5xl gap-12 md:grid-cols-2 md:items-center">
+          <div className="order-2 md:order-1 rounded-xl border bg-background p-6 space-y-3 font-mono text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="text-foreground/60">$</span>
+              <span>agent claimed workspace — pod-7f3a</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-foreground/60">→</span>
+              <span>writing auth middleware…</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-foreground/60">→</span>
+              <span>running tests (42/42 passed)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <GitMerge className="h-3.5 w-3.5 shrink-0" />
+              <span className="text-foreground">PR #214 opened</span>
+            </div>
+          </div>
+          <div className="order-1 md:order-2">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border bg-muted">
+              <BotMessageSquare className="h-5 w-5 text-foreground" />
+            </div>
+            <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
+              Autonomous Execution
+            </h2>
+            <p className="text-muted-foreground leading-relaxed">
+              An AI agent claims a live cloud workspace, writes the code against
+              your actual repository, and opens a pull request — no dev
+              environment setup required. You review and merge; Hive handles
+              the rest.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Spotlight 3 — Voice-Driven Creation */}
+      <section className="px-6 py-20">
+        <div className="mx-auto grid max-w-5xl gap-12 md:grid-cols-2 md:items-center">
+          <div>
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border bg-muted">
+              <Mic className="h-5 w-5 text-foreground" />
+            </div>
+            <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
+              Voice-Driven Creation
+            </h2>
+            <p className="text-muted-foreground leading-relaxed">
+              Say a feature idea aloud. Hive transcribes it, extracts a title
+              and description, and drops you straight into Plan Mode with one
+              click. Your best ideas come at the worst times — capture them in
+              seconds.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-muted/40 p-6 flex flex-col items-center gap-4 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed bg-background">
+              <Mic className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <div className="text-sm text-muted-foreground italic max-w-xs">
+              &ldquo;Add a dark mode toggle to user settings with system
+              preference detection&rdquo;
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <div className="rounded-lg border bg-background px-4 py-2 text-sm font-medium">
+              Launching Plan Mode…
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Secondary Features Grid */}
+      <section className="px-6 py-20 bg-muted/40">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-12 text-center">
+            <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
+              Everything a modern PM needs
+            </h2>
+            <p className="text-muted-foreground">
+              A full platform built around how product teams actually work.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: Network,
+                title: "Knowledge Graph",
+                description:
+                  "Hive ingests your repository and builds a semantic code graph so AI has deep, accurate context about your actual codebase — not generic guesses.",
+              },
+              {
+                icon: PencilRuler,
+                title: "Whiteboard Collaboration",
+                description:
+                  "Embedded Excalidraw canvas per workspace and per feature. Sketch architecture, draw flows, and keep diagrams co-located with the work.",
+              },
+              {
+                icon: Layers,
+                title: "Visual Workflows",
+                description:
+                  "See exactly what the AI agent is doing at every step — tool calls, decisions, and code changes — without digging through system prompts.",
+              },
+              {
+                icon: FlaskConical,
+                title: "Hosted Testing Environments",
+                description:
+                  "Spin up a live preview of any branch in seconds. Review feature work as a PM without cloning repos or setting up local dev environments.",
+              },
+              {
+                icon: BarChart3,
+                title: "Test Coverage Analytics",
+                description:
+                  "Janitor workflows automatically analyze test coverage gaps, generate missing unit and E2E tests, and open PRs to lift coverage over time.",
+              },
+              {
+                icon: Globe,
+                title: "Real-time Collaboration",
+                description:
+                  "Presence indicators, Pusher-powered live plan updates, and Sphinx messaging integrations keep distributed teams in sync as plans evolve.",
+              },
+            ].map(({ icon: Icon, title, description }) => (
+              <Card key={title} className="border bg-background shadow-none">
+                <CardHeader className="pb-2">
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border bg-muted">
+                    <Icon className="h-4 w-4 text-foreground" />
+                  </div>
+                  <CardTitle className="text-base">{title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {description}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA Banner */}
+      <section className="bg-muted px-6 py-20 text-center">
+        <div className="mx-auto max-w-2xl">
+          <h2 className="mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
+            Ready to move from idea to PR?
+          </h2>
+          <p className="mb-8 text-muted-foreground">
+            Connect your GitHub org and Hive starts working in minutes — no
+            config sprawl, no lengthy onboarding.
+          </p>
+          <Link href="/auth/signin">
+            <Button size="lg" className="gap-2">
+              Sign In with GitHub
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 bg-card border-t text-card-foreground">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-300" />
-            <span className="text-lg font-semibold">Hive</span>
-          </div>
-          <p className="text-muted-foreground mb-4">
-            Empowering product managers with deep code insights, visual
-            workflows, and seamless testing.
+      <footer className="border-t px-6 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
+          <span className="text-sm font-semibold">Hive</span>
+          <p className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Hive. All rights reserved.
           </p>
-          <div className="flex justify-center space-x-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground">
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <a href="#" className="hover:text-foreground transition-colors">
               Privacy
             </a>
-            <a href="#" className="hover:text-foreground">
+            <a href="#" className="hover:text-foreground transition-colors">
               Terms
-            </a>
-            <a href="#" className="hover:text-foreground">
-              Support
-            </a>
-            <a href="#" className="hover:text-foreground">
-              Contact
             </a>
           </div>
         </div>
