@@ -78,18 +78,6 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Generate Prisma client
-        env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: npx prisma generate
-
-      - name: Resolve Failed Migrations
-        env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: |
-          echo "Checking for failed migrations..."
-          npx prisma migrate resolve --rolled-back 20260301051516_add_voice_signature_to_user || echo "Migration not found or already resolved"
-
       - name: Run Prisma migrations
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
