@@ -1,11 +1,10 @@
 /**
  * Unit tests for silent no-op pod release fix in agent route.
  *
- * In `claimPodForTask`, `db.task.update` (storing credentials) is NOT wrapped
- * in an inner try-catch, so a DB failure propagates to the outer catch and
- * triggers the rollback path. We also set `portMappings: {}` so `controlUrl`
- * is undefined, which throws "Pod control port not available" immediately and
- * goes directly to the catch → rollback.
+ * `claimPodForTask` now uses `claimPodForTaskAtomically` (from @/lib/pods/queries)
+ * instead of `claimPodAndGetFrontend`. We mock it to return a pod with no port
+ * mappings so `controlUrl` is undefined → throws "Pod control port not available"
+ * → goes to the inner catch → rollback fires.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -45,12 +44,17 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
-// releasePodById is imported from "@/lib/pods" in agent/route.ts
 vi.mock("@/lib/pods", () => ({
   claimPodAndGetFrontend: vi.fn(),
   updatePodRepositories: vi.fn().mockResolvedValue(undefined),
-  POD_PORTS: { CONTROL: "15552" },
+  POD_PORTS: { CONTROL: "15552", FRONTEND_FALLBACK: "3000" },
   releasePodById: vi.fn(),
+}));
+
+// Mock claimPodForTaskAtomically — agent/route.ts uses this instead of claimPodAndGetFrontend
+vi.mock("@/lib/pods/queries", () => ({
+  claimPodForTaskAtomically: vi.fn(),
+  buildPodUrl: vi.fn((podId: string, port: number) => `https://${podId}-${port}.workspaces.sphinx.chat`),
 }));
 
 vi.mock("@/lib/auth/agent-jwt", () => ({
@@ -89,13 +93,27 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
     model: null,
   };
 
-  // Empty portMappings → controlUrl will be undefined → throws "Pod control port not available"
+  // Pod with no portMappings → controlUrl will be undefined → throws "Pod control port not available"
   // → goes straight to the inner catch → rollback fires
-  const mockPodWorkspaceNoControl = {
-    id: "pod-abc123",
+  const mockClaimedPodNoControl = {
+    id: "db-id-1",
+    podId: "pod-abc123",
+    swarmId: "swarm-1",
+    status: "RUNNING",
+    usageStatus: "USED",
+    usageStatusMarkedAt: new Date(),
+    usageStatusMarkedBy: "task-1",
+    usageStatusReason: null,
     password: "pass",
-    portMappings: {},
-    url: null,
+    portMappings: [], // empty → no control port
+    flaggedForRecreation: false,
+    flaggedAt: null,
+    flaggedReason: null,
+    lastHealthCheck: null,
+    healthStatus: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deletedAt: null,
   };
 
   beforeEach(() => {
@@ -123,7 +141,8 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
   it("logs console.error ([Agent] Rollback failed) when releasePodById returns null after pod setup failure", async () => {
     const { getServerSession } = await import("next-auth/next");
     const { db } = await import("@/lib/db");
-    const { claimPodAndGetFrontend, releasePodById } = await import("@/lib/pods");
+    const { releasePodById } = await import("@/lib/pods");
+    const { claimPodForTaskAtomically } = await import("@/lib/pods/queries");
 
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", name: "Test", email: "test@test.com" },
@@ -132,14 +151,10 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
     vi.mocked(db.task.findUnique).mockResolvedValue(mockTask as any);
     vi.mocked(db.chatMessage.count).mockResolvedValue(0);
 
-    // Pod claim succeeds but controlUrl is missing → throws in claimPodForTask
-    vi.mocked(claimPodAndGetFrontend).mockResolvedValue({
-      frontend: "https://frontend.example.com",
-      workspace: mockPodWorkspaceNoControl as any,
-      processList: [],
-    });
+    // Atomic claim succeeds, but pod has no control port → throws in claimPodForTask
+    vi.mocked(claimPodForTaskAtomically).mockResolvedValue(mockClaimedPodNoControl as any);
 
-    // releasePodById returns null (pod not found)
+    // releasePodById returns null (pod not found in DB)
     vi.mocked(releasePodById).mockResolvedValue(null);
 
     const { POST } = await import("@/app/api/agent/route");
@@ -147,7 +162,7 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
       buildAuthedRequest({ taskId: "task-1", workspaceId: "workspace-1", message: "hello" }),
     );
 
-    // claimPodForTask throws → caught by the POST handler → 503
+    // claimPodForTask throws → caught by POST handler → 503
     expect(response.status).toBe(503);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -164,7 +179,8 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
   it("logs console.log ([Agent] Released pod) when releasePodById succeeds after pod setup failure", async () => {
     const { getServerSession } = await import("next-auth/next");
     const { db } = await import("@/lib/db");
-    const { claimPodAndGetFrontend, releasePodById } = await import("@/lib/pods");
+    const { releasePodById } = await import("@/lib/pods");
+    const { claimPodForTaskAtomically } = await import("@/lib/pods/queries");
 
     vi.mocked(getServerSession).mockResolvedValue({
       user: { id: "user-1", name: "Test", email: "test@test.com" },
@@ -173,11 +189,8 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
     vi.mocked(db.task.findUnique).mockResolvedValue(mockTask as any);
     vi.mocked(db.chatMessage.count).mockResolvedValue(0);
 
-    vi.mocked(claimPodAndGetFrontend).mockResolvedValue({
-      frontend: "https://frontend.example.com",
-      workspace: mockPodWorkspaceNoControl as any,
-      processList: [],
-    });
+    // Atomic claim succeeds, but pod has no control port → throws in claimPodForTask
+    vi.mocked(claimPodForTaskAtomically).mockResolvedValue(mockClaimedPodNoControl as any);
 
     // releasePodById returns the pod (success)
     vi.mocked(releasePodById).mockResolvedValue({ id: "pod-abc123" } as any);
