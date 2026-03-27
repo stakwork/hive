@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { toast } from "sonner";
 import { archiveTaskAndRedirect } from "@/app/w/[slug]/task/[...taskParams]/lib/archive-task";
