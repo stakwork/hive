@@ -143,8 +143,8 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Playwright for report merging
+        run: npm install --no-save @playwright/test
 
       - name: Download Playwright Blob Reports
         uses: actions/download-artifact@v4
