@@ -1197,6 +1197,15 @@ enum StakworkRunType {
   REPO_AGENT
 }
 
+model AppRelease {
+  id        String   @id @default(cuid())
+  version   String   @unique
+  bootedAt  DateTime @map("booted_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("app_releases")
+}
+
 enum StakworkRunDecision {
   ACCEPTED
   REJECTED
