@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import * as d3 from "d3";
 import {
