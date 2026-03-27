@@ -31,7 +31,7 @@ export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
   };
 
   const handleRowClick = (refId: string) => {
-    router.push(`/w/${workspaceSlug}/calls/${refId}`);
+    router.push(`/w/${workspaceSlug}/context/calls/${refId}`);
   };
 
   if (calls.length === 0) {
