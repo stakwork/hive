@@ -66,6 +66,7 @@ import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
+import { claimPodForTaskAtomically, buildPodUrl } from "@/lib/pods/queries";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -184,10 +185,11 @@ async function getChatHistoryContext(taskId: string): Promise<string | null> {
 }
 
 /**
- * Claim a pod for a task and store credentials
- * Returns pod URLs for frontend artifacts
+ * Claim a pod for a task atomically and store credentials.
+ * Returns null if another concurrent request already claimed a pod for this task.
+ * Returns pod URLs for frontend artifacts on success.
  */
-async function claimPodForTask(taskId: string, workspaceId: string): Promise<PodClaimResult> {
+async function claimPodForTask(taskId: string, workspaceId: string): Promise<PodClaimResult | null> {
   // Load workspace with swarm configuration
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
@@ -204,12 +206,24 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   const services = workspace.swarm.services as ServiceInfo[] | null;
   const swarmId = workspace.swarm.id as string;
 
-  // Claim pod from pool
-  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(swarmId, taskId, services || undefined);
+  // Atomically lock task row, claim pod, and write pod_id in a single transaction
+  const claimedPod = await claimPodForTaskAtomically(swarmId, taskId);
+
+  // null means another concurrent request already claimed a pod for this task — not an error
+  if (claimedPod === null) {
+    return null;
+  }
+
+  // Build port mappings from the raw pod
+  const portArray = (claimedPod.portMappings as number[] | null) || [];
+  const portMappings: Record<string, string> = {};
+  for (const port of portArray) {
+    portMappings[port.toString()] = buildPodUrl(claimedPod.podId, port);
+  }
+
+  const controlUrl = portMappings[POD_PORTS.CONTROL];
 
   try {
-    const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
-
     if (!controlUrl) {
       throw new Error("Pod control port not available");
     }
@@ -219,7 +233,7 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
       try {
         await updatePodRepositories(
           controlUrl,
-          podWorkspace.password,
+          claimedPod.password ?? "",
           workspace.repositories.map((r) => ({ url: r.repositoryUrl })),
         );
         console.log("[Agent] Updated repositories on pod");
@@ -228,39 +242,45 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
       }
     }
 
-    // Store pod credentials on task
-    const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
+    // Store agentUrl and agentPassword on the task (pod_id was already written atomically)
+    const encryptedPassword = encryptionService.encryptField("agentPassword", claimedPod.password ?? "");
     await db.task.update({
       where: { id: taskId },
       data: {
-        podId: podWorkspace.id,
         agentUrl: controlUrl,
         agentPassword: JSON.stringify(encryptedPassword),
       },
     });
 
-    console.log("[Agent] Claimed pod:", podWorkspace.id, "for task:", taskId);
+    console.log("[Agent] Claimed pod:", claimedPod.podId, "for task:", taskId);
+
+    // Resolve frontend URL with service config fallback
+    const frontendPort = services?.find((s) => s.name === "frontend")?.port?.toString();
+    const frontend =
+      (frontendPort && portMappings[frontendPort]) ||
+      portMappings[POD_PORTS.FRONTEND_FALLBACK] ||
+      (controlUrl ? controlUrl.replace(POD_PORTS.CONTROL, POD_PORTS.FRONTEND_FALLBACK) : "");
 
     return {
-      podId: podWorkspace.id,
+      podId: claimedPod.podId,
       frontend,
-      ide: podWorkspace.url || podWorkspace.portMappings["8080"] || "",
+      ide: portMappings["8080"] || "",
       credentials: {
         agentUrl: controlUrl,
-        agentPassword: podWorkspace.password,
+        agentPassword: claimedPod.password ?? null,
       },
     };
   } catch (error) {
-    // Release the pod if setup failed after claiming
+    // Release the pod if post-claim setup failed
     try {
-      const released = await releasePodById(podWorkspace.id);
+      const released = await releasePodById(claimedPod.podId);
       if (!released) {
-        console.error(`[Agent] Rollback failed: pod ${podWorkspace.id} not found in database`);
+        console.error(`[Agent] Rollback failed: pod ${claimedPod.podId} not found in database`);
       } else {
-        console.log(`[Agent] Released pod ${podWorkspace.id} after setup failure`);
+        console.log(`[Agent] Released pod ${claimedPod.podId} after setup failure`);
       }
     } catch (releaseError) {
-      console.error(`[Agent] Failed to release pod ${podWorkspace.id}:`, releaseError);
+      console.error(`[Agent] Failed to release pod ${claimedPod.podId}:`, releaseError);
     }
     throw error;
   }
@@ -467,12 +487,31 @@ export async function POST(request: NextRequest) {
 
     try {
       const claimResult = await claimPodForTask(taskId, task.workspaceId);
-      agentCredentials = claimResult.credentials;
-      podUrls = {
-        podId: claimResult.podId,
-        frontend: claimResult.frontend,
-        ide: claimResult.ide,
-      };
+
+      if (claimResult === null) {
+        // Another concurrent request already claimed a pod for this task — not an error.
+        // Reload the task to pick up the pod that was just assigned.
+        console.log("[Agent] Concurrent request already claimed pod for task, reloading task...");
+        const refreshedTask = await db.task.findUnique({
+          where: { id: taskId },
+          select: { podId: true, agentUrl: true, agentPassword: true },
+        });
+        if (!refreshedTask?.agentUrl || !refreshedTask?.agentPassword) {
+          return NextResponse.json({ error: "No pods available" }, { status: 503 });
+        }
+        agentCredentials = {
+          agentUrl: refreshedTask.agentUrl,
+          agentPassword: encryptionService.decryptField("agentPassword", refreshedTask.agentPassword),
+        };
+        // podUrls stays null — the concurrent request already created BROWSER/IDE artifacts
+      } else {
+        agentCredentials = claimResult.credentials;
+        podUrls = {
+          podId: claimResult.podId,
+          frontend: claimResult.frontend,
+          ide: claimResult.ide,
+        };
+      }
 
       // For freshly claimed pod with existing messages, include chat history
       if (messageCount > 0) {

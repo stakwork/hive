@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { PodStatus, PodUsageStatus } from "@prisma/client";
 import {
   claimAvailablePod,
+  claimPodForTaskAtomically,
   getPodDetails,
   releasePodById,
   getPodUsageStatus,
@@ -624,6 +625,165 @@ describe("Pod Queries", () => {
       expect(releasedPod?.usageStatusMarkedAt).toBeNull();
       expect(releasedPod?.usageStatusMarkedBy).toBeNull();
       expect(releasedPod?.usageStatusReason).toBeNull();
+    });
+  });
+
+  describe("claimPodForTaskAtomically", () => {
+    it("should claim a pod and set task.podId atomically", async () => {
+      const ts = Date.now();
+
+      // Create one available pod
+      const pod = await db.pod.create({
+        data: {
+          podId: `test-pod-atomic-claim-${ts}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          password: "secret",
+          portMappings: [3000, 15552],
+        },
+      });
+
+      // Create a task with no pod assigned
+      const task = await db.task.create({
+        data: {
+          title: "Atomic Claim Task",
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      const claimed = await claimPodForTaskAtomically(testSwarmId, task.id);
+
+      expect(claimed).not.toBeNull();
+      expect(claimed?.podId).toBe(pod.podId);
+      expect(claimed?.usageStatus).toBe(PodUsageStatus.USED);
+
+      // Verify the task now has pod_id set
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.podId).toBe(pod.podId);
+
+      // Cleanup
+      await db.task.delete({ where: { id: task.id } });
+      await db.pod.delete({ where: { id: pod.id } });
+    });
+
+    it("should return null when task already has a pod assigned", async () => {
+      const ts = Date.now();
+
+      const existingPod = await db.pod.create({
+        data: {
+          podId: `test-pod-existing-${ts}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.USED,
+          usageStatusMarkedBy: "some-other-task",
+          usageStatusMarkedAt: new Date(),
+        },
+      });
+
+      // Task already has a pod_id set
+      const task = await db.task.create({
+        data: {
+          title: "Already Claimed Task",
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+          podId: existingPod.podId,
+        },
+      });
+
+      const result = await claimPodForTaskAtomically(testSwarmId, task.id);
+
+      expect(result).toBeNull();
+
+      // Cleanup
+      await db.task.delete({ where: { id: task.id } });
+      await db.pod.delete({ where: { id: existingPod.id } });
+    });
+
+    it("should allow exactly 1 winner under 5 concurrent claims for the same task", async () => {
+      const ts = Date.now();
+
+      // Create 5 available pods
+      const pods = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          db.pod.create({
+            data: {
+              podId: `test-pod-concurrent-${ts}-${i}`,
+              swarmId: testSwarmId,
+              status: PodStatus.RUNNING,
+              usageStatus: PodUsageStatus.UNUSED,
+              password: `secret-${i}`,
+              portMappings: [3000],
+            },
+          }),
+        ),
+      );
+
+      // Create a task with no pod assigned
+      const task = await db.task.create({
+        data: {
+          title: "Concurrent Claim Task",
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      // Fire 5 concurrent claims for the same taskId
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => claimPodForTaskAtomically(testSwarmId, task.id)),
+      );
+
+      const winners = results.filter((r) => r !== null);
+      const losers = results.filter((r) => r === null);
+
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(4);
+
+      // task.podId must match the single claimed pod
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.podId).toBe(winners[0]!.podId);
+
+      // Exactly 1 pod should be USED; the other 4 remain UNUSED
+      const podIds = pods.map((p) => p.id);
+      const allPods = await db.pod.findMany({ where: { id: { in: podIds } } });
+      const usedPods = allPods.filter((p) => p.usageStatus === PodUsageStatus.USED);
+      const unusedPods = allPods.filter((p) => p.usageStatus === PodUsageStatus.UNUSED);
+
+      expect(usedPods).toHaveLength(1);
+      expect(unusedPods).toHaveLength(4);
+      expect(usedPods[0].podId).toBe(winners[0]!.podId);
+
+      // Cleanup
+      await db.task.delete({ where: { id: task.id } });
+      await db.pod.deleteMany({ where: { id: { in: podIds } } });
+    });
+
+    it("should throw when no pods are available", async () => {
+      const task = await db.task.create({
+        data: {
+          title: "No Pods Task",
+          workspace: { connect: { id: testWorkspaceId } },
+          createdBy: { connect: { id: testUserId } },
+          updatedBy: { connect: { id: testUserId } },
+        },
+      });
+
+      await expect(claimPodForTaskAtomically(testSwarmId, task.id)).rejects.toThrow(
+        "No available pods",
+      );
+
+      // Cleanup
+      await db.task.delete({ where: { id: task.id } });
+    });
+
+    it("should throw when the task does not exist", async () => {
+      await expect(
+        claimPodForTaskAtomically(testSwarmId, "nonexistent-task-id"),
+      ).rejects.toThrow("Task not found for pod claim");
     });
   });
 
