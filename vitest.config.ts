@@ -5,9 +5,16 @@ const testSuite = process.env.TEST_SUITE;
 
 export default defineConfig({
   test: {
-    // Use 'node' for integration tests (requires Node APIs like child_process)
-    // Use 'jsdom' for unit tests (requires DOM APIs)
-    environment: testSuite === "integration" ? "node" : "jsdom",
+    // Default to 'node' — only files that need DOM APIs opt in to jsdom
+    // via environmentMatchGlobs or per-file @vitest-environment directive
+    environment: "node",
+    environmentMatchGlobs:
+      testSuite === "integration" || testSuite === "api"
+        ? undefined
+        : [
+            ["**/*.test.tsx", "jsdom"],
+            ["**/hooks/**/*.test.ts", "jsdom"],
+          ],
     globals: true,
     // Run integration tests sequentially to avoid database conflicts.
     // vmThreads (vs forks) keeps everything in one Node process, which means
