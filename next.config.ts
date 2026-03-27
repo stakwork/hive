@@ -34,6 +34,9 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_SKIP_TYPE_CHECK === "true",
+  },
   serverExternalPackages: ["sharp"],
   images: {
     remotePatterns: [
