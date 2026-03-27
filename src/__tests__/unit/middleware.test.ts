@@ -92,4 +92,5 @@ describe("middleware", () => {
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("public");
     expect(response.headers.get(MIDDLEWARE_HEADERS.USER_ID)).toBeNull();
   });
+
 });

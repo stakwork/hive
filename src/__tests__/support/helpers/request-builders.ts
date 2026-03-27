@@ -239,3 +239,5 @@ export function createAuthenticatedDeleteRequest(
   const baseRequest = createDeleteRequest(url);
   return addMiddlewareHeaders(baseRequest, user);
 }
+
+
