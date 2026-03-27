@@ -575,6 +575,83 @@ function daysAgo(n: number): Date {
  * When filterUserId is provided, only items created by or assigned to that
  * user are returned.
  */
+// ---------------------------------------------------------------------------
+// Stakgraph code-graph tools (swarm-backed)
+// TODO: add mcpStakgraphMap, mcpStakgraphNodes, mcpStakgraphCode
+// ---------------------------------------------------------------------------
+
+/**
+ * Search the code graph using fulltext, vector (semantic), or hybrid (RRF) search.
+ */
+export async function mcpStakgraphSearch(
+  credentials: SwarmCredentials,
+  params: {
+    query: string;
+    method?: string;
+    node_types?: string[];
+    limit?: number;
+    language?: string;
+    concise?: boolean;
+  },
+): Promise<McpToolResult> {
+  try {
+    const url = new URL(`${credentials.swarmUrl}/search`);
+    url.searchParams.set("query", params.query);
+    url.searchParams.set("method", params.method || "hybrid");
+    url.searchParams.set("output", "json");
+    if (params.node_types?.length)
+      url.searchParams.set("node_types", params.node_types.join(","));
+    if (params.limit != null)
+      url.searchParams.set("limit", String(params.limit));
+    if (params.language)
+      url.searchParams.set("language", params.language);
+    if (params.concise)
+      url.searchParams.set("concise", "true");
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { "x-api-token": credentials.swarmApiKey },
+    });
+
+    if (!res.ok)
+      return mcpError(`Error: Stakgraph search failed (${res.status})`);
+
+    const data = await res.json();
+    return mcpOk(data);
+  } catch (error) {
+    console.error("Error in stakgraph search:", error);
+    return mcpError("Error: Could not search the code graph");
+  }
+}
+
+/**
+ * Ask a natural-language question about the codebase.
+ * Runs the decompose → explore (hybrid search) → recompose pipeline and returns a synthesised answer.
+ */
+export async function mcpStakgraphAsk(
+  credentials: SwarmCredentials,
+  params: { question: string },
+): Promise<McpToolResult> {
+  try {
+    const url = new URL(`${credentials.swarmUrl}/ask`);
+    url.searchParams.set("question", params.question);
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { "x-api-token": credentials.swarmApiKey },
+    });
+
+    if (!res.ok)
+      return mcpError(`Error: Stakgraph ask failed (${res.status})`);
+
+    const data = await res.json();
+    return mcpOk(data);
+  } catch (error) {
+    console.error("Error in stakgraph ask:", error);
+    return mcpError("Error: Could not query the code graph");
+  }
+}
+
 export async function mcpCheckStatus(
   auth: WorkspaceAuth,
   filterUserId?: string,
