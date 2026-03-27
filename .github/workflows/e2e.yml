@@ -10,12 +10,12 @@ on:
 
 jobs:
   playwright-shards:
-    name: Playwright (shard ${{ matrix.shard }}/3)
+    name: Playwright (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
 
     services:
       postgres:
@@ -124,7 +124,7 @@ jobs:
           PGDATABASE: hive_db
           PGHOST: localhost
           PGPORT: 5432
-        run: npx playwright test --workers=1 --shard=${{ matrix.shard }}/3 --reporter=blob
+        run: npx playwright test --workers=1 --shard=${{ matrix.shard }}/4 --reporter=blob
 
       - name: Upload Playwright Blob Report
         uses: actions/upload-artifact@v4
