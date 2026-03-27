@@ -474,7 +474,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const featureTitle = feature?.title || null;
 
   const inputDisabled =
-    isLoading || workflowStatus === WorkflowStatus.IN_PROGRESS;
+    isLoading ||
+    workflowStatus === WorkflowStatus.IN_PROGRESS ||
+    feature?.status === "CANCELLED";
 
   const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
 
