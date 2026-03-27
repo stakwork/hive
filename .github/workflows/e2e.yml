@@ -63,10 +63,6 @@ jobs:
         run: npx playwright install --with-deps chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
-      - name: Install Playwright OS deps only
-        run: npx playwright install-deps chromium
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
@@ -99,10 +95,18 @@ jobs:
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
         run: |
+          # Install Playwright OS deps in background if browsers were cached
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium &
+            PW_DEPS_PID=$!
+          fi
           npx prisma migrate deploy &
           DB_PID=$!
           npm run build
           wait $DB_PID
+          if [ -n "${PW_DEPS_PID:-}" ]; then
+            wait $PW_DEPS_PID
+          fi
           npm start &
 
       - name: Wait for application to be ready
@@ -137,13 +141,24 @@ jobs:
     needs: playwright-shards
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install Playwright for report merging
-        run: npm install --no-save @playwright/test
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Download Playwright Blob Reports
         uses: actions/download-artifact@v4
