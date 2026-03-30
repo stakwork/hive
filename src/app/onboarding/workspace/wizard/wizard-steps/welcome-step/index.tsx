@@ -1,4 +1,5 @@
 import { GitHubAuthModal } from "@/components/auth/GitHubAuthModal";
+import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -191,7 +192,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto space-y-4">
       <Card className="bg-card text-card-foreground">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -272,6 +273,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
       </CardContent>
     </Card>
+
+    <GraphMindsetCard />
 
     {/* Account options below the card */}
     {!session?.user ? (
