@@ -1,5 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/super/new_swarm/route";
+import { POST as MockPOST } from "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route";
+import { mockSwarmState } from "@/lib/mock/swarm-state";
 import {
   createRequestWithHeaders,
   expectSuccess,
@@ -533,5 +535,95 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         await expectSuccess(response);
       }
     });
+  });
+});
+
+// Mock endpoint tests for graph_mindset workspace type support
+vi.mock("@/config/env", () => ({
+  env: {
+    SWARM_SUPERADMIN_API_KEY: "test-super-token",
+  },
+}));
+
+describe("POST /api/mock/swarm-super-admin/api/super/new_swarm — graph_mindset support", () => {
+  const VALID_SUPER_TOKEN = "test-super-token";
+
+  beforeEach(() => {
+    mockSwarmState.reset();
+  });
+
+  afterEach(() => {
+    mockSwarmState.reset();
+  });
+
+  test("should accept workspace_type: graph_mindset and return valid CreateSwarmResponse", async () => {
+    const request = createRequestWithHeaders(
+      "http://localhost:3000/api/mock/swarm-super-admin/api/super/new_swarm",
+      "POST",
+      {
+        "Content-Type": "application/json",
+        "x-super-token": VALID_SUPER_TOKEN,
+      },
+      {
+        instance_type: "m6i.xlarge",
+        workspace_type: "graph_mindset",
+      }
+    );
+
+    const response = await MockPOST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    expect(data.success).toBe(true);
+    expect(data.data).toMatchObject({
+      swarm_id: expect.stringContaining("mock-swarm-"),
+      address: expect.any(String),
+      x_api_key: expect.any(String),
+      ec2_id: expect.stringContaining("i-mock"),
+    });
+  });
+
+  test("should persist workspace_type in mock state for graph_mindset", async () => {
+    const request = createRequestWithHeaders(
+      "http://localhost:3000/api/mock/swarm-super-admin/api/super/new_swarm",
+      "POST",
+      {
+        "Content-Type": "application/json",
+        "x-super-token": VALID_SUPER_TOKEN,
+      },
+      {
+        instance_type: "m6i.xlarge",
+        workspace_type: "graph_mindset",
+      }
+    );
+
+    const response = await MockPOST(request);
+    const data = await response.json();
+
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBe("graph_mindset");
+  });
+
+  test("should work without workspace_type (second_brain / default path unchanged)", async () => {
+    const request = createRequestWithHeaders(
+      "http://localhost:3000/api/mock/swarm-super-admin/api/super/new_swarm",
+      "POST",
+      {
+        "Content-Type": "application/json",
+        "x-super-token": VALID_SUPER_TOKEN,
+      },
+      {
+        instance_type: "t3.medium",
+      }
+    );
+
+    const response = await MockPOST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    expect(data.success).toBe(true);
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBeUndefined();
   });
 });
