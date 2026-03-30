@@ -78,6 +78,7 @@ export const optionalEnvVars = {
   SUPER_ADMIN_USER_IDS: process.env.SUPER_ADMIN_USER_IDS || "",
   USE_MOCKS,
   MOCK_BASE,
+  REDIS_URL: process.env.REDIS_URL,
 } as const;
 
 /**
