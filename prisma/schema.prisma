@@ -200,6 +200,7 @@ model Workspace {
   sphinxBotSecret        String?                 @map("sphinx_bot_secret")
   sphinxChatPubkey       String?                 @map("sphinx_chat_pubkey")
   sphinxEnabled          Boolean                 @default(false) @map("sphinx_enabled")
+  paymentStatus          PaymentStatus           @default(PENDING) @map("payment_status")
   agentLogs              AgentLog[]
   diagrams               DiagramWorkspace[]
   features               Feature[]
@@ -210,6 +211,7 @@ model Workspace {
   sharedConversations    SharedConversation[]
   stakworkRuns           StakworkRun[]
   swarm                  Swarm?
+  swarmPayments          SwarmPayment[]
   tasks                  Task[]
   whiteboards            Whiteboard[]
   apiKeys                WorkspaceApiKey[]
@@ -1226,4 +1228,34 @@ enum NotificationTriggerStatus {
 
 enum NotificationMethod {
   SPHINX
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum SwarmPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
+model SwarmPayment {
+  id                    String             @id @default(cuid())
+  workspaceId           String             @map("workspace_id")
+  stripeSessionId       String             @unique @map("stripe_session_id")
+  stripePaymentIntentId String?            @map("stripe_payment_intent_id")
+  status                SwarmPaymentStatus @default(PENDING)
+  amount                Int?
+  currency              String?
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([stripeSessionId])
+  @@map("swarm_payments")
 }
