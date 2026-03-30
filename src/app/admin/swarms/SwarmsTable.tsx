@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
+import CreateSwarmDialog from "./CreateSwarmDialog";
 import { toast } from "sonner";
 import {
   Table,
@@ -61,6 +62,7 @@ export default function SwarmsTable() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [isActing, setIsActing] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -118,33 +120,65 @@ export default function SwarmsTable() {
     }
   };
 
+  const createButton = (
+    <div className="flex justify-end mb-4">
+      <Button onClick={() => setCreateDialogOpen(true)} data-testid="open-create-swarm">
+        <Plus className="mr-2 h-4 w-4" />
+        Create Swarm
+      </Button>
+    </div>
+  );
+
+  const createDialog = (
+    <CreateSwarmDialog
+      open={createDialogOpen}
+      onOpenChange={setCreateDialogOpen}
+      onCreated={fetchInstances}
+    />
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading instances…
-      </div>
+      <>
+        {createButton}
+        {createDialog}
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading instances…
+        </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="py-8 text-center text-destructive">
-        Error: {error}
-      </div>
+      <>
+        {createButton}
+        {createDialog}
+        <div className="py-8 text-center text-destructive">
+          Error: {error}
+        </div>
+      </>
     );
   }
 
   if (instances.length === 0) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
-        No EC2 instances found with tag Swarm=superadmin.
-      </div>
+      <>
+        {createButton}
+        {createDialog}
+        <div className="py-8 text-center text-muted-foreground">
+          No EC2 instances found with tag Swarm=superadmin.
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {createButton}
+      {createDialog}
+
       <Table>
         <TableHeader>
           <TableRow>
