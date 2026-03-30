@@ -1,5 +1,5 @@
 import { EncryptionService } from "@/lib/encryption";
-import { env } from "@/config/env";
+import { env, config } from "@/config/env";
 import { HttpClient } from "@/lib/http-client";
 import {
   CreateSwarmRequest,
@@ -9,6 +9,27 @@ import {
   ValidateUriResponse,
 } from "@/types";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
+
+export async function fetchSwarmCredentials(instanceId: string): Promise<{ username: string; password: string }> {
+  const url = `${config.SWARM_SUPER_ADMIN_URL}/api/super/swarm_credentials?instance_id=${encodeURIComponent(instanceId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
+  });
+
+  const json = await response.json();
+
+  if (!json?.success) {
+    throw new Error(`Failed to fetch swarm credentials: ${json?.message ?? response.statusText}`);
+  }
+
+  const { username, password } = json?.data ?? {};
+  if (!username || !password) {
+    throw new Error("Swarm credentials response is missing username or password");
+  }
+
+  return { username, password };
+}
 
 export async function createSwarmApi(
   client: HttpClient,
