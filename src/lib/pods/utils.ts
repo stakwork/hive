@@ -165,26 +165,16 @@ export async function claimPodAndGetFrontend(
     let frontend: string | undefined;
     let processList: ProcessInfo[] | undefined;
 
-    // Always constructable — podId + constant port, no portMappings needed
-    const controlPortUrl = buildPodUrl(pod.podId, POD_PORTS.CONTROL);
+    const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
 
-    try {
-      processList = await getProcessList(controlPortUrl, workspace.password);
-      console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
-
-      // Rebuild portMappings from live jlist data — jlist is the source of truth
-      const freshPorts: number[] = [parseInt(POD_PORTS.CONTROL, 10)];
-      for (const proc of processList) {
-        if (proc.port) freshPorts.push(parseInt(proc.port, 10));
+    // Always try to fetch process list if control port exists
+    if (controlPortUrl) {
+      try {
+        processList = await getProcessList(controlPortUrl, workspace.password);
+        console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
+      } catch (error) {
+        console.error(">>> Failed to fetch process list:", error);
       }
-      const uniquePorts = [...new Set(freshPorts)];
-      for (const port of uniquePorts) {
-        workspace.portMappings[port.toString()] = buildPodUrl(pod.podId, port);
-      }
-    } catch (error) {
-      console.error(">>> Failed to fetch process list:", error);
-      // Ensure control port is always in portMappings even if jlist fails
-      workspace.portMappings[POD_PORTS.CONTROL] = controlPortUrl;
     }
 
     // FIRST: Try to get frontend port from services array if provided
@@ -224,6 +214,11 @@ export async function claimPodAndGetFrontend(
         );
         // frontend remains undefined, will try fallback below
       }
+    } else if (!controlPortUrl) {
+      // Control port not available, will try fallback
+      console.error(
+        `>>> Control port (${POD_PORTS.CONTROL}) not found in port mappings, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}`,
+      );
     }
 
     // If frontend not found via process discovery, use fallback
@@ -540,13 +535,20 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
       try {
         const podDetails = await getPodDetails(podId);
 
-        const password = podDetails?.password;
-        if (password) {
-          const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
-          const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
-          if (repositories.length > 0) {
-            await updatePodRepositories(controlPortUrl, password, repositories);
-            console.log("[releaseTaskPod] Pod repositories reset");
+        if (podDetails && podDetails.portMappings) {
+          const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+          const hasControlPort = podDetails.portMappings.includes(controlPort);
+          const password = podDetails.password;
+
+          if (hasControlPort && password) {
+            const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
+            const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+            if (repositories.length > 0) {
+              await updatePodRepositories(controlPortUrl, password, repositories);
+              console.log("[releaseTaskPod] Pod repositories reset");
+            }
+          } else {
+            console.log(`[releaseTaskPod] Control port or password not found, skipping repository reset`);
           }
         }
       } catch (error) {
