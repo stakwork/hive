@@ -1259,3 +1259,27 @@ model SwarmPayment {
   @@index([stripeSessionId])
   @@map("swarm_payments")
 }
+
+enum LlmProvider {
+  GOOGLE
+  ANTHROPIC
+  OPENAI
+  AWS_BEDROCK
+  OTHER
+}
+
+model LlmModel {
+  id               String      @id @default(cuid())
+  name             String
+  provider         LlmProvider
+  providerLabel    String?     @map("provider_label")
+  inputPricePer1M  Float       @map("input_price_per_1m")
+  outputPricePer1M Float       @map("output_price_per_1m")
+  dateStart        DateTime?   @map("date_start")
+  dateEnd          DateTime?   @map("date_end")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  @@index([provider])
+  @@map("llm_models")
+}
