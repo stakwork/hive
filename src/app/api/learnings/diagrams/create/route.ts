@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSwarmConfig } from "../../utils";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getAllRepositories, joinRepoUrls } from "@/lib/helpers/repository";
 import { repoAgent } from "@/lib/ai/askTools";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
-    const primaryRepo = await getPrimaryRepository(workspaceAccess.workspace.id);
-    if (!primaryRepo) {
-      return NextResponse.json({ error: "No repository configured for this workspace" }, { status: 404 });
+    const allRepos = await getAllRepositories(workspaceAccess.workspace.id);
+    if (allRepos.length === 0) {
+      return NextResponse.json({ error: "No repositories configured for this workspace" }, { status: 404 });
     }
 
     const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace);
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const augmentedPrompt = prompt + MERMAID_INSTRUCTION;
 
     const agentResult = await repoAgent(baseSwarmUrl, decryptedSwarmApiKey, {
-      repo_url: primaryRepo.repositoryUrl,
+      repo_url: joinRepoUrls(allRepos),
       prompt: augmentedPrompt,
       pat: token,
       skills: { mermaid: true },
