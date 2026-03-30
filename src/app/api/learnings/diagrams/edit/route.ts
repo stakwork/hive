@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       prompt: augmentedPrompt,
       pat: token,
       skills: { mermaid: true },
+      toolsConfig: { learn_concepts: true },
     });
 
     const responseContent = agentResult?.content ?? JSON.stringify(agentResult);
