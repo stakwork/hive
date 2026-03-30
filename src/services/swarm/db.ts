@@ -52,6 +52,7 @@ interface SaveOrUpdateSwarmParams {
   ingestRequestInProgress?: boolean;
   autoLearnEnabled?: boolean;
   description?: string;
+  workspaceType?: string;
 }
 
 export const select = {
@@ -127,6 +128,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
   if (params.autoLearnEnabled !== undefined) data.autoLearnEnabled = params.autoLearnEnabled;
   if (params.description !== undefined) data.description = params.description;
+  if (params.workspaceType !== undefined) data.workspaceType = params.workspaceType;
   data.updatedAt = new Date();
 
   if (swarm) {
