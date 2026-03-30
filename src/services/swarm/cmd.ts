@@ -1,7 +1,16 @@
 export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "UpdateNeo4jConfig"; content: Record<string, unknown> } }
   | { type: "Swarm"; data: { cmd: "RestartContainer"; content: string } }
-  | { type: "Swarm"; data: { cmd: "UpdateEnv"; content: { container_id: string; vars: Record<string, string> } } };
+  | { type: "Swarm"; data: { cmd: "UpdateEnv"; content: { container_id: string; vars: Record<string, string> } } }
+  | { type: "Swarm"; data: { cmd: "ListContainers" } }
+  | { type: "Swarm"; data: { cmd: "StartContainer"; content: string } }
+  | { type: "Swarm"; data: { cmd: "StopContainer"; content: string } }
+  | { type: "Swarm"; data: { cmd: "GetContainerLogs"; content: string } }
+  | { type: "Swarm"; data: { cmd: "UpdateSwarm" } }
+  | { type: "Swarm"; data: { cmd: "GetConfig" } }
+  | { type: "Swarm"; data: { cmd: "UpdateNode"; content: Record<string, unknown> } }
+  | { type: "Swarm"; data: { cmd: "ListVersions"; content: Record<string, unknown> } }
+  | { type: "Swarm"; data: { cmd: "GetAllImageActualVersion" } };
 
 export interface SwarmCmdResponse {
   ok: boolean;
@@ -19,7 +28,7 @@ function getCmdBaseUrlFromSwarmUrl(swarmUrl: string): string {
  * Get x-jwt by logging in to sphinx-swarm with username "admin" and the swarm password.
  * Login uses the same host:port as the cmd API (port 8800), e.g. https://swarm40.sphinx.chat:8800/api/login.
  */
-export async function getSwarmCmdJwt(swarmUrl: string, swarmPassword: string): Promise<string> {
+export async function getSwarmCmdJwt(swarmUrl: string, swarmPassword: string, username = "admin"): Promise<string> {
   const baseUrl = getCmdBaseUrlFromSwarmUrl(swarmUrl);
   const loginUrl = `${baseUrl}/api/login`;
 
@@ -33,7 +42,7 @@ export async function getSwarmCmdJwt(swarmUrl: string, swarmPassword: string): P
     const res = await fetch(loginUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "admin", password: swarmPassword }),
+      body: JSON.stringify({ username, password: swarmPassword }),
     });
 
     const rawText = await res.text();
