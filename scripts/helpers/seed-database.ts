@@ -1204,7 +1204,6 @@ async function seedDashboardConversations(
         isShared: false,
         source: "dashboard",
         lastMessageAt: conv.lastMessageAt,
-        settings: { extraWorkspaceSlugs: [] },
       },
     });
   }

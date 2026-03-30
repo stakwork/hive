@@ -11,11 +11,13 @@ export default function SwarmsPage() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Swarms</CardTitle>
-          <CardDescription>
-            EC2 instances tagged Swarm=superadmin
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Swarms</CardTitle>
+            <CardDescription>
+              EC2 instances tagged Swarm=superadmin
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <SwarmsTable />
