@@ -39,6 +39,12 @@ export default async function AdminLayout({
                 >
                   Users
                 </Link>
+                <Link
+                  href="/admin/swarms"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Swarms
+                </Link>
               </nav>
             </div>
             <Link
