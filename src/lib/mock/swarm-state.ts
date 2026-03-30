@@ -13,6 +13,7 @@ export interface MockSwarm {
   instance_type: string;
   password: string;
   status: SwarmStatus;
+  workspace_type?: string;
   createdAt: Date;
   updatedAt: Date;
   statusTransitionTimer?: NodeJS.Timeout;
@@ -47,6 +48,7 @@ class MockSwarmStateManager {
   createSwarm(input: {
     instance_type: string;
     password?: string;
+    workspace_type?: string;
   }): {
     swarm_id: string;
     address: string;
@@ -69,6 +71,7 @@ class MockSwarmStateManager {
       instance_type: input.instance_type,
       password: input.password || this.generateRandomString(16),
       status: "PENDING",
+      workspace_type: input.workspace_type,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

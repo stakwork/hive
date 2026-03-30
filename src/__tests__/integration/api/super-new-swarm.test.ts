@@ -1,4 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Hoisted mock for env — used by the mock-endpoint describe block below
+const mockEnv = vi.hoisted(() => ({
+  SWARM_SUPERADMIN_API_KEY: "test-super-token" as string | undefined,
+}));
+vi.mock("@/config/env", () => ({ env: mockEnv }));
 import { POST } from "@/app/api/super/new_swarm/route";
 import {
   createRequestWithHeaders,
@@ -6,6 +12,7 @@ import {
   expectUnauthorized,
   expectError,
 } from "@/__tests__/support/helpers";
+import { mockSwarmState } from "@/lib/mock/swarm-state";
 
 /**
  * Integration tests for POST /api/super/new_swarm
@@ -533,5 +540,119 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         await expectSuccess(response);
       }
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mock endpoint — graph_mindset workspace_type support
+// ---------------------------------------------------------------------------
+
+describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspace_type", () => {
+  const VALID_SUPER_TOKEN = "test-super-token";
+
+  beforeEach(() => {
+    mockSwarmState.reset();
+    mockEnv.SWARM_SUPERADMIN_API_KEY = VALID_SUPER_TOKEN;
+  });
+
+  afterEach(() => {
+    mockSwarmState.reset();
+    vi.clearAllMocks();
+  });
+
+  test("should accept and store workspace_type: graph_mindset", async () => {
+    const { POST: mockPOST } = await import(
+      "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route"
+    );
+
+    const request = new Request(
+      "http://localhost/api/mock/swarm-super-admin/api/super/new_swarm",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-super-token": VALID_SUPER_TOKEN,
+        },
+        body: JSON.stringify({
+          instance_type: "m6i.xlarge",
+          workspace_type: "graph_mindset",
+        }),
+      }
+    );
+
+    const response = await mockPOST(request as any);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data).toMatchObject({
+      swarm_id: expect.stringContaining("mock-swarm-"),
+      address: expect.stringContaining(".test.local"),
+      x_api_key: expect.stringContaining("mock-api-key-"),
+      ec2_id: expect.stringContaining("i-mock"),
+    });
+
+    // Verify workspace_type is persisted in mock state
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBe("graph_mindset");
+  });
+
+  test("should store workspace_type: second_brain correctly", async () => {
+    const { POST: mockPOST } = await import(
+      "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route"
+    );
+
+    const request = new Request(
+      "http://localhost/api/mock/swarm-super-admin/api/super/new_swarm",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-super-token": VALID_SUPER_TOKEN,
+        },
+        body: JSON.stringify({
+          instance_type: "t3.medium",
+          workspace_type: "second_brain",
+        }),
+      }
+    );
+
+    const response = await mockPOST(request as any);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBe("second_brain");
+  });
+
+  test("should work without workspace_type (backward compatibility)", async () => {
+    const { POST: mockPOST } = await import(
+      "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route"
+    );
+
+    const request = new Request(
+      "http://localhost/api/mock/swarm-super-admin/api/super/new_swarm",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-super-token": VALID_SUPER_TOKEN,
+        },
+        body: JSON.stringify({
+          instance_type: "t3.small",
+        }),
+      }
+    );
+
+    const response = await mockPOST(request as any);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBeUndefined();
   });
 });

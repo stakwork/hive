@@ -1,6 +1,7 @@
 export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "UpdateNeo4jConfig"; content: Record<string, unknown> } }
-  | { type: "Swarm"; data: { cmd: "RestartContainer"; content: string } };
+  | { type: "Swarm"; data: { cmd: "RestartContainer"; content: string } }
+  | { type: "Swarm"; data: { cmd: "UpdateEnv"; content: { container_id: string; vars: Record<string, string> } } };
 
 export interface SwarmCmdResponse {
   ok: boolean;
