@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
 import { Loader2, Plus } from "lucide-react";
 import CreateSwarmDialog from "./CreateSwarmDialog";
+=======
+import Link from "next/link";
+import { Loader2, Search, ChevronUp, ChevronDown } from "lucide-react";
+>>>>>>> master
 import { toast } from "sonner";
 import {
   Table,
@@ -14,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +36,13 @@ interface Ec2Instance {
   instanceType: string;
   launchTime: string | null;
   tags: { key: string; value: string }[];
+  publicIp: string | null;
+  privateIp: string | null;
+  hiveWorkspace: { name: string; slug: string } | null;
 }
+
+type SortField = "name" | "launchTime";
+type SortDirection = "asc" | "desc";
 
 type PendingAction = {
   instance: Ec2Instance;
@@ -62,7 +74,15 @@ export default function SwarmsTable() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [isActing, setIsActing] = useState(false);
+<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+=======
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
+    field: "launchTime",
+    direction: "desc",
+  });
+>>>>>>> master
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -81,6 +101,14 @@ export default function SwarmsTable() {
   useEffect(() => {
     fetchInstances();
   }, [fetchInstances]);
+
+  const handleSort = (field: SortField) => {
+    setSortState((prev) =>
+      prev.field === field
+        ? { field, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { field, direction: "asc" }
+    );
+  };
 
   const handleConfirmAction = async () => {
     if (!pendingAction) return;
@@ -120,6 +148,7 @@ export default function SwarmsTable() {
     }
   };
 
+<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
   const createButton = (
     <div className="flex justify-end mb-4">
       <Button onClick={() => setCreateDialogOpen(true)} data-testid="open-create-swarm">
@@ -137,6 +166,51 @@ export default function SwarmsTable() {
     />
   );
 
+=======
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortState.field !== field) return null;
+    return sortState.direction === "asc" ? (
+      <ChevronUp className="inline w-4 h-4 ml-1" />
+    ) : (
+      <ChevronDown className="inline w-4 h-4 ml-1" />
+    );
+  };
+
+  const SortableHeader = ({
+    field,
+    children,
+  }: {
+    field: SortField;
+    children: React.ReactNode;
+  }) => (
+    <TableHead
+      className="cursor-pointer select-none hover:bg-muted/50"
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center">
+        {children}
+        <SortIcon field={field} />
+      </div>
+    </TableHead>
+  );
+
+  const filteredAndSorted = instances
+    .filter((inst) =>
+      inst.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      if (sortState.field === "name") {
+        comparison = a.name.localeCompare(b.name);
+      } else {
+        const aTime = a.launchTime ? new Date(a.launchTime).getTime() : 0;
+        const bTime = b.launchTime ? new Date(b.launchTime).getTime() : 0;
+        comparison = aTime - bTime;
+      }
+      return sortState.direction === "asc" ? comparison : -comparison;
+    });
+
+>>>>>>> master
   if (loading) {
     return (
       <>
@@ -176,27 +250,40 @@ export default function SwarmsTable() {
 
   return (
     <>
+<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
       {createButton}
       {createDialog}
+=======
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Filter by name…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+>>>>>>> master
 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
+            <SortableHeader field="name">Name</SortableHeader>
             <TableHead>Instance ID</TableHead>
             <TableHead>State</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead>Launch Time</TableHead>
+            <SortableHeader field="launchTime">Launch Time</SortableHeader>
+            <TableHead>Public IP</TableHead>
+            <TableHead>Private IP</TableHead>
+            <TableHead>In Hive</TableHead>
             <TableHead>Tags</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {instances.map((instance) => {
+          {filteredAndSorted.map((instance) => {
             const isTransitional = TRANSITIONAL_STATES.has(instance.state);
-            const visibleTags = instance.tags.filter(
-              (t) => t.key !== "Name"
-            );
+            const visibleTags = instance.tags.filter((t) => t.key !== "Name");
 
             return (
               <TableRow key={instance.instanceId}>
@@ -212,6 +299,24 @@ export default function SwarmsTable() {
                   {instance.launchTime
                     ? new Date(instance.launchTime).toLocaleString()
                     : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-sm">
+                  {instance.publicIp ?? "—"}
+                </TableCell>
+                <TableCell className="font-mono text-sm">
+                  {instance.privateIp ?? "—"}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {instance.hiveWorkspace ? (
+                    <Link
+                      href={`/admin/workspaces/${instance.hiveWorkspace.slug}`}
+                      className="underline hover:text-foreground"
+                    >
+                      {instance.hiveWorkspace.name}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                   {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}
@@ -248,6 +353,12 @@ export default function SwarmsTable() {
           })}
         </TableBody>
       </Table>
+
+      {filteredAndSorted.length === 0 && searchQuery && (
+        <div className="py-8 text-center text-muted-foreground">
+          No instances match &quot;{searchQuery}&quot;.
+        </div>
+      )}
 
       <Dialog
         open={!!pendingAction}
