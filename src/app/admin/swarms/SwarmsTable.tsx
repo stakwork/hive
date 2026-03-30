@@ -1,22 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Search, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import CreateSwarmDialog from "./CreateSwarmDialog";
-=======
 import Link from "next/link";
-import { Loader2, Search, ChevronUp, ChevronDown } from "lucide-react";
->>>>>>> master
 import { toast } from "sonner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -59,11 +48,7 @@ function StateBadge({ state }: { state: string }) {
     terminated: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   };
 
-  return (
-    <Badge className={variants[state] ?? "bg-gray-100 text-gray-700"}>
-      {state}
-    </Badge>
-  );
+  return <Badge className={variants[state] ?? "bg-gray-100 text-gray-700"}>{state}</Badge>;
 }
 
 const TRANSITIONAL_STATES = new Set(["pending", "stopping", "shutting-down", "rebooting"]);
@@ -74,15 +59,12 @@ export default function SwarmsTable() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [isActing, setIsActing] = useState(false);
-<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-=======
   const [searchQuery, setSearchQuery] = useState("");
   const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
     field: "launchTime",
     direction: "desc",
   });
->>>>>>> master
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -106,7 +88,7 @@ export default function SwarmsTable() {
     setSortState((prev) =>
       prev.field === field
         ? { field, direction: prev.direction === "asc" ? "desc" : "asc" }
-        : { field, direction: "asc" }
+        : { field, direction: "asc" },
     );
   };
 
@@ -116,14 +98,11 @@ export default function SwarmsTable() {
 
     setIsActing(true);
     try {
-      const res = await fetch(
-        `/api/admin/swarms/${instance.instanceId}/action`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        }
-      );
+      const res = await fetch(`/api/admin/swarms/${instance.instanceId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -131,24 +110,20 @@ export default function SwarmsTable() {
       }
 
       toast.success(
-        action === "start"
-          ? `Instance ${instance.instanceId} started`
-          : `Instance ${instance.instanceId} stopped`
+        action === "start" ? `Instance ${instance.instanceId} started` : `Instance ${instance.instanceId} stopped`,
       );
       setPendingAction(null);
       setLoading(true);
       await fetchInstances();
     } catch (err) {
-      toast.error(
-        `Failed to ${action} instance`,
-        { description: err instanceof Error ? err.message : "Unknown error" }
-      );
+      toast.error(`Failed to ${action} instance`, {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
     } finally {
       setIsActing(false);
     }
   };
 
-<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
   const createButton = (
     <div className="flex justify-end mb-4">
       <Button onClick={() => setCreateDialogOpen(true)} data-testid="open-create-swarm">
@@ -159,14 +134,9 @@ export default function SwarmsTable() {
   );
 
   const createDialog = (
-    <CreateSwarmDialog
-      open={createDialogOpen}
-      onOpenChange={setCreateDialogOpen}
-      onCreated={fetchInstances}
-    />
+    <CreateSwarmDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} onCreated={fetchInstances} />
   );
 
-=======
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortState.field !== field) return null;
     return sortState.direction === "asc" ? (
@@ -176,17 +146,8 @@ export default function SwarmsTable() {
     );
   };
 
-  const SortableHeader = ({
-    field,
-    children,
-  }: {
-    field: SortField;
-    children: React.ReactNode;
-  }) => (
-    <TableHead
-      className="cursor-pointer select-none hover:bg-muted/50"
-      onClick={() => handleSort(field)}
-    >
+  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort(field)}>
       <div className="flex items-center">
         {children}
         <SortIcon field={field} />
@@ -195,9 +156,7 @@ export default function SwarmsTable() {
   );
 
   const filteredAndSorted = instances
-    .filter((inst) =>
-      inst.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter((inst) => inst.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       let comparison = 0;
       if (sortState.field === "name") {
@@ -210,7 +169,6 @@ export default function SwarmsTable() {
       return sortState.direction === "asc" ? comparison : -comparison;
     });
 
->>>>>>> master
   if (loading) {
     return (
       <>
@@ -229,9 +187,7 @@ export default function SwarmsTable() {
       <>
         {createButton}
         {createDialog}
-        <div className="py-8 text-center text-destructive">
-          Error: {error}
-        </div>
+        <div className="py-8 text-center text-destructive">Error: {error}</div>
       </>
     );
   }
@@ -241,19 +197,15 @@ export default function SwarmsTable() {
       <>
         {createButton}
         {createDialog}
-        <div className="py-8 text-center text-muted-foreground">
-          No EC2 instances found with tag Swarm=superadmin.
-        </div>
+        <div className="py-8 text-center text-muted-foreground">No EC2 instances found with tag Swarm=superadmin.</div>
       </>
     );
   }
 
   return (
     <>
-<<<<<<< feature/cmnd8f0kj001yjg04h3ahit4s-add-swarm-creation-dialog-and-api-1774881155
       {createButton}
       {createDialog}
-=======
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -263,7 +215,6 @@ export default function SwarmsTable() {
           className="pl-9"
         />
       </div>
->>>>>>> master
 
       <Table>
         <TableHeader>
@@ -288,24 +239,16 @@ export default function SwarmsTable() {
             return (
               <TableRow key={instance.instanceId}>
                 <TableCell className="font-medium">{instance.name}</TableCell>
-                <TableCell className="font-mono text-sm">
-                  {instance.instanceId}
-                </TableCell>
+                <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
                 <TableCell>
                   <StateBadge state={instance.state} />
                 </TableCell>
                 <TableCell>{instance.instanceType}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {instance.launchTime
-                    ? new Date(instance.launchTime).toLocaleString()
-                    : "—"}
+                  {instance.launchTime ? new Date(instance.launchTime).toLocaleString() : "—"}
                 </TableCell>
-                <TableCell className="font-mono text-sm">
-                  {instance.publicIp ?? "—"}
-                </TableCell>
-                <TableCell className="font-mono text-sm">
-                  {instance.privateIp ?? "—"}
-                </TableCell>
+                <TableCell className="font-mono text-sm">{instance.publicIp ?? "—"}</TableCell>
+                <TableCell className="font-mono text-sm">{instance.privateIp ?? "—"}</TableCell>
                 <TableCell className="text-sm">
                   {instance.hiveWorkspace ? (
                     <Link
@@ -330,20 +273,12 @@ export default function SwarmsTable() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() =>
-                        setPendingAction({ instance, action: "stop" })
-                      }
+                      onClick={() => setPendingAction({ instance, action: "stop" })}
                     >
                       Stop
                     </Button>
                   ) : instance.state === "stopped" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setPendingAction({ instance, action: "start" })
-                      }
-                    >
+                    <Button variant="outline" size="sm" onClick={() => setPendingAction({ instance, action: "start" })}>
                       Start
                     </Button>
                   ) : null}
@@ -355,9 +290,7 @@ export default function SwarmsTable() {
       </Table>
 
       {filteredAndSorted.length === 0 && searchQuery && (
-        <div className="py-8 text-center text-muted-foreground">
-          No instances match &quot;{searchQuery}&quot;.
-        </div>
+        <div className="py-8 text-center text-muted-foreground">No instances match &quot;{searchQuery}&quot;.</div>
       )}
 
       <Dialog
@@ -369,19 +302,12 @@ export default function SwarmsTable() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {pendingAction?.action === "start" ? "Start" : "Stop"} instance{" "}
-              {pendingAction?.instance.instanceId}?
+              {pendingAction?.action === "start" ? "Start" : "Stop"} instance {pendingAction?.instance.instanceId}?
             </DialogTitle>
-            <DialogDescription>
-              This will {pendingAction?.action} the EC2 instance. Are you sure?
-            </DialogDescription>
+            <DialogDescription>This will {pendingAction?.action} the EC2 instance. Are you sure?</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPendingAction(null)}
-              disabled={isActing}
-            >
+            <Button variant="outline" onClick={() => setPendingAction(null)} disabled={isActing}>
               Cancel
             </Button>
             <Button
