@@ -29,6 +29,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { sanitiseDiagram } from "@/services/excalidraw-layout";
+import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
@@ -568,31 +569,7 @@ const MAX_DIAGRAM_VERSIONS = 10;
  * - Replaces all previously AI-generated elements (those WITH customData.source === "ai")
  *   with the new aiGenerated set
  */
-export function mergeWhiteboardElements(
-  existing: unknown[],
-  aiGenerated: unknown[]
-): unknown[] {
-  const userElements = existing.filter(
-    (el) =>
-      (el as Record<string, unknown> & { customData?: { source?: string } })
-        .customData?.source !== "ai"
-  );
-  return [...userElements, ...aiGenerated];
-}
-
-/**
- * Stamp customData.source = "ai" on every element so mergeWhiteboardElements
- * correctly identifies them as AI-generated. Returns a new array; input is not mutated.
- */
-export function tagElementsAsAi(elements: unknown[]): unknown[] {
-  return elements.map((el) => {
-    const e = el as Record<string, unknown>;
-    return {
-      ...e,
-      customData: { ...((e.customData as Record<string, unknown>) ?? {}), source: 'ai' },
-    };
-  });
-}
+export { mergeWhiteboardElements, tagElementsAsAi } from "@/services/whiteboard-elements";
 
 /**
  * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
