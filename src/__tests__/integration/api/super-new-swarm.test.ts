@@ -1,4 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Hoisted mock for env — used by the mock-endpoint describe block below
+const mockEnv = vi.hoisted(() => ({
+  SWARM_SUPERADMIN_API_KEY: "test-super-token" as string | undefined,
+}));
+vi.mock("@/config/env", () => ({ env: mockEnv }));
 import { POST } from "@/app/api/super/new_swarm/route";
 import { POST as MockPOST } from "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route";
 import { mockSwarmState } from "@/lib/mock/swarm-state";
@@ -538,22 +544,21 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
   });
 });
 
-// Mock endpoint tests for graph_mindset workspace type support
-vi.mock("@/config/env", () => ({
-  env: {
-    SWARM_SUPERADMIN_API_KEY: "test-super-token",
-  },
-}));
+// ---------------------------------------------------------------------------
+// Mock endpoint — workspace_type support
+// ---------------------------------------------------------------------------
 
-describe("POST /api/mock/swarm-super-admin/api/super/new_swarm — graph_mindset support", () => {
+describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspace_type", () => {
   const VALID_SUPER_TOKEN = "test-super-token";
 
   beforeEach(() => {
     mockSwarmState.reset();
+    mockEnv.SWARM_SUPERADMIN_API_KEY = VALID_SUPER_TOKEN;
   });
 
   afterEach(() => {
     mockSwarmState.reset();
+    vi.clearAllMocks();
   });
 
   test("should accept workspace_type: graph_mindset and return valid CreateSwarmResponse", async () => {
@@ -605,7 +610,31 @@ describe("POST /api/mock/swarm-super-admin/api/super/new_swarm — graph_mindset
     expect(swarm.workspace_type).toBe("graph_mindset");
   });
 
-  test("should work without workspace_type (second_brain / default path unchanged)", async () => {
+  test("should store workspace_type: second_brain correctly", async () => {
+    const request = createRequestWithHeaders(
+      "http://localhost:3000/api/mock/swarm-super-admin/api/super/new_swarm",
+      "POST",
+      {
+        "Content-Type": "application/json",
+        "x-super-token": VALID_SUPER_TOKEN,
+      },
+      {
+        instance_type: "t3.medium",
+        workspace_type: "second_brain",
+      }
+    );
+
+    const response = await MockPOST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+
+    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
+    expect(swarm.workspace_type).toBe("second_brain");
+  });
+
+  test("should work without workspace_type (backward compatibility)", async () => {
     const request = createRequestWithHeaders(
       "http://localhost:3000/api/mock/swarm-super-admin/api/super/new_swarm",
       "POST",
@@ -623,6 +652,7 @@ describe("POST /api/mock/swarm-super-admin/api/super/new_swarm — graph_mindset
     const data = await response.json();
 
     expect(data.success).toBe(true);
+
     const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
     expect(swarm.workspace_type).toBeUndefined();
   });
