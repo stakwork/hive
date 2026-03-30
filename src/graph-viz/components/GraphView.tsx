@@ -216,8 +216,8 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   const nodeCount = graph.nodes.length;
 
   // Stable mesh capacity — only grows (doubles), so InstancedMesh is rarely recreated
-  const meshCapacityRef = useRef(Math.max(nodeCount, 64));
-  const [meshCapacity, setMeshCapacity] = useState(Math.max(nodeCount, 64));
+  const meshCapacityRef = useRef(Math.max(nodeCount, 1024));
+  const [meshCapacity, setMeshCapacity] = useState(Math.max(nodeCount, 1024));
   useEffect(() => {
     if (nodeCount > meshCapacityRef.current) {
       const newCap = Math.max(nodeCount, meshCapacityRef.current * 2);
@@ -279,7 +279,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     currentPos.current = grow(currentPos.current, 3);
     currentScale.current = grow(currentScale.current, 1);
     currentColor.current = grow(currentColor.current, 3);
-    currentAlpha.current = grow(currentAlpha.current, 1);
+    currentAlpha.current = grow(currentAlpha.current, 1, 1);
     progressArray.current = grow(progressArray.current, 1, -1);
     fisheyeLabelPos.current = grow(fisheyeLabelPos.current, 3);
     nimbusScale.current = grow(nimbusScale.current, 1, 1);
@@ -609,6 +609,23 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     const mesh = meshRef.current;
     if (!mesh) return;
 
+    // After mesh remount, immediately populate instance matrices from current state
+    // so raycasting works before the first useFrame tick
+    const count = nodeCountRef.current;
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      tmpObj.position.set(
+        currentPos.current[i3] || 0,
+        currentPos.current[i3 + 1] || 0,
+        currentPos.current[i3 + 2] || 0,
+      );
+      tmpObj.scale.setScalar(currentScale.current[i] || 0.001);
+      tmpObj.updateMatrix();
+      mesh.setMatrixAt(i, tmpObj.matrix);
+    }
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+
     mesh.raycast = (raycaster, intersects) => {
       const count = nodeCountRef.current;
       const g = graphRef.current;
@@ -747,7 +764,17 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         && i !== hovered
         && !isRelatedToSelected
         && !(viewState.mode === "subgraph" && i === viewState.selectedNodeId);
-      progressArray.current[i] = isUnstructuredBare ? -2 : (graph.nodes[i].progress ?? -1);
+      const nodeProgress = graph.nodes[i].progress;
+      if (isUnstructuredBare) {
+        progressArray.current[i] = -2;
+      } else if (graph.nodes[i].loaderId && nodeProgress != null && nodeProgress >= 0) {
+        // Animated spinner for loadable nodes that are actively loading
+        progressArray.current[i] = (now * 0.001) % 1;
+      } else if (nodeProgress != null && nodeProgress > 0) {
+        progressArray.current[i] = nodeProgress;
+      } else {
+        progressArray.current[i] = -1;
+      }
 
       // When proxy is selected, upgrade cloud dots to regular visible nodes
       if (isUnstructured && isProxySelected && targets.scales[i] < 0.2) {
