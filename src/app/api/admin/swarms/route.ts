@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
+import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
+import { generateSecurePassword } from "@/lib/utils/password";
 import { redis } from "@/lib/redis";
 import { listSuperadminInstances } from "@/services/ec2";
+import { SwarmService } from "@/services/swarm";
+import { getServiceConfig } from "@/config/services";
 import { db } from "@/lib/db";
 
 const CACHE_KEY = "admin:swarms:list";
@@ -30,9 +34,7 @@ export async function GET(request: NextRequest) {
     });
 
     const hiveMap = new Map(
-      swarms
-        .filter((s) => s.ec2Id)
-        .map((s) => [s.ec2Id as string, { name: s.workspace.name, slug: s.workspace.slug }])
+      swarms.filter((s) => s.ec2Id).map((s) => [s.ec2Id as string, { name: s.workspace.name, slug: s.workspace.slug }]),
     );
 
     const enriched = instances.map((inst) => ({
@@ -44,9 +46,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(enriched);
   } catch (error) {
     console.error("Error fetching EC2 instances:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch instances" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch instances" }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const authResult = await requireSuperAdmin(request);
+  if (authResult instanceof NextResponse) return authResult;
+
+  try {
+    const body = await request.json();
+    const { password: bodyPassword, workspace_type } = body as {
+      password?: string;
+      workspace_type?: string;
+    };
+
+    const password = bodyPassword ?? generateSecurePassword();
+    const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
+
+    const swarmService = new SwarmService(getServiceConfig("swarm"));
+    const result = await swarmService.createSwarm({
+      instance_type,
+      password,
+      ...(workspace_type ? { workspace_type } : {}),
+    });
+
+    return NextResponse.json({ ...result, password });
+  } catch (error) {
+    console.error("Error creating swarm:", error);
+    return NextResponse.json({ error: "Failed to create swarm" }, { status: 500 });
   }
 }
