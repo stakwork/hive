@@ -9,6 +9,7 @@ export interface RawNode {
   status?: "executing" | "done" | "idle";
   progress?: number;
   content?: string;
+  loaderId?: string;
 }
 
 export interface RawEdge {
@@ -66,6 +67,7 @@ export function buildGraph(nodes: RawNode[], edges: RawEdge[]): Graph {
     ...(node.status != null && { status: node.status }),
     ...(node.progress != null && { progress: node.progress }),
     ...(node.content != null && { content: node.content }),
+    ...(node.loaderId != null && { loaderId: node.loaderId }),
   }));
 
   // Classify unstructured nodes: BFS from roots through structural edges only

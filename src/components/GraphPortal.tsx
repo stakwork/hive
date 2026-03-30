@@ -65,6 +65,7 @@ interface TaskSummary {
   assignee: { id: string } | null;
   createdBy: { id: string };
   feature: { id: string } | null;
+  prArtifact?: { content?: { url?: string; status?: string; repo?: string } } | null;
 }
 
 interface WhiteboardSummary {
@@ -73,16 +74,6 @@ interface WhiteboardSummary {
   featureId: string | null;
 }
 
-interface GraphNodeSummary {
-  ref_id: string;
-  node_type: string;
-  name: string;
-}
-
-interface GraphEdgeSummary {
-  source: string;
-  target: string;
-}
 
 function useWorkspaceFeatures(workspaceId: string | undefined) {
   const [features, setFeatures] = useState<FeatureSummary[]>([]);
@@ -109,45 +100,143 @@ function useWorkspaceFeatures(workspaceId: string | undefined) {
   return { features, loading };
 }
 
-function useRepositoryNodes(slug: string | undefined) {
-  const [repoNodes, setRepoNodes] = useState<GraphNodeSummary[]>([]);
-  const [repoEdges, setRepoEdges] = useState<GraphEdgeSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+type NodeLoader = () => Promise<{ nodes: RawNode[]; edges: RawEdge[] }>;
 
-  useEffect(() => {
-    if (!slug) { setLoading(false); return; }
-    let cancelled = false;
+function createRepoCodeLoader(slug: string): NodeLoader {
+  return async () => {
     const nodeTypes = JSON.stringify(["Function", "Endpoint", "File", "Page", "Datamodel"]);
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(nodeTypes)}&limit=100&limit_mode=per_type`
-        );
-        if (!res.ok) throw new Error();
-        const json = await res.json();
-        if (!cancelled && json.data) {
-          const nodes = (json.data.nodes || []).map((n: Record<string, unknown>) => ({
-            ref_id: n.ref_id as string,
-            node_type: n.node_type as string,
-            name: (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string,
-          }));
-          const edges = (json.data.edges || []).map((e: Record<string, unknown>) => ({
-            source: e.source as string,
-            target: e.target as string,
-          }));
-          setRepoNodes(nodes);
-          setRepoEdges(edges);
-        }
-      } catch {
-        // ignore - swarm might not be available
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [slug]);
+    const res = await fetch(
+      `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(nodeTypes)}&limit=100&limit_mode=per_type`
+    );
+    if (!res.ok) return { nodes: [], edges: [] };
+    const json = await res.json();
+    const rawNodes = (json.data?.nodes || []) as Record<string, unknown>[];
+    const rawEdges = (json.data?.edges || []) as Record<string, unknown>[];
 
-  return { repoNodes, repoEdges, loading };
+    const refIdSet = new Set(rawNodes.map(n => n.ref_id as string));
+    const hasParent = new Set<string>();
+    for (const e of rawEdges) {
+      if (refIdSet.has(e.source as string) && refIdSet.has(e.target as string)) {
+        hasParent.add(e.target as string);
+      }
+    }
+
+    // Group orphans by type
+    const typeGroups = new Map<string, typeof rawNodes>();
+    for (const n of rawNodes) {
+      if (!hasParent.has(n.ref_id as string)) {
+        const t = n.node_type as string;
+        if (!typeGroups.has(t)) typeGroups.set(t, []);
+        typeGroups.get(t)!.push(n);
+      }
+    }
+
+    const nodes: RawNode[] = [];
+    const edges: RawEdge[] = [];
+
+    for (const [nodeType, groupNodes] of typeGroups) {
+      const typeGroupId = `repo-type-${nodeType}`;
+      nodes.push({ id: typeGroupId, label: nodeType });
+      edges.push({ source: "repo-code", target: typeGroupId });
+      for (const n of groupNodes) {
+        const name = (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string;
+        nodes.push({ id: `repo-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
+        edges.push({ source: typeGroupId, target: `repo-${n.ref_id}` });
+      }
+    }
+
+    // Non-orphan nodes
+    for (const n of rawNodes) {
+      if (hasParent.has(n.ref_id as string)) {
+        const name = (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string;
+        nodes.push({ id: `repo-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
+      }
+    }
+
+    // Swarm edges
+    for (const e of rawEdges) {
+      if (refIdSet.has(e.source as string) && refIdSet.has(e.target as string)) {
+        edges.push({ source: `repo-${e.source}`, target: `repo-${e.target}` });
+      }
+    }
+
+    return { nodes, edges };
+  };
+}
+
+function createRepoPRLoader(tasks: TaskSummary[], slug: string): NodeLoader {
+  return async () => {
+    const nodes: RawNode[] = [];
+    const edges: RawEdge[] = [];
+
+    const PR_STATUS: Record<string, "executing" | "done" | "idle"> = {
+      IN_PROGRESS: "executing",
+      DONE: "done",
+      CANCELLED: "idle",
+    };
+
+    for (const task of tasks) {
+      const pr = task.prArtifact?.content;
+      if (!pr?.url) continue;
+      // Extract PR number from GitHub URL
+      const match = pr.url.match(/\/pull\/(\d+)/);
+      const prLabel = match ? `#${match[1]}` : truncLabel(task.title);
+      const prNodeId = `pr-${task.id}`;
+      nodes.push({
+        id: prNodeId,
+        label: prLabel,
+        status: PR_STATUS[pr.status || ""] || "idle",
+        content: pr.status || "unknown",
+        link: `/w/${slug}/task/${task.id}`,
+      });
+      edges.push({ source: "repo-prs", target: prNodeId });
+      // Cross edge to parent task
+      edges.push({ source: `task-${task.id}`, target: prNodeId, type: "references" });
+    }
+
+    return { nodes, edges };
+  };
+}
+
+function createInfraLoader(slug: string): NodeLoader {
+  return async () => {
+    const nodes: RawNode[] = [];
+    const edges: RawEdge[] = [];
+
+    const POD_STATE: Record<string, "executing" | "done" | "idle"> = {
+      running: "executing",
+      pending: "idle",
+      failed: "idle",
+      unknown: "idle",
+    };
+
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/basic-workspaces`);
+      if (!res.ok) return { nodes, edges };
+      const json = await res.json();
+      const vms = json.data?.workspaces || [];
+
+      for (const vm of vms) {
+        const id = vm.id || vm.subdomain;
+        if (!id) continue;
+        const nodeId = `pod-${id}`;
+        const state = vm.state || "unknown";
+        const usage = vm.usage_status === "used" ? "used" : "idle";
+        const user = vm.user_info ? ` (${vm.user_info})` : "";
+        nodes.push({
+          id: nodeId,
+          label: truncLabel(id),
+          status: POD_STATE[state] || "idle",
+          content: `${state} · ${usage}${user}`,
+        });
+        edges.push({ source: "infra-pods", target: nodeId });
+      }
+    } catch {
+      // ignore — pool might not be active
+    }
+
+    return { nodes, edges };
+  };
 }
 
 function useWorkspaceTasks(workspaceId: string | undefined) {
@@ -159,7 +248,7 @@ function useWorkspaceTasks(workspaceId: string | undefined) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/tasks?workspaceId=${workspaceId}&limit=100&showAllStatuses=true`);
+        const res = await fetch(`/api/tasks?workspaceId=${workspaceId}&limit=100&showAllStatuses=true&includeLatestMessage=true`);
         if (!res.ok) throw new Error();
         const json = await res.json();
         if (!cancelled) setTasks(json.data || []);
@@ -210,8 +299,6 @@ function buildWorkspaceGraph(
   slug: string,
   members: WorkspaceMember[],
   features: FeatureSummary[],
-  repoNodes: GraphNodeSummary[],
-  repoEdges: GraphEdgeSummary[],
   tasks: TaskSummary[],
   whiteboards: WhiteboardSummary[],
 ): { nodes: RawNode[]; edges: RawEdge[] } {
@@ -226,10 +313,19 @@ function buildWorkspaceGraph(
   edges.push({ source: "workspace", target: "group-members" });
   edges.push({ source: "workspace", target: "group-features" });
 
-  if (repoNodes.length > 0) {
-    nodes.push({ id: "group-repo", label: "Repository" });
-    edges.push({ source: "workspace", target: "group-repo" });
-  }
+  // Repository — loadable stub nodes
+  nodes.push({ id: "group-repo", label: "Repository" });
+  edges.push({ source: "workspace", target: "group-repo" });
+  nodes.push({ id: "repo-code", label: "Code", loaderId: "repo-code" });
+  edges.push({ source: "group-repo", target: "repo-code" });
+  nodes.push({ id: "repo-prs", label: "Pull Requests", loaderId: "repo-prs" });
+  edges.push({ source: "group-repo", target: "repo-prs" });
+
+  // Infrastructure — loadable pod status
+  nodes.push({ id: "group-infra", label: "Infrastructure" });
+  edges.push({ source: "workspace", target: "group-infra" });
+  nodes.push({ id: "infra-pods", label: "Pods", loaderId: "infra-pods" });
+  edges.push({ source: "group-infra", target: "infra-pods" });
 
   // Members as children of the members group
   const userIdToMemberId = new Map<string, string>();
@@ -302,64 +398,6 @@ function buildWorkspaceGraph(
       if (memberNodeId) {
         edges.push({ source: memberNodeId, target: featureNodeId, type: "references" });
       }
-    }
-  }
-
-  // Repository nodes — group by type, then use swarm edges within each group
-  const repoRefIdSet = new Set(repoNodes.map((n) => n.ref_id));
-  const hasParent = new Set<string>();
-
-  // Identify nodes that have a parent via swarm edges
-  for (const edge of repoEdges) {
-    if (repoRefIdSet.has(edge.source) && repoRefIdSet.has(edge.target)) {
-      hasParent.add(edge.target);
-    }
-  }
-
-  // Group orphan nodes (no swarm parent) by node_type
-  const typeGroups = new Map<string, GraphNodeSummary[]>();
-  for (const node of repoNodes) {
-    if (!hasParent.has(node.ref_id)) {
-      const list = typeGroups.get(node.node_type) || [];
-      list.push(node);
-      typeGroups.set(node.node_type, list);
-    }
-  }
-
-  // Create type group nodes under Repository
-  for (const [nodeType, groupNodes] of typeGroups) {
-    const typeGroupId = `repo-type-${nodeType}`;
-    nodes.push({ id: typeGroupId, label: nodeType });
-    edges.push({ source: "group-repo", target: typeGroupId });
-
-    for (const node of groupNodes) {
-      nodes.push({
-        id: `repo-${node.ref_id}`,
-        label: truncLabel(node.name),
-        content: node.node_type,
-      });
-      edges.push({ source: typeGroupId, target: `repo-${node.ref_id}` });
-    }
-  }
-
-  // Non-orphan nodes (have a swarm parent)
-  for (const node of repoNodes) {
-    if (hasParent.has(node.ref_id)) {
-      nodes.push({
-        id: `repo-${node.ref_id}`,
-        label: truncLabel(node.name),
-        content: node.node_type,
-      });
-    }
-  }
-
-  // Swarm edges as structural (tree) edges
-  for (const edge of repoEdges) {
-    if (repoRefIdSet.has(edge.source) && repoRefIdSet.has(edge.target)) {
-      edges.push({
-        source: `repo-${edge.source}`,
-        target: `repo-${edge.target}`,
-      });
     }
   }
 
@@ -448,10 +486,9 @@ export function GraphPortal() {
   const { workspace, slug } = useWorkspace();
   const { members, loading: membersLoading } = useWorkspaceMembers(slug);
   const { features, loading: featuresLoading } = useWorkspaceFeatures(workspace?.id);
-  const { repoNodes, repoEdges, loading: repoLoading } = useRepositoryNodes(slug);
   const { tasks, loading: tasksLoading } = useWorkspaceTasks(workspace?.id);
   const { whiteboards, loading: wbLoading } = useWorkspaceWhiteboards(workspace?.id);
-  const loading = membersLoading || featuresLoading || repoLoading || tasksLoading || wbLoading;
+  const loading = membersLoading || featuresLoading || tasksLoading || wbLoading;
   const [expanded, setExpanded] = useState(false);
   const [fading, setFading] = useState(false);
   const cameraRef = useRef<CameraControlsImpl>(null);
@@ -460,6 +497,47 @@ export function GraphPortal() {
   const [simulating, setSimulating] = useState(false);
   const simRef = useRef<number | null>(null);
 
+  // On-demand loader system
+  const [dynamicNodes, setDynamicNodes] = useState<RawNode[]>([]);
+  const [dynamicEdges, setDynamicEdges] = useState<RawEdge[]>([]);
+  const loadedRef = useRef<Set<string>>(new Set());
+  const loadingRef = useRef<Set<string>>(new Set());
+  const graphRef = useRef<ReturnType<typeof buildGraph> | null>(null);
+
+  const loaders = useMemo(() => {
+    if (!slug) return {} as Record<string, NodeLoader>;
+    // Reset PR loader when tasks change (new prArtifact data may be available)
+    loadedRef.current.delete("repo-prs");
+    const map: Record<string, NodeLoader> = {
+      "repo-code": createRepoCodeLoader(slug),
+      "repo-prs": createRepoPRLoader(tasks, slug),
+      "infra-pods": createInfraLoader(slug),
+    };
+    return map;
+  }, [slug, tasks]);
+
+  const triggerLoader = useCallback(async (loaderId: string) => {
+    if (loadedRef.current.has(loaderId) || loadingRef.current.has(loaderId)) return;
+    const loader = loaders[loaderId];
+    if (!loader) return;
+    loadingRef.current.add(loaderId);
+    // Set loading indicator directly on the graph node — progress >= 0 triggers the ring spinner
+    const g = graphRef.current;
+    if (g) {
+      const node = g.nodes.find(n => n.loaderId === loaderId);
+      if (node) node.progress = 0;
+    }
+    try {
+      const { nodes: newNodes, edges: newEdges } = await loader();
+      loadedRef.current.add(loaderId);
+      setDynamicNodes(prev => [...prev, ...newNodes]);
+      setDynamicEdges(prev => [...prev, ...newEdges]);
+      setViewState({ mode: "overview" });
+    } finally {
+      loadingRef.current.delete(loaderId);
+    }
+  }, [loaders]);
+
   const graph = useMemo(() => {
     if (members.length === 0) return null;
     const { nodes, edges } = buildWorkspaceGraph(
@@ -467,22 +545,30 @@ export function GraphPortal() {
       slug || "",
       members,
       features,
-      repoNodes,
-      repoEdges,
       tasks,
       whiteboards,
     );
-    const g = buildGraph(nodes, edges);
+    // Merge dynamic (on-demand loaded) nodes/edges
+    const allNodes = [...nodes, ...dynamicNodes];
+    const allEdges = [...edges, ...dynamicEdges];
+    const g = buildGraph(allNodes, allEdges);
 
     const entityTree = buildEntityTree(g);
     layoutEntityTree(entityTree, g, "radial");
     g.entityTree = entityTree;
     return g;
-  }, [members, features, repoNodes, repoEdges, tasks, whiteboards, workspace?.name, slug]);
+  }, [members, features, tasks, whiteboards, dynamicNodes, dynamicEdges, workspace?.name, slug]);
+  graphRef.current = graph;
 
   const handleNodeClick = useCallback((nodeId: number) => {
     if (!expanded || !graph) return;
     if (viewState.mode === "subgraph" && viewState.selectedNodeId === nodeId) return;
+
+    // Trigger on-demand loading if node has a loaderId
+    const node = graph.nodes[nodeId];
+    if (node?.loaderId) {
+      triggerLoader(node.loaderId);
+    }
 
     const sub = extractSubgraph(graph, nodeId, 30, { useAdj: "undirected" });
     setViewState(prev => {
@@ -521,7 +607,7 @@ export function GraphPortal() {
       const cameraHeight = Math.max(5, (maxRadius * 1.05) / Math.tan(fovRad));
       cam.setLookAt(cx, p.y + cameraHeight, cz + 0.1, cx, p.y, cz, true);
     }
-  }, [graph, viewState, expanded]);
+  }, [graph, viewState, expanded, triggerLoader]);
 
   const handleReset = useCallback(() => {
     setViewState({ mode: "overview" });
