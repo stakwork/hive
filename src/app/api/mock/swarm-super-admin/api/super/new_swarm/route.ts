@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Parse request body
     const body = await request.json();
-    const { instance_type, password } = body;
+    const { instance_type, password, workspace_type } = body;
 
     if (!instance_type) {
       return NextResponse.json(
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     const result = mockSwarmState.createSwarm({
       instance_type,
       password,
+      workspace_type,
     });
 
     // 4. Return response matching CreateSwarmResponse interface
