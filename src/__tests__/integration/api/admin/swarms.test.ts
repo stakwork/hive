@@ -23,6 +23,20 @@ vi.mock("@/services/ec2", () => ({
   stopInstance: vi.fn(),
 }));
 
+// Mock DB — only stub swarm; keep real db.user so the factory and require-superadmin work
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db")>();
+  return {
+    db: {
+      ...actual.db,
+      swarm: {
+        ...actual.db.swarm,
+        findMany: vi.fn(),
+      },
+    },
+  };
+});
+
 const FAKE_INSTANCES = [
   {
     instanceId: "i-mock0000000001",
@@ -31,6 +45,9 @@ const FAKE_INSTANCES = [
     instanceType: "t3.medium",
     launchTime: "2026-01-01T00:00:00.000Z",
     tags: [{ key: "Swarm", value: "superadmin" }],
+    publicIp: "54.123.45.67",
+    privateIp: "10.0.1.10",
+    hiveWorkspace: null,
   },
   {
     instanceId: "i-mock0000000004",
@@ -39,6 +56,9 @@ const FAKE_INSTANCES = [
     instanceType: "t3.medium",
     launchTime: "2026-01-04T00:00:00.000Z",
     tags: [{ key: "Swarm", value: "superadmin" }],
+    publicIp: "18.234.56.90",
+    privateIp: "10.0.1.13",
+    hiveWorkspace: null,
   },
 ];
 
@@ -100,9 +120,11 @@ describe("Admin Swarms API", () => {
     it("calls listSuperadminInstances and caches result on cache miss", async () => {
       const { redis } = await import("@/lib/redis");
       const { listSuperadminInstances } = await import("@/services/ec2");
+      const { db } = await import("@/lib/db");
 
       vi.mocked(redis.get).mockResolvedValueOnce(null);
       vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(redis.setex).mockResolvedValueOnce("OK");
 
       const request = createAuthenticatedGetRequest(
@@ -121,6 +143,60 @@ describe("Admin Swarms API", () => {
         60,
         JSON.stringify(FAKE_INSTANCES)
       );
+    });
+
+    it("attaches hiveWorkspace when a matching Swarm record exists", async () => {
+      const { redis } = await import("@/lib/redis");
+      const { listSuperadminInstances } = await import("@/services/ec2");
+      const { db } = await import("@/lib/db");
+
+      vi.mocked(redis.get).mockResolvedValueOnce(null);
+      vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([
+        {
+          ec2Id: "i-mock0000000001",
+          workspace: { name: "Alpha Workspace", slug: "alpha-workspace" },
+        },
+      ] as any);
+      vi.mocked(redis.setex).mockResolvedValueOnce("OK");
+
+      const request = createAuthenticatedGetRequest(
+        "/api/admin/swarms",
+        superAdminUser
+      );
+      const { GET } = await import("@/app/api/admin/swarms/route");
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      const matched = data.find((i: any) => i.instanceId === "i-mock0000000001");
+      expect(matched.hiveWorkspace).toEqual({ name: "Alpha Workspace", slug: "alpha-workspace" });
+
+      const unmatched = data.find((i: any) => i.instanceId === "i-mock0000000004");
+      expect(unmatched.hiveWorkspace).toBeNull();
+    });
+
+    it("sets all hiveWorkspace to null when no swarms match", async () => {
+      const { redis } = await import("@/lib/redis");
+      const { listSuperadminInstances } = await import("@/services/ec2");
+      const { db } = await import("@/lib/db");
+
+      vi.mocked(redis.get).mockResolvedValueOnce(null);
+      vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
+      vi.mocked(redis.setex).mockResolvedValueOnce("OK");
+
+      const request = createAuthenticatedGetRequest(
+        "/api/admin/swarms",
+        superAdminUser
+      );
+      const { GET } = await import("@/app/api/admin/swarms/route");
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.every((i: any) => i.hiveWorkspace === null)).toBe(true);
     });
   });
 
