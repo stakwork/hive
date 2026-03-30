@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       MERMAID_INSTRUCTION;
 
     const agentResult = await repoAgent(baseSwarmUrl, decryptedSwarmApiKey, {
-      repo_url: joinRepoUrls(allRepos),
+      repo_url: joinRepoUrls(allRepos)!,
       prompt: augmentedPrompt,
       pat: token,
       skills: { mermaid: true },
