@@ -239,6 +239,17 @@ jobs:
           echo "$CONNECTION_URI" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+          # Fetch direct (non-pooled) connection URI for Prisma migrations
+          DIRECT_URI_RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME&pooled=false" "uri")
+          DIRECT_CONNECTION_URI=$(echo "$DIRECT_URI_RESPONSE" | jq -r '.uri // empty')
+          if [ -z "$DIRECT_CONNECTION_URI" ]; then
+            echo "❌ Failed to get direct connection URI: $DIRECT_URI_RESPONSE"
+            exit 1
+          fi
+          echo "direct_connection_uri<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIRECT_CONNECTION_URI" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
           echo "expires_at=$EXPIRY" >> $GITHUB_OUTPUT
 
       ############################################################
@@ -319,6 +330,7 @@ jobs:
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+          export DIRECT_DATABASE_URL="${{ steps.neon.outputs.direct_connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
