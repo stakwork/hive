@@ -20,6 +20,12 @@ beforeEach(() => {
   });
   mockFetch.mockReset();
   localStorage.clear();
+  // Default response handles the fork config useEffect on mount.
+  // mockReturnValueOnce calls in individual tests override this for their specific calls.
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve({ repoUrl: null }),
+  });
 });
 afterEach(() => {
   Object.defineProperty(window, "location", {
@@ -83,6 +89,7 @@ describe("GraphMindsetCard", () => {
 
   it("button remains disabled when slug is taken", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -97,6 +104,7 @@ describe("GraphMindsetCard", () => {
 
   it("button is enabled when slug is available", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(availableSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -111,6 +119,7 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error for taken slug", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -161,6 +170,8 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error on Stripe session creation failure", async () => {
     vi.useFakeTimers();
+    // Fork config (mount effect)
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
