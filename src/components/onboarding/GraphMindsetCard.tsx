@@ -1,14 +1,141 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
-import { Network, Zap } from "lucide-react";
+import { Network, Zap, Loader2 } from "lucide-react";
 
-export function GraphMindsetCard() {
+interface GraphMindsetCardProps {
+  /** If provided, skip workspace creation and use this ID for Stripe checkout (e.g. after cancellation). */
+  existingWorkspaceId?: string;
+}
+
+export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps = {}) {
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { data: session } = useSession();
+  const router = useRouter();
+
+  // When an existingWorkspaceId is passed (cancelled payment), treat name as pre-validated
+  useEffect(() => {
+    if (existingWorkspaceId) {
+      setIsAvailable(true);
+    }
+  }, [existingWorkspaceId]);
+
+  const validateSlug = (value: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!value.trim()) {
+      setIsAvailable(false);
+      setNameError("");
+      setIsValidating(false);
+      return;
+    }
+
+    setIsValidating(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(value)}`);
+        const json = await res.json();
+        if (json?.data?.isAvailable) {
+          setIsAvailable(true);
+          setNameError("");
+        } else {
+          setIsAvailable(false);
+          setNameError(json?.data?.message || json?.error || "Name is unavailable");
+        }
+      } catch {
+        setIsAvailable(false);
+        setNameError("Could not validate name. Please try again.");
+      } finally {
+        setIsValidating(false);
+      }
+    }, 500);
+  };
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setName(value);
+    if (!existingWorkspaceId) {
+      validateSlug(value);
+    }
+  };
+
+  const handleCreateGraph = async () => {
+    if (!session?.user) {
+      router.push("/auth/signin?redirect=/onboarding/workspace");
+      return;
+    }
+
+    setIsLoading(true);
+    setSubmitError("");
+
+    try {
+      let workspaceId = existingWorkspaceId;
+
+      if (!workspaceId) {
+        // Create workspace
+        const wsRes = await fetch("/api/workspaces", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, slug: name }),
+        });
+        const wsJson = await wsRes.json();
+        if (!wsRes.ok) {
+          setSubmitError(wsJson?.error || "Failed to create workspace.");
+          setIsLoading(false);
+          return;
+        }
+        workspaceId = wsJson?.workspace?.id || wsJson?.id;
+        if (!workspaceId) {
+          setSubmitError("Unexpected response from workspace creation.");
+          setIsLoading(false);
+          return;
+        }
+        localStorage.setItem("graphMindsetWorkspaceId", workspaceId);
+      }
+
+      // Create Stripe checkout session
+      const stripeRes = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+      const stripeJson = await stripeRes.json();
+      if (!stripeRes.ok) {
+        setSubmitError(stripeJson?.error || "Failed to create payment session.");
+        setIsLoading(false);
+        return;
+      }
+
+      const { sessionUrl } = stripeJson;
+      if (!sessionUrl) {
+        setSubmitError("No payment URL returned. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      window.location.href = sessionUrl;
+    } catch {
+      setSubmitError("Something went wrong. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
+  const isButtonDisabled =
+    existingWorkspaceId
+      ? isLoading
+      : !name.trim() || !isAvailable || isValidating || isLoading;
 
   return (
     <Card className="overflow-hidden border border-blue-500/30 bg-card">
@@ -46,14 +173,28 @@ export function GraphMindsetCard() {
           </div>
 
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Workspace name</label>
-              <Input
-                placeholder="e.g., my-api-graph"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
+            {!existingWorkspaceId && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Workspace name</label>
+                <Input
+                  placeholder="e.g., my-api-graph"
+                  value={name}
+                  onChange={handleNameChange}
+                  aria-invalid={!!nameError}
+                />
+                {isValidating && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Checking availability…
+                  </p>
+                )}
+                {!isValidating && nameError && (
+                  <p className="text-xs text-destructive">{nameError}</p>
+                )}
+                {!isValidating && !nameError && isAvailable && name.trim() && (
+                  <p className="text-xs text-green-600 dark:text-green-400">Name is available ✓</p>
+                )}
+              </div>
+            )}
 
             <ul className="text-xs text-muted-foreground space-y-1.5 pl-1">
               <li className="flex items-center gap-2">
@@ -71,13 +212,24 @@ export function GraphMindsetCard() {
             </ul>
           </div>
 
-          {/* TODO: wire to Stripe/Lightning payment page */}
+          {submitError && (
+            <p className="text-xs text-destructive">{submitError}</p>
+          )}
+
           <Button
-            disabled={true}
-            onClick={() => {}}
+            disabled={isButtonDisabled}
+            onClick={handleCreateGraph}
             className="w-full gap-2"
           >
-            Create my graph <Network className="w-4 h-4" />
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Processing…
+              </>
+            ) : (
+              <>
+                Create my graph <Network className="w-4 h-4" />
+              </>
+            )}
           </Button>
         </div>
       </div>
