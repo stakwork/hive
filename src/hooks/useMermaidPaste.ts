@@ -70,23 +70,21 @@ export function useMermaidPaste({
         return; // Not Mermaid
       }
 
-      // Parse diagram — handle errors before preventing default
+      // Block Excalidraw's native paste handler immediately
+      e.preventDefault();
+
+      // Parse diagram
       let parsed;
       try {
         parsed = parseMermaidToParsedDiagram(body);
       } catch (err) {
         if (err instanceof UnsupportedMermaidTypeError) {
-          e.preventDefault();
           toast.error("Unsupported diagram type — only flowchart/graph is supported");
         } else {
-          e.preventDefault();
           toast.error("Invalid Mermaid syntax — could not parse diagram");
         }
         return;
       }
-
-      // Only prevent default once we're sure it's valid Mermaid
-      e.preventDefault();
 
       // Layout via ELK
       let data;
@@ -123,8 +121,8 @@ export function useMermaidPaste({
       // Merge with existing elements (user elements preserved, old AI elements replaced)
       const merged = mergeWhiteboardElements(existing, positioned) as unknown as readonly ExcalidrawElement[];
 
-      // Suppress the onChange save guard for this programmatic update
-      programmaticUpdateCountRef.current++;
+      // Suppress the onChange save guard for this programmatic update (updateScene + scrollToContent)
+      programmaticUpdateCountRef.current += 2;
 
       // Apply to canvas
       excalidrawAPI.updateScene({ elements: merged });
