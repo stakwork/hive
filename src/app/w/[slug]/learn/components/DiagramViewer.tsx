@@ -18,15 +18,25 @@ const FIT_PADDING = 32;
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
 
-function getSvgNaturalSize(svg: SVGSVGElement): { w: number; h: number } {
+/**
+ * Get the actual rendered content bounds of an SVG via getBBox().
+ * This accounts for non-zero viewBox origins that Mermaid/ELK can produce
+ * (e.g. viewBox="-50 -10 900 600"), which would otherwise cause the
+ * pan/zoom centering to place the diagram off-screen.
+ */
+function getSvgContentRect(svg: SVGSVGElement): {
+  x: number; y: number; w: number; h: number;
+} {
+  try {
+    const bb = svg.getBBox();
+    if (bb.width > 0) return { x: bb.x, y: bb.y, w: bb.width, h: bb.height };
+  } catch {
+    // getBBox can throw if SVG isn't in the DOM yet
+  }
   const vb = svg.viewBox?.baseVal;
-  if (vb && vb.width > 0) return { w: vb.width, h: vb.height };
-  const aw = parseFloat(svg.getAttribute("width") ?? "0");
-  const ah = parseFloat(svg.getAttribute("height") ?? "0");
-  if (aw > 0) return { w: aw, h: ah };
-  const bb = svg.getBBox();
-  if (bb.width > 0) return { w: bb.width, h: bb.height };
-  return { w: 800, h: 600 };
+  if (vb && vb.width > 0)
+    return { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+  return { x: 0, y: 0, w: 800, h: 600 };
 }
 
 /* ── component ─────────────────────────────────────────── */
@@ -156,16 +166,21 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
         return;
       }
 
-      const size = getSvgNaturalSize(svg);
-      svgW.current = size.w;
-      svgH.current = size.h;
+      const rect = getSvgContentRect(svg);
+      svgW.current = rect.w;
+      svgH.current = rect.h;
 
-      // Ensure viewBox is set, then let CSS scale handle sizing
-      if (!svg.getAttribute("viewBox")) {
-        svg.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`);
-      }
-      svg.setAttribute("width", String(size.w));
-      svg.setAttribute("height", String(size.h));
+      // Rewrite the viewBox to tightly frame the actual content.
+      // This normalises diagrams where Mermaid/ELK produced a
+      // non-zero viewBox origin, so the pan/zoom math (which
+      // assumes the SVG element's top-left maps to content top-left)
+      // stays correct.
+      svg.setAttribute(
+        "viewBox",
+        `${rect.x} ${rect.y} ${rect.w} ${rect.h}`
+      );
+      svg.setAttribute("width", String(rect.w));
+      svg.setAttribute("height", String(rect.h));
       svg.style.display = "block";
 
       fitToView();
