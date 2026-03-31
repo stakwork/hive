@@ -190,6 +190,33 @@ describe("parseMermaidToParsedDiagram", () => {
     });
   });
 
+  describe("trailing semicolons", () => {
+    it("strips trailing semicolon from the 'to' endpoint token (A --> B;)", () => {
+      const result = parseMermaidToParsedDiagram("graph TD\n  A --> B;");
+      const nodeB = result.components.find((c) => c.id === "B");
+      expect(nodeB).toBeDefined();
+      expect(nodeB?.id).toBe("B");
+      expect(nodeB?.name).toBe("B");
+      // Ensure the semicolon-suffixed variant is NOT registered
+      expect(result.components.find((c) => c.id === "B;")).toBeUndefined();
+    });
+
+    it("strips trailing semicolon from the 'from' endpoint token (A; --> B)", () => {
+      const result = parseMermaidToParsedDiagram("graph TD\n  A; --> B");
+      const nodeA = result.components.find((c) => c.id === "A");
+      expect(nodeA).toBeDefined();
+      expect(nodeA?.id).toBe("A");
+      expect(nodeA?.name).toBe("A");
+      expect(result.components.find((c) => c.id === "A;")).toBeUndefined();
+    });
+
+    it("still registers the correct connection after stripping semicolons", () => {
+      const result = parseMermaidToParsedDiagram("graph TD\n  A --> B;");
+      expect(result.connections).toHaveLength(1);
+      expect(result.connections[0]).toMatchObject({ from: "A", to: "B" });
+    });
+  });
+
   describe("real-world example", () => {
     it("parses a multi-subgraph diagram with style directives", () => {
       const diagram = `graph TD
