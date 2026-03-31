@@ -133,6 +133,8 @@ describe("GraphMindsetCard", () => {
 
   it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
     vi.useFakeTimers();
+    // Fork config (mount effect)
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
@@ -157,8 +159,8 @@ describe("GraphMindsetCard", () => {
     expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
 
-    // Only one fetch: slug check + one Stripe checkout (no workspace creation)
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Three fetches: fork config (mount) + slug check + Stripe checkout
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(mockFetch).toHaveBeenLastCalledWith(
       "/api/stripe/checkout",
       expect.objectContaining({
