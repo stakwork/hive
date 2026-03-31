@@ -174,6 +174,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       ingestRequestInProgress: params.ingestRequestInProgress || false,
       minimumVms: 2, // Default value from schema
       webhookUrl: null, // Nullable field
+      workspaceType: params.workspaceType,
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
     swarm = await db.swarm.create({
