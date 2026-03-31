@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
 import { fetchSwarmCredentials } from "@/services/swarm/api/swarm";
 import { getSwarmCmdJwt, swarmCmdRequest, SwarmCmd } from "@/services/swarm/cmd";
+import { redis } from "@/lib/redis";
 
 export const runtime = "nodejs";
 
@@ -27,8 +28,31 @@ export async function POST(
     return NextResponse.json({ error: "Missing or invalid 'cmd' field" }, { status: 400 });
   }
 
-  if (!swarmUrl || typeof swarmUrl !== "string") {
-    return NextResponse.json({ error: "Missing 'swarmUrl' field" }, { status: 400 });
+  let resolvedSwarmUrl = swarmUrl && typeof swarmUrl === "string" ? swarmUrl : undefined;
+
+  if (!resolvedSwarmUrl) {
+    const cached = await redis.get("admin:swarms:list");
+    if (cached) {
+      const instances = JSON.parse(cached) as Array<{
+        instanceId: string;
+        tags?: Array<{ key: string; value: string }>;
+      }>;
+      const instance = instances.find((i) => i.instanceId === instanceId);
+      const userAssignedName = instance?.tags?.find((t) => t.key === "UserAssignedName")?.value;
+      if (userAssignedName) {
+        resolvedSwarmUrl = `https://${userAssignedName}.sphinx.chat`;
+      }
+    }
+  }
+
+  if (!resolvedSwarmUrl) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not resolve swarmUrl for this instance — cache may be cold or UserAssignedName tag is missing",
+      },
+      { status: 400 }
+    );
   }
 
   let credentials: { username: string; password: string };
@@ -44,7 +68,7 @@ export async function POST(
 
   let jwt: string;
   try {
-    jwt = await getSwarmCmdJwt(swarmUrl, credentials.password, credentials.username);
+    jwt = await getSwarmCmdJwt(resolvedSwarmUrl, credentials.password, credentials.username);
   } catch (error) {
     console.error(`Failed to get JWT for swarm ${instanceId}:`, error);
     return NextResponse.json(
@@ -54,7 +78,7 @@ export async function POST(
   }
 
   try {
-    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+    const result = await swarmCmdRequest({ swarmUrl: resolvedSwarmUrl, jwt, cmd });
     return NextResponse.json(result);
   } catch (error) {
     console.error(`Swarm cmd request failed for ${instanceId}:`, error);
