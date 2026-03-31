@@ -28,6 +28,12 @@ beforeEach(() => {
   });
   mockFetch.mockReset();
   localStorage.clear();
+  // Default response handles the fork config useEffect on mount.
+  // mockReturnValueOnce calls in individual tests override this for their specific calls.
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve({ repoUrl: null }),
+  });
 });
 afterEach(() => {
   Object.defineProperty(window, "location", {
@@ -80,6 +86,8 @@ describe("GraphMindsetCard", () => {
 
   it("button remains disabled while name is being validated (isValidating)", async () => {
     vi.useFakeTimers();
+    // fork config resolves immediately, slug fetch hangs
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     // fetch won't resolve until we advance timers
     mockFetch.mockReturnValue(new Promise(() => {}));
     render(<GraphMindsetCard />);
@@ -93,6 +101,7 @@ describe("GraphMindsetCard", () => {
 
   it("button remains disabled when slug is taken", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -108,6 +117,7 @@ describe("GraphMindsetCard", () => {
 
   it("button is enabled when slug is available", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(availableSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -123,6 +133,7 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error for invalid/taken slug", async () => {
     vi.useFakeTimers();
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
     const input = screen.getByPlaceholderText("e.g., my-api-graph");
@@ -136,6 +147,8 @@ describe("GraphMindsetCard", () => {
 
   it("sets window.location.href to sessionUrl on successful flow", async () => {
     vi.useFakeTimers();
+    // Fork config (mount effect)
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     // Slug availability
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
@@ -168,6 +181,8 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error on workspace creation failure", async () => {
     vi.useFakeTimers();
+    // Fork config (mount effect)
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
@@ -192,6 +207,8 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error on Stripe session creation failure", async () => {
     vi.useFakeTimers();
+    // Fork config (mount effect)
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
@@ -219,7 +236,9 @@ describe("GraphMindsetCard", () => {
   });
 
   it("skips workspace creation and uses existingWorkspaceId when provided", async () => {
-    // Only stripe checkout fetch should be called
+    // Fork config (mount effect) resolves first — no fork config, so no fork step
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
+    // Stripe checkout
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ sessionUrl: "https://checkout.stripe.com/pay/existing" }),
@@ -235,8 +254,8 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/pay/existing");
     });
-    // Should have only made ONE fetch call (Stripe, not workspace creation)
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    // Should have made exactly TWO fetch calls: fork config (mount) + Stripe checkout
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/stripe/checkout",
       expect.objectContaining({ method: "POST" })
