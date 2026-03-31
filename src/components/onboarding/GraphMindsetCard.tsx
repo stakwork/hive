@@ -72,7 +72,7 @@ export function GraphMindsetCard() {
     setNeedsReauth(false);
 
     try {
-      let workspaceId = existingWorkspaceId;
+      let workspaceId = localStorage.getItem("graphMindsetWorkspaceId");
 
       if (!workspaceId) {
         let forkUrl: string | undefined;
