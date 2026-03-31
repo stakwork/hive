@@ -213,6 +213,7 @@ model Workspace {
   stakworkRuns           StakworkRun[]
   swarm                  Swarm?
   swarmPayments          SwarmPayment[]
+  lightningPayments      LightningPayment[]
   tasks                  Task[]
   whiteboards            Whiteboard[]
   apiKeys                WorkspaceApiKey[]
@@ -1284,4 +1285,26 @@ model LlmModel {
 
   @@index([provider])
   @@map("llm_models")
+}
+
+enum LightningPaymentStatus {
+  UNPAID
+  PAID
+  EXPIRED
+}
+
+model LightningPayment {
+  id          String                 @id @default(cuid())
+  workspaceId String                 @map("workspace_id")
+  paymentHash String                 @unique @map("payment_hash")
+  invoice     String
+  amount      Int
+  status      LightningPaymentStatus @default(UNPAID)
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([paymentHash])
+  @@map("lightning_payments")
 }

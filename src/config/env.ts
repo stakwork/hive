@@ -80,6 +80,9 @@ export const optionalEnvVars = {
   MOCK_BASE,
   REDIS_URL: process.env.REDIS_URL,
   ONBOARDING_FORK_REPOS: process.env.ONBOARDING_FORK_REPOS || "",
+  LIGHTNING_NODE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/lnd`
+    : process.env.LIGHTNING_NODE_URL || '',
 } as const;
 
 /**

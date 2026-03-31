@@ -59,6 +59,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/agent-logs/*/content", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
   { path: "/api/agent-logs/*/stats", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
   { path: "/api/stripe/webhook", strategy: "prefix", access: "webhook" },
+  { path: "/api/lightning/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
