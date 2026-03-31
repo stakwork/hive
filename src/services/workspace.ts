@@ -89,6 +89,7 @@ export async function createWorkspace(
         slug: data.slug,
         ownerId: data.ownerId,
         repositoryDraft: data.repositoryUrl,
+        workspaceKind: data.workspaceKind,
       },
     });
     return {
