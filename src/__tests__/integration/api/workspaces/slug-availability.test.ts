@@ -7,10 +7,8 @@ import {
 } from "@/__tests__/support/fixtures";
 import {
   createAuthenticatedSession,
-  mockUnauthenticatedSession,
   getMockedSession,
   expectSuccess,
-  expectUnauthorized,
   expectError,
   generateUniqueSlug,
   createGetRequest,
@@ -167,8 +165,8 @@ describe("Slug Availability API - Integration Tests", () => {
       await assertions(response, context);
     });
 
-    test("rejects unauthenticated requests", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
+    test("allows unauthenticated requests", async () => {
+      getMockedSession().mockResolvedValue(null);
 
       const request = createGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
@@ -177,7 +175,10 @@ describe("Slug Availability API - Integration Tests", () => {
 
       const response = await GET(request);
 
-      await expectUnauthorized(response);
+      const data = await expectSuccess(response, 200);
+      expect(data.success).toBe(true);
+      expect(data.data.slug).toBe("test-slug");
+      expect(typeof data.data.isAvailable).toBe("boolean");
     });
 
     test("returns error when slug parameter is missing", async () => {
