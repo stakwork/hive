@@ -89,7 +89,35 @@ describe("fetchSwarmCredentials", () => {
     });
 
     const result = await fetchSwarmCredentials("i-abc");
-    expect(result).toEqual({ username: "super", password: "s3cr3t" });
+    expect(result).toEqual({ username: "admin", password: "s3cr3t" });
+  });
+
+  test("always returns 'admin' as username regardless of API response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { username: "super", password: "s3cr3t" },
+      }),
+    });
+
+    const result = await fetchSwarmCredentials("i-abc");
+    expect(result.username).toBe("admin");
+  });
+
+  test("returns 'admin' as username even when API returns no username", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { password: "s3cr3t" },
+      }),
+    });
+
+    const result = await fetchSwarmCredentials("i-abc");
+    expect(result).toEqual({ username: "admin", password: "s3cr3t" });
   });
 
   test("throws when success is false", async () => {
@@ -108,21 +136,6 @@ describe("fetchSwarmCredentials", () => {
     );
   });
 
-  test("throws when username is missing from response data", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        success: true,
-        data: { password: "s3cr3t" },
-      }),
-    });
-
-    await expect(fetchSwarmCredentials("i-abc")).rejects.toThrow(
-      "Swarm credentials response is missing username or password"
-    );
-  });
-
   test("throws when password is missing from response data", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -134,7 +147,7 @@ describe("fetchSwarmCredentials", () => {
     });
 
     await expect(fetchSwarmCredentials("i-abc")).rejects.toThrow(
-      "Swarm credentials response is missing username or password"
+      "Swarm credentials response is missing password"
     );
   });
 
