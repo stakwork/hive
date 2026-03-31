@@ -379,11 +379,20 @@ export function MarkdownRenderer({
 
   const processedContent =
     typeof children === "string"
-      ? children
-          .replace(/\\n/g, "\n")
-          .replace(/\\t/g, "\t")
-          .replace(/\\"/g, '"')
-          .replace(/\\'/g, "'")
+      ? (() => {
+          let content = children
+            .replace(/\\n/g, "\n")
+            .replace(/\\t/g, "\t")
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'");
+          if (isUser) {
+            content = content
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+          }
+          return content;
+        })()
       : children;
 
   return (
