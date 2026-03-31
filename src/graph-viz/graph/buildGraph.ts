@@ -19,6 +19,74 @@ export interface RawEdge {
   type?: string;
 }
 
+/**
+ * Append new nodes and edges to an existing graph, mutating it in place.
+ * Existing node indices stay stable. New nodes get indices starting from graph.nodes.length.
+ * Returns a map from raw node ID → graph index for the new nodes.
+ */
+export function appendToGraph(
+  graph: Graph,
+  nodes: RawNode[],
+  edges: RawEdge[],
+  existingIdMap: Map<string, number>,
+): Map<string, number> {
+  const startIdx = graph.nodes.length;
+  const newIdMap = new Map<string, number>();
+
+  // Add new nodes
+  for (let i = 0; i < nodes.length; i++) {
+    const idx = startIdx + i;
+    const node = nodes[i];
+    newIdMap.set(node.id, idx);
+    graph.nodes.push({
+      id: idx,
+      label: node.label,
+      position: { x: 0, y: 0, z: 0 },
+      degree: 0,
+      ...(node.link != null && { link: node.link }),
+      ...(node.icon != null && { icon: node.icon }),
+      ...(node.status != null && { status: node.status }),
+      ...(node.progress != null && { progress: node.progress }),
+      ...(node.content != null && { content: node.content }),
+      ...(node.loaderId != null && { loaderId: node.loaderId }),
+    });
+    graph.adj.push([]);
+    graph.outAdj.push([]);
+    graph.inAdj.push([]);
+    if (graph.structuralAdj) graph.structuralAdj.push([]);
+    if (graph.structuralOutAdj) graph.structuralOutAdj.push([]);
+    if (graph.structuralInAdj) graph.structuralInAdj.push([]);
+  }
+
+  // Merged ID map for edge resolution
+  const allIds = new Map([...existingIdMap, ...newIdMap]);
+
+  // Add new edges
+  for (const e of edges) {
+    const src = allIds.get(e.source);
+    const dst = allIds.get(e.target);
+    if (src === undefined || dst === undefined) continue;
+
+    const ge: GraphEdge = { src, dst, label: e.label, type: e.type };
+    graph.edges.push(ge);
+    graph.adj[src].push(dst);
+    graph.adj[dst].push(src);
+    graph.outAdj[src].push(dst);
+    graph.inAdj[dst].push(src);
+    graph.nodes[src].degree = graph.adj[src].length;
+    graph.nodes[dst].degree = graph.adj[dst].length;
+
+    if (isStructuralEdge(ge)) {
+      graph.structuralAdj?.[src]?.push(dst);
+      graph.structuralAdj?.[dst]?.push(src);
+      graph.structuralOutAdj?.[src]?.push(dst);
+      graph.structuralInAdj?.[dst]?.push(src);
+    }
+  }
+
+  return newIdMap;
+}
+
 export function buildGraph(nodes: RawNode[], edges: RawEdge[]): Graph {
   const idToIndex = new Map<string, number>();
   for (let i = 0; i < nodes.length; i++) {
