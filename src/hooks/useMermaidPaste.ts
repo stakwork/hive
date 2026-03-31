@@ -95,8 +95,12 @@ export function useMermaidPaste({
         return;
       }
 
-      // Tag all elements as AI-generated
-      const tagged = tagElementsAsAi(data.elements) as unknown[];
+      // Generate a unique ID for this paste session so scoped merging can distinguish
+      // elements from this paste vs elements from prior pastes
+      const pasteId = crypto.randomUUID();
+
+      // Tag all elements as AI-generated (with pasteId for scoped replacement)
+      const tagged = tagElementsAsAi(data.elements, pasteId) as unknown[];
 
       // Compute placement offset relative to existing user content
       const existing = Array.from(excalidrawAPI.getSceneElements()) as unknown[];
@@ -118,8 +122,8 @@ export function useMermaidPaste({
         positioned = tagged;
       }
 
-      // Merge with existing elements (user elements preserved, old AI elements replaced)
-      const merged = mergeWhiteboardElements(existing, positioned) as unknown as readonly ExcalidrawElement[];
+      // Merge with existing elements (user elements preserved, only this session's AI replaced)
+      const merged = mergeWhiteboardElements(existing, positioned, pasteId) as unknown as readonly ExcalidrawElement[];
 
       // Suppress the onChange save guard for this programmatic update (updateScene + scrollToContent)
       programmaticUpdateCountRef.current += 2;
