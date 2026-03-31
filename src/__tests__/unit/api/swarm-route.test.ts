@@ -323,7 +323,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
 
-    test("should reject requests with workspaceId only (no repositoryUrl, no workspace_type)", async () => {
+    test("should reject requests with workspaceId only (no repositoryUrl)", async () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
@@ -388,60 +388,6 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith(
         expect.objectContaining({ workspace_type: "graph_mindset" })
-      );
-    });
-
-    test("should pass workspaceType to saveOrUpdateSwarm for graph_mindset", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { id: "user-123" },
-      });
-      mockValidateWorkspaceAccessById.mockResolvedValue({ hasAccess: true, canAdmin: true });
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: { id: "placeholder-swarm-123", status: SwarmStatus.PENDING },
-      });
-      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
-        data: {
-          swarm_id: "swarm-graph-1",
-          address: "swarm-graph-1.sphinx.chat",
-          x_api_key: "api-key-graph",
-          ec2_id: "i-graph123",
-        },
-      });
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "placeholder-swarm-123", swarmId: "swarm-graph-1" });
-
-      const request = createMockRequest({ workspaceId: "workspace-123", workspace_type: "graph_mindset" });
-      await POST(request);
-
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceType: "graph_mindset" })
-      );
-    });
-
-    test("should not pass workspaceType to saveOrUpdateSwarm when workspace_type is absent", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { id: "user-123" },
-      });
-      mockValidateWorkspaceAccessById.mockResolvedValue({ hasAccess: true, canAdmin: true });
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: { id: "placeholder-swarm-123", status: SwarmStatus.PENDING },
-      });
-      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
-        data: {
-          swarm_id: "swarm2bCar4",
-          address: "swarm2bCar4.sphinx.chat",
-          x_api_key: "api-key-123",
-          ec2_id: "i-1234567890abcdef0",
-        },
-      });
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "placeholder-swarm-123", swarmId: "swarm2bCar4" });
-
-      const request = createMockRequest(validSwarmData); // standard flow, no workspace_type
-      await POST(request);
-
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
-        expect.not.objectContaining({ workspaceType: expect.anything() })
       );
     });
 

@@ -62,7 +62,6 @@ export async function POST(req: NextRequest) {
             swarmSecretAlias: `{{${swarm_id}_API_KEY}}`,
             swarmId: swarm_id,
             swarmPassword,
-            workspaceType: 'graph_mindset',
           });
         } catch (err) {
           logger.error('Failed to create graph_mindset swarm after payment', 'stripe-webhook', {

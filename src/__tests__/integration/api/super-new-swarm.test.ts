@@ -560,7 +560,7 @@ describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspac
     vi.clearAllMocks();
   });
 
-  test("should accept and store workspace_type: graph_mindset", async () => {
+  test("should accept workspace_type: graph_mindset in request body", async () => {
     const { POST: mockPOST } = await import(
       "@/app/api/mock/swarm-super-admin/api/super/new_swarm/route"
     );
@@ -592,9 +592,6 @@ describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspac
       ec2_id: expect.stringContaining("i-mock"),
     });
 
-    // Verify workspace_type is persisted in mock state
-    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
-    expect(swarm.workspace_type).toBe("graph_mindset");
   });
 
   test("should store workspace_type: second_brain correctly", async () => {
@@ -622,9 +619,6 @@ describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspac
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
-
-    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
-    expect(swarm.workspace_type).toBe("second_brain");
   });
 
   test("should work without workspace_type (backward compatibility)", async () => {
@@ -651,8 +645,5 @@ describe("Mock POST /api/mock/swarm-super-admin/api/super/new_swarm — workspac
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
-
-    const swarm = mockSwarmState.getSwarmDetails(data.data.swarm_id);
-    expect(swarm.workspace_type).toBeUndefined();
   });
 });
