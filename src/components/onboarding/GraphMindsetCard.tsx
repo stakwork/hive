@@ -9,12 +9,7 @@ import { Input } from "@/components/ui/input";
 import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
 import { Network, Zap, Loader2 } from "lucide-react";
 
-interface GraphMindsetCardProps {
-  /** If provided, skip workspace creation and use this ID for Stripe checkout (e.g. after cancellation). */
-  existingWorkspaceId?: string;
-}
-
-export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps = {}) {
+export function GraphMindsetCard() {
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
@@ -25,15 +20,6 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
   const [forkRepoUrl, setForkRepoUrl] = useState<string | null>(null);
   const [needsReauth, setNeedsReauth] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { data: session } = useSession();
-  const router = useRouter();
-
-  // When an existingWorkspaceId is passed (cancelled payment), treat name as pre-validated
-  useEffect(() => {
-    if (existingWorkspaceId) {
-      setIsAvailable(true);
-    }
-  }, [existingWorkspaceId]);
 
   // Fetch configured fork repo on mount
   useEffect(() => {
@@ -77,23 +63,16 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setName(value);
-    if (!existingWorkspaceId) {
-      validateSlug(value);
-    }
+    validateSlug(value);
   };
 
   const handleCreateGraph = async () => {
-    if (!session?.user) {
-      router.push("/auth/signin?redirect=/onboarding/workspace");
-      return;
-    }
-
     setIsLoading(true);
     setSubmitError("");
     setNeedsReauth(false);
 
     try {
-      let workspaceId = existingWorkspaceId;
+      let workspaceId = localStorage.getItem("graphMindsetWorkspaceId");
 
       if (!workspaceId) {
         let forkUrl: string | undefined;
@@ -157,7 +136,7 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
       const stripeRes = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
+        body: JSON.stringify({ workspaceName: name, workspaceSlug: name }),
       });
       const stripeJson = await stripeRes.json();
       if (!stripeRes.ok) {
@@ -167,13 +146,17 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
         return;
       }
 
-      const { sessionUrl } = stripeJson;
+      const { sessionUrl, sessionId } = stripeJson;
       if (!sessionUrl) {
         setSubmitError("No payment URL returned. Please try again.");
         setIsLoading(false);
         setCreationStatus("");
         return;
       }
+
+      // Persist so WelcomeStep can claim after sign-in
+      localStorage.setItem("graphMindsetSessionId", sessionId);
+      localStorage.setItem("graphMindsetWorkspaceName", name);
 
       window.location.href = sessionUrl;
     } catch {
@@ -183,10 +166,7 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
     }
   };
 
-  const isButtonDisabled =
-    existingWorkspaceId
-      ? isLoading
-      : !name.trim() || !isAvailable || isValidating || isLoading;
+  const isButtonDisabled = !name.trim() || !isAvailable || isValidating || isLoading;
 
   return (
     <Card className="overflow-hidden border border-blue-500/30 bg-card">
@@ -219,33 +199,31 @@ export function GraphMindsetCard({ existingWorkspaceId }: GraphMindsetCardProps 
           <div>
             <h4 className="text-lg font-semibold">Set up your graph workspace</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              Give it a name to get started. We'll connect your GitHub and build your graph.
+              Give it a name, pay once, then connect your GitHub.
             </p>
           </div>
 
           <div className="space-y-3">
-            {!existingWorkspaceId && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Workspace name</label>
-                <Input
-                  placeholder="e.g., my-api-graph"
-                  value={name}
-                  onChange={handleNameChange}
-                  aria-invalid={!!nameError}
-                />
-                {isValidating && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Checking availability…
-                  </p>
-                )}
-                {!isValidating && nameError && (
-                  <p className="text-xs text-destructive">{nameError}</p>
-                )}
-                {!isValidating && !nameError && isAvailable && name.trim() && (
-                  <p className="text-xs text-green-600 dark:text-green-400">Name is available ✓</p>
-                )}
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Workspace name</label>
+              <Input
+                placeholder="e.g., my-api-graph"
+                value={name}
+                onChange={handleNameChange}
+                aria-invalid={!!nameError}
+              />
+              {isValidating && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Checking availability…
+                </p>
+              )}
+              {!isValidating && nameError && (
+                <p className="text-xs text-destructive">{nameError}</p>
+              )}
+              {!isValidating && !nameError && isAvailable && name.trim() && (
+                <p className="text-xs text-green-600 dark:text-green-400">Name is available ✓</p>
+              )}
+            </div>
 
             <ul className="text-xs text-muted-foreground space-y-1.5 pl-1">
               <li className="flex items-center gap-2">
