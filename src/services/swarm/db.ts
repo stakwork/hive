@@ -52,7 +52,6 @@ interface SaveOrUpdateSwarmParams {
   ingestRequestInProgress?: boolean;
   autoLearnEnabled?: boolean;
   description?: string;
-  workspaceType?: string;
 }
 
 export const select = {
@@ -89,7 +88,6 @@ export const select = {
   webhookUrl: true,
   pendingRepairTrigger: true,
   description: true,
-  workspaceType: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -129,7 +127,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
   if (params.autoLearnEnabled !== undefined) data.autoLearnEnabled = params.autoLearnEnabled;
   if (params.description !== undefined) data.description = params.description;
-  if (params.workspaceType !== undefined) data.workspaceType = params.workspaceType;
   data.updatedAt = new Date();
 
   if (swarm) {
@@ -174,7 +171,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       ingestRequestInProgress: params.ingestRequestInProgress || false,
       minimumVms: 2, // Default value from schema
       webhookUrl: null, // Nullable field
-      workspaceType: params.workspaceType,
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
     swarm = await db.swarm.create({

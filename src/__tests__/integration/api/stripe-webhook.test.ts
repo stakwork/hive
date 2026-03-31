@@ -172,7 +172,6 @@ describe('Stripe Webhook Handler Integration Tests', () => {
 
       const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
       expect(swarm).not.toBeNull();
-      expect(swarm!.workspaceType).toBe('graph_mindset');
       expect(swarm!.status).toBe('ACTIVE');
     });
 
