@@ -8,6 +8,7 @@ const mockRouterPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockRouterPush }),
+  useSearchParams: () => ({ get: () => null }),
   redirect: vi.fn(),
 }));
 
