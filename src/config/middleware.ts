@@ -35,6 +35,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/workspaces/slug-availability", strategy: "exact", access: "public" },
   { path: "/api/mock-agent-log", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
+  { path: "/api/github/fork/config", strategy: "exact", access: "public" },
   { path: "/api/github/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/github/app/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },
