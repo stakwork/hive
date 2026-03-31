@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, Search, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import CreateSwarmDialog from "./CreateSwarmDialog";
 import Link from "next/link";
@@ -317,12 +317,8 @@ export default function SwarmsTable() {
                   {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                  {isTransitional ? (
-                    <Button variant="outline" size="sm" disabled>
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    </Button>
-                  ) : isRunning ? (
-                    <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-2">
+                    {isRunning && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -332,19 +328,24 @@ export default function SwarmsTable() {
                       >
                         {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Update Swarm"}
                       </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setPendingAction({ instance, action: "stop" })}
-                      >
-                        Stop
-                      </Button>
-                    </div>
-                  ) : instance.state === "stopped" ? (
-                    <Button variant="outline" size="sm" onClick={() => setPendingAction({ instance, action: "start" })}>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isTransitional || instance.state !== "stopped"}
+                      onClick={() => setPendingAction({ instance, action: "start" })}
+                    >
                       Start
                     </Button>
-                  ) : null}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={isTransitional || !isRunning}
+                      onClick={() => setPendingAction({ instance, action: "stop" })}
+                    >
+                      Stop
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
