@@ -41,6 +41,8 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
@@ -150,6 +152,7 @@ export function TaskStartInput({
     useSpeechRecognition();
 
   const devMode = isDevelopmentMode();
+  const taskAgentModeEnabled = useFeatureFlag(FEATURE_FLAGS.TASK_AGENT_MODE);
   const isWorkflowMode = taskMode === "workflow_editor";
   const isProjectMode = taskMode === "project_debugger";
   const isPromptsMode = taskMode === "prompts";
@@ -572,12 +575,14 @@ export function TaskStartInput({
                     <span>Async</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="agent">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-3.5 w-3.5" />
-                    <span>Agent</span>
-                  </div>
-                </SelectItem>
+                {taskAgentModeEnabled && (
+                  <SelectItem value="agent">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-3.5 w-3.5" />
+                      <span>Agent</span>
+                    </div>
+                  </SelectItem>
+                )}
                 {devMode && (
                   <SelectItem value="test">
                     <div className="flex items-center gap-2">
@@ -799,12 +804,14 @@ export function TaskStartInput({
                       <span>Async</span>
                     </div>
                   </SelectItem>
-                  <SelectItem value="agent">
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-3.5 w-3.5" />
-                      <span>Agent</span>
-                    </div>
-                  </SelectItem>
+                  {taskAgentModeEnabled && (
+                    <SelectItem value="agent">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-3.5 w-3.5" />
+                        <span>Agent</span>
+                      </div>
+                    </SelectItem>
+                  )}
                   {devMode && (
                     <SelectItem value="test">
                       <div className="flex items-center gap-2">
