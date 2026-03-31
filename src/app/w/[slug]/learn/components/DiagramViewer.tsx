@@ -138,9 +138,24 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
 
   useEffect(() => {
     if (!svgHtml) return;
-    requestAnimationFrame(() => {
+    let cancelled = false;
+
+    // The viewport may not have its final layout dimensions on the
+    // first animation frame (e.g. when the page is still mounting).
+    // Poll briefly until the container has a real size, then fit.
+    function measureAndFit() {
+      if (cancelled) return;
+
       const svg = canvasRef.current?.querySelector("svg");
-      if (!svg) return;
+      const vp = viewportRef.current;
+      if (!svg || !vp) return;
+
+      // Viewport hasn't laid out yet — try again next frame
+      if (vp.clientWidth === 0 || vp.clientHeight === 0) {
+        requestAnimationFrame(measureAndFit);
+        return;
+      }
+
       const size = getSvgNaturalSize(svg);
       svgW.current = size.w;
       svgH.current = size.h;
@@ -154,7 +169,10 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
       svg.style.display = "block";
 
       fitToView();
-    });
+    }
+
+    requestAnimationFrame(measureAndFit);
+    return () => { cancelled = true; };
   }, [svgHtml, fitToView]);
 
   /* ── resize observer ─────────────────────────────────── */
