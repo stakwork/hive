@@ -23,12 +23,12 @@ export async function fetchSwarmCredentials(instanceId: string): Promise<{ usern
     throw new Error(`Failed to fetch swarm credentials: ${json?.message ?? response.statusText}`);
   }
 
-  const { username, password } = json?.data ?? {};
-  if (!username || !password) {
-    throw new Error("Swarm credentials response is missing username or password");
+  const { password } = json?.data ?? {};
+  if (!password) {
+    throw new Error("Swarm credentials response is missing password");
   }
 
-  return { username, password };
+  return { username: "admin", password };
 }
 
 export async function createSwarmApi(
