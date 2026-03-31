@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
 import { validateWorkspaceSlug } from "@/services/workspace";
@@ -9,14 +7,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user || !(session.user as { id?: string }).id) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const slug = searchParams.get("slug");
 
