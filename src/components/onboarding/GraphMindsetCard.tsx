@@ -1,8 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useSession, signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,18 +14,7 @@ export function GraphMindsetCard() {
   const [isAvailable, setIsAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [creationStatus, setCreationStatus] = useState("");
-  const [forkRepoUrl, setForkRepoUrl] = useState<string | null>(null);
-  const [needsReauth, setNeedsReauth] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Fetch configured fork repo on mount
-  useEffect(() => {
-    fetch("/api/github/fork/config")
-      .then((r) => r.json())
-      .then((data) => setForkRepoUrl(data.repoUrl ?? null))
-      .catch(() => {}); // silently ignore — no fork config = original behaviour
-  }, []);
 
   const validateSlug = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -69,70 +56,12 @@ export function GraphMindsetCard() {
   const handleCreateGraph = async () => {
     setIsLoading(true);
     setSubmitError("");
-    setNeedsReauth(false);
 
     try {
-      let workspaceId = localStorage.getItem("graphMindsetWorkspaceId");
+      // 1. Persist name so WelcomeStep.claimPayment can use it after sign-in
+      localStorage.setItem("graphMindsetWorkspaceName", name);
 
-      if (!workspaceId) {
-        let forkUrl: string | undefined;
-
-        // Silently fork the configured repo if one is set
-        if (forkRepoUrl) {
-          setCreationStatus("Forking repository...");
-          const forkRes = await fetch("/api/github/fork", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repositoryUrl: forkRepoUrl }),
-          });
-          const forkJson = await forkRes.json();
-
-          if (forkRes.status === 403 && forkJson?.error === "insufficient_scope") {
-            setNeedsReauth(true);
-            setIsLoading(false);
-            setCreationStatus("");
-            return;
-          }
-
-          if (!forkRes.ok) {
-            setSubmitError(forkJson?.error || "Failed to fork repository.");
-            setIsLoading(false);
-            setCreationStatus("");
-            return;
-          }
-
-          forkUrl = forkJson?.forkUrl;
-        }
-
-        // Create workspace
-        setCreationStatus("Creating your workspace...");
-        const wsRes = await fetch("/api/workspaces", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            slug: name,
-            ...(forkUrl ? { repositoryUrl: forkUrl, workspaceKind: "GRAPH" } : {}),
-          }),
-        });
-        const wsJson = await wsRes.json();
-        if (!wsRes.ok) {
-          setSubmitError(wsJson?.error || "Failed to create workspace.");
-          setIsLoading(false);
-          setCreationStatus("");
-          return;
-        }
-        workspaceId = wsJson?.workspace?.id || wsJson?.id;
-        if (!workspaceId) {
-          setSubmitError("Unexpected response from workspace creation.");
-          setIsLoading(false);
-          setCreationStatus("");
-          return;
-        }
-        localStorage.setItem("graphMindsetWorkspaceId", workspaceId);
-      }
-
-      // Create Stripe checkout session
+      // 2. Create Stripe checkout session
       const stripeRes = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,7 +71,6 @@ export function GraphMindsetCard() {
       if (!stripeRes.ok) {
         setSubmitError(stripeJson?.error || "Failed to create payment session.");
         setIsLoading(false);
-        setCreationStatus("");
         return;
       }
 
@@ -150,19 +78,16 @@ export function GraphMindsetCard() {
       if (!sessionUrl) {
         setSubmitError("No payment URL returned. Please try again.");
         setIsLoading(false);
-        setCreationStatus("");
         return;
       }
 
-      // Persist so WelcomeStep can claim after sign-in
+      // 3. Persist sessionId for WelcomeStep to claim after return
       localStorage.setItem("graphMindsetSessionId", sessionId);
-      localStorage.setItem("graphMindsetWorkspaceName", name);
 
       window.location.href = sessionUrl;
     } catch {
       setSubmitError("Something went wrong. Please try again.");
       setIsLoading(false);
-      setCreationStatus("");
     }
   };
 
@@ -245,36 +170,22 @@ export function GraphMindsetCard() {
             <p className="text-xs text-destructive">{submitError}</p>
           )}
 
-          {needsReauth ? (
-            <div className="space-y-2">
-              <p className="text-sm text-destructive">
-                GitHub permission required to fork repositories.
-              </p>
-              <Button
-                className="w-full gap-2"
-                onClick={() => signIn("github", { callbackUrl: "/onboarding/workspace" })}
-              >
-                Reconnect GitHub
-              </Button>
-            </div>
-          ) : (
-            <Button
-              disabled={isButtonDisabled}
-              onClick={handleCreateGraph}
-              className="w-full gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {creationStatus || "Processing…"}
-                </>
-              ) : (
-                <>
-                  Create my graph <Network className="w-4 h-4" />
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            disabled={isButtonDisabled}
+            onClick={handleCreateGraph}
+            className="w-full gap-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Processing…
+              </>
+            ) : (
+              <>
+                Create my graph <Network className="w-4 h-4" />
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </Card>
