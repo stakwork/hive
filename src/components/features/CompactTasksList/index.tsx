@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -88,6 +88,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const [duplicatingTaskId, setDuplicatingTaskId] = useState<string | null>(null);
   const [queueStats, setQueueStats] = useState<{ queuedCount: number; unusedVms: number } | null>(null);
 
   const defaultPhase = feature.phases?.[0];
@@ -259,6 +260,46 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       toast.error("Failed to start task");
     } finally {
       setStartingTaskId(null);
+    }
+  };
+
+  const handleDuplicateTask = async (task: TaskWithPrArtifact) => {
+    if (duplicatingTaskId) return;
+    setDuplicatingTaskId(task.id);
+    try {
+      const response = await fetch(`/api/features/${featureId}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: task.title,
+          description: task.description ?? undefined,
+          phaseId: task.phaseId ?? undefined,
+          repositoryId: task.repository?.id ?? undefined,
+          priority: task.priority,
+          status: "TODO",
+          autoMerge: false,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to duplicate task");
+      const result = await response.json();
+      if (result.success && defaultPhase) {
+        const updatedPhases = feature.phases.map((phase) => {
+          if (phase.id === defaultPhase.id) {
+            return {
+              ...phase,
+              tasks: [...phase.tasks, result.data],
+            };
+          }
+          return phase;
+        });
+        onUpdate({ ...feature, phases: updatedPhases });
+        toast.success("Task duplicated");
+      }
+    } catch (error) {
+      console.error("Failed to duplicate task:", error);
+      toast.error("Failed to duplicate task");
+    } finally {
+      setDuplicatingTaskId(null);
     }
   };
 
@@ -452,6 +493,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               icon: ExternalLink,
               variant: "default" as const,
               onClick: () => router.push(getTaskRoute(task)),
+            },
+            {
+              label: "Duplicate",
+              icon: Copy,
+              variant: "default" as const,
+              disabled: duplicatingTaskId === task.id,
+              onClick: () => handleDuplicateTask(task),
             },
             {
               label: "Delete",
