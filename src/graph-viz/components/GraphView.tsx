@@ -217,14 +217,16 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
   // Stable mesh capacity — only grows (doubles), so InstancedMesh is rarely recreated
   const meshCapacityRef = useRef(Math.max(nodeCount, 1024));
-  const [meshCapacity, setMeshCapacity] = useState(Math.max(nodeCount, 1024));
+  // Grow capacity synchronously to avoid frame where count > capacity
+  if (nodeCount > meshCapacityRef.current) {
+    meshCapacityRef.current = Math.max(nodeCount, meshCapacityRef.current * 2);
+  }
+  const [meshCapacity, setMeshCapacity] = useState(meshCapacityRef.current);
   useEffect(() => {
-    if (nodeCount > meshCapacityRef.current) {
-      const newCap = Math.max(nodeCount, meshCapacityRef.current * 2);
-      meshCapacityRef.current = newCap;
-      setMeshCapacity(newCap);
+    if (meshCapacityRef.current > meshCapacity) {
+      setMeshCapacity(meshCapacityRef.current);
     }
-  }, [nodeCount]);
+  }, [nodeCount, meshCapacity]);
   // Track nodeCount and graph for the custom raycast closure (via refs so always current)
   const nodeCountRef = useRef(nodeCount);
   nodeCountRef.current = nodeCount;
@@ -574,8 +576,14 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     transitionProgress.current = 0;
   }, [targets, nodeCount]);
 
-  // Initialize once
+  // Snap all animation state to targets on mount and when graph structure changes
+  const prevGraphRef = useRef(graph);
   useEffect(() => {
+    // Always snap on mount; also snap when the graph object itself changes (rebuild)
+    const graphChanged = prevGraphRef.current !== graph;
+    prevGraphRef.current = graph;
+    if (!graphChanged && currentPos.current.length >= nodeCount * 3) return; // skip if just targets changed
+
     for (let i = 0; i < nodeCount; i++) {
       const i3 = i * 3;
       currentPos.current[i3] = targets.positions[i3];
@@ -588,8 +596,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
       currentAlpha.current[i] = targets.alphas[i];
     }
     setLabelPos(new Float32Array(currentPos.current));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [graph, targets, nodeCount]);
 
   // Attach per-instance progress attribute
   useEffect(() => {
@@ -688,8 +695,8 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     const lines = linesRef.current;
     if (!mesh) return;
 
-    // Only render active instances (meshCapacity may be larger)
-    mesh.count = nodeCount;
+    // Only render active instances — cap to capacity to avoid WebGL buffer overflow
+    mesh.count = Math.min(nodeCount, meshCapacityRef.current);
 
     const now = Date.now();
 
@@ -1605,12 +1612,11 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
       })()}
 
       {!minimap && graph.nodes.map((node, i) => {
-        if (node.status !== "executing") return null;
+        // Only show badge for loadable nodes that are actively loading
+        if (!node.loaderId) return null;
+        if (node.progress == null || node.progress < 0) return null;
         if (targets.scales[i] < 0.01) return null;
-        const hasProgress = node.progress != null && node.progress >= 0;
-        const badgeText = hasProgress
-          ? `${Math.round(node.progress! * 100)}%`
-          : (node.content || "active");
+        const badgeText = "loading\u2026";
         return (
           <Html
             key={`prog-${node.id}`}
