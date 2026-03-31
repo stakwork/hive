@@ -89,6 +89,7 @@ export const select = {
   webhookUrl: true,
   pendingRepairTrigger: true,
   description: true,
+  workspaceType: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
