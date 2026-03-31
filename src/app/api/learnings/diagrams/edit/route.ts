@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
       pat: token,
       skills: { mermaid: true },
       toolsConfig: { learn_concepts: true },
+      model: "opus",
     });
 
     const responseContent = agentResult?.content ?? JSON.stringify(agentResult);

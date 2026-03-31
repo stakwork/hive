@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, Search, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import CreateSwarmDialog from "./CreateSwarmDialog";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,12 @@ function StateBadge({ state }: { state: string }) {
 
 const TRANSITIONAL_STATES = new Set(["pending", "stopping", "shutting-down", "rebooting"]);
 
+function getUserAssignedName(tags: { key: string; value: string }[]): string | null {
+  return tags.find((t) => t.key === "UserAssignedName")?.value ?? null;
+}
+
 export default function SwarmsTable() {
+  const router = useRouter();
   const [instances, setInstances] = useState<Ec2Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +71,7 @@ export default function SwarmsTable() {
     field: "launchTime",
     direction: "desc",
   });
+  const [updatingSwarms, setUpdatingSwarms] = useState<Set<string>>(new Set());
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -121,6 +128,37 @@ export default function SwarmsTable() {
       });
     } finally {
       setIsActing(false);
+    }
+  };
+
+  const handleUpdateSwarm = async (instance: Ec2Instance, swarmUrl: string) => {
+    setUpdatingSwarms((prev) => new Set(prev).add(instance.instanceId));
+    try {
+      const res = await fetch(`/api/admin/swarms/${instance.instanceId}/cmd`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cmd: { type: "Swarm", data: { cmd: "UpdateSwarm" } },
+          swarmUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Request failed (${res.status})`);
+      }
+
+      toast.success("Swarm updated");
+    } catch (err) {
+      toast.error("Failed to update swarm", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setUpdatingSwarms((prev) => {
+        const next = new Set(prev);
+        next.delete(instance.instanceId);
+        return next;
+      });
     }
   };
 
@@ -227,6 +265,7 @@ export default function SwarmsTable() {
             <TableHead>Public IP</TableHead>
             <TableHead>Private IP</TableHead>
             <TableHead>In Hive</TableHead>
+            <TableHead>URL</TableHead>
             <TableHead>Tags</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -234,10 +273,19 @@ export default function SwarmsTable() {
         <TableBody>
           {filteredAndSorted.map((instance) => {
             const isTransitional = TRANSITIONAL_STATES.has(instance.state);
-            const visibleTags = instance.tags.filter((t) => t.key !== "Name");
+            const visibleTags = instance.tags.filter((t) => t.key !== "Name" && t.key !== "UserAssignedName");
+            const userAssignedName = getUserAssignedName(instance.tags);
+            const swarmUrl = userAssignedName ? `https://${userAssignedName}.sphinx.chat` : null;
+            const isRunning = instance.state === "running";
+            const isClickable = isRunning && !!userAssignedName;
+            const isUpdating = updatingSwarms.has(instance.instanceId);
 
             return (
-              <TableRow key={instance.instanceId}>
+              <TableRow
+                key={instance.instanceId}
+                className={isClickable ? "cursor-pointer hover:bg-muted/30" : undefined}
+                onClick={isClickable ? () => router.push(`/admin/swarms/${instance.instanceId}`) : undefined}
+              >
                 <TableCell className="font-medium">{instance.name}</TableCell>
                 <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
                 <TableCell>
@@ -254,6 +302,7 @@ export default function SwarmsTable() {
                     <Link
                       href={`/admin/workspaces/${instance.hiveWorkspace.slug}`}
                       className="underline hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {instance.hiveWorkspace.name}
                     </Link>
@@ -261,22 +310,36 @@ export default function SwarmsTable() {
                     "—"
                   )}
                 </TableCell>
+                <TableCell className="font-mono text-sm">
+                  {userAssignedName ? `${userAssignedName}.sphinx.chat` : "—"}
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                   {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   {isTransitional ? (
                     <Button variant="outline" size="sm" disabled>
                       <Loader2 className="h-3 w-3 animate-spin" />
                     </Button>
-                  ) : instance.state === "running" ? (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setPendingAction({ instance, action: "stop" })}
-                    >
-                      Stop
-                    </Button>
+                  ) : isRunning ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isUpdating || !swarmUrl}
+                        onClick={() => swarmUrl && handleUpdateSwarm(instance, swarmUrl)}
+                        data-testid={`update-swarm-${instance.instanceId}`}
+                      >
+                        {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Update Swarm"}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setPendingAction({ instance, action: "stop" })}
+                      >
+                        Stop
+                      </Button>
+                    </div>
                   ) : instance.state === "stopped" ? (
                     <Button variant="outline" size="sm" onClick={() => setPendingAction({ instance, action: "start" })}>
                       Start
