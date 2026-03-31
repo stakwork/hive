@@ -22,6 +22,9 @@ vi.mock('@/services/stripe', () => ({
 describe('Stripe Checkout API Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('STRIPE_SUCCESS_URL', 'https://example.com/success');
+    vi.stubEnv('STRIPE_CANCEL_URL', 'https://example.com/cancel');
+    vi.stubEnv('STRIPE_PRICE_ID', 'price_test_123');
   });
 
   describe('POST /api/stripe/checkout', () => {
