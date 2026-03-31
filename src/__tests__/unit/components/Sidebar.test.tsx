@@ -1135,9 +1135,9 @@ describe('Sidebar - GraphMindset Admin button', () => {
     } as any);
   });
 
-  it('renders GraphMindset Admin button when workspaceKind is "graph"', () => {
+  it('renders GraphMindset Admin button when workspaceKind is "graph_mindset"', () => {
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
-      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph' },
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
       slug: 'my-graph',
       loading: false,
       error: null,
@@ -1153,7 +1153,7 @@ describe('Sidebar - GraphMindset Admin button', () => {
 
   it('generates correct href for GraphMindset Admin button', () => {
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
-      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph' },
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
       slug: 'my-graph',
       loading: false,
       error: null,
@@ -1216,7 +1216,7 @@ describe('Sidebar - GraphMindset Admin button', () => {
 
   it('renders button in both mobile and desktop sidebars', () => {
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
-      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'graph-slug', poolState: null, workspaceKind: 'graph' },
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'graph-slug', poolState: null, workspaceKind: 'graph_mindset' },
       slug: 'graph-slug',
       loading: false,
       error: null,

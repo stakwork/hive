@@ -343,7 +343,7 @@ function SidebarContent({
       {/* Voice Agent Indicator */}
       <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
       {/* GraphMindset Admin */}
-      {workspaceKind === "graph" && workspaceSlug && (
+      {workspaceKind === "graph_mindset" && workspaceSlug && (
         <div className="px-4 pb-2">
           <Button
             asChild
