@@ -214,7 +214,18 @@ describe("useMermaidPaste", () => {
     const event = makePasteEvent(SIMPLE_GRAPH);
     await fireAndFlush(event);
 
-    expect(programmaticUpdateCountRef.current).toBe(1);
+    expect(programmaticUpdateCountRef.current).toBe(2);
+  });
+
+  it("calls preventDefault immediately when Mermaid syntax is detected, even on parse error", async () => {
+    renderMermaidPasteHook();
+
+    const event = makePasteEvent("```mermaid\nsequenceDiagram\n  Alice->>Bob: Hi\n```");
+    const preventDefaultSpy = vi.spyOn(event, "preventDefault");
+    await fireAndFlush(event);
+
+    expect(preventDefaultSpy).toHaveBeenCalled();
+    expect(excalidrawAPI.updateScene).not.toHaveBeenCalled();
   });
 
   it("shows unsupported-type error toast when sequenceDiagram is pasted", async () => {
