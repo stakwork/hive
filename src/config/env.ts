@@ -79,6 +79,7 @@ export const optionalEnvVars = {
   USE_MOCKS,
   MOCK_BASE,
   REDIS_URL: process.env.REDIS_URL,
+  ONBOARDING_FORK_REPOS: process.env.ONBOARDING_FORK_REPOS || "",
 } as const;
 
 /**
