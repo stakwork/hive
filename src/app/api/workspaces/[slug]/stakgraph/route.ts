@@ -696,7 +696,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         poolApiKey: swarmPoolApiKey,
         poolCpu: mergedPoolCpu,
         poolMemory: mergedPoolMemory,
-        userId: userId || undefined,
       });
 
       if (!syncResult2.success) {
