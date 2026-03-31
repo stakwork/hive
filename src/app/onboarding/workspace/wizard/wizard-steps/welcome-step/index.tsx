@@ -14,7 +14,7 @@ import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
 import { AlertCircle, ArrowRight, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
-import { redirect, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
 const POLL_INTERVAL_MS = 3000;
@@ -33,10 +33,10 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const [pendingRepoUrl, setPendingRepoUrl] = useState("");
 
   // Payment return state
-  const [cancelledWorkspaceId, setCancelledWorkspaceId] = useState<string | null>(null);
   const [showCancelBanner, setShowCancelBanner] = useState(false);
   const [isPollingSwarm, setIsPollingSwarm] = useState(false);
   const [pollError, setPollError] = useState("");
+  const [isClaiming, setIsClaiming] = useState(false);
 
   const { data: session } = useSession();
   const { refreshWorkspaces, workspaces } = useWorkspace();
@@ -45,6 +45,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const isCreatingRef = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const claimCalledRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -70,9 +71,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
           if (data?.status === "ACTIVE") {
             stopPolling();
-            localStorage.removeItem("graphMindsetWorkspaceId");
-
-            // Fetch workspace slug
             const wsRes = await fetch("/api/workspaces");
             const wsData = await wsRes.json();
             const ws = wsData?.workspaces?.find(
@@ -85,9 +83,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         }
       };
 
-      poll(); // immediate first attempt
+      poll();
       pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
       pollTimeoutRef.current = setTimeout(() => {
         stopPolling();
         setIsPollingSwarm(false);
@@ -99,26 +96,80 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     [router, stopPolling]
   );
 
+  const claimPayment = useCallback(
+    async (stripeSessionId: string) => {
+      if (claimCalledRef.current) return;
+      claimCalledRef.current = true;
+
+      setIsClaiming(true);
+      try {
+        const res = await fetch("/api/stripe/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: stripeSessionId }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setPollError(data?.error || "Failed to set up your workspace. Please contact support.");
+          setIsClaiming(false);
+          return;
+        }
+
+        const workspaceId = data?.workspace?.id;
+        if (workspaceId) {
+          await refreshWorkspaces();
+          setIsClaiming(false);
+          setIsPollingSwarm(true);
+          startSwarmPolling(workspaceId);
+        } else {
+          setPollError("Workspace creation succeeded but no ID was returned. Please contact support.");
+          setIsClaiming(false);
+        }
+      } catch {
+        setPollError("Something went wrong setting up your workspace. Please contact support.");
+        setIsClaiming(false);
+      }
+    },
+    [refreshWorkspaces, startSwarmPolling]
+  );
+
   // Handle Stripe return on mount
   useEffect(() => {
     const paymentState = searchParams.get("payment");
-    if (!paymentState) return;
+    const stripeSessionId = searchParams.get("session_id");
 
-    const storedWorkspaceId =
-      typeof window !== "undefined"
-        ? localStorage.getItem("graphMindsetWorkspaceId")
-        : null;
-
-    if (paymentState === "success" && storedWorkspaceId) {
-      setIsPollingSwarm(true);
-      startSwarmPolling(storedWorkspaceId);
-    } else if (paymentState === "cancelled" && storedWorkspaceId) {
-      setCancelledWorkspaceId(storedWorkspaceId);
+    if (paymentState === "success" && stripeSessionId) {
+      if (session?.user) {
+        // Signed in — claim immediately
+        claimPayment(stripeSessionId);
+      } else {
+        // Not signed in — redirect to sign-in and come back here with all params intact
+        const returnUrl = `/onboarding/workspace?payment=success&session_id=${stripeSessionId}`;
+        router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
+      }
+    } else if (paymentState === "cancelled") {
       setShowCancelBanner(true);
     }
 
     return () => stopPolling();
-  }, [searchParams, startSwarmPolling, stopPolling]);
+  // Run once on mount; session is handled in the effect below
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // If the user was redirected to sign-in and came back already signed in,
+  // the mount effect above already ran without a session. This effect handles
+  // the case where the session loads asynchronously after mount.
+  useEffect(() => {
+    if (!session?.user) return;
+    const paymentState = searchParams.get("payment");
+    const stripeSessionId = searchParams.get("session_id");
+    if (paymentState === "success" && stripeSessionId) {
+      claimPayment(stripeSessionId);
+    }
+  // Only re-run when session becomes available
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
 
   const validateGitHubUrl = (url: string): boolean => {
     const githubUrlPattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+(\/.*)?$/;
@@ -140,9 +191,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
     try {
       const repoName = extractRepoNameFromUrl(repoUrl);
-      if (!repoName) {
-        throw new Error("Could not extract repository name from URL");
-      }
+      if (!repoName) throw new Error("Could not extract repository name from URL");
 
       const base = repoName.toLowerCase();
       const pool = workspaces.map(w => w.slug.toLowerCase());
@@ -152,7 +201,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         `/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName)}`
       );
       const slugData = await slugResponse.json();
-
       if (!slugData.success || !slugData.data.isAvailable) {
         projectName = `${base}-${Date.now().toString().slice(-6)}`;
       }
@@ -167,19 +215,12 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
           repositoryUrl: repoUrl,
         }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create workspace");
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to create workspace");
 
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
-
-        fetch(`/api/workspaces/${data.workspace.slug}/access`, {
-          method: "POST",
-        }).catch(console.error);
+        fetch(`/api/workspaces/${data.workspace.slug}/access`, { method: "POST" }).catch(console.error);
 
         const statusResponse = await fetch(
           `/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`
@@ -187,34 +228,25 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {
-          router.push(
-            `/w/${data.workspace.slug}?github_setup_action=existing_installation`
-          );
+          router.push(`/w/${data.workspace.slug}?github_setup_action=existing_installation`);
           return;
+        }
+
+        const installResponse = await fetch("/api/github/app/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceSlug: data.workspace.slug, repositoryUrl: repoUrl }),
+        });
+        const installData = await installResponse.json();
+
+        if (installData.success && installData.data?.link) {
+          window.location.href = installData.data.link;
         } else {
-          const installResponse = await fetch("/api/github/app/install", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              workspaceSlug: data.workspace.slug,
-              repositoryUrl: repoUrl,
-            }),
-          });
-
-          const installData = await installResponse.json();
-
-          if (installData.success && installData.data?.link) {
-            window.location.href = installData.data.link;
-            return;
-          } else {
-            throw new Error(
-              installData.message || "Failed to generate GitHub App installation link"
-            );
-          }
+          throw new Error(installData.message || "Failed to generate GitHub App installation link");
         }
       }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to create workspace");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create workspace");
       setIsCreatingWorkspace(false);
       isCreatingRef.current = false;
     }
@@ -222,76 +254,45 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
   const handleNext = () => {
     const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
-
-    if (!trimmedUrl) {
-      setError("Please enter a GitHub repository URL");
-      return;
-    }
-
+    if (!trimmedUrl) { setError("Please enter a GitHub repository URL"); return; }
     if (!validateGitHubUrl(trimmedUrl)) {
-      setError(
-        "Please enter a valid GitHub repository URL (e.g., https://github.com/username/repo)"
-      );
+      setError("Please enter a valid GitHub repository URL (e.g., https://github.com/username/repo)");
       return;
     }
-
     localStorage.setItem("repoUrl", trimmedUrl);
-
-    if (!session?.user) {
-      setPendingRepoUrl(trimmedUrl);
-      setShowAuthModal(true);
-      return;
-    }
-
+    if (!session?.user) { setPendingRepoUrl(trimmedUrl); setShowAuthModal(true); return; }
     createWorkspaceAutomatically(trimmedUrl);
   };
 
   const handleAuthSuccess = () => {
-    if (pendingRepoUrl) {
-      createWorkspaceAutomatically(pendingRepoUrl);
-      setPendingRepoUrl("");
-    }
+    if (pendingRepoUrl) { createWorkspaceAutomatically(pendingRepoUrl); setPendingRepoUrl(""); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleNext();
-    }
+    if (e.key === "Enter") handleNext();
   };
 
-  const redirectToLogin = () => {
-    redirect("/auth/signin");
-  };
-
-  const createAccountOnly = () => {
-    router.push("/auth/signin?redirect=/workspaces");
-  };
-
-  const logoutAndRedirectToLogin = async () => {
-    await signOut({ callbackUrl: "/auth/signin", redirect: true });
-  };
-
-  // Success flow: show swarm provisioning loader
-  if (isPollingSwarm) {
+  if (isClaiming || (isPollingSwarm && !pollError)) {
     return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        {pollError ? (
-          <Card className="p-8 text-center space-y-4">
-            <p className="text-destructive font-medium">{pollError}</p>
-            <p className="text-sm text-muted-foreground">
-              If this persists, please{" "}
-              <a
-                href="mailto:support@stakwork.com"
-                className="underline text-primary"
-              >
-                contact support
-              </a>
-              .
-            </p>
-          </Card>
-        ) : (
-          <SwarmSetupLoader />
-        )}
+      <div className="max-w-2xl mx-auto">
+        <SwarmSetupLoader />
+      </div>
+    );
+  }
+
+  if (pollError) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card className="p-8 text-center space-y-4">
+          <p className="text-destructive font-medium">{pollError}</p>
+          <p className="text-sm text-muted-foreground">
+            Please{" "}
+            <a href="mailto:support@stakwork.com" className="underline text-primary">
+              contact support
+            </a>
+            .
+          </p>
+        </Card>
       </div>
     );
   }
@@ -337,7 +338,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                   </div>
                 )}
               </div>
-
               <div className="flex flex-col items-center gap-3">
                 <Button
                   onClick={handleNext}
@@ -351,10 +351,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
             </>
           ) : (
             <div className="flex flex-col items-center gap-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <div className="text-sm text-muted-foreground text-center">
-                {creationStatus}
-              </div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              <div className="text-sm text-muted-foreground text-center">{creationStatus}</div>
             </div>
           )}
 
@@ -371,9 +369,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
                         <IconComponent className={`w-4 h-4 ${language.color}`} />
                       </div>
                     </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{language.name}</p>
-                    </TooltipContent>
+                    <TooltipContent><p>{language.name}</p></TooltipContent>
                   </Tooltip>
                 );
               })}
@@ -382,7 +378,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         </CardContent>
       </Card>
 
-      {/* Cancelled payment banner */}
       {showCancelBanner && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-yellow-400/50 bg-yellow-50 dark:bg-yellow-950/30 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-300">
           <span>Payment cancelled — you can try again below.</span>
@@ -396,20 +391,19 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         </div>
       )}
 
-      <GraphMindsetCard existingWorkspaceId={cancelledWorkspaceId ?? undefined} />
+      <GraphMindsetCard />
 
-      {/* Account options */}
       {!session?.user ? (
         <div className="flex items-center justify-center gap-4 mt-6 text-sm text-muted-foreground">
           <button
-            onClick={redirectToLogin}
+            onClick={() => router.push("/auth/signin")}
             className="hover:text-primary transition-colors"
           >
             Sign in
           </button>
           <span>·</span>
           <button
-            onClick={createAccountOnly}
+            onClick={() => router.push("/auth/signin?redirect=/workspaces")}
             className="hover:text-primary transition-colors"
           >
             Create account
@@ -418,7 +412,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
       ) : (
         <div className="text-center mt-6">
           <button
-            onClick={logoutAndRedirectToLogin}
+            onClick={() => signOut({ callbackUrl: "/auth/signin", redirect: true })}
             className="text-sm text-muted-foreground hover:text-primary transition-colors"
           >
             Switch account
