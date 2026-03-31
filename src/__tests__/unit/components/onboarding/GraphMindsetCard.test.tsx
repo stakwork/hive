@@ -144,6 +144,12 @@ describe("GraphMindsetCard", () => {
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
 
+    // Workspace creation
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ workspace: { id: "ws_test_123" } }),
+    });
+
     // Stripe checkout
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -158,9 +164,10 @@ describe("GraphMindsetCard", () => {
     });
     expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
+    expect(localStorage.getItem("graphMindsetWorkspaceId")).toBe("ws_test_123");
 
-    // Three fetches: fork config (mount) + slug check + Stripe checkout
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // Four fetches: fork config (mount) + slug check + workspace creation + Stripe checkout
+    expect(mockFetch).toHaveBeenCalledTimes(4);
     expect(mockFetch).toHaveBeenLastCalledWith(
       "/api/stripe/checkout",
       expect.objectContaining({
