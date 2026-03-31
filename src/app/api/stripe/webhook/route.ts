@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
           const apiResponse = await swarmService.createSwarm({
             instance_type: SWARM_DEFAULT_INSTANCE_TYPE,
             password: swarmPassword,
-            workspace_type: 'graph_mindset',
           });
           const { swarm_id, address, x_api_key, ec2_id } = apiResponse.data;
           await saveOrUpdateSwarm({
@@ -62,7 +61,6 @@ export async function POST(req: NextRequest) {
             swarmSecretAlias: `{{${swarm_id}_API_KEY}}`,
             swarmId: swarm_id,
             swarmPassword,
-            workspaceType: 'graph_mindset',
           });
         } catch (err) {
           logger.error('Failed to create graph_mindset swarm after payment', 'stripe-webhook', {

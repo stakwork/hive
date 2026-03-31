@@ -299,7 +299,6 @@ model Swarm {
   pendingRepairTrigger    Json?                 @map("pending_repair_trigger")
   podCompletedAt          DateTime?             @map("pod_completed_at")
   description             String?
-  workspaceType           String?               @map("workspace_type")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

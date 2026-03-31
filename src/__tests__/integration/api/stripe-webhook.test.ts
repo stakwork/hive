@@ -167,12 +167,11 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       expect(response.status).toBe(200);
       expect((await response.json())).toEqual({ received: true });
       expect(mockCreateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({ workspace_type: 'graph_mindset' }),
+        expect.objectContaining({ instance_type: expect.any(String) }),
       );
 
       const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
       expect(swarm).not.toBeNull();
-      expect(swarm!.workspaceType).toBe('graph_mindset');
       expect(swarm!.status).toBe('ACTIVE');
     });
 
