@@ -30,12 +30,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
+    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch, workspace_type } = body;
 
-    console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`);
+    console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, workspace_type: ${workspace_type}, user: ${session.user.id}`);
 
-    if (!workspaceId || !repositoryUrl) {
-      console.log(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}`);
+    if (!workspaceId || (!repositoryUrl && workspace_type !== 'graph_mindset')) {
+      console.log(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}, workspace_type: ${workspace_type}`);
       return NextResponse.json(
         {
           success: false,
@@ -66,42 +66,46 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SWARM_CREATE] Access validated - user ${session.user.id} has admin access to workspace ${workspaceId}`);
 
-    // Ensure workspace is linked to SourceControlOrg before proceeding
-    console.log(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`);
-    const workspaceData = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      include: { sourceControlOrg: true },
-    });
+    // Ensure workspace is linked to SourceControlOrg before proceeding (only when repositoryUrl is provided)
+    if (repositoryUrl) {
+      console.log(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`);
+      const workspaceData = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        include: { sourceControlOrg: true },
+      });
 
-    if (workspaceData && !workspaceData.sourceControlOrg) {
-      console.log(`[SWARM_CREATE] Workspace not linked to SourceControlOrg, attempting to link`);
+      if (workspaceData && !workspaceData.sourceControlOrg) {
+        console.log(`[SWARM_CREATE] Workspace not linked to SourceControlOrg, attempting to link`);
 
-      // Extract GitHub owner from repository URL
-      const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)/);
-      if (githubMatch) {
-        const githubOwner = githubMatch[1];
-        console.log(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`);
+        // Extract GitHub owner from repository URL
+        const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)/);
+        if (githubMatch) {
+          const githubOwner = githubMatch[1];
+          console.log(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`);
 
-        // Look for existing SourceControlOrg for this GitHub owner
-        const sourceControlOrg = await db.sourceControlOrg.findUnique({
-          where: { githubLogin: githubOwner },
-        });
-
-        if (sourceControlOrg) {
-          // Link workspace to existing SourceControlOrg
-          await db.workspace.update({
-            where: { id: workspaceId },
-            data: { sourceControlOrgId: sourceControlOrg.id },
+          // Look for existing SourceControlOrg for this GitHub owner
+          const sourceControlOrg = await db.sourceControlOrg.findUnique({
+            where: { githubLogin: githubOwner },
           });
-          console.log(`[SWARM_CREATE] Successfully linked workspace ${workspaceId} to SourceControlOrg: ${sourceControlOrg.githubLogin} (ID: ${sourceControlOrg.id})`);
+
+          if (sourceControlOrg) {
+            // Link workspace to existing SourceControlOrg
+            await db.workspace.update({
+              where: { id: workspaceId },
+              data: { sourceControlOrgId: sourceControlOrg.id },
+            });
+            console.log(`[SWARM_CREATE] Successfully linked workspace ${workspaceId} to SourceControlOrg: ${sourceControlOrg.githubLogin} (ID: ${sourceControlOrg.id})`);
+          } else {
+            console.log(`[SWARM_CREATE] No SourceControlOrg found for GitHub owner: ${githubOwner}`);
+          }
         } else {
-          console.log(`[SWARM_CREATE] No SourceControlOrg found for GitHub owner: ${githubOwner}`);
+          console.warn(`[SWARM_CREATE] Could not extract GitHub owner from repository URL: ${repositoryUrl}`);
         }
-      } else {
-        console.warn(`[SWARM_CREATE] Could not extract GitHub owner from repository URL: ${repositoryUrl}`);
+      } else if (workspaceData?.sourceControlOrg) {
+        console.log(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`);
       }
-    } else if (workspaceData?.sourceControlOrg) {
-      console.log(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`);
+    } else {
+      console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl (workspace_type: ${workspace_type})`);
     }
 
     // Check for existing swarm and create placeholder in single transaction
@@ -134,6 +138,7 @@ export async function POST(request: NextRequest) {
           name: randomUUID(), // Temporary name
           instanceType: SWARM_DEFAULT_INSTANCE_TYPE,
           status: SwarmStatus.PENDING, // Mark as pending during creation
+          ...(workspace_type ? { workspaceType: workspace_type } : {}),
           // Leave other fields null/empty until external API completes
         },
       });
@@ -196,6 +201,7 @@ export async function POST(request: NextRequest) {
       const apiResponse = await swarmService.createSwarm({
         instance_type,
         password: swarmPassword,
+        ...(workspace_type ? { workspace_type } : {}),
       });
 
       const apiCallDuration = Date.now() - startTime;
@@ -223,6 +229,7 @@ export async function POST(request: NextRequest) {
         swarmSecretAlias: swarmSecretAlias,
         swarmId: swarm_id,
         swarmPassword: swarmPassword,
+        ...(workspace_type ? { workspaceType: workspace_type } : {}),
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
