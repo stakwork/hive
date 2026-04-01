@@ -3,6 +3,12 @@ import type Stripe from 'stripe';
 import { db } from '@/lib/db';
 import { constructStripeEvent } from '@/services/stripe';
 import { logger } from '@/lib/logger';
+import { SwarmService } from '@/services/swarm';
+import { getServiceConfig } from '@/config/services';
+import { generateSecurePassword } from '@/lib/utils/password';
+import { saveOrUpdateSwarm } from '@/services/swarm/db';
+import { SwarmStatus } from '@prisma/client';
+import { SWARM_DEFAULT_INSTANCE_TYPE } from '@/lib/constants';
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -24,7 +30,8 @@ export async function POST(req: NextRequest) {
     const workspaceId = stripeSession.metadata?.workspaceId;
 
     if (workspaceId) {
-      // Path A: workspace already existed at checkout time — update payment status
+      // Path A: workspace already existed at checkout time — update payment status and provision swarm
+      const swarmPayment = await db.swarmPayment.findUnique({ where: { stripeSessionId } });
       await db.$transaction([
         db.swarmPayment.update({
           where: { stripeSessionId },
@@ -34,10 +41,47 @@ export async function POST(req: NextRequest) {
           where: { id: workspaceId },
           data: { paymentStatus: 'PAID' },
         }),
+        db.workspaceTransaction.create({
+          data: {
+            workspaceId,
+            type: 'STRIPE',
+            amountUsd: stripeSession.amount_total,
+            currency: stripeSession.currency,
+            swarmPaymentId: swarmPayment?.id ?? null,
+          },
+        }),
       ]);
+
+      const existingSwarm = await db.swarm.findFirst({ where: { workspaceId } });
+      if (!existingSwarm) {
+        try {
+          const swarmService = new SwarmService(getServiceConfig('swarm'));
+          const swarmPassword = generateSecurePassword(20);
+          const apiResponse = await swarmService.createSwarm({
+            instance_type: SWARM_DEFAULT_INSTANCE_TYPE,
+            password: swarmPassword,
+          });
+          const { swarm_id, address, x_api_key, ec2_id } = apiResponse.data;
+          await saveOrUpdateSwarm({
+            workspaceId,
+            name: swarm_id,
+            status: SwarmStatus.ACTIVE,
+            swarmUrl: `https://${address}/api`,
+            ec2Id: ec2_id,
+            swarmApiKey: x_api_key,
+            swarmSecretAlias: `{{${swarm_id}_API_KEY}}`,
+            swarmId: swarm_id,
+            swarmPassword,
+          });
+        } catch (err) {
+          logger.error('Failed to create graph_mindset swarm after payment', 'stripe-webhook', { err });
+          // Do NOT rethrow — webhook must always return 2xx
+        }
+      }
     } else {
-      // Path B: unauthenticated checkout — no workspace yet.
+      // Path B: unauthenticated checkout — no workspace yet; record payment intent only.
       // The workspace will be created when the user claims via /api/stripe/claim after signing in.
+      // SwarmPayment row is created at claim time, so nothing to update here.
       logger.info('Stripe session completed without workspaceId (pre-auth flow)', 'stripe-webhook', {
         stripeSessionId,
         workspaceName: stripeSession.metadata?.workspaceName,

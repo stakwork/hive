@@ -29,6 +29,8 @@ function buildCheckoutCompletedEvent(
   sessionId: string,
   workspaceId: string,
   paymentIntentId = 'pi_test_abc123',
+  amountTotal = 2000,
+  currency = 'usd',
 ): Stripe.Event {
   return {
     id: 'evt_test_completed',
@@ -37,6 +39,8 @@ function buildCheckoutCompletedEvent(
       object: {
         id: sessionId,
         payment_intent: paymentIntentId,
+        amount_total: amountTotal,
+        currency,
         metadata: { workspaceId },
       } as unknown as Stripe.Checkout.Session,
     },
@@ -111,6 +115,39 @@ describe('Stripe Webhook Handler Integration Tests', () => {
         where: { id: workspace.id },
       });
       expect(updatedWorkspace!.paymentStatus).toBe('PAID');
+    });
+
+    test('checkout.session.completed: creates WorkspaceTransaction with correct amount, currency, and swarmPaymentId', async () => {
+      const { workspace } = await createTestWorkspaceScenario();
+      const payment = await createTestSwarmPayment({
+        workspaceId: workspace.id,
+        stripeSessionId: 'cs_test_tx_creation_session',
+        status: 'PENDING',
+      });
+
+      const event = buildCheckoutCompletedEvent(
+        payment.stripeSessionId,
+        workspace.id,
+        'pi_test_tx_intent',
+        4999,
+        'usd',
+      );
+      mockConstructStripeEvent.mockReturnValue(event);
+
+      const req = buildWebhookRequest(JSON.stringify({}));
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+
+      const tx = await db.workspaceTransaction.findUnique({
+        where: { swarmPaymentId: payment.id },
+      });
+      expect(tx).not.toBeNull();
+      expect(tx!.type).toBe('STRIPE');
+      expect(tx!.workspaceId).toBe(workspace.id);
+      expect(tx!.amountUsd).toBe(4999);
+      expect(tx!.currency).toBe('usd');
+      expect(tx!.swarmPaymentId).toBe(payment.id);
     });
 
     test('checkout.session.expired: updates SwarmPayment to EXPIRED', async () => {
