@@ -45,7 +45,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ sessionUrl: stripeSession.url, sessionId: stripeSession.id });
+    const res = NextResponse.json({ sessionUrl: stripeSession.url, sessionId: stripeSession.id });
+    res.cookies.set('stripe_session_id', stripeSession.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24, // 24 hours
+    });
+    return res;
   } catch (err) {
     logger.error('Failed to create Stripe checkout session', 'stripe-checkout', { err });
 
