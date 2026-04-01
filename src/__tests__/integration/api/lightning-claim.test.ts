@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { createTestWorkspaceScenario } from '@/__tests__/support/factories/workspace.factory';
 import { createTestUser } from '@/__tests__/support/factories/user.factory';
 import { createTestLightningPayment } from '@/__tests__/support/factories/lightning-payment.factory';
+import { createTestWorkspaceTransaction } from '@/__tests__/support/factories/workspace-transaction.factory';
 import {
   createAuthenticatedSession,
   getMockedSession,
@@ -110,6 +111,42 @@ describe('Lightning Claim API Integration Tests', () => {
       // Verify workspace paymentStatus is PAID
       const workspace = await db.workspace.findUnique({ where: { id: data.workspace.id } });
       expect(workspace!.paymentStatus).toBe('PAID');
+    });
+
+    test('backfills workspaceId on existing WorkspaceTransaction after successful claim', async () => {
+      const user = await createTestUser({ name: 'Claimant Backfill' });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const payment = await createTestLightningPayment({
+        workspaceName: 'Backfill Workspace',
+        workspaceSlug: 'backfill-ws',
+        paymentHash: 'claim_test_backfill_hash',
+        status: 'PAID',
+      });
+
+      // Simulate a transaction created at webhook time (workspaceId is null)
+      await createTestWorkspaceTransaction({
+        lightningPaymentId: payment.id,
+        type: 'LIGHTNING',
+        amountSats: payment.amount,
+        workspaceId: null,
+      });
+
+      const req = createPostRequest('/api/lightning/claim', {
+        paymentHash: payment.paymentHash,
+        password: 'my-password',
+      });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.workspace).toBeDefined();
+
+      const tx = await db.workspaceTransaction.findUnique({
+        where: { lightningPaymentId: payment.id },
+      });
+      expect(tx).not.toBeNull();
+      expect(tx!.workspaceId).toBe(data.workspace.id);
     });
 
     test('returns existing workspace for already-claimed invoice (idempotency)', async () => {
