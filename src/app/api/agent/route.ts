@@ -65,6 +65,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
+import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 
 const encryptionService = EncryptionService.getInstance();
@@ -417,6 +418,11 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 1a. Gate agent mode behind feature flag
+  if (!canAccessServerFeature(FEATURE_FLAGS.TASK_AGENT_MODE)) {
+    return NextResponse.json({ error: "Agent mode is not enabled" }, { status: 403 });
   }
 
   if (!taskId) {
