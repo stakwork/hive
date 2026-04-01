@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { stakworkService } from '@/lib/service-factory';
 import { logger } from '@/lib/logger';
-import { generateSecurePassword } from '@/lib/utils/password';
 import { optionalEnvVars } from '@/config/env';
 
 export const runtime = 'nodejs';
@@ -40,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const { name } = body;
   const slug = name.toLowerCase().replace(/\s+/g, '-');
-  const password = generateSecurePassword(20);
+  const password = process.env.GRAPHMINDSET_SWARM_PASSWORD;
 
   try {
     // Step 1: Create Stakwork customer
@@ -63,7 +62,7 @@ export async function POST(req: NextRequest) {
       instance_type: 'm6i.xlarge',
       name: `${slug}-Swarm`,
       vanity_address: `${slug}.sphinx.chat`,
-      password,
+      ...(password ? { password } : {}),
       workspace_type: 'graph_mindset',
       ...(token || pubkey || customerId
         ? {
