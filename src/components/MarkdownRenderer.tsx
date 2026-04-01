@@ -386,17 +386,37 @@ export function MarkdownRenderer({
           .replace(/\\'/g, "'")
       : children;
 
+  // For the user variant we use a reduced plugin set:
+  //
+  // remark plugins — exclude remarkDirective and remarkMath:
+  //   - remarkDirective parses `:word` syntax as a "text directive", which
+  //     causes `:8800` (port numbers) in URLs to be consumed and silently
+  //     dropped from the output.
+  //   - remarkMath can similarly misinterpret user content.
+  //
+  // rehype plugins — exclude rehypeRaw, rehypeSanitize, and rehypeFormat:
+  //   - rehypeRaw re-parses raw HTML nodes emitted by remarkGfm (e.g. `<slug>`
+  //     literal in text becomes an HTML node), then rehypeSanitize strips
+  //     unknown tags, losing everything after the tag (e.g. `:8800`).
+  //   - rehypeFormat injects whitespace <div> nodes inside <p> elements,
+  //     causing React hydration warnings and truncated textContent.
+  //
+  // With this reduced set, angle brackets and ampersands in user text are
+  // left as-is and rendered faithfully by React without HTML injection risk
+  // (no rehypeRaw means the raw-HTML nodes from remarkGfm are not re-parsed).
+  const remarkPluginList = isUser
+    ? [remarkGfm, remarkFrontmatter, remarkBreaks]
+    : [remarkGfm, remarkFrontmatter, remarkDirective, remarkMath, remarkBreaks];
+
+  const rehypePluginList = isUser
+    ? []
+    : [rehypeRaw, rehypeSanitize, rehypeFormat];
+
   return (
     <div className={cn("prose dark:prose-invert max-w-full break-words", className)}>
       <ReactMarkdown
-        remarkPlugins={[
-          remarkGfm,
-          remarkFrontmatter,
-          remarkDirective,
-          remarkMath,
-          remarkBreaks,
-        ]}
-        rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeFormat]}
+        remarkPlugins={remarkPluginList}
+        rehypePlugins={rehypePluginList}
         components={components}
       >
         {processedContent}
