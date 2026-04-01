@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -80,11 +80,15 @@ vi.mock("@/services/task-workflow", () => ({
     stakworkData: { projectId: "proj-123" },
   }),
 }));
+vi.mock("@/lib/auth/nextauth", () => ({
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 
 // Import mocked modules after mocks are defined
 import { db } from "@/lib/db";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 describe("PR Monitor - Branch Update Operations", () => {
   let mockOctokit: Partial<Octokit>;
@@ -1296,7 +1300,12 @@ describe("PR Monitor - Zombie PR fixes", () => {
         id: "task-1",
         mode: "live",
         workflowStatus: "COMPLETED",
+        createdById: "creator-1",
         workspace: { ownerId: "owner-1", slug: "test-workspace" },
+      } as any);
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        username: "creator-gh",
+        pat: "creator-pat",
       } as any);
       vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
         stakworkData: { projectId: "proj-123" },
@@ -1357,7 +1366,12 @@ describe("PR Monitor - Zombie PR fixes", () => {
         id: "task-1",
         mode: "live",
         workflowStatus: "COMPLETED",
+        createdById: "creator-1",
         workspace: { ownerId: "owner-1", slug: "test-workspace" },
+      } as any);
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        username: "creator-gh",
+        pat: "creator-pat",
       } as any);
 
       const { monitorOpenPRs } = await import("@/lib/github/pr-monitor");
@@ -1382,5 +1396,64 @@ describe("PR Monitor - Zombie PR fixes", () => {
         })
       );
     });
+  });
+});
+
+describe("triggerLiveModeFix - userId resolution", () => {
+  const taskId = "task-live-1";
+  const prompt = "Fix the CI failure";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
+      stakworkData: { projectId: "proj-live-1" },
+    } as any);
+  });
+
+  it("uses task createdById when task creator has GitHub credentials", async () => {
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: taskId,
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-user-1",
+      workspace: { ownerId: "owner-user-1", slug: "my-workspace" },
+    } as any);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+      username: "creator-gh",
+      pat: "creator-pat",
+    } as any);
+
+    const result = await triggerLiveModeFix(taskId, prompt);
+
+    expect(result.success).toBe(true);
+    expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("creator-user-1", "my-workspace");
+    expect(createChatMessageAndTriggerStakwork).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId, userId: "creator-user-1", mode: "live" })
+    );
+  });
+
+  it("falls back to workspace.ownerId and logs when task creator has no GitHub credentials", async () => {
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: taskId,
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-user-2",
+      workspace: { ownerId: "owner-user-2", slug: "my-workspace" },
+    } as any);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
+
+    const logInfoSpy = vi.spyOn(console, "log");
+
+    const result = await triggerLiveModeFix(taskId, prompt);
+
+    expect(result.success).toBe(true);
+    expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("creator-user-2", "my-workspace");
+    expect(createChatMessageAndTriggerStakwork).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId, userId: "owner-user-2", mode: "live" })
+    );
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Task creator has no GitHub credentials, falling back to workspace owner"),
+      expect.stringContaining("creator-user-2")
+    );
   });
 });
