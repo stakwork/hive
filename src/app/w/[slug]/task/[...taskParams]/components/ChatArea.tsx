@@ -1,35 +1,31 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Monitor, Server, ServerOff, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
-import { ChatMessage } from "./ChatMessage";
-import { ChatInput } from "./ChatInput";
-import { getAgentIcon } from "@/lib/icons";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
-import TaskBreadcrumbs from "./TaskBreadcrumbs";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
-import { InvitePopover } from "@/components/plan/InvitePopover";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useRef, useState } from "react";
+import { ChatInput } from "./ChatInput";
+import type { StreamContext } from "./WorkflowStatusBadge";
+import { ChatMessage } from "./ChatMessage";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{ path: string, filename: string, mimeType: string, size: number }>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
-  hasNonFormArtifacts?: boolean;
-  isChainVisible?: boolean;
   lastLogLine?: string;
-  logs?: LogEntry[];
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
   pendingStepAttachment?: WorkflowTransition | null;
@@ -51,6 +47,16 @@ interface ChatAreaProps {
   collaborators?: CollaboratorInfo[];
   onOpenBountyRequest?: () => void;
   sphinxInviteEnabled?: boolean;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
+  isPlanChat?: boolean;
+  onTitleSave?: (newTitle: string) => Promise<void>;
+  stakworkProjectId?: string | null;
+  isPrototypeTask?: boolean;
+  isSavingPlan?: boolean;
+  onSaveAndPlan?: () => void;
+  streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatArea({
@@ -59,9 +65,7 @@ export function ChatArea({
   onArtifactAction,
   inputDisabled = false,
   isLoading = false,
-  isChainVisible = false,
   lastLogLine = "",
-  logs = [],
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
   pendingStepAttachment = null,
@@ -83,12 +87,25 @@ export function ChatArea({
   collaborators,
   onOpenBountyRequest,
   sphinxInviteEnabled,
+  onRetry,
+  isRetrying = false,
+  isPlanChat = false,
+  onTitleSave,
+  stakworkProjectId,
+  isPrototypeTask = false,
+  isSavingPlan = false,
+  onSaveAndPlan,
+  streamContext = null,
+  isSuperAdmin = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -127,23 +144,51 @@ export function ChatArea({
     return () => clearTimeout(timer);
   }, [messages, shouldAutoScroll]);
 
-  const handleBackToTasks = () => {
-    const referrer = document.referrer;
-    const currentOrigin = window.location.origin;
+  // Auto-focus title input when editing starts
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
 
-    // Check if referrer exists and is from same app (same origin)
-    if (referrer && referrer.startsWith(currentOrigin)) {
-      router.back();
+  const handleTitleSaveInternal = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || !onTitleSave) {
+      setIsEditingTitle(false);
+      return;
+    }
+    await onTitleSave(trimmed);
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleEdit = () => {
+    if (featureId && onTitleSave) {
+      setTitleDraft(taskTitle ?? "");
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTitleSaveInternal();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsEditingTitle(false);
+    }
+  };
+
+  const handleBackToTasks = () => {
+    if (isPlanChat) {
+      router.push(`/w/${workspaceSlug}/plan`);
+    } else if (workspaceSlug) {
+      const path = featureId
+        ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
+        : `/w/${workspaceSlug}/tasks`;
+      router.push(path);
     } else {
-      // Fallback: feature Tasks tab for feature tasks, task list otherwise
-      if (workspaceSlug) {
-        const fallbackPath = featureId
-          ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
-          : `/w/${workspaceSlug}/tasks`;
-        router.push(fallbackPath);
-      } else {
-        router.back();
-      }
+      router.back();
     }
   };
 
@@ -166,30 +211,55 @@ export function ChatArea({
               </Button>
 
               {/* Task Title with inline breadcrumbs - with animation only when title changes */}
-              <AnimatePresence mode="wait">
-                <motion.h2
-                  key={taskTitle} // This will trigger re-animation when title changes
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0"
-                  title={taskTitle}
-                  data-testid="task-title"
-                >
-                  {/* Inline Breadcrumbs - only show in task chat context */}
-                  {workspaceSlug && taskId && (
-                    <TaskBreadcrumbs
-                      featureId={featureId ?? null}
-                      featureTitle={featureTitle ?? null}
-                      workspaceSlug={workspaceSlug}
-                    />
-                  )}
-                  <span className="truncate w-full">
-                    {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
-                  </span>
-                </motion.h2>
-              </AnimatePresence>
+              {!isEditingTitle ? (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={taskTitle}
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
+                    data-testid="task-title"
+                  >
+                    {/* Inline Breadcrumbs - only show in task chat context */}
+                    {workspaceSlug && taskId && (
+                      <TaskBreadcrumbs
+                        featureId={featureId ?? null}
+                        featureTitle={featureTitle ?? null}
+                        workspaceSlug={workspaceSlug}
+                      />
+                    )}
+                    <div className="flex items-center gap-2 w-full min-w-0">
+                      <span
+                        className="truncate cursor-pointer"
+                        title={taskTitle}
+                        onClick={handleTitleEdit}
+                      >
+                        {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                      </span>
+                      {featureId && onTitleSave && (
+                        <Pencil
+                          className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                          onClick={handleTitleEdit}
+                        />
+                      )}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+              ) : (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={handleTitleSaveInternal}
+                  onKeyDown={handleTitleKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  data-testid="task-title-input"
+                />
+              )}
             </div>
 
             {/* Presence Avatars */}
@@ -257,6 +327,19 @@ export function ChatArea({
                 </Tooltip>
               </TooltipProvider>
             )}
+
+            {/* Save and Plan (Prototype tasks only) */}
+            {isPrototypeTask && onSaveAndPlan && (
+              <Button
+                size="sm"
+                onClick={onSaveAndPlan}
+                disabled={isSavingPlan}
+                className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
+              >
+                {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                {isSavingPlan ? "Saving…" : "Save"}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -282,39 +365,6 @@ export function ChatArea({
             );
           })}
 
-        {isChainVisible && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="flex justify-start"
-          >
-            <div className="max-w-[85%] bg-muted rounded-2xl px-4 py-3 shadow-sm">
-              <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
-                {getAgentIcon()}
-                Hive
-              </div>
-              <div className="text-sm">{lastLogLine ? lastLogLine : `Communicating with workflow...`}</div>
-              {/* Optional: Add a subtle loading indicator */}
-              {isChainVisible && (
-                <div className="flex items-center mt-2 text-xs text-muted-foreground">
-                  <div className="flex space-x-1">
-                    <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.2s" }}
-                    ></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.4s" }}
-                    ></div>
-                  </div>
-                  <span className="ml-2">Processing...</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -332,8 +382,15 @@ export function ChatArea({
         taskMode={taskMode}
         taskId={taskId ?? undefined}
         featureId={featureId ?? undefined}
-        workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+        stakworkProjectId={stakworkProjectId}
+        lastLogLine={lastLogLine}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
+        isPlanChat={isPlanChat}
+        currentWorkspaceSlug={workspaceSlug}
+        streamContext={streamContext}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {onReleasePod && (

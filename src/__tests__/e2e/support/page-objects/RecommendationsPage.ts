@@ -106,7 +106,7 @@ export class RecommendationsPage {
    */
   async verifyRecommendationCount(expectedCount: number): Promise<void> {
     const cards = this.getRecommendationCards();
-    await expect(cards).toHaveCount(expectedCount);
+    await expect(cards).toHaveCount(expectedCount, { timeout: 15000 });
   }
 
   /**

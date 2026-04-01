@@ -3,8 +3,11 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import CopySwarmPasswordButton from "./CopySwarmPasswordButton";
 import AdminJanitorToggles from "./AdminJanitorToggles";
+import WorkspacePRStats from "./WorkspacePRStats";
+import AdminPodScaleControl from "./AdminPodScaleControl";
 
 export default async function AdminWorkspaceDetailPage({
   params,
@@ -48,6 +51,8 @@ export default async function AdminWorkspaceDetailPage({
           poolState: true,
           podState: true,
           swarmPassword: true,
+          minimumVms: true,
+          poolApiKey: true,
         },
       },
     },
@@ -59,6 +64,10 @@ export default async function AdminWorkspaceDetailPage({
 
   const hasPassword = !!workspace.swarm?.swarmPassword;
   const workspaceId = workspace.id;
+
+  const ec2Alert = workspace.swarm?.ec2Id
+    ? await db.ec2Alert.findUnique({ where: { instanceId: workspace.swarm.ec2Id } })
+    : null;
 
   return (
     <div className="container mx-auto py-8 space-y-6">
@@ -153,12 +162,57 @@ export default async function AdminWorkspaceDetailPage({
                 <p className="font-medium">{workspace.swarm?.podState || "N/A"}</p>
               </div>
             </div>
+            {workspace.swarm?.poolState === "COMPLETE" && !!workspace.swarm?.poolApiKey && (
+              <div>
+                <p className="text-sm font-medium mb-2">Pod Scaling</p>
+                <AdminPodScaleControl
+                  slug={slug}
+                  initialMinimumVms={workspace.swarm.minimumVms ?? 2}
+                />
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground mb-2">Password</p>
               <CopySwarmPasswordButton
                 workspaceId={workspaceId}
                 hasPassword={hasPassword}
               />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">CPU Alert Status</p>
+              {ec2Alert ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">CPU Alarm State</p>
+                    <Badge
+                      className={
+                        ec2Alert.alarmState === "ALARM"
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : ec2Alert.alarmState === "OK"
+                            ? "bg-green-50 text-green-700 border-green-200"
+                            : "bg-gray-100 text-gray-700 border-gray-200"
+                      }
+                      variant="outline"
+                    >
+                      {ec2Alert.alarmState}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Alarm Type</p>
+                    <p className="font-medium">{ec2Alert.alarmType}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Reason</p>
+                    <p className="font-medium text-sm">{ec2Alert.stateReason}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Last Changed</p>
+                    <p className="font-medium">{new Date(ec2Alert.triggeredAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No CPU alerts received</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -170,6 +224,16 @@ export default async function AdminWorkspaceDetailPage({
           </CardHeader>
           <CardContent>
             <AdminJanitorToggles workspaceId={workspaceId} />
+          </CardContent>
+        </Card>
+
+        {/* PR Statistics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>PR Statistics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WorkspacePRStats workspaceId={workspaceId} />
           </CardContent>
         </Card>
       </div>

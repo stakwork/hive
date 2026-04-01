@@ -23,6 +23,9 @@ export class S3MockWrapper {
     'video/webm',
     'video/quicktime',
   ];
+  private readonly allowedAudioTypes = [
+    'audio/wav',
+  ];
 
   /**
    * Generate a mock presigned upload URL
@@ -84,7 +87,8 @@ export class S3MockWrapper {
   validateFileType(contentType: string): boolean {
     return (
       this.allowedImageTypes.includes(contentType) ||
-      this.allowedVideoTypes.includes(contentType)
+      this.allowedVideoTypes.includes(contentType) ||
+      this.allowedAudioTypes.includes(contentType)
     );
   }
 
@@ -202,6 +206,57 @@ export class S3MockWrapper {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Validate audio buffer by checking magic numbers
+   */
+  validateAudioBuffer(buffer: Buffer, expectedType: string): boolean {
+    try {
+      const AUDIO_MAGIC_NUMBERS: Record<string, number[]> = {
+        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
+      };
+
+      const magicNumbers = AUDIO_MAGIC_NUMBERS[expectedType];
+
+      if (!magicNumbers) {
+        return false;
+      }
+
+      if (buffer.length < magicNumbers.length) {
+        return false;
+      }
+
+      for (let i = 0; i < magicNumbers.length; i++) {
+        if (buffer[i] !== magicNumbers[i]) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Generate voice signature path
+   */
+  generateVoiceSignaturePath(userId: string): string {
+    return `voice-signatures/${userId}/signature.wav`;
+  }
+
+  /**
+   * Generate whiteboard image path
+   */
+  generateWhiteboardImagePath(
+    workspaceId: string,
+    whiteboardId: string,
+    fileId: string,
+    mimeType: string
+  ): string {
+    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'bin'
+    return `whiteboards/${workspaceId}/${whiteboardId}/${fileId}.${ext}`
   }
 }
 

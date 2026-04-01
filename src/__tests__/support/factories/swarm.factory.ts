@@ -26,6 +26,7 @@ export interface CreateTestSwarmOptions {
   poolApiKey?: string;
   poolState?: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE";
   podState?: "NOT_STARTED" | "VALIDATING" | "COMPLETED" | "FAILED";
+  ec2Id?: string;
   /** If true, return existing swarm if name+workspace match */
   idempotent?: boolean;
 }
@@ -62,6 +63,7 @@ export async function createTestSwarm(
     poolName: options.poolName ?? null,
     poolState: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
     podState: options.podState ?? "NOT_STARTED",
+    ec2Id: options.ec2Id ?? null,
   };
 
    

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
@@ -11,20 +11,28 @@ import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  if (session?.user && (session.user as { id?: string }).id) {
+    return (session.user as { id: string }).id;
+  }
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+  if (token?.id && typeof token.id === "string") return token.id;
+  return null;
+}
+
 // PATCH /api/workspaces/[slug]/members/[userId] - Update member role
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const requesterId = await getUserId(request);
+    if (!requesterId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { slug, userId: targetUserId } = await params;
-    const requesterId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(requesterId);
     const body = await request.json();
 
     const { role } = body;
@@ -39,7 +47,7 @@ export async function PATCH(
     }
 
     // Check workspace access and admin permissions
-    const access = await validateWorkspaceAccess(slug, requesterId, true, { isSuperAdmin });
+    const access = await validateWorkspaceAccess(slug, requesterId, true);
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
@@ -66,21 +74,19 @@ export async function PATCH(
 
 // DELETE /api/workspaces/[slug]/members/[userId] - Remove member from workspace
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const requesterId = await getUserId(request);
+    if (!requesterId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { slug, userId: targetUserId } = await params;
-    const requesterId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(requesterId);
 
     // Check workspace access and admin permissions
-    const access = await validateWorkspaceAccess(slug, requesterId, true, { isSuperAdmin });
+    const access = await validateWorkspaceAccess(slug, requesterId, true);
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }

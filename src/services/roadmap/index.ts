@@ -4,6 +4,9 @@ export * from './utils';
 // Feature operations
 export * from './features';
 
+// Feature chat operations
+export * from './feature-chat';
+
 // User story operations
 export * from './user-stories';
 

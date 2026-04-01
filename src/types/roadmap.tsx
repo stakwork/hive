@@ -4,11 +4,14 @@ import type {
   PaginatedApiResponse,
 } from "./common";
 import React from "react";
-import { Inbox, Calendar, Loader2, CheckCircle, XCircle, PlayCircle } from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle, PlayCircle, Clock, Workflow } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 export type { FeatureStatus, FeaturePriority, TaskStatus, Priority };
 export type { TaskStatus as TicketStatus };
+
+// Virtual statuses for kanban view (not real Prisma enum values)
+export type TaskKanbanStatus = TaskStatus | "QUEUE" | "WORKFLOW_EDITOR";
 
 export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
   BACKLOG: "Backlog",
@@ -68,7 +71,22 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
   },
 ];
 
-export const TASK_KANBAN_COLUMNS: KanbanColumn<TaskStatus>[] = [
+export const WORKFLOW_EDITOR_KANBAN_COLUMN: KanbanColumn<TaskKanbanStatus> = {
+  status: "WORKFLOW_EDITOR",
+  title: "Workflows",
+  icon: <Workflow className="h-4 w-4" />,
+  color: "text-violet-600 dark:text-violet-400",
+  bgColor: "bg-violet-50/30 dark:bg-violet-950/10",
+};
+
+export const TASK_KANBAN_COLUMNS: KanbanColumn<TaskKanbanStatus>[] = [
+  {
+    status: "QUEUE",
+    title: "Queue",
+    icon: <Clock className="h-4 w-4" />,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50/30 dark:bg-blue-950/10",
+  },
   {
     status: "TODO",
     title: "To Do",
@@ -119,7 +137,6 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 // Feature with relations (matches GET /api/features list query)
-// Note: stakworkRuns count is added manually since Prisma types don't support conditional counts
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
   select: {
     id: true;
@@ -147,12 +164,12 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
     _count: {
       select: {
         userStories: true;
-        stakworkRuns: true;
       };
     };
   };
 }> & {
-  // Computed deployment status fields
+  // Computed fields
+  awaitingFeedback?: boolean;
   deploymentStatus?: "staging" | "production" | null;
   deploymentUrl?: string | null;
 };
@@ -171,6 +188,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     status: true;
     priority: true;
     workflowStatus: true;
+    stakworkProjectId: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -207,6 +225,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             title: true;
             description: true;
             status: true;
+            workflowStatus: true;
             priority: true;
             order: true;
             featureId: true;
@@ -350,6 +369,7 @@ export interface CreateFeatureRequest {
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string;
+  isFastTrack?: boolean;
 }
 
 export interface UpdateFeatureRequest {
@@ -430,6 +450,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         title: true;
         description: true;
         status: true;
+        workflowStatus: true;
         priority: true;
         order: true;
         featureId: true;
@@ -513,6 +534,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     deploymentStatus: true;
     deployedToStagingAt: true;
     deployedToProductionAt: true;
+    workflowStatus: true;
     createdAt: true;
     updatedAt: true;
     systemAssigneeType: true;

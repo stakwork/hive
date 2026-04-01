@@ -559,6 +559,8 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
     expect(typeof data.data.status.usedVms).toBe("number");
     expect(typeof data.data.status.unusedVms).toBe("number");
     expect(typeof data.data.status.lastCheck).toBe("string");
+    expect(data.data.status).toHaveProperty("queuedCount");
+    expect(typeof data.data.status.queuedCount).toBe("number");
   });
 
   it("should handle zero values in pool status", async () => {
@@ -593,5 +595,110 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
     expect(data.data.status.failedVms).toBe(0);
     expect(data.data.status.usedVms).toBe(0);
     expect(data.data.status.unusedVms).toBe(0);
+    expect(data.data.status.queuedCount).toBe(0);
+  });
+
+  it("should return queuedCount reflecting TODO + TASK_COORDINATOR tasks", async () => {
+    // Create a new workspace with queued tasks
+    const newScenario = await createTestWorkspaceScenario({
+      owner: { name: "Queued Tasks Owner" },
+    });
+
+    await createTestSwarm({
+      workspaceId: newScenario.workspace.id,
+      name: `queued-swarm-${generateUniqueId("swarm")}`,
+      status: "ACTIVE",
+    });
+
+    // Create 2 queued tasks (TODO + TASK_COORDINATOR)
+    await db.task.createMany({
+      data: [
+        {
+          title: `Queued Task 1 ${generateUniqueId("task")}`,
+          workspaceId: newScenario.workspace.id,
+          createdById: newScenario.owner.id,
+          updatedById: newScenario.owner.id,
+          status: "TODO",
+          systemAssigneeType: "TASK_COORDINATOR",
+          deleted: false,
+        },
+        {
+          title: `Queued Task 2 ${generateUniqueId("task")}`,
+          workspaceId: newScenario.workspace.id,
+          createdById: newScenario.owner.id,
+          updatedById: newScenario.owner.id,
+          status: "TODO",
+          systemAssigneeType: "TASK_COORDINATOR",
+          deleted: false,
+        },
+        // This one should NOT be counted (not TASK_COORDINATOR)
+        {
+          title: `Normal Task ${generateUniqueId("task")}`,
+          workspaceId: newScenario.workspace.id,
+          createdById: newScenario.owner.id,
+          updatedById: newScenario.owner.id,
+          status: "TODO",
+          deleted: false,
+        },
+      ],
+    });
+
+    getMockedRequireAuth.mockReturnValue({
+      id: newScenario.owner.id,
+      email: newScenario.owner.email!,
+      name: newScenario.owner.name!,
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${newScenario.workspace.slug}/pool/status`,
+      newScenario.owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: newScenario.workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    expect(data.data.status.queuedCount).toBe(2);
+  });
+
+  it("should return queuedCount of 0 when no TASK_COORDINATOR TODO tasks exist", async () => {
+    const newScenario = await createTestWorkspaceScenario({
+      owner: { name: "No Queue Owner" },
+    });
+
+    await createTestSwarm({
+      workspaceId: newScenario.workspace.id,
+      name: `no-queue-swarm-${generateUniqueId("swarm")}`,
+      status: "ACTIVE",
+    });
+
+    // Only non-coordinator tasks
+    await db.task.create({
+      data: {
+        title: `Regular Task ${generateUniqueId("task")}`,
+        workspaceId: newScenario.workspace.id,
+        createdById: newScenario.owner.id,
+        updatedById: newScenario.owner.id,
+        status: "TODO",
+        deleted: false,
+      },
+    });
+
+    getMockedRequireAuth.mockReturnValue({
+      id: newScenario.owner.id,
+      email: newScenario.owner.email!,
+      name: newScenario.owner.name!,
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${newScenario.workspace.slug}/pool/status`,
+      newScenario.owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: newScenario.workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    expect(data.data.status.queuedCount).toBe(0);
   });
 });

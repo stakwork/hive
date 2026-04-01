@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "../../utils";
 import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repository";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
     
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const body = await request.json();
     const { workspace, prompt, name, repositoryId } = body;
@@ -21,7 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: workspace, prompt, name" }, { status: 400 });
     }
 
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin });
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
+    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
     // Get workspace access to retrieve workspace ID
-    const workspaceAccess = await validateWorkspaceAccess(workspace, userOrResponse.id, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(workspace, userOrResponse.id, true);
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }

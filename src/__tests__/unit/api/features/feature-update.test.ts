@@ -53,6 +53,7 @@ describe("PATCH /api/features/[featureId] - Pusher broadcast", () => {
       assigneeId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+      planUpdatedAt: null,
       createdById: "user-123",
       deleted: false,
       workspace: {
@@ -205,6 +206,229 @@ describe("PATCH /api/features/[featureId] - Pusher broadcast", () => {
         featureId: "feature-123",
         newTitle: "Updated Title",
       },
+    );
+  });
+});
+
+describe("PATCH /api/features/[featureId] - planUpdatedAt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock successful auth
+    mockedRequireAuthOrApiToken.mockResolvedValue({
+      userId: "user-123",
+      workspaceId: "workspace-1",
+    } as any);
+
+    // Mock feature lookup with workspace structure for validateFeatureAccess
+    dbMock.feature.findUnique.mockResolvedValue({
+      id: "feature-123",
+      workspaceId: "workspace-1",
+      title: "Old Title",
+      brief: null,
+      requirements: null,
+      architecture: null,
+      status: "TODO",
+      priority: "MEDIUM",
+      assigneeId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      planUpdatedAt: null,
+      createdById: "user-123",
+      deleted: false,
+      workspace: {
+        id: "workspace-1",
+        ownerId: "user-123",
+        deleted: false,
+        members: [
+          {
+            role: "OWNER",
+          },
+        ],
+      },
+    } as any);
+
+    // Mock successful update - must include phases array for updateFeature transform
+    dbMock.feature.update.mockResolvedValue({
+      id: "feature-123",
+      workspaceId: "workspace-1",
+      title: "New Title",
+      brief: null,
+      requirements: null,
+      architecture: null,
+      status: "TODO",
+      priority: "MEDIUM",
+      assigneeId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      planUpdatedAt: new Date(),
+      createdById: "user-123",
+      phases: [],
+      tasks: [],
+      userStories: [],
+      workspace: {
+        id: "workspace-1",
+        name: "Test Workspace",
+        slug: "test-workspace",
+      },
+    } as any);
+
+    // Mock user lookup for assignee validation (returns null by default, override in specific tests)
+    dbMock.user.findFirst.mockResolvedValue(null);
+  });
+
+  it("should set planUpdatedAt when updating brief", async () => {
+    const request = createPatchRequest({ brief: "Updated brief content" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.objectContaining({
+          brief: "Updated brief content",
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should set planUpdatedAt when updating requirements", async () => {
+    const request = createPatchRequest({ requirements: "Updated requirements" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.objectContaining({
+          requirements: "Updated requirements",
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should set planUpdatedAt when updating architecture", async () => {
+    const request = createPatchRequest({ architecture: "Updated architecture" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.objectContaining({
+          architecture: "Updated architecture",
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should set planUpdatedAt when updating multiple plan fields", async () => {
+    const request = createPatchRequest({
+      brief: "New brief",
+      requirements: "New requirements",
+    });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.objectContaining({
+          brief: "New brief",
+          requirements: "New requirements",
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should NOT set planUpdatedAt when updating only title", async () => {
+    const request = createPatchRequest({ title: "New Title" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.not.objectContaining({
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should NOT set planUpdatedAt when updating only status", async () => {
+    const request = createPatchRequest({ status: "IN_PROGRESS" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.not.objectContaining({
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should NOT set planUpdatedAt when updating only priority", async () => {
+    const request = createPatchRequest({ priority: "HIGH" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.not.objectContaining({
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should NOT set planUpdatedAt when updating only assigneeId", async () => {
+    // Mock the assignee user lookup that updateFeature performs
+    dbMock.user.findFirst.mockResolvedValue({
+      id: "user-456",
+      name: "Assignee User",
+      email: "assignee@example.com",
+    } as any);
+
+    const request = createPatchRequest({ assigneeId: "user-456" });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.not.objectContaining({
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("should set planUpdatedAt when updating plan field along with non-plan fields", async () => {
+    const request = createPatchRequest({
+      brief: "Updated brief",
+      status: "IN_PROGRESS",
+      priority: "HIGH",
+    });
+    const response = await PATCH(request, { params: featureParams });
+
+    expect(response.status).toBe(200);
+    expect(dbMock.feature.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: expect.objectContaining({
+          brief: "Updated brief",
+          planUpdatedAt: expect.any(Date),
+        }),
+      }),
     );
   });
 });

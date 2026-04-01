@@ -139,6 +139,7 @@ export const JanitorTestDataFactory = {
       usedVms: 2 - unusedVms,
       unusedVms,
       lastCheck: new Date().toISOString(),
+      queuedCount: 0,
     },
   }),
 

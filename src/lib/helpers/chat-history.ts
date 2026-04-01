@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { ArtifactType } from "@/lib/chat";
 
+function safeParseJson(value: unknown): unknown[] {
+  if (!value) return [];
+  try { return JSON.parse(value as string); } catch { return []; }
+}
+
 /**
  * Fetch chat history for a task
  * @param taskId - The task ID to fetch history for
@@ -37,7 +42,7 @@ export async function fetchChatHistory(
     role: msg.role,
     status: msg.status,
     timestamp: msg.createdAt.toISOString(),
-    contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
+    contextTags: safeParseJson(msg.contextTags),
     artifacts: msg.artifacts.map((artifact) => ({
       id: artifact.id,
       type: artifact.type,

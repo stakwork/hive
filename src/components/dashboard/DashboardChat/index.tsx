@@ -1,8 +1,10 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useSession } from "next-auth/react";
 import { useStreamProcessor } from "@/lib/streaming";
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
@@ -11,7 +13,8 @@ import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
-import { X } from "lucide-react";
+import { Sparkles, BookOpen, Share2, X, EyeOff } from "lucide-react";
+import { RecentChatsPopup, type LoadConversationParams } from "./RecentChatsPopup";
 
 interface ToolCall {
   id: string;
@@ -32,11 +35,18 @@ interface Message {
 }
 
 export function DashboardChat() {
-  const { slug } = useWorkspace();
+  const { slug, workspace } = useWorkspace();
+  const { data: session } = useSession();
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isCreatingFeature, setIsCreatingFeature] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const conversationIdRef = useRef<string | null>(null);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
+  const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
   const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
@@ -45,6 +55,7 @@ export function DashboardChat() {
   const [_isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const assistantMsgsRef = useRef<Message[]>([]);
   const { processStream } = useStreamProcessor();
 
   // Auto-scroll to bottom when messages change
@@ -86,8 +97,40 @@ export function DashboardChat() {
       .reverse()
       .find((m) => m.imageData)?.imageData || null;
 
+  // Fire-and-forget auto-save helpers
+  const autoSaveCreate = (msgs: Message[], workspaceSlugs: string[]) => {
+    if (!slug) return;
+    fetch(`/api/workspaces/${slug}/chat/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: msgs,
+        settings: { extraWorkspaceSlugs: workspaceSlugs },
+        source: "dashboard",
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.id) conversationIdRef.current = data.id;
+      })
+      .catch(() => {});
+  };
+
+  const autoSaveAppend = (msgs: Message[], workspaceSlugs: string[]) => {
+    if (!slug || !conversationIdRef.current) return;
+    fetch(`/api/workspaces/${slug}/chat/conversations/${conversationIdRef.current}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: msgs,
+        settings: { extraWorkspaceSlugs: workspaceSlugs },
+      }),
+    }).catch(() => {});
+  };
+
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
+    if (isReadOnly) return;
 
     // Clear follow-up questions and provenance when user sends a message
     setFollowUpQuestions([]);
@@ -127,6 +170,14 @@ export function DashboardChat() {
     setMessages(updatedMessages);
     setIsLoading(true);
     hasReceivedContentRef.current = false;
+
+    // Auto-save: create on first message, append on subsequent
+    if (conversationIdRef.current === null) {
+      autoSaveCreate(updatedMessages, extraWorkspaceSlugs);
+    } else {
+      const lastUserMsg = updatedMessages[updatedMessages.length - 1];
+      autoSaveAppend([lastUserMsg], extraWorkspaceSlugs);
+    }
 
     try {
       const response = await fetch(`/api/ask/quick`, {
@@ -304,6 +355,9 @@ export function DashboardChat() {
           setActiveToolCalls([]);
         }
 
+        // Track assistant messages for auto-save
+        assistantMsgsRef.current = timelineMessages;
+
         // Update messages state
         setMessages((prev) => {
           // Remove old messages for this response
@@ -326,6 +380,14 @@ export function DashboardChat() {
       setActiveToolCalls([]); // Clear tool calls on error
     } finally {
       setIsLoading(false);
+      // Auto-save: append assistant messages after stream completes
+      if (conversationIdRef.current) {
+        const assistantMsgs = assistantMsgsRef.current;
+        if (assistantMsgs.length > 0) {
+          autoSaveAppend(assistantMsgs, extraWorkspaceSlugs);
+        }
+      }
+      assistantMsgsRef.current = [];
     }
   };
 
@@ -335,6 +397,9 @@ export function DashboardChat() {
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
     setExtraWorkspaceSlugs([]);
+    conversationIdRef.current = null;
+    assistantMsgsRef.current = [];
+    setIsReadOnly(false);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -362,6 +427,21 @@ export function DashboardChat() {
     });
   };
 
+  const handleLoadConversation = ({
+    messages: loadedMessages,
+    extraWorkspaceSlugs: loadedSlugs,
+    conversationId,
+    isReadOnly: readOnly,
+  }: LoadConversationParams) => {
+    setMessages(loadedMessages as Message[]);
+    setExtraWorkspaceSlugs(loadedSlugs);
+    conversationIdRef.current = conversationId;
+    setIsReadOnly(readOnly);
+    setFollowUpQuestions([]);
+    setProvenanceData(null);
+    setIsProvenanceSidebarOpen(false);
+  };
+
   const handleFollowUpClick = (question: string) => {
     // Clear follow-up questions immediately
     setFollowUpQuestions([]);
@@ -373,133 +453,189 @@ export function DashboardChat() {
     handleSend(question, noop);
   };
 
-  const handleOpenFeatureModal = () => {
-    setShowFeatureModal(true);
-  };
+  /** Formats the current messages array into ModelMessage[] for the extraction API */
+  const formatMessagesForExtraction = (): ModelMessage[] =>
+    messages
+      .filter((m) => m.content.trim() || m.toolCalls)
+      .flatMap((m): ModelMessage[] => {
+        if (m.imageData) {
+          return [
+            {
+              role: "user" as const,
+              content: [
+                { type: "image" as const, image: m.imageData },
+                { type: "text" as const, text: m.content },
+              ],
+            },
+          ];
+        }
 
-  const handleCreateFeature = async (objective: string) => {
-    if (!slug || messages.length === 0) return;
+        if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+          const msgs: ModelMessage[] = [];
 
-    setIsCreatingFeature(true);
+          msgs.push({
+            role: m.role,
+            content: m.toolCalls.map((tc) => ({
+              type: "tool-call" as const,
+              toolCallId: tc.id,
+              toolName: tc.toolName,
+              input: tc.input || {},
+            })),
+          });
 
-    try {
-      // Filter out empty messages and add objective as a user message
-      const messagesWithObjective: ModelMessage[] = [
-        ...messages
-          .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
-          .flatMap((m): ModelMessage[] => {
-            // Handle content with images (always from user in this context)
-            if (m.imageData) {
-              return [
-                {
-                  role: "user" as const,
-                  content: [
-                    { type: "image" as const, image: m.imageData },
-                    { type: "text" as const, text: m.content },
-                  ],
-                },
-              ];
-            }
-
-            // Build separate messages for tool calls, results, and text (AI SDK format)
-            if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-              const messages: ModelMessage[] = [];
-
-              // First message: tool calls only
-              const toolCallMessage: ModelMessage = {
-                role: m.role,
-                content: m.toolCalls.map((tc) => ({
-                  type: "tool-call" as const,
+          const toolResults = m.toolCalls.filter(
+            (tc) => tc.output !== undefined || tc.errorText !== undefined
+          );
+          if (toolResults.length > 0) {
+            msgs.push({
+              role: "tool" as const,
+              content: toolResults.map((tc) => {
+                let wrappedOutput = tc.output;
+                if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                  wrappedOutput = { type: "json", value: tc.output };
+                }
+                return {
+                  type: "tool-result" as const,
                   toolCallId: tc.id,
                   toolName: tc.toolName,
-                  input: tc.input || {},
-                })),
-              };
-              messages.push(toolCallMessage);
-
-              // Second message: tool results (if any tool has output)
-              const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
-              if (toolResults.length > 0) {
-                const toolResultMessage = {
-                  role: "tool" as const,
-                  content: toolResults.map((tc) => {
-                    // Ensure output is wrapped in AI SDK format
-                    let wrappedOutput = tc.output;
-                    if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
-                      wrappedOutput = { type: "json", value: tc.output };
-                    }
-
-                    return {
-                      type: "tool-result" as const,
-                      toolCallId: tc.id,
-                      toolName: tc.toolName,
-
-                      output: wrappedOutput as any,
-                    };
-                  }),
-                } satisfies ModelMessage;
-                messages.push(toolResultMessage);
-              }
-
-              // Third message: text content (if any)
-              if (m.content) {
-                const textMessage: ModelMessage = {
-                  role: m.role,
-                  content: m.content,
+                  output: wrappedOutput as any,
                 };
-                messages.push(textMessage);
-              }
+              }),
+            } satisfies ModelMessage);
+          }
 
-              return messages;
-            }
+          if (m.content) {
+            msgs.push({ role: m.role, content: m.content });
+          }
 
-            // Simple text message
-            return [
-              {
-                role: m.role as "user" | "assistant",
-                content: m.content,
-              },
-            ];
-          }),
-        {
-          role: "user" as const,
-          content: `Feature objective: ${objective}`,
-        },
-      ];
+          return msgs;
+        }
 
+        return [{ role: m.role as "user" | "assistant", content: m.content }];
+      });
+
+  const runExtraction = async () => {
+    if (!slug || messages.length === 0) return;
+
+    setIsExtracting(true);
+    setExtractError(null);
+    setExtractedData(null);
+
+    try {
       const response = await fetch("/api/features/create-feature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceSlug: slug,
-          transcript: messagesWithObjective,
-          deepResearch: true,
+          transcript: formatMessagesForExtraction(),
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to create feature");
+        throw new Error(errorData.error || "Failed to extract feature");
       }
 
       const data = await response.json();
-
-      // Close modal on success
-      setShowFeatureModal(false);
-
-      // Show appropriate toast based on whether deep research was started
-      toast.success("Feature created!", {
-        description: data.run
-          ? `"${data.title}" has been added. Starting deep research...`
-          : `"${data.title}" has been added to your workspace.`,
-      });
+      setExtractedData({ title: data.title, description: data.description });
     } catch (error) {
-      console.error("❌ Error creating feature from chat:", error);
-      toast.error("Failed to create feature", {
+      setExtractError(error instanceof Error ? error.message : "Extraction failed");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleOpenFeatureModal = () => {
+    setExtractedData(null);
+    setExtractError(null);
+    setShowFeatureModal(true);
+    runExtraction();
+  };
+
+  const handleRetryExtract = () => {
+    runExtraction();
+  };
+
+  const handleLaunchPlan = async (title: string, description: string) => {
+    if (!slug || !workspace) return;
+    setIsLaunching(true);
+    try {
+      // 1. Create the Feature record
+      const featureRes = await fetch("/api/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, workspaceId: workspace.id }),
+      });
+      if (!featureRes.ok) {
+        const err = await featureRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create feature");
+      }
+      const { data: feature } = await featureRes.json();
+
+      // 2. Send description as first Plan Mode chat message
+      const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: description }),
+      });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
+
+      // 3. Navigate into Plan Mode
+      setShowFeatureModal(false);
+      router.push(`/w/${slug}/plan/${feature.id}`);
+    } catch (error) {
+      toast.error("Failed to launch Plan Mode", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     } finally {
-      setIsCreatingFeature(false);
+      setIsLaunching(false);
+    }
+  };
+
+  const handleLaunchTask = async (title: string, description: string) => {
+    if (!slug) return;
+    setIsLaunching(true);
+    try {
+      // 1. Create the Task record
+      const taskRes = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          workspaceSlug: slug,
+          description,
+          mode: "live",
+        }),
+      });
+      if (!taskRes.ok) {
+        const err = await taskRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create task");
+      }
+      const { data: task } = await taskRes.json();
+
+      // 2. Send description as first chat message
+      const chatRes = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, message: description, mode: "live" }),
+      });
+      if (!chatRes.ok) {
+        const err = await chatRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send initial message");
+      }
+
+      // 3. Navigate into Task
+      setShowFeatureModal(false);
+      router.push(`/w/${slug}/task/${task.id}`);
+    } catch (error) {
+      toast.error("Failed to launch task", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsLaunching(false);
     }
   };
 
@@ -562,16 +698,6 @@ export function DashboardChat() {
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="flex flex-col min-h-0">
-          {/* Clear all button - above scrollable area */}
-          <div className="flex justify-end px-2 pb-0.5">
-            <button
-              onClick={handleClearAll}
-              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-70 hover:opacity-100 transition-opacity"
-              aria-label="Clear all messages"
-            >
-              <X className="w-5 h-5" strokeWidth={2.5} />
-            </button>
-          </div>
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
             <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
@@ -617,22 +743,77 @@ export function DashboardChat() {
         </div>
       )}
 
+      {/* Action pill row — only when messages exist */}
+      {hasMessages && (
+        <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1 flex-wrap">
+          <button
+            type="button"
+            onClick={handleOpenFeatureModal}
+            disabled={isExtracting || isLaunching || isLoading || isReadOnly}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate Plan
+          </button>
+          {hasProvenanceFiles && (
+            <button
+              type="button"
+              onClick={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
+              className={`pointer-events-auto rounded-full border px-3 py-1.5 text-xs transition-all flex items-center gap-1.5 ${
+                isProvenanceSidebarOpen
+                  ? "border-primary/60 bg-primary/10 text-primary hover:bg-primary/20"
+                  : "border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              Sources
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={isLoading}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+          {slug && session?.user && (session.user as { id?: string }).id && (
+            <RecentChatsPopup
+              slug={slug}
+              currentUserId={(session.user as { id: string }).id}
+              onLoadConversation={handleLoadConversation}
+            />
+          )}
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Read-only badge */}
+      {isReadOnly && (
+        <div className="pointer-events-auto flex justify-center pb-1">
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-600 dark:text-amber-400">
+            <EyeOff className="w-3 h-3" />
+            View only
+          </span>
+        </div>
+      )}
+
       {/* Input field */}
       <div className="pointer-events-auto shrink-0">
         <ChatInput
           onSend={handleSend}
-          disabled={isLoading}
-          showCreateFeature={hasMessages}
-          onCreateFeature={handleOpenFeatureModal}
-          isCreatingFeature={isCreatingFeature}
+          disabled={isLoading || isReadOnly}
           imageData={currentImageData}
           onImageUpload={handleImageUpload}
           onImageRemove={handleImageRemove}
-          showProvenanceToggle={hasProvenanceFiles}
-          isProvenanceSidebarOpen={isProvenanceSidebarOpen}
-          onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
-          showShareButton={messages.length > 0}
-          onShare={handleShare}
           extraWorkspaceSlugs={extraWorkspaceSlugs}
           onAddWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => [...prev, ws])}
           onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}
@@ -644,8 +825,13 @@ export function DashboardChat() {
       <CreateFeatureModal
         open={showFeatureModal}
         onOpenChange={setShowFeatureModal}
-        onSubmit={handleCreateFeature}
-        isCreating={isCreatingFeature}
+        onLaunchPlan={handleLaunchPlan}
+        onLaunchTask={handleLaunchTask}
+        isLaunching={isLaunching}
+        extractedData={extractedData}
+        isExtracting={isExtracting}
+        extractError={extractError}
+        onRetryExtract={handleRetryExtract}
       />
     </div>
   );

@@ -79,6 +79,11 @@ describe("resolveRouteAccess", () => {
     it("matches chat response webhook route", () => {
       expect(resolveRouteAccess("/api/chat/response")).toBe("webhook");
     });
+
+    it("matches /mcp prefix for webhook routes", () => {
+      expect(resolveRouteAccess("/mcp")).toBe("webhook");
+      expect(resolveRouteAccess("/mcp/session/abc")).toBe("webhook");
+    });
   });
 
   describe("Pattern Route Matching", () => {

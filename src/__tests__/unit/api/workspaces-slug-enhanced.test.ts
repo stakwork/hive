@@ -1,13 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { getWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
 
 // Mock the workspace service functions
 vi.mock("@/services/workspace", () => ({
@@ -16,10 +11,18 @@ vi.mock("@/services/workspace", () => ({
   deleteWorkspaceBySlug: vi.fn(),
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockGetWorkspaceBySlug = getWorkspaceBySlug as vi.MockedFunction<typeof getWorkspaceBySlug>;
 const mockUpdateWorkspace = updateWorkspace as vi.MockedFunction<typeof updateWorkspace>;
 const mockDeleteWorkspaceBySlug = deleteWorkspaceBySlug as vi.MockedFunction<typeof deleteWorkspaceBySlug>;
+
+function makeAuthHeaders(user: { id: string; email: string; name: string }): Headers {
+  const headers = new Headers();
+  headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+  headers.set(MIDDLEWARE_HEADERS.USER_ID, user.id);
+  headers.set(MIDDLEWARE_HEADERS.USER_EMAIL, user.email);
+  headers.set(MIDDLEWARE_HEADERS.USER_NAME, user.name);
+  return headers;
+}
 
 describe("Enhanced Workspace [slug] API Integration Tests", () => {
   const mockWorkspace = {
@@ -61,16 +64,14 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should return workspace with correct user role for owner", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockGetWorkspaceBySlug.mockResolvedValue({
         ...mockWorkspace,
         userRole: "OWNER",
       });
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
+      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
+        headers: makeAuthHeaders(mockOwnerUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
@@ -79,68 +80,59 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(data.workspace.name).toBe(mockWorkspace.name);
       expect(data.workspace.slug).toBe(mockWorkspace.slug);
       expect(data.workspace.userRole).toBe("OWNER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id, { isSuperAdmin: false });
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id);
     });
 
     test("should return workspace with correct user role for admin", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockAdminUser,
-      });
-
       mockGetWorkspaceBySlug.mockResolvedValue({
         ...mockWorkspace,
         userRole: "ADMIN",
       });
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
+      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
+        headers: makeAuthHeaders(mockAdminUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("ADMIN");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockAdminUser.id, { isSuperAdmin: false });
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockAdminUser.id);
     });
 
     test("should return workspace with correct user role for member", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockMemberUser,
-      });
-
       mockGetWorkspaceBySlug.mockResolvedValue({
         ...mockWorkspace,
         userRole: "DEVELOPER",
       });
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
+      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
+        headers: makeAuthHeaders(mockMemberUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("DEVELOPER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockMemberUser.id, { isSuperAdmin: false });
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockMemberUser.id);
     });
 
     test("should return 404 for outsider user with no access", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOutsiderUser,
-      });
-
       mockGetWorkspaceBySlug.mockResolvedValue(null);
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
+      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
+        headers: makeAuthHeaders(mockOutsiderUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Workspace not found or access denied");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOutsiderUser.id, { isSuperAdmin: false });
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOutsiderUser.id);
     });
 
-    test("should handle malformed session data gracefully", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { id: undefined, email: "test@example.com" },
-      });
-
+    test("should handle missing auth headers gracefully", async () => {
+      // Unauthenticated — no middleware headers
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
@@ -150,11 +142,9 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle empty slug parameter", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
+      const request = new NextRequest("http://localhost:3000/api/workspaces/", {
+        headers: makeAuthHeaders(mockOwnerUser),
       });
-
-      const request = new NextRequest("http://localhost:3000/api/workspaces/");
       const response = await GET(request, { params: Promise.resolve({ slug: "" }) });
       const data = await response.json();
 
@@ -163,13 +153,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle non-existent workspace", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockGetWorkspaceBySlug.mockResolvedValue(null);
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces/non-existent-workspace");
+      const request = new NextRequest("http://localhost:3000/api/workspaces/non-existent-workspace", {
+        headers: makeAuthHeaders(mockOwnerUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: "non-existent-workspace" }) });
       const data = await response.json();
 
@@ -178,13 +166,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle internal server error", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockGetWorkspaceBySlug.mockRejectedValue(new Error("Database connection failed"));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
+      const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
+        headers: makeAuthHeaders(mockOwnerUser),
+      });
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
@@ -195,19 +181,17 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("PUT /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should validate slug format and reject invalid characters", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       const updateData = {
         name: "Updated Workspace",
         slug: "invalid slug with spaces!@#",
         description: "Updated description",
       };
 
+      const headers = makeAuthHeaders(mockOwnerUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -220,10 +204,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle successful update", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       const updateData = {
         name: "Updated Workspace",
         slug: "updated-workspace",
@@ -237,9 +217,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       mockUpdateWorkspace.mockResolvedValue(updatedWorkspace);
 
+      const headers = makeAuthHeaders(mockOwnerUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -254,13 +236,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle malformed JSON gracefully", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
+      const headers = makeAuthHeaders(mockOwnerUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: "{ invalid json content",
       });
 
@@ -270,10 +250,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle workspace not found error", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockUpdateWorkspace.mockRejectedValue(new Error("Workspace not found or access denied"));
 
       const updateData = {
@@ -282,9 +258,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
         description: "Updated description",
       };
 
+      const headers = makeAuthHeaders(mockOwnerUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -296,10 +274,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle permission denied error", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockMemberUser,
-      });
-
       mockUpdateWorkspace.mockRejectedValue(new Error("Only workspace owners and admins can update workspace"));
 
       const updateData = {
@@ -308,9 +282,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
         description: "Updated description",
       };
 
+      const headers = makeAuthHeaders(mockMemberUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -322,10 +298,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle slug already exists error", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockUpdateWorkspace.mockRejectedValue(new Error("Workspace with this slug already exists"));
 
       const updateData = {
@@ -334,9 +306,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
         description: "Updated description",
       };
 
+      const headers = makeAuthHeaders(mockOwnerUser);
+      headers.set("Content-Type", "application/json");
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -350,14 +324,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("DELETE /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should successfully delete workspace", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockDeleteWorkspaceBySlug.mockResolvedValue(undefined);
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "DELETE",
+        headers: makeAuthHeaders(mockOwnerUser),
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
@@ -369,14 +340,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle workspace not found error", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       mockDeleteWorkspaceBySlug.mockRejectedValue(new Error("Workspace not found or access denied"));
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "DELETE",
+        headers: makeAuthHeaders(mockOwnerUser),
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
@@ -387,14 +355,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should verify workspace owner permissions strictly", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockAdminUser,
-      });
-
       mockDeleteWorkspaceBySlug.mockRejectedValue(new Error("Only workspace owners can delete workspace"));
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "DELETE",
+        headers: makeAuthHeaders(mockAdminUser),
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
@@ -405,8 +370,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle unauthorized access", async () => {
-      mockGetServerSession.mockResolvedValue(null);
-
+      // No middleware headers = unauthenticated
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "DELETE",
       });
@@ -419,12 +383,9 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle empty slug parameter", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       const request = new NextRequest("http://localhost:3000/api/workspaces/", {
         method: "DELETE",
+        headers: makeAuthHeaders(mockOwnerUser),
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: "" }) });
@@ -438,21 +399,18 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
   describe("API Contract and Error Handling - Enhanced Coverage", () => {
     test("should return consistent error response format", async () => {
       const errorScenarios = [
-        { slug: "", expectedStatus: 400, sessionUser: mockOwnerUser },
-        { slug: "non-existent", expectedStatus: 404, sessionUser: mockOwnerUser },
-        { slug: "test-workspace", expectedStatus: 401, sessionUser: null },
+        { slug: "", expectedStatus: 400, authenticated: true },
+        { slug: "non-existent", expectedStatus: 404, authenticated: true },
+        { slug: "test-workspace", expectedStatus: 401, authenticated: false },
       ];
 
       for (const scenario of errorScenarios) {
-        mockGetServerSession.mockResolvedValue(
-          scenario.sessionUser ? { user: scenario.sessionUser } : null
-        );
-
-        if (scenario.sessionUser) {
+        if (scenario.authenticated) {
           mockGetWorkspaceBySlug.mockResolvedValue(null);
         }
 
-        const request = new NextRequest(`http://localhost:3000/api/workspaces/${scenario.slug}`);
+        const headers = scenario.authenticated ? makeAuthHeaders(mockOwnerUser) : new Headers();
+        const request = new NextRequest(`http://localhost:3000/api/workspaces/${scenario.slug}`, { headers });
         const response = await GET(request, { params: Promise.resolve({ slug: scenario.slug }) });
         const data = await response.json();
 
@@ -464,10 +422,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should validate Content-Type header for PUT requests", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: mockOwnerUser,
-      });
-
       const updateData = {
         name: "Updated Workspace",
         slug: mockWorkspace.slug,
@@ -477,6 +431,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       // Test with missing Content-Type header - Next.js should handle this gracefully
       const requestWithoutContentType = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "PUT",
+        headers: makeAuthHeaders(mockOwnerUser),
         body: JSON.stringify(updateData),
       });
 

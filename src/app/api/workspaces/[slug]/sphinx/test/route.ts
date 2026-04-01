@@ -17,8 +17,7 @@ export async function POST(
   }
 
   const { slug } = await params;
-  const isSuperAdmin = await checkIsSuperAdmin(session.user.id);
-  const access = await validateWorkspaceAccess(slug, session.user.id, true, { isSuperAdmin });
+  const access = await validateWorkspaceAccess(slug, session.user.id, true);
 
   if (!access.canAdmin) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });

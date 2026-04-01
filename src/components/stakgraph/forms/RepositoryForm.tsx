@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2, Plus, CheckCircle, Loader2, AlertTriangle, Settings } from "lucide-react";
+import { Trash2, Plus, CheckCircle, Loader2, AlertTriangle, Settings, ExternalLink } from "lucide-react";
 import { RepositoryData, Repository, FormSectionProps } from "../types";
 import { useRepositoryPermissions } from "@/hooks/useRepositoryPermissions";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -259,6 +259,22 @@ export default function RepositoryForm({
     });
   };
 
+  const handleGithubAppInstall = async (repositoryUrl: string) => {
+    try {
+      const response = await fetch("/api/github/app/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceSlug, repositoryUrl }),
+      });
+      const data = await response.json();
+      if (data?.data?.link) {
+        window.location.href = data.data.link;
+      }
+    } catch (error) {
+      console.error("Failed to initiate GitHub App install:", error);
+    }
+  };
+
   const getPermissionBadge = (index: number) => {
     const status = permissionStatus[index];
     if (!status) return null;
@@ -277,6 +293,24 @@ export default function RepositoryForm({
         <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
           <AlertTriangle className="h-3 w-3 mr-1" />
           Wrong Organization
+        </Badge>
+      );
+    }
+
+    if (status.error === 'app_not_installed') {
+      return (
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+          <ExternalLink className="h-3 w-3 mr-1" />
+          Install GitHub App
+        </Badge>
+      );
+    }
+
+    if (status.error === 'user_not_authorised') {
+      return (
+        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Re-authorise GitHub
         </Badge>
       );
     }
@@ -427,7 +461,41 @@ export default function RepositoryForm({
                   <span>{permissionMessage}</span>
                 </div>
               )}
-              {permissionStatus[index]?.error && permissionStatus[index]?.error !== 'org_mismatch' && (
+              {permissionStatus[index]?.error === 'app_not_installed' && (
+                <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                  <ExternalLink className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span>
+                    The GitHub App is not installed for this repository owner.{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-amber-600 font-medium underline"
+                      onClick={() => handleGithubAppInstall(repo.repositoryUrl)}
+                    >
+                      Install GitHub App
+                    </Button>
+                    {" "}to continue.
+                  </span>
+                </div>
+              )}
+              {permissionStatus[index]?.error === 'user_not_authorised' && (
+                <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <span>
+                    You need to re-authorise the GitHub App for this organization.{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-amber-600 font-medium underline"
+                      onClick={() => handleGithubAppInstall(repo.repositoryUrl)}
+                    >
+                      Re-authorise GitHub
+                    </Button>
+                    {" "}to reconnect.
+                  </span>
+                </div>
+              )}
+              {permissionStatus[index]?.error && !['org_mismatch', 'app_not_installed', 'user_not_authorised'].includes(permissionStatus[index].error!) && (
                 <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
                   <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>{permissionStatus[index].error}</span>

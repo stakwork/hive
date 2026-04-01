@@ -45,7 +45,7 @@ export function InvitePopover({
 }: InvitePopoverProps) {
   const [members, setMembers] = useState<SphinxLinkedMember[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
 
   // Fetch Sphinx-linked members when popover opens
@@ -64,10 +64,10 @@ export function InvitePopover({
         }
 
         const data = await response.json();
-        
+
         // Combine owner and members arrays
         const allMembers = [...(data.owner ? [data.owner] : []), ...(data.members || [])];
-        
+
         // Handle response structure - map user data from members
         const membersList = allMembers.map((member: any) => ({
           id: member.user.id,
@@ -76,7 +76,7 @@ export function InvitePopover({
           image: member.user.image,
           sphinxAlias: member.user.sphinxAlias,
         }));
-        
+
         setMembers(membersList);
       } catch (error) {
         console.error("Error fetching Sphinx-linked members:", error);
@@ -89,8 +89,28 @@ export function InvitePopover({
     fetchMembers();
   }, [open, workspaceSlug]);
 
+  // Reset selections when popover closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedMemberIds(new Set());
+    }
+  }, [open]);
+
+  const handleToggleMember = (memberId: string) => {
+    setSelectedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+      } else if (next.size < 3) {
+        next.add(memberId);
+      }
+      // silently ignore if already at cap of 3
+      return next;
+    });
+  };
+
   const handleSendInvite = async () => {
-    if (!selectedMemberId) return;
+    if (selectedMemberIds.size === 0) return;
 
     setIsSending(true);
     try {
@@ -99,17 +119,22 @@ export function InvitePopover({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ inviteeUserId: selectedMemberId }),
+        body: JSON.stringify({ inviteeUserIds: Array.from(selectedMemberIds) }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to send invite");
+      const data = await response.json();
+
+      if (!response.ok && data.failed === undefined) {
+        throw new Error(data.error || "Failed to send invite");
       }
 
-      toast.success("Invite sent!");
-      onOpenChange(false);
-      setSelectedMemberId(null);
+      const { sent = 0, failed = 0 } = data;
+
+      if (failed > 0) {
+        toast.error(`${failed} of ${sent + failed} invites failed`);
+      } else {
+        toast.success(`${sent} invite${sent !== 1 ? "s" : ""} sent!`);
+      }
     } catch (error) {
       console.error("Error sending invite:", error);
       toast.error(
@@ -117,10 +142,15 @@ export function InvitePopover({
       );
     } finally {
       setIsSending(false);
+      onOpenChange(false);
+      setSelectedMemberIds(new Set());
     }
   };
 
-  const selectedMember = members.find((m) => m.id === selectedMemberId);
+  const sendButtonLabel = () => {
+    if (isSending) return "Sending...";
+    return "Send Invite";
+  };
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -139,7 +169,7 @@ export function InvitePopover({
                 <CommandItem
                   key={member.id}
                   value={member.name}
-                  onSelect={() => setSelectedMemberId(member.id)}
+                  onSelect={() => handleToggleMember(member.id)}
                   className="flex items-center gap-2"
                 >
                   <Avatar className="h-6 w-6">
@@ -164,7 +194,7 @@ export function InvitePopover({
                   <Check
                     className={cn(
                       "ml-auto h-4 w-4",
-                      selectedMemberId === member.id
+                      selectedMemberIds.has(member.id)
                         ? "opacity-100"
                         : "opacity-0"
                     )}
@@ -184,7 +214,7 @@ export function InvitePopover({
           >
             Cancel
           </Button>
-          {selectedMember && (
+          {selectedMemberIds.size > 0 && (
             <Button
               onClick={handleSendInvite}
               disabled={isSending}
@@ -192,7 +222,7 @@ export function InvitePopover({
               size="sm"
               data-testid="send-invite-button"
             >
-              {isSending ? "Sending..." : "Send Invite"}
+              {sendButtonLabel()}
             </Button>
           )}
         </div>

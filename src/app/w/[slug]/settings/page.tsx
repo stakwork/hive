@@ -1,19 +1,9 @@
-import { DeleteWorkspace } from "@/components/DeleteWorkspace";
-import { VMConfigSection } from "@/components/pool-status";
-import { RerunIngest } from "@/components/RerunIngest";
-import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
-import { Neo4jConfigSettings } from "@/components/settings/Neo4jConfigSettings";
-import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
-import { SphinxIntegrationSettings } from "@/components/settings/SphinxIntegrationSettings";
-import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
+import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { PageHeader } from "@/components/ui/page-header";
-import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
-import { WorkspaceSettings } from "@/components/WorkspaceSettings";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);
@@ -28,42 +18,24 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  // Get workspace information - superadmins can access any workspace
-  const userIsSuperAdmin = await checkIsSuperAdmin(userId);
-  const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin: userIsSuperAdmin });
+  const workspace = await getWorkspaceBySlug(slug, userId);
   if (!workspace) {
+    notFound();
+  }
+
+  if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
     notFound();
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Workspace Settings" description="Manage workspace configuration, members, and settings." />
-
-      <div className="max-w-2xl">
-        <div className="space-y-6">
-          <WorkspaceSettings />
-
-          <VMConfigSection isSuperAdmin={userIsSuperAdmin} />
-
-          <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
-
-          <RerunIngest workspaceId={workspace.id} workspaceName={workspace.name} />
-
-          <NodeTypeOrderSettings />
-
-          <ApiKeysSettings />
-
-          <VercelIntegrationSettings />
-
-          <SphinxIntegrationSettings />
-
-          <Neo4jConfigSettings />
-
-          {workspace.userRole === "OWNER" && (
-            <DeleteWorkspace workspaceSlug={workspace.slug} workspaceName={workspace.name} />
-          )}
-        </div>
-      </div>
+      <PageHeader title="Workspace Settings" />
+      <SettingsTabs
+        workspaceId={workspace.id}
+        workspaceName={workspace.name}
+        workspaceSlug={workspace.slug}
+        isOwner={workspace.userRole === "OWNER"}
+      />
     </div>
   );
 }

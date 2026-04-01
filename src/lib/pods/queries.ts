@@ -289,6 +289,8 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
       },
       data: {
         podId: null,
+        agentPassword: null,
+        agentUrl: null,
       },
     });
 

@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
-import { WAKE_WORD } from "@/lib/constants/voice";
+import { useVoiceStore } from "@/stores/useVoiceStore";
 import { CallRecording, CallsResponse } from "@/types/calls";
 import { CallsTable } from "@/components/calls/CallsTable";
+import { VoiceMessagesDrawer } from "@/components/voice/VoiceMessagesDrawer";
 import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Loader2, Phone, Mic, MicOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Phone, Mic, MicOff, MessageSquare, Unplug } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { TranscriptTooltip } from "./TranscriptTooltip";
 
 export default function CallsPage() {
   const router = useRouter();
@@ -29,25 +28,36 @@ export default function CallsPage() {
   const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [hasMore, setHasMore] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const limit = 10;
 
-  // Voice recording state
-  // Note: autoRestart option can be enabled to keep recording alive even after browser auto-stops
-  // Example: useVoiceRecorder({ autoRestart: true })
-  const {
-    isRecording,
-    isSupported: isVoiceSupported,
-    transcriptBuffer,
-    currentTranscript,
-    startRecording,
-    stopRecording,
-    getRecentTranscript,
-  } = useVoiceRecorder();
-  const [processingRequest, setProcessingRequest] = useState(false);
-  const lastProcessedIndexRef = useRef(0);
-  const lastProcessedTranscriptRef = useRef("");
-  const hasDetectedRequestRef = useRef(false);
-  const isProcessingDetectionRef = useRef(false);
+  // Voice agent state (LiveKit)
+  const isConnected = useVoiceStore((s) => s.isConnected);
+  const isConnecting = useVoiceStore((s) => s.isConnecting);
+  const isMicEnabled = useVoiceStore((s) => s.isMicEnabled);
+  const voiceError = useVoiceStore((s) => s.error);
+  const messages = useVoiceStore((s) => s.messages);
+  const connect = useVoiceStore((s) => s.connect);
+  const disconnect = useVoiceStore((s) => s.disconnect);
+  const toggleMic = useVoiceStore((s) => s.toggleMic);
+  const clearError = useVoiceStore((s) => s.clearError);
+
+  // Show toast on voice connection errors
+  useEffect(() => {
+    if (voiceError) {
+      toast.error("Voice connection failed", { description: voiceError });
+      clearError();
+    }
+  }, [voiceError, clearError]);
+
+  const handleConnectVoice = () => {
+    if (!slug) return;
+    if (isConnected) {
+      disconnect();
+    } else {
+      connect(slug);
+    }
+  };
 
   const handleStartCall = async () => {
     if (!slug) return;
@@ -73,15 +83,6 @@ export default function CallsPage() {
     }
   };
 
-  const handleToggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-      // Flags will be reset by the useEffect watching isRecording
-    } else {
-      startRecording();
-    }
-  };
-
   // Navigate to a specific page and update URL
   const goToPage = useCallback((n: number) => {
     setPage(n);
@@ -94,175 +95,6 @@ export default function CallsPage() {
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
   }, [pathname, router, searchParams]);
-
-  // Reset flags when recording stops (either manually or automatically)
-  useEffect(() => {
-    if (!isRecording) {
-      console.log("🎤 Recording stopped, resetting flags");
-      hasDetectedRequestRef.current = false;
-      isProcessingDetectionRef.current = false;
-      lastProcessedIndexRef.current = 0;
-      lastProcessedTranscriptRef.current = "";
-    }
-  }, [isRecording]);
-
-  // Monitor transcript for wake word and feature/task requests
-  useEffect(() => {
-    if (!isRecording || !slug || processingRequest || hasDetectedRequestRef.current || isProcessingDetectionRef.current)
-      return;
-
-    // Set flag IMMEDIATELY before starting async work to block other effects
-    isProcessingDetectionRef.current = true;
-
-    const checkNewChunks = async () => {
-      console.log("🎤 Checking for wake word and feature/task requests");
-      try {
-        // Only check new chunks that haven't been processed
-        const newChunks = transcriptBuffer.slice(lastProcessedIndexRef.current);
-
-        // ALSO check current live transcript (text that hasn't been chunked yet)
-        const textsToCheck: string[] = [];
-
-        // Add new chunks
-        newChunks.forEach((chunk) => textsToCheck.push(chunk.text));
-
-        // Add live transcript (may contain wake word before it's chunked)
-        // Only if it's different from last processed transcript to avoid duplicates
-        if (currentTranscript.trim() && currentTranscript !== lastProcessedTranscriptRef.current) {
-          textsToCheck.push(currentTranscript);
-        }
-
-        if (textsToCheck.length === 0) return;
-
-        // Process each text segment
-        for (const text of textsToCheck) {
-          // First check for wake word in frontend (avoid unnecessary API calls)
-          if (!text.toLowerCase().includes(WAKE_WORD)) {
-            continue;
-          }
-
-          console.log(`🎤 Wake word "${WAKE_WORD}" detected, checking if feature request...`);
-
-          // Call API to detect if this is a feature request (requires AI/LLM)
-          const detectionResponse = await fetch("/api/features/detect-feature-request", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chunk: text,
-              workspaceSlug: slug,
-            }),
-          });
-
-          if (!detectionResponse.ok) {
-            console.error("Failed to detect feature request");
-            continue;
-          }
-
-          const detectionData = await detectionResponse.json();
-          const { isRequest, mode } = detectionData;
-
-          if (isRequest && mode) {
-            console.log(`🎯 ${mode} request detected! Creating ${mode}...`);
-
-            // Set flag immediately to prevent duplicate processing
-            hasDetectedRequestRef.current = true;
-            setProcessingRequest(true);
-
-            try {
-              // Get last hour of transcript from buffer (completed chunks)
-              const bufferedTranscript = getRecentTranscript(20);
-
-              // Also include current live transcript (may contain wake word before chunking)
-              const fullTranscript = bufferedTranscript
-                ? `${bufferedTranscript} ${currentTranscript}`
-                : currentTranscript;
-
-              if (!fullTranscript || fullTranscript.trim().length === 0) {
-                throw new Error(`No transcript available to create ${mode}`);
-              }
-
-              console.log(`📝 Creating ${mode} from transcript:`, {
-                bufferedLength: bufferedTranscript.length,
-                currentLength: currentTranscript.length,
-                totalLength: fullTranscript.length,
-                preview: fullTranscript.substring(0, 100) + "...",
-              });
-
-              if (mode === "task") {
-                // Create task and start workflow
-                const response = await fetch("/api/tasks/create-from-transcript", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    workspaceSlug: slug,
-                    transcript: fullTranscript,
-                  }),
-                });
-
-                if (!response.ok) {
-                  const errorData = await response.json().catch(() => ({}));
-                  const errorMessage = errorData.error || `Failed to create task (${response.status})`;
-                  throw new Error(errorMessage);
-                }
-
-                const data = await response.json();
-
-                toast.success("Task created!", {
-                  description: `"${data.title}" has been created and workflow started.`,
-                });
-
-                console.log("✅ Task created:", data);
-              } else {
-                // Create feature (existing flow)
-                const response = await fetch("/api/features/create-feature", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    workspaceSlug: slug,
-                    transcript: fullTranscript,
-                  }),
-                });
-
-                if (!response.ok) {
-                  const errorData = await response.json().catch(() => ({}));
-                  const errorMessage = errorData.error || `Failed to create feature (${response.status})`;
-                  throw new Error(errorMessage);
-                }
-
-                const data = await response.json();
-
-                toast.success("Feature created!", {
-                  description: `"${data.title}" has been added to your workspace.`,
-                });
-
-                console.log("✅ Feature created:", data);
-              }
-            } catch (error) {
-              console.error(`❌ Error creating ${mode}:`, error);
-              toast.error(`Failed to create ${mode}`, {
-                description: error instanceof Error ? error.message : "Unknown error",
-              });
-              // Reset flag on error so user can retry
-              hasDetectedRequestRef.current = false;
-            } finally {
-              setProcessingRequest(false);
-            }
-
-            // Stop checking after first request to avoid duplicates
-            break;
-          }
-        }
-
-        lastProcessedIndexRef.current = transcriptBuffer.length;
-        lastProcessedTranscriptRef.current = currentTranscript;
-      } finally {
-        // Always reset processing flag, even if there was an error
-        isProcessingDetectionRef.current = false;
-      }
-    };
-
-    checkNewChunks();
-  }, [transcriptBuffer, currentTranscript, isRecording, slug, processingRequest, getRecentTranscript]);
 
   useEffect(() => {
     if (!slug || workspace?.poolState !== "COMPLETE") {
@@ -316,34 +148,47 @@ export default function CallsPage() {
         actions={
           workspace?.poolState === "COMPLETE" ? (
             <div className="flex gap-2">
-              {isVoiceSupported && (
-                <TranscriptTooltip
-                  transcript={currentTranscript}
-                  show={isRecording && currentTranscript.trim().length > 0}
-                >
+              <Button
+                onClick={handleConnectVoice}
+                disabled={isConnecting}
+                variant={isConnected ? "destructive" : "default"}
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : isConnected ? (
+                  <>
+                    <Unplug className="h-4 w-4 mr-2" />
+                    Disconnect
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-4 w-4 mr-2" />
+                    Connect Voice
+                  </>
+                )}
+              </Button>
+              {isConnected && (
+                <>
+                  <Button onClick={() => toggleMic()} variant="outline" size="icon">
+                    {isMicEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  </Button>
                   <Button
-                    onClick={handleToggleRecording}
-                    disabled={processingRequest}
-                    variant={isRecording ? "destructive" : "default"}
+                    onClick={() => setDrawerOpen(true)}
+                    variant="outline"
+                    size="icon"
+                    className="relative"
                   >
-                    {processingRequest ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : isRecording ? (
-                      <>
-                        <MicOff className="h-4 w-4 mr-2" />
-                        Stop Recording
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-4 w-4 mr-2" />
-                        Record
-                      </>
+                    <MessageSquare className="h-4 w-4" />
+                    {messages.length > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                        {messages.length}
+                      </span>
                     )}
                   </Button>
-                </TranscriptTooltip>
+                </>
               )}
               <Button onClick={handleStartCall} disabled={generatingLink} data-testid="start-call-button">
                 {generatingLink ? (
@@ -363,30 +208,7 @@ export default function CallsPage() {
         }
       />
 
-      {false && isRecording && (
-        <Card className="border-red-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
-              Recording in Progress
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Say <strong>&quot;{WAKE_WORD}, make a feature from this&quot;</strong> to create a feature, or{" "}
-                <strong>&quot;{WAKE_WORD}, create a task from this&quot;</strong> to create a task from the last hour of
-                conversation.
-              </p>
-              {currentTranscript && (
-                <div className="mt-3 p-3 bg-muted rounded-md">
-                  <p className="text-sm font-mono">{currentTranscript}</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <VoiceMessagesDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
 
       <Card data-testid="call-recordings-card">
         <CardHeader>

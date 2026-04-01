@@ -8,6 +8,7 @@ import { WorkflowUrlLink } from '@/app/w/[slug]/task/[...taskParams]/components/
 import { FormArtifact } from '@/app/w/[slug]/task/[...taskParams]/artifacts/form';
 import { LongformArtifactPanel } from '@/app/w/[slug]/task/[...taskParams]/artifacts/longform';
 import { ChatMessage as ChatMessageType, ChatRole, Option, Artifact, ArtifactType, FormContent, LongformContent } from '@/lib/chat';
+import type { ClarifyingQuestionsResponse } from '@/types/stakwork';
 
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
@@ -81,6 +82,17 @@ vi.mock('@/app/w/[slug]/task/[...taskParams]/artifacts/longform', () => ({
           )}
           <p>{(artifact.content as LongformContent)?.text}</p>
         </div>
+      ))}
+    </div>
+  ),
+}));
+
+// Mock ClarifyingQuestionsPreview
+vi.mock('@/components/features/ClarifyingQuestionsPreview', () => ({
+  ClarifyingQuestionsPreview: ({ questions }: { questions: any[]; onSubmit: (s: string) => void }) => (
+    <div data-testid="clarifying-questions-preview">
+      {questions.map((q: any, i: number) => (
+        <div key={i}>{q.question}</div>
       ))}
     </div>
   ),
@@ -557,92 +569,75 @@ describe('ChatMessage', () => {
     });
   });
 
-  describe('Hover Interactions', () => {
-    it('shows workflow link on hover', async () => {
+  describe('Hover Interactions (CSS group-hover)', () => {
+    it('renders WorkflowUrlLink with opacity-0 and group-hover:opacity-100 classes', () => {
       const message = createTestMessage({
         workflowUrl: 'https://example.com/workflow',
         message: 'Hoverable message',
       });
 
       render(
-        <ChatMessage 
-          message={message} 
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      const messageElement = screen.getByText('Hoverable message').closest('div');
-      
-      // Initially hidden (opacity-0)
-      expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-
-      // Simulate hover
-      fireEvent.mouseEnter(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
-      });
-
-      // Simulate mouse leave
-      fireEvent.mouseLeave(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-      });
+      const link = screen.getByTestId('workflow-url-link');
+      expect(link).toHaveClass('opacity-0');
+      expect(link).toHaveClass('group-hover:opacity-100');
     });
 
-    it('maintains hover state during parent re-renders (memoization test)', async () => {
+    it('does not render WorkflowUrlLink when workflowUrl is absent', () => {
       const message = createTestMessage({
-        workflowUrl: 'https://example.com/workflow/123',
-        message: 'Test message content',
+        workflowUrl: null,
+        message: 'Message without workflow',
       });
 
-      const { rerender } = render(
-        <ChatMessage 
-          message={message} 
+      render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      const messageElement = screen.getByText(/test message content/i).closest('div');
-      expect(messageElement).toBeInTheDocument();
+      expect(screen.queryByTestId('workflow-url-link')).not.toBeInTheDocument();
+    });
 
-      // Hover over the element
-      fireEvent.mouseEnter(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+    it('message bubble has group class for CSS hover targeting', () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow',
+        message: 'Message with group class',
       });
 
-      // Simulate parent re-render with identical props (should not reset hover state)
-      rerender(
-        <ChatMessage 
-          message={message} 
+      render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      // Verify hover state is still active after re-render
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+      const bubble = screen.getByTestId('markdown-renderer').parentElement!;
+      expect(bubble).toHaveClass('group');
+    });
+
+    it('does not attach onMouseEnter or onMouseLeave handlers to the outer motion div', () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow',
+        message: 'No handler message',
       });
 
-      // Simulate another parent re-render (e.g., from polling)
-      rerender(
-        <ChatMessage 
-          message={message} 
+      const { container } = render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      // Verify hover state persists
-      expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
-
-      // Verify hover out still works
-      fireEvent.mouseLeave(messageElement!);
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-      });
+      const outerDiv = container.firstChild as HTMLElement;
+      // These event handlers should not be present (CSS handles hover now)
+      expect(outerDiv.onmouseenter).toBeNull();
+      expect(outerDiv.onmouseleave).toBeNull();
     });
   });
 
@@ -954,6 +949,46 @@ describe('ChatMessage', () => {
       });
     });
 
+    it('image enlargement DialogContent uses sm:max-w-[90vw] to override base sm:max-w-lg on desktop', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Message with image for dialog width test',
+        attachments: [
+          {
+            id: 'attachment-dialog-width',
+            path: 's3/path/to/wide.png',
+            filename: 'wide.png',
+            mimeType: 'image/png',
+            size: 1024,
+            messageId: 'test-message-1',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+      });
+
+      const { container } = render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Click to open the dialog
+      const imageContainer = screen.getByAltText('wide.png').parentElement;
+      fireEvent.click(imageContainer!);
+
+      // Find the DialogContent element — it renders into a portal outside container
+      const dialogContent = document.body.querySelector('[role="dialog"]');
+      expect(dialogContent).not.toBeNull();
+
+      const className = dialogContent!.className;
+      // Must contain the desktop-width override
+      expect(className).toContain('sm:max-w-[90vw]');
+      // Must NOT contain the unoverridden base sm:max-w-lg
+      expect(className).not.toContain('sm:max-w-lg');
+    });
+
     it('does not trigger enlarge dialog when clicking failed image', () => {
       const message = createTestMessage({
         role: ChatRole.USER,
@@ -1205,6 +1240,48 @@ describe('ChatMessage', () => {
     });
   });
 
+  describe('Mobile Message Bubble Text Wrapping', () => {
+    it('applies break-words and overflow-hidden to user message bubble for long text/URLs', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'https://very-long-url-that-should-not-overflow-the-mobile-screen.example.com/path/to/something',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const markdownRenderer = screen.getByTestId('markdown-renderer');
+      const bubble = markdownRenderer.parentElement!;
+      expect(bubble).toHaveClass('break-words');
+      expect(bubble).toHaveClass('overflow-hidden');
+      expect(bubble).toHaveClass('min-w-0');
+    });
+
+    it('applies break-words and overflow-hidden to assistant message bubble for long text/URLs', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'https://very-long-url-that-should-not-overflow-the-mobile-screen.example.com/path/to/something',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const markdownRenderer = screen.getByTestId('markdown-renderer');
+      const bubble = markdownRenderer.parentElement!;
+      expect(bubble).toHaveClass('break-words');
+      expect(bubble).toHaveClass('overflow-hidden');
+      expect(bubble).toHaveClass('min-w-0');
+    });
+  });
+
   describe('LONGFORM Artifact Overflow Fix', () => {
     it('applies overflow constraints to LONGFORM wrapper to prevent bleeding', () => {
       const longformContent: LongformContent = {
@@ -1260,6 +1337,144 @@ describe('ChatMessage', () => {
 
       // Verify LONGFORM panel is rendered
       expect(screen.getByTestId('longform-artifact-panel')).toBeInTheDocument();
+    });
+  });
+
+  describe('Clarifying Questions (PLAN artifact)', () => {
+    const clarifyingContent: ClarifyingQuestionsResponse = {
+      tool_use: 'ask_clarifying_questions',
+      content: [
+        { question: 'What is X?', type: 'text' },
+        { question: 'How?', type: 'text' },
+      ],
+    };
+
+    it('renders collapsed summary with question count when replyMessage is present', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('2 questions answered')).toBeInTheDocument();
+      expect(screen.queryByTestId('clarifying-questions-preview')).not.toBeInTheDocument();
+    });
+
+    it('hides Q&A content before expanding', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByText('What is X?')).not.toBeInTheDocument();
+      expect(screen.queryByText('It is Y')).not.toBeInTheDocument();
+      expect(screen.queryByText('How?')).not.toBeInTheDocument();
+      expect(screen.queryByText('Like this')).not.toBeInTheDocument();
+    });
+
+    it('shows Q&A pairs after clicking the toggle', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      fireEvent.click(screen.getByText('2 questions answered'));
+
+      expect(screen.getByText('What is X?')).toBeInTheDocument();
+      expect(screen.getByText('It is Y')).toBeInTheDocument();
+      expect(screen.getByText('How?')).toBeInTheDocument();
+      expect(screen.getByText('Like this')).toBeInTheDocument();
+    });
+
+    it('collapses again when toggle is clicked a second time', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: What is X?\nA: It is Y\n\nQ: How?\nA: Like this',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const toggle = screen.getByText('2 questions answered');
+      fireEvent.click(toggle);
+      expect(screen.getByText('What is X?')).toBeInTheDocument();
+
+      fireEvent.click(toggle);
+      expect(screen.queryByText('What is X?')).not.toBeInTheDocument();
+    });
+
+    it('uses singular "question" when count is 1', () => {
+      const singleContent: ClarifyingQuestionsResponse = {
+        tool_use: 'ask_clarifying_questions',
+        content: [{ question: 'Only one?', type: 'text' }],
+      };
+      const artifact = createTestArtifact(ArtifactType.PLAN, singleContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+      const replyMessage = createTestMessage({
+        id: 'reply-1',
+        message: 'Q: Only one?\nA: Yes',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('1 question answered')).toBeInTheDocument();
+    });
+
+    it('renders interactive ClarifyingQuestionsPreview when no replyMessage', () => {
+      const artifact = createTestArtifact(ArtifactType.PLAN, clarifyingContent);
+      const message = createTestMessage({ artifacts: [artifact] });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('clarifying-questions-preview')).toBeInTheDocument();
+      expect(screen.queryByText(/questions answered/)).not.toBeInTheDocument();
     });
   });
 });

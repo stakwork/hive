@@ -1,11 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Circle, MoreVertical, Copy, ExternalLink } from "lucide-react";
+import { Circle, MoreVertical, Copy, ExternalLink, Trash2, Loader2 } from "lucide-react";
 import { VMData } from "@/types/pool-manager";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,8 @@ interface VMGridProps {
   vms: VMData[];
   metricsLoading?: boolean;
   metricsError?: boolean;
+  isAdmin?: boolean;
+  onDeletePod?: (vm: VMData) => void;
 }
 
 function getStatusIndicator(state: string, usage_status: string) {
@@ -31,8 +34,21 @@ function getStatusIndicator(state: string, usage_status: string) {
   return <Circle className="h-2 w-2 fill-muted-foreground text-muted-foreground" />;
 }
 
-function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoading?: boolean; metricsError?: boolean }) {
+function VMCard({
+  vm,
+  metricsLoading,
+  metricsError,
+  isAdmin,
+  onDeletePod,
+}: {
+  vm: VMData;
+  metricsLoading?: boolean;
+  metricsError?: boolean;
+  isAdmin?: boolean;
+  onDeletePod?: (vm: VMData) => void;
+}) {
   const [copySuccess, setCopySuccess] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const cpuPercent = vm.resource_usage.available
     ? (parseFloat(vm.resource_usage.usage.cpu) / parseFloat(vm.resource_usage.requests.cpu)) * 100
@@ -60,8 +76,6 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
     window.open(vm.url, "_blank", "noopener,noreferrer");
   };
 
-  const isActive = vm.state !== "pending";
-
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4 space-y-3">
@@ -75,7 +89,7 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
             {vm.state === "pending" && (
               <Badge variant="outline" className="text-xs">Pending</Badge>
             )}
-            {isActive && vm.password && vm.url && (
+            {vm.password && vm.url && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -91,6 +105,27 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open IDE
                   </DropdownMenuItem>
+                  {isAdmin && onDeletePod && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        disabled={isDeleting}
+                        onClick={async () => {
+                          setIsDeleting(true);
+                          await onDeletePod(vm);
+                          setIsDeleting(false);
+                        }}
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 mr-2" />
+                        )}
+                        Delete pod
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -169,15 +204,17 @@ function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoadi
   );
 }
 
-export function VMGrid({ vms, metricsLoading, metricsError }: VMGridProps) {
+export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod }: VMGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
       {vms.map((vm) => (
-        <VMCard 
-          key={vm.id} 
-          vm={vm} 
+        <VMCard
+          key={vm.id}
+          vm={vm}
           metricsLoading={metricsLoading}
           metricsError={metricsError}
+          isAdmin={isAdmin}
+          onDeletePod={onDeletePod}
         />
       ))}
     </div>

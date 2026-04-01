@@ -77,6 +77,8 @@ export async function resetDatabase() {
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
     await db.deployment.deleteMany();
+    // notificationTrigger may not exist in older schema versions; swallow if missing
+    try { await db.notificationTrigger.deleteMany(); } catch { /* table may not exist */ }
     await db.task.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
@@ -98,7 +100,12 @@ export async function resetDatabase() {
 }
 
 async function aggressiveReset() {
-  await db.$executeRaw`SET session_replication_role = replica;`;
+  try {
+    await db.$executeRaw`SET session_replication_role = replica;`;
+  } catch {
+    // Engine not yet connected — nothing to reset, return silently
+    return;
+  }
 
   try {
     const tables = [
@@ -107,10 +114,14 @@ async function aggressiveReset() {
       "artifacts",
       "chat_messages",
       "deployments",
+      "notification_triggers",
       "tasks",
       "janitor_recommendations",
       "janitor_runs",
       "janitor_configs",
+      "user_stories",
+      "phases",
+      "features",
       "repositories",
       "pods",
       "swarms",
@@ -132,6 +143,10 @@ async function aggressiveReset() {
       }
     }
   } finally {
-    await db.$executeRaw`SET session_replication_role = DEFAULT;`;
+    try {
+      await db.$executeRaw`SET session_replication_role = DEFAULT;`;
+    } catch {
+      // Ignore reset failure if engine disconnected
+    }
   }
 }

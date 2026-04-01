@@ -32,6 +32,12 @@ function extractPathname(url: string): string {
  * @throws Error if fetch fails
  */
 export async function fetchBlobContent(url: string): Promise<string> {
+  // For non-Vercel URLs (e.g. local HTTP), fetch directly
+  if (!url.includes(".blob.vercel-storage.com")) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch blob content: ${res.statusText}`);
+    return res.text();
+  }
   const pathname = extractPathname(url);
   try {
     const result = await get(pathname, { access: "private" });

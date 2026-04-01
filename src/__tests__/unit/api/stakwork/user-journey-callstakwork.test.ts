@@ -214,7 +214,7 @@ describe("callStakwork - Stakwork API Integration Logic", () => {
 
       // Verify payload structure
       expect(payload).toMatchObject({
-        name: "hive_autogen",
+        name: `hive-task-${mockTaskId}`,
         workflow_id: 123,
         workflow_params: {
           set_var: {

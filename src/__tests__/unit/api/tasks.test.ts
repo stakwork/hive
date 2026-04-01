@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, TaskSourceType } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -156,6 +156,7 @@ describe("POST /api/tasks - Unit Tests", () => {
         runBuild: true,
         runTestSuite: true,
         autoMerge: false,
+        branch: null,
         createdById: "user1",
         updatedById: "user1",
       },
@@ -243,6 +244,7 @@ describe("POST /api/tasks - Unit Tests", () => {
         runBuild: true,
         runTestSuite: true,
         autoMerge: false,
+        branch: null,
         createdById: "user1",
         updatedById: "user1",
       },
@@ -523,5 +525,84 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(201);
     expect(db.task.create).toHaveBeenCalled();
+  });
+
+  test("should create task with sourceType PROTOTYPE", async () => {
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.task.create as Mock).mockResolvedValue({
+      ...mockCreatedTask,
+      sourceType: TaskSourceType.PROTOTYPE,
+    });
+
+    const request = authedRequest("http://localhost:3000/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Prototype Task",
+        workspaceSlug: "test-workspace",
+        sourceType: "PROTOTYPE",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.success).toBe(true);
+    expect(db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceType: TaskSourceType.PROTOTYPE,
+        }),
+      }),
+    );
+  });
+
+  test("should return 400 for invalid sourceType", async () => {
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+
+    const request = authedRequest("http://localhost:3000/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Test Task",
+        workspaceSlug: "test-workspace",
+        sourceType: "INVALID",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toMatch(/Invalid sourceType/);
+    expect(db.task.create).not.toHaveBeenCalled();
+  });
+
+  test("should create task without sourceType defaulting to USER", async () => {
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.user.findUnique as Mock).mockResolvedValue(mockUser);
+    (db.task.create as Mock).mockResolvedValue(mockCreatedTask);
+
+    const request = authedRequest("http://localhost:3000/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Default Task",
+        workspaceSlug: "test-workspace",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    // sourceType not passed → not spread into data (Prisma default USER applies)
+    expect(db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ sourceType: expect.anything() }),
+      }),
+    );
   });
 });

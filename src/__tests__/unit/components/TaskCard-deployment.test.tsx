@@ -274,6 +274,48 @@ describe("TaskCard - Deployment Badge Integration", () => {
     });
   });
 
+  describe("Prototype Badge", () => {
+    it("renders Prototype badge when sourceType is PROTOTYPE", () => {
+      const prototypeTask = {
+        ...mockTaskBase,
+        sourceType: "PROTOTYPE" as const,
+      };
+
+      render(<TaskCard task={prototypeTask as any} workspaceSlug="test-workspace" />);
+      expect(screen.getByText("Prototype")).toBeInTheDocument();
+    });
+
+    it("does not render Prototype badge when sourceType is USER", () => {
+      const userTask = {
+        ...mockTaskBase,
+        sourceType: "USER" as const,
+      };
+
+      render(<TaskCard task={userTask as any} workspaceSlug="test-workspace" />);
+      expect(screen.queryByText("Prototype")).not.toBeInTheDocument();
+    });
+
+    it("does not render Prototype badge when sourceType is JANITOR", () => {
+      const janitorTask = {
+        ...mockTaskBase,
+        sourceType: "JANITOR" as const,
+      };
+
+      render(<TaskCard task={janitorTask as any} workspaceSlug="test-workspace" />);
+      expect(screen.queryByText("Prototype")).not.toBeInTheDocument();
+    });
+
+    it("does not render Prototype badge when hideWorkflowStatus is true", () => {
+      const prototypeTask = {
+        ...mockTaskBase,
+        sourceType: "PROTOTYPE" as const,
+      };
+
+      render(<TaskCard task={prototypeTask as any} workspaceSlug="test-workspace" hideWorkflowStatus={true} />);
+      expect(screen.queryByText("Prototype")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Edge Cases", () => {
     it("handles missing deploymentStatus field gracefully", () => {
       const taskWithoutField = {

@@ -64,12 +64,16 @@ export async function getMergedPRsForRepo(
   }
 }
 
+export interface RepoPRs {
+  repoFullName: string;
+  mergedPRs: MergedPR[];
+}
+
 /**
- * Format the PR summary message for Sphinx
+ * Format the PR summary message for Sphinx (supports multiple repos)
  */
 export function formatPRSummaryMessage(
-  mergedPRs: MergedPR[],
-  repoName: string,
+  repoPRs: RepoPRs[],
   workspaceName: string
 ): string {
   const date = new Date().toLocaleDateString("en-US", {
@@ -81,14 +85,27 @@ export function formatPRSummaryMessage(
 
   let content = `Daily Development Update - ${workspaceName}\n${date}\n\n`;
 
-  if (mergedPRs.length === 0) {
-    content += `No pull requests were merged in the last 24 hours.`;
-  } else {
-    content += `${mergedPRs.length} pull request${mergedPRs.length > 1 ? "s" : ""} merged in ${repoName}:\n\n`;
+  const totalPRs = repoPRs.reduce((sum, r) => sum + r.mergedPRs.length, 0);
 
-    mergedPRs.forEach((pr, index) => {
+  if (totalPRs === 0) {
+    content += `No pull requests were merged in the last 24 hours.`;
+    return content;
+  }
+
+  for (const { repoFullName, mergedPRs } of repoPRs) {
+    if (mergedPRs.length === 0) continue;
+    content += `${mergedPRs.length} pull request${mergedPRs.length > 1 ? "s" : ""} merged in ${repoFullName}:\n\n`;
+    const MAX_SHOWN = 3;
+    const shown = mergedPRs.slice(0, MAX_SHOWN);
+    const remaining = mergedPRs.length - shown.length;
+
+    shown.forEach((pr, index) => {
       content += `${index + 1}. ${pr.title}\n   ${pr.url}\n\n`;
     });
+
+    if (remaining > 0) {
+      content += `... and ${remaining} more\n\n`;
+    }
   }
 
   return content;

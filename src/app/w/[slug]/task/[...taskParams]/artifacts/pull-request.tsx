@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, PullRequestContent } from "@/lib/chat";
@@ -17,10 +18,6 @@ import {
 export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
   const content = artifact.content as PullRequestContent;
   const progress = content.progress;
-
-  const handleOpenPR = () => {
-    window.open(content.url, "_blank");
-  };
 
   // Determine status-based styling and content
   const getStatusConfig = () => {
@@ -159,14 +156,11 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
             <div className="text-sm text-muted-foreground truncate">{content.repo}</div>
           </div>
           <div className="flex-shrink-0">
-            <Button
-              onClick={handleOpenPR}
-              size="sm"
-              className={`gap-2 ${config.buttonClassName}`}
-              style={config.buttonStyle}
-            >
-              {config.buttonText}
-              <ExternalLink className="w-4 h-4" />
+            <Button asChild size="sm" className={`gap-2 ${config.buttonClassName}`} style={config.buttonStyle}>
+              <a href={content.url} target="_blank" rel="noopener noreferrer">
+                {config.buttonText}
+                <ExternalLink className="w-4 h-4" />
+              </a>
             </Button>
           </div>
         </div>

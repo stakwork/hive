@@ -3,7 +3,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 export async function getSwarmConfig(workspaceSlug: string, userId: string, options?: { isSuperAdmin?: boolean }) {
-  const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true, options);
+  const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true);
   if (!workspaceAccess.hasAccess) {
     return { error: "Workspace not found or access denied", status: 403 };
   }

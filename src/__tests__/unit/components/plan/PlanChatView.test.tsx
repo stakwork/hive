@@ -93,6 +93,12 @@ vi.mock("@/components/ui/resizable", () => ({
   ResizableHandle: () => <div />,
 }));
 
+vi.mock("@/lib/pusher", () => ({
+  getPusherClient: vi.fn(() => ({
+    connection: { socket_id: "test-socket-id" },
+  })),
+}));
+
 const mockArtifactsPanel = vi.fn();
 vi.mock("@/components/chat", () => ({
   ChatArea: ({ 
@@ -796,8 +802,390 @@ describe("PlanChatView", () => {
         expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
       });
     });
+
+    it("hides Invite button when Sphinx status fetch returns 403 (non-admin prior to fix)", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch returning 403 (simulating old behaviour for non-admins)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: "Admin access required" }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Invite button must NOT appear when the fetch fails
+      await waitFor(() => {
+        expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
+      });
+    });
+
+    it("shows Invite button for non-admin member when Sphinx is fully configured (post-fix)", async () => {
+      // Mock messages fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Mock Sphinx settings fetch returning 200 with all fields set
+      // (simulates the fixed GET endpoint accessible to DEVELOPER/VIEWER roles)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sphinxEnabled: true,
+          sphinxChatPubkey: "test-pubkey",
+          sphinxBotId: "test-bot-id",
+          hasBotSecret: true,
+        }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      // Wait for the Sphinx status fetch to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/workspaces/test-workspace/settings/sphinx-integration"
+        );
+      });
+
+      // Invite button MUST appear for non-admin members when Sphinx is fully configured
+      await waitFor(() => {
+        expect(screen.getByTestId("invite-button")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("stakworkProjectId hydration", () => {
+    it("should call useProjectLogWebSocket with the feature stakworkProjectId on initial load", async () => {
+      const { useProjectLogWebSocket } = await import("@/hooks/useProjectLogWebSocket");
+      const mockWebSocket = vi.mocked(useProjectLogWebSocket);
+
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Test Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "IN_PROGRESS",
+          priority: "MEDIUM",
+          workflowStatus: "IN_PROGRESS",
+          stakworkProjectId: 42,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: false,
+        error: null,
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        const calls = mockWebSocket.mock.calls;
+        expect(calls.some(([id]) => id === "42")).toBe(true);
+      });
+    });
+
+    it("should call useProjectLogWebSocket with stakworkProjectId after visibility-change refetch", async () => {
+      const { useProjectLogWebSocket } = await import("@/hooks/useProjectLogWebSocket");
+      const mockWebSocket = vi.mocked(useProjectLogWebSocket);
+
+      // Initial load: no stakworkProjectId
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      mockFetch.mockClear();
+
+      // On visibility change, refetchFeature returns a feature with stakworkProjectId: 99
+      mockFetch.mockImplementation((url: string) => {
+        if (url === "/api/features/feature-123") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                id: "feature-123",
+                title: "Test Feature",
+                brief: null,
+                requirements: null,
+                architecture: null,
+                userStories: [],
+                phases: [],
+                assignee: null,
+                personas: [],
+                diagramUrl: null,
+                diagramS3Key: null,
+                status: "IN_PROGRESS",
+                priority: "MEDIUM",
+                workflowStatus: "IN_PROGRESS",
+                stakworkProjectId: 99,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+      });
+
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123");
+      });
+
+      await waitFor(() => {
+        const calls = mockWebSocket.mock.calls;
+        expect(calls.some(([id]) => id === "99")).toBe(true);
+      });
+    });
   });
 
   // Section Highlights feature is comprehensively tested in sectionHighlights.test.ts
   // The integration is smoke-tested by ensuring PlanChatView renders without errors
+
+  describe("handleRetry", () => {
+    // We capture ChatArea props (including onRetry) through the module-level mock
+    // The module mock is set up at the top of the file, and mockArtifactsPanel captures ArtifactsPanel props.
+    // For ChatArea we need a separate capture mechanism.
+    let capturedChatAreaProps: any = null;
+
+    beforeEach(() => {
+      capturedChatAreaProps = null;
+    });
+
+    it("passes onRetry function and isRetrying=false to ChatArea via chatAreaProps", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      // Use a spy on the module-level ChatArea mock to capture props
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return (
+          <div data-testid="chat-area">
+            <button
+              data-testid="artifact-action-button"
+              onClick={() => props.onArtifactAction("test-message-id", { optionResponse: "Test answer" })}
+            >
+              Submit Answer
+            </button>
+          </div>
+        );
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(typeof capturedChatAreaProps?.onRetry).toBe("function");
+      expect(capturedChatAreaProps?.isRetrying).toBe(false);
+    });
+
+    it("calls sendMessage with first message when no ASSISTANT messages exist", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "msg-1",
+                message: "Hello world",
+                role: ChatRole.USER,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+                artifacts: [],
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "msg-2",
+              message: "Hello world",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123/chat");
+      });
+
+      await act(async () => {
+        await capturedChatAreaProps?.onRetry();
+      });
+
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.message).toBe("Hello world");
+    });
+
+    it("calls sendMessage with last USER message when ASSISTANT messages exist", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "msg-1",
+                message: "First question",
+                role: ChatRole.USER,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+                artifacts: [],
+              },
+              {
+                id: "msg-2",
+                message: "AI answer",
+                role: ChatRole.ASSISTANT,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+                artifacts: [],
+              },
+              {
+                id: "msg-3",
+                message: "Follow up question",
+                role: ChatRole.USER,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+                artifacts: [],
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "msg-4",
+              message: "Follow up question",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/features/feature-123/chat");
+      });
+
+      await act(async () => {
+        await capturedChatAreaProps?.onRetry();
+      });
+
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.message).toBe("Follow up question");
+    });
+
+    it("does nothing when messages is empty", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({ ok: false }); // Sphinx fetch
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        await capturedChatAreaProps?.onRetry();
+      });
+
+      // No POST calls should have been made (messages is empty)
+      const postCalls = mockFetch.mock.calls.filter(
+        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+      );
+      expect(postCalls).toHaveLength(0);
+    });
+  });
 });

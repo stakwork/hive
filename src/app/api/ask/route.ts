@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,8 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Validate workspace access
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true);
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }

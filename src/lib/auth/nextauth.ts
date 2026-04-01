@@ -44,7 +44,7 @@ const getProviders = () => {
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         authorization: {
           params: {
-            scope: "read:user user:email",
+            scope: "read:user user:email public_repo",
           },
         },
       }),
@@ -493,7 +493,7 @@ export const authOptions: NextAuthOptions = {
           try {
             const userRecord = await db.user.findUnique({
               where: { id: userId },
-              select: { lightningPubkey: true, sphinxAlias: true },
+              select: { lightningPubkey: true, sphinxAlias: true, voiceSignatureKey: true },
             });
 
             if (userRecord?.lightningPubkey) {
@@ -504,6 +504,9 @@ export const authOptions: NextAuthOptions = {
             if (userRecord?.sphinxAlias) {
               (session.user as { sphinxAlias?: string }).sphinxAlias = userRecord.sphinxAlias;
             }
+
+            // Surface voice signature existence flag (not the raw S3 key)
+            (session.user as { hasVoiceSignature?: boolean }).hasVoiceSignature = !!userRecord?.voiceSignatureKey;
           } catch (error) {
             logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
               userId,

@@ -6,13 +6,18 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
+import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { useMermaidPaste } from "@/hooks/useMermaidPaste";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
+import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
-import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
+import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -21,6 +26,18 @@ const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
   { ssr: false }
 );
+
+function computeSnapshot(elements: readonly unknown[], files: Record<string, unknown>): string {
+  // Lightweight fingerprint: element count + IDs + versions + file IDs
+  const elPart = elements.map((el) => {
+    const e = el as { id?: string; version?: number; isDeleted?: boolean };
+    return `${e.id}:${e.version}:${e.isDeleted}`;
+  }).join(",");
+  const filePart = Object.keys(files).sort().join(",");
+  return `${elPart}|${filePart}`;
+}
+
+
 
 interface WhiteboardData {
   id: string;
@@ -48,9 +65,14 @@ export default function WhiteboardDetailPage() {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitialLoadRef = useRef(true);
+  const onChangeSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const programmaticUpdateCountRef = useRef(1); // 1 for initial load
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
+  const resolvedFilesRef = useRef<BinaryFiles>({});
+  const lastSavedSnapshotRef = useRef<string>("");
+  const savePausedRef = useRef(false);
+  const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
   // Collaboration hook
   const {
@@ -73,6 +95,23 @@ export default function WhiteboardDetailPage() {
         setWhiteboard(data.data);
         setEditName(data.data.name);
         versionRef.current = data.data.version || 0;
+
+        // Resolve stored S3 image references to presigned URLs
+        const files = (data.data.files as Record<string, unknown>) || {};
+        if (Object.keys(files).length > 0) {
+          const resolved = await resolveFilesForDisplay(whiteboardId, files);
+          resolvedFilesRef.current = resolved;
+        }
+        lastSavedSnapshotRef.current = computeSnapshot(
+          data.data.elements || [],
+          data.data.files || {}
+        );
+
+        // Initialise the version-snapshot baseline from the loaded elements
+        const loadedElements = (data.data.elements || []) as Array<{ id?: string }>;
+        lastVersionSnapshotRef.current = new Set(
+          loadedElements.map((el) => el.id).filter(Boolean) as string[]
+        );
       } else {
         router.push(`/w/${slug}/whiteboards`);
       }
@@ -97,16 +136,50 @@ export default function WhiteboardDetailPage() {
     ) => {
       if (!whiteboard) return;
 
+      // Skip save if nothing actually changed
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) return;
+
+      // Clear any pending onChange save — a save is already in flight
+      if (onChangeSaveTimeoutRef.current) {
+        clearTimeout(onChangeSaveTimeoutRef.current);
+        onChangeSaveTimeoutRef.current = null;
+      }
+
       setSaving(true);
       setSaved(false);
       try {
+        // Upload any new images to S3 before saving; store only s3Key refs in DB
+        const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
+
+        // Merge newly-uploaded entries with previously-persisted DB entries so no
+        // prior image is silently dropped when cleanedFiles only contains this
+        // save's uploads.
+        const existingFiles = (whiteboard.files as Record<string, StoredFileEntry>) ?? {};
+        const mergedFiles = { ...existingFiles, ...cleanedFiles };
+
+        // Write s3Key back into Excalidraw's in-memory registry for any files
+        // that were just uploaded. This ensures the next save sees s3Key on those
+        // entries and short-circuits the upload (no re-upload, no omission).
+        if (excalidrawAPI) {
+          const enriched = Object.entries(cleanedFiles)
+            .filter(([id]) => !(files[id] as BinaryFileData & { s3Key?: string })?.s3Key)
+            .map(([id, entry]) => ({
+              ...entry,
+              id: entry.id as FileId,
+              dataURL: ((files[id] as BinaryFileData)?.dataURL ?? "") as BinaryFileData["dataURL"],
+              mimeType: entry.mimeType as BinaryFileData["mimeType"],
+            }));
+          if (enriched.length > 0) excalidrawAPI.addFiles(enriched as BinaryFileData[]);
+        }
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files,
+          files: mergedFiles,
           expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
@@ -119,9 +192,40 @@ export default function WhiteboardDetailPage() {
         });
 
         if (res.status === 409) {
-          // Version conflict — server has newer data (e.g. from webhook).
-          // Reload to pick up the latest and skip error logging.
-          await loadWhiteboard();
+          const body = await res.json().catch(() => ({}));
+
+          if (body.generating) {
+            // Diagram generation in progress — keep local edits, Pusher will reload when done
+            toast.warning("Diagram is being generated. Your edits will be saved after generation completes.");
+            return;
+          }
+
+          if (body.stale && body.currentVersion != null) {
+            // Version conflict — update version and retry once (files already uploaded)
+            versionRef.current = body.currentVersion;
+            const retryData = { ...data, expectedVersion: body.currentVersion };
+            const retryRes = await fetch(`/api/whiteboards/${whiteboard.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(retryData),
+            });
+
+            if (retryRes.ok) {
+              const retryResult = await retryRes.json();
+              if (retryResult.data?.version) {
+                versionRef.current = retryResult.data.version;
+              }
+              setSaved(true);
+              setTimeout(() => setSaved(false), 2000);
+            } else {
+              toast.error("Could not save — please try again.");
+            }
+            return;
+          }
+
+          // Unknown 409 variant — keep local edits, log for debugging
+          console.warn("Unhandled 409 response:", body);
+          toast.error("Save conflict. Your edits are preserved — please try again.");
           return;
         }
 
@@ -133,6 +237,7 @@ export default function WhiteboardDetailPage() {
         if (result.data?.version) {
           versionRef.current = result.data.version;
         }
+        lastSavedSnapshotRef.current = snapshot;
 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -142,30 +247,59 @@ export default function WhiteboardDetailPage() {
         setSaving(false);
       }
     },
-    [whiteboard, senderId, loadWhiteboard]
+    [whiteboard, senderId]
   );
 
   const handleChange = useCallback(
-    (elements: readonly ExcalidrawElement[], appState: AppState, _files: BinaryFiles) => {
-      // Skip on initial load
-      if (isInitialLoadRef.current) {
-        isInitialLoadRef.current = false;
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      // Skip programmatic updates (initial load, updateScene calls)
+      if (programmaticUpdateCountRef.current > 0) {
+        programmaticUpdateCountRef.current--;
         return;
       }
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
+
+      // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
+      if (onChangeSaveTimeoutRef.current) {
+        clearTimeout(onChangeSaveTimeoutRef.current);
+      }
+      onChangeSaveTimeoutRef.current = setTimeout(() => {
+        saveToDatabase(elements, appState, files);
+      }, 2500);
     },
-    [broadcastElements]
+    [broadcastElements, saveToDatabase]
   );
+
+  useMermaidPaste({
+    excalidrawAPI,
+    programmaticUpdateCountRef,
+    saveToDatabase,
+    isEnabled: !savePausedRef.current,
+  });
 
   // Save on user interaction (pointerup) — never fires from programmatic updateScene
   const handlePointerUp = useCallback(() => {
     if (!excalidrawAPI) return;
 
-    // Clear any previously scheduled save
+    // Clear any previously scheduled save (both pointer and onChange)
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
+    }
+    if (onChangeSaveTimeoutRef.current) {
+      clearTimeout(onChangeSaveTimeoutRef.current);
+      onChangeSaveTimeoutRef.current = null;
     }
 
     // Short debounce to batch rapid interactions
@@ -188,6 +322,55 @@ export default function WhiteboardDetailPage() {
     };
   }, [handlePointerUp]);
 
+  // Auto-snapshot: every 20s check if ≥3 elements have changed since last snapshot
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      if (!whiteboard || !excalidrawAPI || savePausedRef.current) return;
+
+      const currentElements = excalidrawAPI
+        .getSceneElements()
+        .filter((el) => !el.isDeleted);
+      const currentIds = new Set(currentElements.map((el) => el.id));
+
+      const changeCount = computeVersionChanges(currentIds, lastVersionSnapshotRef.current);
+      if (changeCount < 3) return;
+
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+      const label = new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      try {
+        const res = await fetch(`/api/whiteboards/${whiteboard.id}/versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            elements: currentElements,
+            appState: {
+              viewBackgroundColor: appState.viewBackgroundColor,
+              gridSize: appState.gridSize,
+            },
+            files,
+            label,
+          }),
+        });
+
+        if (res.ok) {
+          lastVersionSnapshotRef.current = currentIds;
+        }
+      } catch {
+        // Silently ignore — versioning is best-effort
+      }
+    }, 20_000);
+
+    return () => clearInterval(intervalId);
+  }, [whiteboard, excalidrawAPI]);
+
   // Handle pointer/cursor updates for collaboration
   const handlePointerUpdate = useCallback(
     (payload: { pointer: { x: number; y: number }; button: string }) => {
@@ -198,19 +381,83 @@ export default function WhiteboardDetailPage() {
     [broadcastCursor]
   );
 
-  // Cleanup timeout on unmount
+  // Flush pending save on unmount, then clear timeouts
   useEffect(() => {
     return () => {
+      const hasPendingSave = saveTimeoutRef.current || onChangeSaveTimeoutRef.current;
+
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      if (onChangeSaveTimeoutRef.current) {
+        clearTimeout(onChangeSaveTimeoutRef.current);
+        onChangeSaveTimeoutRef.current = null;
+      }
+
+      if (hasPendingSave && excalidrawAPI) {
+        try {
+          const elements = excalidrawAPI.getSceneElements();
+          const appState = excalidrawAPI.getAppState();
+          const files = excalidrawAPI.getFiles();
+          const data = {
+            elements,
+            appState: {
+              viewBackgroundColor: appState.viewBackgroundColor,
+              gridSize: appState.gridSize,
+            },
+            files,
+            expectedVersion: versionRef.current,
+            broadcast: false,
+            senderId,
+          };
+
+          // keepalive: true allows the request to survive page navigation
+          fetch(`/api/whiteboards/${whiteboardId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+            keepalive: true,
+          }).catch(() => {
+            // Fire-and-forget — silently ignore errors on unmount
+          });
+        } catch {
+          // Silently ignore — component is unmounting
+        }
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI, whiteboardId, senderId]);
+
+  // Inject resolved S3 image files into Excalidraw once the API is ready
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const resolved = resolvedFilesRef.current;
+    if (Object.keys(resolved).length > 0) {
+      excalidrawAPI.addFiles(Object.values(resolved));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
+
+  // Auto-fit all content into view on initial load
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const timer = setTimeout(() => {
+      excalidrawAPI.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: false,
+        duration: 0,
+      });
+    }, 100);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
 
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
-    if (whiteboard && excalidrawAPI && !isInitialLoadRef.current) {
-      isInitialLoadRef.current = true;
+    if (whiteboard && excalidrawAPI && programmaticUpdateCountRef.current === 0) {
+      programmaticUpdateCountRef.current++;
       excalidrawAPI.updateScene({
         elements: whiteboard.elements as readonly ExcalidrawElement[],
         appState: whiteboard.appState as unknown as AppState,
@@ -222,7 +469,6 @@ export default function WhiteboardDetailPage() {
           animate: true,
           duration: 300,
         });
-        isInitialLoadRef.current = false;
       }, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -359,6 +605,10 @@ export default function WhiteboardDetailPage() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <WhiteboardVersionPanel
+              whiteboardId={whiteboardId}
+              onReloadWhiteboard={loadWhiteboard}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -415,10 +665,18 @@ export default function WhiteboardDetailPage() {
           )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: whiteboard.elements as readonly ExcalidrawElement[],
-              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-            }}
+            initialData={(() => {
+              const hasElements = (whiteboard.elements as unknown[]).length > 0;
+              const initialAppState = {
+                ...getInitialAppState(whiteboard.appState as Partial<AppState>),
+                ...(!hasElements ? { zoom: { value: 1 } } : {}),
+              };
+              return {
+                elements: whiteboard.elements as readonly ExcalidrawElement[],
+                appState: initialAppState as Partial<AppState>,
+                files: resolvedFilesRef.current,
+              };
+            })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}

@@ -18,7 +18,7 @@ export async function PATCH(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { startWorkflow, mode, status, workflowStatus, archived, runBuild, runTestSuite } = body;
+    const { startWorkflow, retryWorkflow, mode, status, workflowStatus, archived, runBuild, runTestSuite } = body;
 
     // Verify task exists and user has access
     const task = await db.task.findFirst({
@@ -66,6 +66,40 @@ export async function PATCH(
         taskId,
         userId: userOrResponse.id,
         mode: mode || "live",
+      });
+
+      // Fetch updated task with workflow status
+      const updatedTask = await db.task.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          workflowStatus: true,
+          stakworkProjectId: true,
+          updatedAt: true,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          task: updatedTask,
+          workflow: workflowResult.stakworkData,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Retry workflow if requested (includes chat history)
+    if (retryWorkflow) {
+      const workflowResult = await startTaskWorkflow({
+        taskId,
+        userId: userOrResponse.id,
+        mode: mode || "live",
+        includeHistory: true,
       });
 
       // Fetch updated task with workflow status

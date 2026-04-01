@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 // Mock dependencies BEFORE importing the route
-vi.mock("@/lib/middleware/utils", () => ({
-  getMiddlewareContext: vi.fn(),
-  requireAuth: vi.fn(),
-  checkIsSuperAdmin: vi.fn(),
+vi.mock("next-auth/next", () => ({
+  getServerSession: vi.fn(),
+}));
+
+vi.mock("next-auth/jwt", () => ({
+  getToken: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/nextauth", () => ({
+  authOptions: {},
 }));
 
 vi.mock("@/services/workspace", () => ({
@@ -38,7 +44,8 @@ vi.mock("@/lib/pods/capacity-queries", () => ({
 
 // Import after mocks
 import { GET } from "@/app/api/w/[slug]/pool/workspaces/route";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { PoolManagerService } from "@/services/pool-manager";
 import { db } from "@/lib/db";
@@ -149,14 +156,12 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
     // Setup default mock request
     mockRequest = new NextRequest("http://localhost:3000/api/w/test-workspace/pool/workspaces");
 
-    // Setup default mock implementations
-    vi.mocked(getMiddlewareContext).mockReturnValue({
-      requestId: "req-123",
-      authStatus: "authenticated",
-      user: mockUser,
-    });
+    // Setup default auth: session returns user
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: mockUser.id, email: mockUser.email, name: mockUser.name },
+    } as any);
+    vi.mocked(getToken).mockResolvedValue(null);
 
-    vi.mocked(requireAuth).mockReturnValue(mockUser);
     vi.mocked(getWorkspaceBySlug).mockResolvedValue(mockWorkspace as any);
     vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm as any);
 
@@ -178,19 +183,16 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
 
   describe("Authentication & Authorization", () => {
     it("should return 401 when user is not authenticated", async () => {
-      const mockResponse = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      vi.mocked(requireAuth).mockReturnValue(mockResponse);
+      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(getToken).mockResolvedValue(null);
 
       const response = await GET(mockRequest, {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      expect(response).toBe(mockResponse);
-      expect(requireAuth).toHaveBeenCalledWith({
-        requestId: "req-123",
-        authStatus: "authenticated",
-        user: mockUser,
-      });
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data).toEqual({ error: "Unauthorized" });
     });
 
     it("should return 404 when workspace not found", async () => {
@@ -221,7 +223,7 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data).toEqual({
         error: "Workspace not found or access denied",
       });
-      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id, { isSuperAdmin: undefined });
+      expect(getWorkspaceBySlug).toHaveBeenCalledWith("test-workspace", mockUser.id);
     });
 
     it("should return 400 when slug parameter is missing", async () => {
@@ -235,6 +237,17 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data).toEqual({
         error: "Workspace slug is required",
       });
+    });
+
+    it("should authenticate via Bearer token when session is null", async () => {
+      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(getToken).mockResolvedValue({ id: mockUser.id } as any);
+
+      const response = await GET(mockRequest, {
+        params: Promise.resolve({ slug: "test-workspace" }),
+      });
+
+      expect(response.status).toBe(200);
     });
   });
 
@@ -554,20 +567,17 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data.message).toBe("Query timeout");
     });
 
-    it("should handle malformed middleware context", async () => {
-      vi.mocked(getMiddlewareContext).mockReturnValue({
-        requestId: "req-123",
-        authStatus: "error",
-      });
-
-      const mockResponse = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      vi.mocked(requireAuth).mockReturnValue(mockResponse);
+    it("should return 401 when both session and token are missing", async () => {
+      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(getToken).mockResolvedValue(null);
 
       const response = await GET(mockRequest, {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      expect(response).toBe(mockResponse);
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data).toEqual({ error: "Unauthorized" });
     });
   });
 

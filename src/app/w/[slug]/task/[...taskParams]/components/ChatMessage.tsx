@@ -2,7 +2,7 @@
 
 import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, HelpCircle, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -14,8 +14,20 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cn } from "@/lib/utils";
 import { isClarifyingQuestions } from "@/types/stakwork";
-import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
+import type { ClarifyingQuestion, ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
+
+function parseQAPairs(text: string): { question: string; answer: string }[] {
+  return text
+    .split("\n\n")
+    .map((block) => {
+      const lines = block.split("\n");
+      const question = lines[0]?.replace(/^Q:\s*/, "") ?? "";
+      const answer = lines[1]?.replace(/^A:\s*/, "") ?? "";
+      return { question, answer };
+    })
+    .filter((pair) => pair.question.length > 0);
+}
 
 /**
  * Parse message content to extract <logs> sections
@@ -56,8 +68,44 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   return messageEqual && replyMessageEqual;
 }
 
+function AnsweredClarifyingQuestions({
+  questions,
+  replyMessage,
+}: {
+  questions: ClarifyingQuestion[];
+  replyMessage: ChatMessageType;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const pairs = parseQAPairs(replyMessage.message);
+  const count = questions.length;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/50 p-4">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <HelpCircle className="h-3 w-3" />
+        <span>
+          {count} {count === 1 ? "question" : "questions"} answered
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-3">
+          {pairs.map((pair, i) => (
+            <div key={i}>
+              <p className="font-medium text-foreground text-sm">{pair.question}</p>
+              <p className="text-muted-foreground text-sm pl-2 border-l border-border ml-1 mt-0.5">{pair.answer}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -79,19 +127,15 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
-            className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
+            className={`group px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-md"
                 : "bg-background text-foreground rounded-bl-md border"
             }`}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
@@ -119,7 +163,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
 
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (
-              <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
+              <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
             )}
           </div>
         )}
@@ -299,17 +343,8 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             <div key={artifact.id} className="flex justify-start">
               <div className="w-full max-w-full">
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                  {isAnswered ? (
-                    <div className="rounded-md border border-border bg-muted/50 p-4">
-                      <p className="text-xs text-muted-foreground mb-2">Clarifying questions answered</p>
-                      <div className="space-y-1 text-sm">
-                        {questions.map((q, i) => (
-                          <p key={i} className="text-muted-foreground">
-                            <span className="font-medium text-foreground">{q.question}</span>
-                          </p>
-                        ))}
-                      </div>
-                    </div>
+                  {isAnswered && replyMessage ? (
+                    <AnsweredClarifyingQuestions questions={questions} replyMessage={replyMessage} />
                   ) : (
                     <ClarifyingQuestionsPreview
                       questions={questions}
@@ -329,7 +364,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
         })}
       {/* Image Enlargement Dialog */}
       <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] max-h-[95vh] p-0 overflow-hidden">
           <VisuallyHidden>
             <DialogTitle>Image Preview</DialogTitle>
           </VisuallyHidden>

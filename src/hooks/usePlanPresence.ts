@@ -74,46 +74,54 @@ export function usePlanPresence({
       hasSentJoin.current = true;
     };
 
-    const pusherClient = getPusherClient();
-    const channelName = getFeatureChannelName(featureId);
-    const channel = pusherClient.subscribe(channelName);
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
+    let pusherClient: ReturnType<typeof getPusherClient> | null = null;
 
-    const handleUserJoin = (data: { user: CollaboratorInfo; rebroadcast?: boolean }) => {
-      if (data.user.odinguserId === userId) return;
+    try {
+      pusherClient = getPusherClient();
+      const channelName = getFeatureChannelName(featureId);
+      channel = pusherClient.subscribe(channelName);
 
-      const isNew = !knownUserIds.current.has(data.user.odinguserId);
+      const handleUserJoin = (data: { user: CollaboratorInfo; rebroadcast?: boolean }) => {
+        if (data.user.odinguserId === userId) return;
 
-      setCollaborators((prev) => {
-        const exists = prev.some((c) => c.odinguserId === data.user.odinguserId);
-        if (exists) return prev;
-        return [...prev, data.user];
-      });
+        const isNew = !knownUserIds.current.has(data.user.odinguserId);
 
-      if (isNew) {
-        knownUserIds.current.add(data.user.odinguserId);
-      }
+        setCollaborators((prev) => {
+          const exists = prev.some((c) => c.odinguserId === data.user.odinguserId);
+          if (exists) return prev;
+          return [...prev, data.user];
+        });
 
-      // Re-broadcast only for genuinely new users whose join is not itself a rebroadcast
-      if (hasSentJoin.current && isNew && !data.rebroadcast) {
-        fetch(presenceUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
-        }).catch((err) => console.error("Error re-broadcasting join:", err));
-      }
-    };
+        if (isNew) {
+          knownUserIds.current.add(data.user.odinguserId);
+        }
 
-    const handleUserLeave = (data: { userId: string }) => {
-      knownUserIds.current.delete(data.userId);
-      setCollaborators((prev) =>
-        prev.filter((c) => c.odinguserId !== data.userId)
-      );
-    };
+        // Re-broadcast only for genuinely new users whose join is not itself a rebroadcast
+        if (hasSentJoin.current && isNew && !data.rebroadcast) {
+          fetch(presenceUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
+          }).catch((err) => console.error("Error re-broadcasting join:", err));
+        }
+      };
 
-    channel.bind(PUSHER_EVENTS.PLAN_USER_JOIN, handleUserJoin);
-    channel.bind(PUSHER_EVENTS.PLAN_USER_LEAVE, handleUserLeave);
+      const handleUserLeave = (data: { userId: string }) => {
+        knownUserIds.current.delete(data.userId);
+        setCollaborators((prev) =>
+          prev.filter((c) => c.odinguserId !== data.userId)
+        );
+      };
 
-    sendJoin();
+      channel.bind(PUSHER_EVENTS.PLAN_USER_JOIN, handleUserJoin);
+      channel.bind(PUSHER_EVENTS.PLAN_USER_LEAVE, handleUserLeave);
+
+      sendJoin();
+    } catch {
+      // Pusher not configured in this environment
+      return;
+    }
 
     const sendLeaveBeacon = () => {
       navigator.sendBeacon(
@@ -126,8 +134,11 @@ export function usePlanPresence({
 
     return () => {
       window.removeEventListener("beforeunload", sendLeaveBeacon);
-      channel.unbind_all();
-      pusherClient.unsubscribe(channelName);
+      channel?.unbind_all();
+      if (pusherClient && channel) {
+        const channelName = getFeatureChannelName(featureId);
+        pusherClient.unsubscribe(channelName);
+      }
       sendLeaveBeacon();
       hasSentJoin.current = false;
       knownUserIds.current.clear();

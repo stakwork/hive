@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -20,9 +19,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true);
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
@@ -53,11 +51,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { slug } = await params;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
     const body = await request.json();
     const validatedData = updateLearnConfigSchema.parse(body);
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
+    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true);
     if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }

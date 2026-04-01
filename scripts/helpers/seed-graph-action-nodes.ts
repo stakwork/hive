@@ -4,8 +4,6 @@ import {
   WorkflowStatus,
   Priority,
   ArtifactType,
-  StakworkRunType,
-  StakworkRunDecision,
   FeatureStatus,
   FeaturePriority,
   ChatRole,
@@ -30,11 +28,8 @@ interface SeedSummary {
   };
   features: {
     total: number;
-    requirements: number;
-    architecture: number;
-    requirementsWithQuestions: number;
-    taskGeneration: number;
-    withDecisions: number;
+    awaitingFeedback: number;
+    notAwaitingFeedback: number;
   };
 }
 
@@ -78,11 +73,8 @@ async function main() {
     },
     features: {
       total: 0,
-      requirements: 0,
-      architecture: 0,
-      requirementsWithQuestions: 0,
-      taskGeneration: 0,
-      withDecisions: 0,
+      awaitingFeedback: 0,
+      notAwaitingFeedback: 0,
     },
   };
 
@@ -250,198 +242,79 @@ async function main() {
   console.log("🎯 Creating features...");
 
   // 2 features with StakworkRun: type: 'REQUIREMENTS', status: 'COMPLETED', decision: null
-  for (let i = 1; i <= 2; i++) {
+  // 4 features that SHOULD appear: last chat message = ASSISTANT, no tasks
+  const awaitingFeatureConfigs = [
+    { id: `feature-awaiting-1-${workspace.id}`, title: "Feature Awaiting Feedback 1: User profile management", brief: "Allow users to update their profiles", priority: FeaturePriority.MEDIUM },
+    { id: `feature-awaiting-2-${workspace.id}`, title: "Feature Awaiting Feedback 2: Payment integration", brief: "Integrate Stripe for payments", priority: FeaturePriority.MEDIUM },
+    { id: `feature-awaiting-3-${workspace.id}`, title: "Feature Awaiting Feedback 3: Notification system", brief: "Real-time notifications for users", priority: FeaturePriority.HIGH },
+    { id: `feature-awaiting-4-${workspace.id}`, title: "Feature Awaiting Feedback 4: Search functionality", brief: "Advanced search with filters and autocomplete", priority: FeaturePriority.HIGH },
+  ];
+
+  for (const cfg of awaitingFeatureConfigs) {
     const feature = await prisma.feature.upsert({
-      where: {
-        id: `feature-requirements-${i}-${workspace.id}`,
-      },
+      where: { id: cfg.id },
       update: {},
       create: {
-        id: `feature-requirements-${i}-${workspace.id}`,
-        title: `Feature Requirements ${i}: ${i === 1 ? "User profile management" : "Payment integration"}`,
-        brief: `This feature needs requirements review. ${i === 1 ? "Allow users to update their profiles" : "Integrate Stripe for payments"}`,
+        id: cfg.id,
+        title: cfg.title,
+        brief: cfg.brief,
         workspaceId: workspace.id,
         createdById: user.id,
         updatedById: user.id,
         status: FeatureStatus.PLANNED,
-        priority: FeaturePriority.MEDIUM,
+        priority: cfg.priority,
       },
     });
 
-    await prisma.stakworkRun.create({
+    await prisma.chatMessage.create({
       data: {
-        webhookUrl: `https://example.com/webhook/requirements-${i}`,
-        projectId: 5000 + i,
-        type: StakworkRunType.REQUIREMENTS,
         featureId: feature.id,
-        workspaceId: workspace.id,
-        status: WorkflowStatus.COMPLETED,
-        result: `Requirements analysis completed for ${feature.title}. Ready for review.`,
-        decision: null,
+        role: ChatRole.ASSISTANT,
+        message: `I've analyzed the requirements for "${feature.title}". Could you provide more details about your specific needs?`,
+        status: ChatStatus.SENT,
       },
     });
 
-    summary.features.requirements++;
+    summary.features.awaitingFeedback++;
     summary.features.total++;
   }
 
-  // 2 features with StakworkRun: type: 'ARCHITECTURE', status: 'COMPLETED', decision: null
+  // 2 features that should NOT appear: last message is USER (user already replied)
   for (let i = 1; i <= 2; i++) {
     const feature = await prisma.feature.upsert({
-      where: {
-        id: `feature-architecture-${i}-${workspace.id}`,
-      },
+      where: { id: `feature-not-awaiting-${i}-${workspace.id}` },
       update: {},
       create: {
-        id: `feature-architecture-${i}-${workspace.id}`,
-        title: `Feature Architecture ${i}: ${i === 1 ? "Notification system" : "Analytics dashboard"}`,
-        brief: `This feature needs architecture review. ${i === 1 ? "Real-time notifications for users" : "Comprehensive analytics dashboard"}`,
+        id: `feature-not-awaiting-${i}-${workspace.id}`,
+        title: `Feature Not Awaiting ${i}: ${i === 1 ? "Export functionality" : "Mobile app"}`,
+        brief: `This feature has a USER reply as last message and should not appear.`,
         workspaceId: workspace.id,
         createdById: user.id,
         updatedById: user.id,
-        status: FeatureStatus.PLANNED,
-        priority: FeaturePriority.HIGH,
-      },
-    });
-
-    await prisma.stakworkRun.create({
-      data: {
-        webhookUrl: `https://example.com/webhook/architecture-${i}`,
-        projectId: 6000 + i,
-        type: StakworkRunType.ARCHITECTURE,
-        featureId: feature.id,
-        workspaceId: workspace.id,
-        status: WorkflowStatus.COMPLETED,
-        result: `Architecture design completed for ${feature.title}. Awaiting approval.`,
-        decision: null,
-      },
-    });
-
-    summary.features.architecture++;
-    summary.features.total++;
-  }
-
-  // 1 feature with StakworkRun: type: 'REQUIREMENTS', result contains tool_use: "ask_clarifying_questions"
-  const featureWithQuestions = await prisma.feature.upsert({
-    where: {
-      id: `feature-requirements-questions-${workspace.id}`,
-    },
-    update: {},
-    create: {
-      id: `feature-requirements-questions-${workspace.id}`,
-      title: "Feature Needs Clarification: Social sharing",
-      brief:
-        "Social media sharing feature with platform integrations (Twitter, Facebook, LinkedIn)",
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
-      status: FeatureStatus.PLANNED,
-      priority: FeaturePriority.MEDIUM,
-    },
-  });
-
-  await prisma.stakworkRun.create({
-    data: {
-      webhookUrl: "https://example.com/webhook/requirements-questions",
-      projectId: 7001,
-      type: StakworkRunType.REQUIREMENTS,
-      featureId: featureWithQuestions.id,
-      workspaceId: workspace.id,
-      status: WorkflowStatus.COMPLETED,
-      result: JSON.stringify({
-        tool_use: "ask_clarifying_questions",
-        questions: [
-          "Which social media platforms should be prioritized?",
-          "Should sharing be available for all content types or specific ones?",
-          "Do we need custom sharing messages or use default content?",
-        ],
-        context:
-          "Requirements analysis needs clarification on scope and platform priorities",
-      }),
-      dataType: "json",
-      decision: null,
-    },
-  });
-
-  summary.features.requirementsWithQuestions++;
-  summary.features.total++;
-
-  // 1 feature with StakworkRun: type: 'TASK_GENERATION', status: 'COMPLETED', decision: null
-  const featureTaskGen = await prisma.feature.upsert({
-    where: {
-      id: `feature-task-generation-${workspace.id}`,
-    },
-    update: {},
-    create: {
-      id: `feature-task-generation-${workspace.id}`,
-      title: "Feature Task Generation: Search functionality",
-      brief: "Advanced search with filters and autocomplete",
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
-      status: FeatureStatus.PLANNED,
-      priority: FeaturePriority.HIGH,
-    },
-  });
-
-  await prisma.stakworkRun.create({
-    data: {
-      webhookUrl: "https://example.com/webhook/task-generation",
-      projectId: 8001,
-      type: StakworkRunType.TASK_GENERATION,
-      featureId: featureTaskGen.id,
-      workspaceId: workspace.id,
-      status: WorkflowStatus.COMPLETED,
-      result:
-        "Task generation completed. 12 tasks created across all layers (frontend, backend, tests). Ready for review.",
-      decision: null,
-    },
-  });
-
-  summary.features.taskGeneration++;
-  summary.features.total++;
-
-  // 2 features with StakworkRun: decision: 'ACCEPTED' or 'REJECTED' (should NOT appear)
-  for (let i = 1; i <= 2; i++) {
-    const feature = await prisma.feature.upsert({
-      where: {
-        id: `feature-decided-${i}-${workspace.id}`,
-      },
-      update: {},
-      create: {
-        id: `feature-decided-${i}-${workspace.id}`,
-        title: `Feature With Decision ${i}: ${i === 1 ? "Export functionality" : "Mobile app"}`,
-        brief: `This feature has been ${i === 1 ? "accepted" : "rejected"} and should not appear.`,
-        workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id,
-        status:
-          i === 1 ? FeatureStatus.IN_PROGRESS : FeatureStatus.CANCELLED,
+        status: i === 1 ? FeatureStatus.IN_PROGRESS : FeatureStatus.PLANNED,
         priority: FeaturePriority.LOW,
       },
     });
 
-    await prisma.stakworkRun.create({
+    // Create ASSISTANT message first, then USER reply — so last message is USER
+    await prisma.chatMessage.create({
       data: {
-        webhookUrl: `https://example.com/webhook/decided-${i}`,
-        projectId: 9000 + i,
-        type: StakworkRunType.REQUIREMENTS,
         featureId: feature.id,
-        workspaceId: workspace.id,
-        status: WorkflowStatus.COMPLETED,
-        result: `Requirements ${i === 1 ? "approved" : "rejected"}.`,
-        decision:
-          i === 1
-            ? StakworkRunDecision.ACCEPTED
-            : StakworkRunDecision.REJECTED,
-        feedback:
-          i === 1
-            ? "Looks good, proceed with implementation"
-            : "Not aligned with current priorities",
+        role: ChatRole.ASSISTANT,
+        message: "What are your requirements for this feature?",
+        status: ChatStatus.SENT,
+      },
+    });
+    await prisma.chatMessage.create({
+      data: {
+        featureId: feature.id,
+        role: ChatRole.USER,
+        message: "Here are my requirements...",
+        status: ChatStatus.SENT,
       },
     });
 
-    summary.features.withDecisions++;
+    summary.features.notAwaitingFeedback++;
     summary.features.total++;
   }
 
@@ -469,19 +342,10 @@ async function main() {
   console.log(`  TOTAL: ${summary.tasks.total}`);
   console.log("\nFeatures Created:");
   console.log(
-    `  - Requirements Review (should appear): ${summary.features.requirements}`,
+    `  - Awaiting Feedback / last msg=ASSISTANT, no tasks (should appear): ${summary.features.awaitingFeedback}`,
   );
   console.log(
-    `  - Architecture Review (should appear): ${summary.features.architecture}`,
-  );
-  console.log(
-    `  - Requirements with Questions (should appear): ${summary.features.requirementsWithQuestions}`,
-  );
-  console.log(
-    `  - Task Generation Review (should appear): ${summary.features.taskGeneration}`,
-  );
-  console.log(
-    `  - With Decisions (should NOT appear): ${summary.features.withDecisions}`,
+    `  - Not Awaiting / last msg=USER (should NOT appear): ${summary.features.notAwaitingFeedback}`,
   );
   console.log(`  TOTAL: ${summary.features.total}`);
   console.log("=====================================\n");

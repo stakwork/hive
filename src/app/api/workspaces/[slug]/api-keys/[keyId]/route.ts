@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getApiKey, revokeApiKey } from "@/lib/api-keys";
 import { logger } from "@/lib/logger";
@@ -14,7 +13,6 @@ export const runtime = "nodejs";
  *
  * Permissions:
  * - OWNER, ADMIN: Can revoke any key in the workspace
- * - PM, DEVELOPER: Can only revoke keys they created
  */
 export async function DELETE(
   request: Request,
@@ -28,13 +26,12 @@ export async function DELETE(
 
     const { slug, keyId } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
-    // Check workspace access - need write permission at minimum
-    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
-    if (!access.hasAccess || !access.canWrite) {
+    // Check workspace access - need admin permission
+    const access = await validateWorkspaceAccess(slug, userId, true);
+    if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
-        { error: "Forbidden - write access required" },
+        { error: "Forbidden - admin access required" },
         { status: 403 }
       );
     }
@@ -62,14 +59,6 @@ export async function DELETE(
       return NextResponse.json(
         { error: "API key already revoked" },
         { status: 400 }
-      );
-    }
-
-    // Permission check: Admins can revoke any key, others can only revoke their own
-    if (!access.canAdmin && apiKey.createdById !== userId) {
-      return NextResponse.json(
-        { error: "Forbidden - can only revoke your own keys" },
-        { status: 403 }
       );
     }
 

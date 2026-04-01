@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
-import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { WorkflowStatusBadge, type StreamContext } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -42,11 +44,18 @@ interface ChatInputProps {
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;
-  workspaceSlug?: string;
   taskMode?: string;
   taskId?: string;
   featureId?: string;
   onOpenBountyRequest?: () => void;
+  stakworkProjectId?: string | null;
+  lastLogLine?: string;
+  onRetry?: () => Promise<void>;
+  isRetrying?: boolean;
+  isPlanChat?: boolean;
+  currentWorkspaceSlug?: string;
+  streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatInput({
@@ -59,21 +68,38 @@ export function ChatInput({
   onRemoveStepAttachment,
   workflowStatus,
   hasPrArtifact = false,
-  workspaceSlug,
   taskMode,
   taskId,
   featureId,
   onOpenBountyRequest,
+  stakworkProjectId,
+  lastLogLine,
+  onRetry,
+  isRetrying = false,
+  isPlanChat = false,
+  currentWorkspaceSlug,
+  streamContext = null,
+  isSuperAdmin = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState("live");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const preVoiceInputRef = useRef("");
   const isMobile = useIsMobile();
+  const { workspaces } = useWorkspace();
+
+  const filteredWorkspaces = isPlanChat && mentionQuery !== null
+    ? workspaces.filter(
+        (ws) =>
+          ws.slug !== currentWorkspaceSlug &&
+          ws.slug.toLowerCase().includes(mentionQuery.toLowerCase())
+      )
+    : [];
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -85,11 +111,6 @@ export function ChatInput({
 
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-  useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    setMode(mode || "live");
-  }, []);
 
   useEffect(() => {
     if (transcript) {
@@ -125,20 +146,24 @@ export function ChatInput({
   };
 
   const uploadToS3 = async (image: PendingImage): Promise<string> => {
-    if (!taskId) {
+    let endpoint: string;
+    let body: Record<string, unknown>;
+
+    if (featureId) {
+      endpoint = "/api/upload/image";
+      body = { featureId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else if (taskId) {
+      endpoint = "/api/upload/presigned-url";
+      body = { taskId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else {
       throw new Error("Task ID is required for image upload");
     }
 
     // Request presigned URL
-    const presignedResponse = await fetch("/api/upload/presigned-url", {
+    const presignedResponse = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId,
-        filename: image.filename,
-        contentType: image.mimeType,
-        size: image.size,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!presignedResponse.ok) {
@@ -380,87 +405,106 @@ export function ChatInput({
     await onSend(message, attachments.length > 0 ? attachments : undefined);
   };
 
+  const insertMention = useCallback(
+    (slug: string) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const cursor = textarea.selectionStart ?? input.length;
+      const before = input.slice(0, cursor);
+      const after = input.slice(cursor);
+      const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
+      const newValue = replaced + ' ' + after;
+      setInput(newValue);
+      setMentionQuery(null);
+      setMentionIndex(0);
+      // Restore focus and position cursor after the inserted slug
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const pos = replaced.length + 1;
+        textarea.setSelectionRange(pos, pos);
+      });
+    },
+    [input]
+  );
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Intercept keys when mention popup is open
+    if (isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % filteredWorkspaces.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + filteredWorkspaces.length) % filteredWorkspaces.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+
     // On mobile, return key adds line breaks (user taps send button to submit)
     // On desktop, Enter submits, Shift+Enter for new lines
     if (e.key === "Enter" && !e.shiftKey && !isMobile) {
       e.preventDefault();
-      handleSubmit(e);
+      if (!disabled) handleSubmit(e);
     }
   };
 
-  const getModeConfig = (mode: string) => {
-    if (mode === "agent") {
-      return { icon: Bot, label: "Agent" };
-    }
-    return { icon: Workflow, label: "Workflow" };
-  };
-
-  const modeConfig = getModeConfig(mode);
-  const ModeIcon = modeConfig.icon;
-
-  // Show simplified ended state for terminal workflow statuses
   const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const getTerminalMessage = () => {
-    if (taskMode === "agent") {
-      return "Session expired.";
-    }
-    switch (workflowStatus) {
-      case WorkflowStatus.HALTED:
-        return "Workflow halted.";
-      case WorkflowStatus.FAILED:
-        return "Workflow failed.";
-      case WorkflowStatus.ERROR:
-        return "Workflow error.";
-      default:
-        return "Workflow ended.";
-    }
-  };
-
-  if (isTerminalState && !featureId) {
-    return (
-      <div className={cn(
-        "px-4 py-4 border-t bg-background",
-        isMobile && "fixed bottom-0 left-0 right-0 z-10 pb-[env(safe-area-inset-bottom)]"
-      )}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
-            <span>{getTerminalMessage()}</span>
-          </div>
-          {workspaceSlug && (
-            <Button asChild size="sm">
-              <Link href={`/w/${workspaceSlug}/task/new`}>
-                <Plus className="h-3 w-3 mr-1" />
-                New Task
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const showStatusIndicator =
+    workflowStatus === WorkflowStatus.IN_PROGRESS ||
+    isTerminalState;
 
   return (
     <div className={cn(
       isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
     )}>
-      <div className={cn(
-        "flex items-center gap-2 text-sm text-muted-foreground",
-        isMobile && "px-4"
-      )}>
-        <ModeIcon className="h-4 w-4" />
-        <span>{modeConfig.label}</span>
-        {!hasPrArtifact && workflowStatus !== WorkflowStatus.COMPLETED && (
-          <>
-            <span>|</span>
-            <WorkflowStatusBadge status={workflowStatus} />
-          </>
+      {/* Animated status indicator */}
+      <AnimatePresence>
+        {showStatusIndicator && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: 12, height: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className={cn("px-4 py-2 md:px-6")}>
+              {isTerminalState && onRetry ? (
+                <div className="flex items-center gap-2">
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
+                  <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
+                    {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* Debug attachment display */}
       {pendingDebugAttachment && (
@@ -575,11 +619,52 @@ export function ChatInput({
           </div>
         )}
 
+        {/* @mention workspace popup */}
+        {isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0 && (
+          <div className="absolute bottom-full left-4 right-4 mb-1 z-20 md:left-6 md:right-6">
+            <Command className="rounded-lg border shadow-md bg-popover">
+              <CommandList>
+                {filteredWorkspaces.map((ws, idx) => (
+                  <CommandItem
+                    key={ws.slug}
+                    value={ws.slug}
+                    onSelect={() => insertMention(ws.slug)}
+                    className={cn(
+                      "cursor-pointer px-3 py-2 text-sm",
+                      idx === mentionIndex && "bg-accent text-accent-foreground"
+                    )}
+                    data-testid={`mention-item-${ws.slug}`}
+                  >
+                    <span className="font-medium">@{ws.slug}</span>
+                    {ws.name && ws.name !== ws.slug && (
+                      <span className="ml-2 text-muted-foreground">{ws.name}</span>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandList>
+            </Command>
+          </div>
+        )}
+
         <Textarea
           ref={textareaRef}
+          disabled={disabled || isLoading}
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            if (isPlanChat) {
+              const cursor = e.target.selectionStart ?? e.target.value.length;
+              const before = e.target.value.slice(0, cursor);
+              const match = before.match(/\B@([\w-]*)$/);
+              if (match) {
+                setMentionQuery(match[1]);
+                setMentionIndex(0);
+              } else {
+                setMentionQuery(null);
+              }
+            }
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           className="flex-1 resize-none min-h-[36px]"
@@ -587,7 +672,6 @@ export function ChatInput({
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
           }}
-          disabled={disabled}
           autoFocus
           rows={1}
           data-testid="chat-message-input"

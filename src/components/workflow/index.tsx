@@ -66,6 +66,9 @@ interface WorkflowAppProps {
     projectProgress?: string;
     rails_env: string;
     onStepClick?: (step: WorkflowTransitionType) => void;
+    onVersionChange?: (versionId: string) => void;
+    changedStepIds?: Set<string>;
+    changedConnectionIds?: Set<string>;
   };
 }
 
@@ -145,6 +148,9 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     projectProgress,
     rails_env,
     onStepClick,
+    onVersionChange,
+    changedStepIds,
+    changedConnectionIds,
   } = workflowApp.props;
 
   let zoomLevel = defaultZoomLevel || 0.65;
@@ -387,7 +393,15 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
 
   // Auto-fit view for project workflows on initial load
   useEffect(() => {
-    if (projectId && reactFlowInstance && nodes.length > 0 && !hasInitialFitViewRef.current) {
+    const isEditorMode = !!workflowData && !projectId;
+    const hasSavedPosition = isEditorMode && !!localStorage.getItem(`position_${workflowId}`);
+
+    if (
+      (projectId || (isEditorMode && !hasSavedPosition)) &&
+      reactFlowInstance &&
+      nodes.length > 0 &&
+      !hasInitialFitViewRef.current
+    ) {
       hasInitialFitViewRef.current = true;
 
       // Small delay to ensure nodes are rendered
@@ -398,7 +412,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         });
       }, 100);
     }
-  }, [projectId, reactFlowInstance, nodes.length]);
+  }, [projectId, workflowData, workflowId, reactFlowInstance, nodes.length]);
 
   // Handle step clicks for workflow editor mode
   useEffect(() => {
@@ -562,7 +576,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         });
       }
 
-      return {
+      const mapped = {
         id: node.id,
         type: "stepNode",
         position: node.position,
@@ -571,6 +585,13 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         targetPosition: "bottom",
         data: { ...node },
       };
+
+      // Apply orange highlight for changed steps
+      if (changedStepIds?.size && changedStepIds.has(node.id)) {
+        mapped.data = { ...mapped.data, bgColor: '#F97316', borderColor: '#F97316' };
+      }
+
+      return mapped;
     });
 
     let myEdges: any[] = [];
@@ -708,6 +729,24 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     const shouldUseTransition =
       typeof (document as any).startViewTransition === "function" && hasDataChanged && userInitiated;
 
+    // Apply orange highlight for changed connections
+    if (changedConnectionIds?.size) {
+      myEdges = myEdges.flat().map((edge: any) => {
+        if (!edge) return edge;
+        const key = `${edge.source}-${edge.target}`;
+        if (changedConnectionIds.has(key)) {
+          return {
+            ...edge,
+            data: {
+              ...edge.data,
+              conn_edge: { ...edge.data?.conn_edge, edgeColor: '#F97316' },
+            },
+          };
+        }
+        return edge;
+      });
+    }
+
     const updateView = () => {
       setNodes(myNodes);
       setEdges(myEdges.flat());
@@ -784,6 +823,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     const eventDetail = { workflow_version_id: data.workflow_version_id };
 
     setWorkflowVersionId(data.workflow_version_id);
+    onVersionChange?.(data.workflow_version_id);
 
     // NOTE: Turbo Stream functionality commented out during Next.js migration
     // This was used to update the workflow versions dropdown via Rails Turbo Streams
@@ -1178,6 +1218,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {
         setWorkflowVersionId(newVersionId);
+        onVersionChange?.(newVersionId);
         requestQueue.current.latestVersion = newVersionId;
       }
 

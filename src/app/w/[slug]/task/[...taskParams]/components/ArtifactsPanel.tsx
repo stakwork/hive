@@ -19,6 +19,10 @@ import type { FeatureDetail } from "@/types/roadmap";
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
 
+// Tabs that should auto-switch when they first become available,
+// overriding whatever tab is currently active (e.g. ephemeral WORKFLOW).
+const PRIORITY_TABS: ArtifactType[] = ["BROWSER"];
+
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
   workspaceId?: string;
@@ -28,6 +32,7 @@ interface ArtifactsPanelProps {
   isMobile?: boolean;
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
   planData?: PlanData;
   feature?: FeatureDetail | null;
   featureId?: string;
@@ -35,6 +40,8 @@ interface ArtifactsPanelProps {
   controlledTab?: ArtifactType | null;
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
+  browserRefreshTrigger?: number;
+  isSuperAdmin?: boolean;
 }
 
 export function ArtifactsPanel({
@@ -46,6 +53,7 @@ export function ArtifactsPanel({
   isMobile = false,
   onTogglePreview,
   onStepSelect,
+  onVersionChange,
   planData,
   feature,
   featureId,
@@ -53,6 +61,8 @@ export function ArtifactsPanel({
   controlledTab,
   onControlledTabChange,
   sectionHighlights,
+  browserRefreshTrigger,
+  isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -60,6 +70,18 @@ export function ArtifactsPanel({
   const isControlled = controlledTab !== undefined;
   const activeTab = isControlled ? controlledTab : internalTab;
   const setActiveTab = isControlled && onControlledTabChange ? onControlledTabChange : setInternalTab;
+
+  // Tracks whether the user has manually clicked a tab — suppresses priority auto-switch after that.
+  const hasUserSelectedTabRef = useRef(false);
+
+  const [hasAttachments, setHasAttachments] = useState(false);
+
+  const handleUserTabSelect = useCallback((tab: ArtifactType) => {
+    if (!hasAttachments && tab === "VERIFY") return;
+    hasUserSelectedTabRef.current = true;
+    setActiveTab(tab);
+  }, [setActiveTab, hasAttachments]);
+
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
   const toastedRunIdRef = useRef<string | null>(null);
@@ -135,14 +157,23 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  const { latestRun, refetch: refetchRun } = useStakworkGeneration({
+  // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
+  useEffect(() => {
+    if (!hasTasks || !featureId) return;
+    fetch(`/api/features/${featureId}/attachments/count`)
+      .then((r) => r.json())
+      .then((data) => { if (data.count > 0) setHasAttachments(true); })
+      .catch(() => {});
+  }, [hasTasks, featureId]);
+
+  const { latestRun, refetch: refetchRun, isStale } = useStakworkGeneration({
     featureId: featureId || "",
     type: "TASK_GENERATION",
     enabled: hasFeature,
   });
 
   const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
-  const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
+  const isRunFailed = isStale || latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
   const showVerifyTab = hasTasks;
@@ -201,6 +232,13 @@ export function ArtifactsPanel({
         }),
       });
 
+      if (response.status === 409) {
+        // Another run is already active — sync state and treat as success
+        await refetchRun();
+        setIsApiCalling(false);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error("Failed to generate tasks");
       }
@@ -209,6 +247,10 @@ export function ArtifactsPanel({
     } catch (error) {
       console.error("Failed to generate tasks:", error);
       setIsApiCalling(false);
+      setHasInitiatedGeneration(false);
+      toast.error("Failed to generate tasks", {
+        description: "Something went wrong. Please try again.",
+      });
     }
   }, [featureId, workspaceId, refetchRun, isGenerating, isControlled, onControlledTabChange]);
 
@@ -288,6 +330,17 @@ export function ArtifactsPanel({
     }
   }, [availableTabs, activeTab, isControlled, onControlledTabChange, hasInitiatedGeneration]);
 
+  // Priority tab auto-switch: when a high-priority tab (e.g. IDE) first appears,
+  // override the current selection — but only until the user manually picks a tab.
+  useEffect(() => {
+    if (hasUserSelectedTabRef.current) return; // user has taken control — don't interfere
+    const priorityTab = availableTabs.find((t) => PRIORITY_TABS.includes(t));
+    if (priorityTab && activeTab !== priorityTab) {
+      setActiveTab(priorityTab);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTabs]);
+
   if (availableTabs.length === 0) {
     return null;
   }
@@ -328,8 +381,9 @@ export function ArtifactsPanel({
           <ArtifactsHeader
             availableArtifacts={availableTabs}
             activeArtifact={activeTab}
-            onArtifactChange={setActiveTab}
+            onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
+            disabledTabs={hasAttachments ? [] : ["VERIFY"]}
           />
         </motion.div>
 
@@ -385,6 +439,7 @@ export function ArtifactsPanel({
                 podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
+                browserRefreshTrigger={browserRefreshTrigger}
               />
             </div>
           )}
@@ -413,6 +468,8 @@ export function ArtifactsPanel({
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
                 onStepSelect={onStepSelect}
+                onVersionChange={onVersionChange}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           )}

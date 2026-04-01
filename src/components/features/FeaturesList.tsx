@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -9,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell, Pencil } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
@@ -56,6 +55,10 @@ function FeatureRow({
   onPriorityUpdate,
   onAssigneeUpdate,
   onDelete,
+  onClick,
+  isRenaming,
+  onRenameStart,
+  onRenameSave,
 }: {
   feature: FeatureWithDetails;
   workspaceSlug: string;
@@ -63,22 +66,75 @@ function FeatureRow({
   onPriorityUpdate: (featureId: string, priority: FeaturePriority) => Promise<void>;
   onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
+  onClick: () => void;
+  isRenaming: boolean;
+  onRenameStart: () => void;
+  onRenameSave: (featureId: string, newTitle: string) => Promise<void>;
 }) {
-  const needsReview = feature._count.stakworkRuns > 0;
+  const needsReview = feature.awaitingFeedback;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState(feature.title);
+
+  // Auto-focus input when entering rename mode
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  // Reset edit value when feature title changes or rename mode exits
+  useEffect(() => {
+    if (!isRenaming) {
+      setEditValue(feature.title);
+    }
+  }, [feature.title, isRenaming]);
+
+  const handleSave = async () => {
+    const trimmed = editValue.trim();
+    // Only save if non-empty and changed
+    if (trimmed && trimmed !== feature.title) {
+      await onRenameSave(feature.id, trimmed);
+    } else {
+      // Revert if empty or unchanged
+      setEditValue(feature.title);
+      onRenameStart(); // This will toggle off rename mode since it's already true
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditValue(feature.title);
+      onRenameStart(); // Toggle off rename mode
+    }
+  };
 
   return (
     <TableRow
-      className="relative cursor-pointer hover:bg-muted/50 transition-colors"
+      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      onClick={onClick}
     >
-      <TableCell className="w-[469px] font-medium truncate">
-        <Link
-          href={`/w/${workspaceSlug}/plan/${feature.id}`}
-          className="absolute inset-0"
-          aria-label={feature.title}
-        />
+      <TableCell className="w-[320px] font-medium truncate">
         <div className="flex items-center gap-2">
-          <span className="truncate">{feature.title}</span>
-          {needsReview && (
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          ) : (
+            <span className="truncate">{feature.title}</span>
+          )}
+          {!isRenaming && needsReview && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="flex-shrink-0">
@@ -90,13 +146,17 @@ function FeatureRow({
               </TooltipContent>
             </Tooltip>
           )}
-          {feature.deploymentStatus && (
-            <DeploymentStatusBadge
-              environment={feature.deploymentStatus}
-              deploymentUrl={feature.deploymentUrl}
-            />
-          )}
         </div>
+      </TableCell>
+      <TableCell className="w-[130px]" onClick={(e) => e.stopPropagation()}>
+        {feature.deploymentStatus ? (
+          <DeploymentStatusBadge
+            environment={feature.deploymentStatus}
+            deploymentUrl={feature.deploymentUrl}
+          />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
@@ -112,13 +172,10 @@ function FeatureRow({
           showLowPriority={true}
         />
       </TableCell>
-      <TableCell className="w-[120px] text-muted-foreground text-sm">
-        {feature.createdBy?.name || "Unknown"}
-      </TableCell>
       <TableCell className="w-[150px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
-          currentAssignee={feature.assignee}
+          currentAssignee={feature.assignee ?? (feature.createdBy ? { ...feature.createdBy } : null)}
           onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
         />
       </TableCell>
@@ -131,6 +188,12 @@ function FeatureRow({
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
           actions={[
+            {
+              label: "Rename",
+              icon: Pencil,
+              onClick: onRenameStart,
+              separator: true,
+            },
             {
               label: "Delete",
               icon: Trash2,
@@ -198,21 +261,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         try {
           const parsed = JSON.parse(saved);
           return parsed.assigneeFilter || "ALL";
-        } catch {
-          return "ALL";
-        }
-      }
-    }
-    return "ALL";
-  });
-
-  const [createdByFilter, setCreatedByFilter] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("features-filters-sort-preference");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          return parsed.createdByFilter || "ALL";
         } catch {
           return "ALL";
         }
@@ -292,6 +340,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     return "list";
   });
 
+  // Rename state management
+  const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null);
+
   // Navigate to a specific page and update URL
   const goToPage = useCallback((n: number) => {
     setPage(n);
@@ -327,9 +378,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       }
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
-      }
-      if (createdByFilter !== "ALL") {
-        params.append("createdById", createdByFilter);
       }
 
       // Add sort params if set
@@ -373,7 +421,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   };
 
   // Check if any filters are active (excluding default sort)
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || createdByFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "" || needsAttentionFilter;
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "" || needsAttentionFilter;
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -405,7 +453,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
 
   // Pusher integration for real-time deployment updates
   const handleDeploymentStatusChange = useCallback((event: DeploymentStatusChangeEvent) => {
@@ -428,13 +476,12 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         statusFilters,
         priorityFilters,
         assigneeFilter,
-        createdByFilter,
         sortBy,
         sortOrder,
       };
       localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
     }
-  }, [statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder]);
+  }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
 
   // Save show canceled preference to localStorage
   useEffect(() => {
@@ -472,13 +519,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     goToPage(1);
   };
 
-  const handleCreatedByFilterChange = (value: string | string[]) => {
-    // Created by filter is single-select, so always get first value if array
-    const createdById = Array.isArray(value) ? value[0] : value;
-    setCreatedByFilter(createdById);
-    goToPage(1);
-  };
-
   const handlePriorityFiltersChange = (priorities: string | string[]) => {
     const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
     setPriorityFilters(priorityArray);
@@ -508,7 +548,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setCreatedByFilter("ALL");
     setSortBy("updatedAt");
     setSortOrder("desc");
     setSearchQuery("");
@@ -612,6 +651,29 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
+  const handleRenameFeature = async (featureId: string, newTitle: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to rename feature");
+      }
+
+      // Update local state
+      setFeatures((prev) => prev.map((f) => f.id === featureId ? { ...f, title: newTitle } : f));
+      setRenamingFeatureId(null);
+    } catch (error) {
+      console.error("Failed to rename feature:", error);
+      // Revert rename state on error
+      setRenamingFeatureId(null);
+      throw error;
+    }
+  };
+
   // Prepare filter options
   const statusOptions = [
     { value: "ALL", label: "All Statuses" },
@@ -630,19 +692,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   ];
 
   const assigneeOptions = [
-    { value: "ALL", label: "All Assignees", image: null, name: null },
+    { value: "ALL", label: "All Owners", image: null, name: null },
     { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
-    ...members.map((member) => ({
-      value: member.user.id,
-      label: member.user.name || member.user.email || "Unknown",
-      image: member.user.image,
-      name: member.user.name,
-    })),
-  ];
-
-  const createdByOptions = [
-    { value: "ALL", label: "All Creators", image: null, name: null },
-    { value: "UNCREATED", label: "Unset", image: null, name: null },
     ...members.map((member) => ({
       value: member.user.id,
       label: member.user.name || member.user.email || "Unknown",
@@ -694,11 +745,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[469px]">Title</TableHead>
+                  <TableHead className="w-[320px]">Title</TableHead>
+                  <TableHead className="w-[130px]">Deployment</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
-                  <TableHead className="w-[120px]">Created by</TableHead>
-                  <TableHead className="w-[150px]">Assigned</TableHead>
+                  <TableHead className="w-[150px]">Owner</TableHead>
                   <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -707,17 +758,17 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-[469px]">
+                    <TableCell className="w-[320px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
+                    </TableCell>
+                    <TableCell className="w-[130px]">
+                      <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[100px]">
                       <Skeleton className="h-6 w-20" />
-                    </TableCell>
-                    <TableCell className="w-[120px]">
-                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell className="w-[150px]">
                       <Skeleton className="h-6 w-32" />
@@ -807,7 +858,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                   <Table className="table-fixed">
                     <TableHeader className="bg-muted/50">
                       <TableRow>
-                        <TableHead className="w-[469px]">
+                        <TableHead className="w-[320px]">
                           <SortableColumnHeader
                             label="Title"
                             field="title"
@@ -815,6 +866,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onSort={(order) => handleSort("title", order)}
                           />
                         </TableHead>
+                        <TableHead className="w-[130px]">Deployment</TableHead>
                         <TableHead className="w-[120px]">
                           <FilterDropdownHeader
                             label="Status"
@@ -837,19 +889,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             showPriorityBadges={true}
                           />
                         </TableHead>
-                        <TableHead className="w-[120px]">
-                          <FilterDropdownHeader
-                            label="Created by"
-                            options={createdByOptions}
-                            value={createdByFilter}
-                            onChange={handleCreatedByFilterChange}
-                            showSearch={true}
-                            showAvatars={true}
-                          />
-                        </TableHead>
                         <TableHead className="w-[150px]">
                           <FilterDropdownHeader
-                            label="Assigned"
+                            label="Owner"
                             options={assigneeOptions}
                             value={assigneeFilter}
                             onChange={handleAssigneeFilterChange}
@@ -895,6 +937,10 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onPriorityUpdate={handleUpdatePriority}
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
+                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
+                            isRenaming={renamingFeatureId === feature.id}
+                            onRenameStart={() => setRenamingFeatureId(feature.id)}
+                            onRenameSave={handleRenameFeature}
                           />
                         ))
                       )}

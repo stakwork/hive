@@ -68,6 +68,12 @@ export async function GET(
       return NextResponse.json({ error: "Prompt ID is required" }, { status: 400 });
     }
 
+    // In dev mode, call mock handler directly to avoid SSL issues
+    if (devMode) {
+      const { GET: mockGET } = await import("@/app/api/mock/stakwork/prompts/[id]/route");
+      return mockGET(_request, { params: Promise.resolve({ id }) });
+    }
+
     // Fetch prompt detail from Stakwork API
     const promptUrl = `${config.STAKWORK_BASE_URL}/prompts/${id}`;
 

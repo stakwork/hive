@@ -106,13 +106,18 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
         password: "test-password-123",
       });
 
-      await POST(request);
+      const response = await POST(request);
       const afterTimestamp = Date.now();
 
-      // Generate a test cookie to verify timestamp format
-      const testTimestamp = Date.now().toString();
-      const signedValue = await signCookie(testTimestamp);
-      const [timestamp] = signedValue.split(".");
+      // Extract timestamp from the actual response cookie
+      const setCookieHeader = response.headers.get("set-cookie");
+      expect(setCookieHeader).toBeTruthy();
+      const cookieMatch = setCookieHeader?.match(
+        new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`)
+      );
+      expect(cookieMatch).toBeTruthy();
+      const cookieValue = cookieMatch![1];
+      const [timestamp] = cookieValue.split(".");
 
       const timestampNum = parseInt(timestamp, 10);
       expect(timestampNum).toBeGreaterThanOrEqual(beforeTimestamp);

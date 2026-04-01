@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +15,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 interface BugReportSlideoutProps {
@@ -41,8 +41,8 @@ export function BugReportSlideout({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const { workspace } = useWorkspace();
-  const { data: session } = useSession();
+  const { workspace, slug } = useWorkspace();
+  const router = useRouter();
 
   // Cleanup preview URL when file changes or component unmounts
   useEffect(() => {
@@ -174,8 +174,6 @@ export function BugReportSlideout({
     setIsSubmitting(true);
 
     try {
-      const currentUrl = window.location.href;
-
       // Step 1: Create Feature
       const featureResponse = await fetch("/api/features", {
         method: "POST",
@@ -185,7 +183,6 @@ export function BugReportSlideout({
           workspaceId: workspace.id,
           status: "BACKLOG",
           priority: "HIGH",
-          brief: `**Reported from:** ${currentUrl}\n\n${description}`,
         }),
       });
 
@@ -197,7 +194,9 @@ export function BugReportSlideout({
       const featureResult = await featureResponse.json();
       const feature = featureResult.data;
 
-      // Step 2: If screenshot attached, upload it
+      // Step 2: If screenshot attached, upload it and collect attachments
+      let attachments: { path: string; filename: string; mimeType: string; size: number }[] = [];
+
       if (selectedFile && feature?.id) {
         try {
           // Get presigned upload URL
@@ -217,7 +216,7 @@ export function BugReportSlideout({
             throw new Error(error.message || "Failed to get upload URL");
           }
 
-          const { presignedUrl, publicUrl } = await uploadResponse.json();
+          const { presignedUrl, s3Path } = await uploadResponse.json();
 
           // Upload file to S3
           const s3Response = await fetch(presignedUrl, {
@@ -232,38 +231,29 @@ export function BugReportSlideout({
             throw new Error("Failed to upload screenshot to S3");
           }
 
-          // Update feature brief with image
-          const updateResponse = await fetch(`/api/features/${feature.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              brief: `![Bug Screenshot](${publicUrl})\n\n**Reported from:** ${currentUrl}\n\n${description}`,
-            }),
-          });
-
-          if (!updateResponse.ok) {
-            const error = await updateResponse.json();
-            throw new Error(
-              error.message || "Failed to update feature with screenshot"
-            );
-          }
+          attachments = [
+            {
+              path: s3Path,
+              filename: selectedFile.name,
+              mimeType: selectedFile.type,
+              size: selectedFile.size,
+            },
+          ];
         } catch (uploadError) {
-          // Feature was created but image upload failed
+          // Screenshot upload failed — log and fall through with empty attachments
           console.error("Image upload error:", uploadError);
-          toast.error(
-            uploadError instanceof Error
-              ? uploadError.message
-              : "Failed to upload screenshot, but bug report was created."
-          );
-          // Still close and reset since the bug report was created
-          resetForm();
-          onOpenChange(false);
-          return;
         }
       }
 
-      // Success!
-      toast.success("Bug report submitted. Thank you for helping us improve!");
+      // Step 3: Send chat message to Plan Mode
+      await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: description, attachments }),
+      });
+
+      // Step 4: Navigate to Plan Mode
+      router.push(`/w/${slug}/plan/${feature.id}`);
       resetForm();
       onOpenChange(false);
     } catch (error) {
@@ -285,7 +275,7 @@ export function BugReportSlideout({
         <SheetHeader>
           <SheetTitle>Report a Bug</SheetTitle>
           <SheetDescription>
-            Help us improve by reporting issues you encounter
+            Describe a bug in your codebase
           </SheetDescription>
         </SheetHeader>
 

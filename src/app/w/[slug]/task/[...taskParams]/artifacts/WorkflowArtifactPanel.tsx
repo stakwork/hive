@@ -1,27 +1,35 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
+import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
+  isSuperAdmin?: boolean;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
+  const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork">("editor");
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -62,6 +70,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     let workflowRefId: string | undefined;
     let projectInfo: any = undefined;
     let debuggerProjectId: string | undefined;
+    let workflowVersionId: string | number | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
     for (const artifact of artifacts) {
@@ -74,6 +83,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       if (content?.workflowRefId) workflowRefId = content.workflowRefId;
       if (content?.projectInfo) projectInfo = content.projectInfo;
       if (content?.debuggerProjectId) debuggerProjectId = content.debuggerProjectId;
+      if (content?.workflowVersionId) workflowVersionId = content.workflowVersionId;
     }
 
     return {
@@ -85,16 +95,28 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       workflowRefId,
       projectInfo,
       debuggerProjectId,
+      workflowVersionId,
     };
   }, [artifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId } = mergedContent;
+  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
 
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
+
+  // Check if we have changes to show
+  const hasChanges = !!(originalWorkflowJson && workflowJson);
+
+  // Compute changed step/connection IDs for orange graph highlights (editor tab only)
+  const { changedStepIds, changedConnectionIds } = useMemo(() => {
+    if (!hasChanges) {
+      return { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
+    }
+    return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
+  }, [hasChanges, originalWorkflowJson, workflowJson]);
 
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
@@ -128,6 +150,20 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     }
   }, [workflowJson]);
 
+  // Steps with both attributes.workflow_id and attributes.workflow_name are child workflows
+  const childWorkflows = useMemo(() => {
+    if (!parsedWorkflowData?.transitions) return [];
+    const transitions = Object.values(parsedWorkflowData.transitions) as WorkflowTransition[];
+    return transitions
+      .filter((t) => t.attributes?.workflow_id && t.attributes?.workflow_name)
+      .map((t) => ({
+        id: String(t.attributes.workflow_id),
+        name: t.attributes.workflow_name as string,
+      }));
+  }, [parsedWorkflowData]);
+
+  const hasChildWorkflows = childWorkflows.length > 0;
+
   // Polling hook - in editor mode, only poll when on stakwork tab
   const shouldPoll = isEditorMode
     ? isActive && activeDisplayTab === "stakwork" && !!projectId
@@ -155,31 +191,38 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       );
     }
 
-    // Check if we have changes to show
-    const hasChanges = !!(originalWorkflowJson && workflowJson);
+    // Static lookup so Tailwind sees all class names at build time
+    const TAB_GRID_COLS: Record<string, string> = {
+      "3": "grid-cols-3",
+      "4": "grid-cols-4",
+      "5": "grid-cols-5",
+    };
+    const colCount = 3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
 
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="mb-2 self-start ml-2 mt-2">
             <StakworkRunDropdown
               projectId={projectId}
               workflowId={workflowId}
-              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              hiveUrl={`/w/${slug}/projects?id=${projectId}`}
               variant="button"
             />
           </div>
         )}
         <Tabs
           value={activeDisplayTab}
-          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "children")}
           className="flex flex-col h-full"
         >
-          <TabsList className={`grid w-full flex-shrink-0 ${hasChanges ? "grid-cols-4" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
             {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
+            {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
@@ -191,11 +234,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 projectId: "",
                 isAdmin: false,
                 workflowId: workflowId?.toString() || "",
-                workflowVersion: "",
+                workflowVersion: workflowVersionId ? String(workflowVersionId) : "",
                 defaultZoomLevel: 0.65,
                 useAssistantDimensions: false,
                 rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                 onStepClick: onStepSelect ? handleStepClick : undefined,
+                onVersionChange,
+                changedStepIds,
+                changedConnectionIds,
               }}
             />
             <StepDetailsModal
@@ -212,6 +258,38 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 originalJson={originalWorkflowJson || null}
                 updatedJson={workflowJson || null}
               />
+            </TabsContent>
+          )}
+
+          {hasChildWorkflows && (
+            <TabsContent value="children" className="flex-1 overflow-auto mt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>ID</TableHead>
+                    <TableHead className="w-16">Open</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {childWorkflows.map((wf) => (
+                    <TableRow key={wf.id}>
+                      <TableCell className="font-medium">{wf.name}</TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">{wf.id}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Open child workflow"
+                          onClick={() => window.open(`https://hive.sphinx.chat/w/stakwork/workflows?id=${wf.id}`, "_blank")}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </TabsContent>
           )}
 
@@ -253,6 +331,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
               />
             )}
           </TabsContent>
+
         </Tabs>
       </div>
     );
@@ -296,12 +375,12 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
       <div className="overflow-y-auto flex-1">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="px-4 pt-4">
             <StakworkRunDropdown
               projectId={projectId}
               workflowId={workflowId}
-              hiveUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              hiveUrl={`/w/${slug}/projects?id=${projectId}`}
               variant="button"
             />
           </div>

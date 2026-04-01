@@ -1,7 +1,7 @@
 import { serviceConfigs } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { getUserAppTokens } from "@/lib/githubApp";
+import { getUserAppTokens, getPersonalOAuthToken } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 
@@ -59,35 +59,45 @@ export async function GET(request: Request) {
     const [, owner, repo] = githubMatch;
     console.log("[REPO CHECK] Parsed repository:", { owner, repo });
 
-    // 4️⃣ Fetch GitHub App installation token
+    // 4️⃣ Check if SourceControlOrg exists (determines whether GitHub App is installed)
+    // Use case-insensitive lookup since GitHub logins are case-insensitive
+    console.log("[REPO CHECK] Checking source control org for owner:", owner);
+    const sourceControlOrg = await db.sourceControlOrg.findFirst({
+      where: { githubLogin: { equals: owner, mode: "insensitive" } },
+      select: { githubInstallationId: true },
+    });
+    console.log("[REPO CHECK] Source control org check:", {
+      found: !!sourceControlOrg,
+      installationId: sourceControlOrg?.githubInstallationId,
+    });
+
+    if (!sourceControlOrg) {
+      // No org record at all — GitHub App has never been installed for this owner.
+      // Attempt a personal OAuth token fallback so the caller gets a clean signal.
+      console.log("[REPO CHECK] No SourceControlOrg found — GitHub App not installed. Attempting personal OAuth fallback.");
+      await getPersonalOAuthToken(session.user.id); // fire-and-forget for logging; result not used
+      return NextResponse.json(
+        { hasPushAccess: false, error: "app_not_installed" },
+        { status: 200 }
+      );
+    }
+
+    // 5️⃣ Fetch GitHub App installation token
     console.log("[REPO CHECK] Fetching GitHub App tokens for user:", session.user.id, "owner:", owner);
     const tokens = await getUserAppTokens(session.user.id, owner);
     console.log("[REPO CHECK] Token fetch result:", { hasAccessToken: !!tokens?.accessToken });
 
     if (!tokens?.accessToken) {
-      console.log("[REPO CHECK] No GitHub App tokens found for repository owner");
+      // Org exists but this user has no token — they haven't completed the OAuth flow yet.
+      console.log("[REPO CHECK] SourceControlOrg found but no token for user — user not authorised");
       return NextResponse.json(
-        {
-          hasPushAccess: false,
-          error: "No GitHub App tokens found for this repository owner",
-        },
-        { status: 403 }
+        { hasPushAccess: false, error: "user_not_authorised" },
+        { status: 200 }
       );
     }
 
-    // 5️⃣ Verify installation exists in DB
-    console.log("[REPO CHECK] Checking source control org for owner:", owner);
-    const sourceControlOrg = await db.sourceControlOrg.findUnique({
-      where: { githubLogin: owner },
-      select: { githubInstallationId: true },
-    });
-    console.log("[REPO CHECK] Source control org check:", {
-      found: !!sourceControlOrg,
-      installationId: sourceControlOrg?.githubInstallationId
-    });
-
-    if (!sourceControlOrg?.githubInstallationId) {
-      console.log("[REPO CHECK] No GitHub App installation found for repository owner");
+    if (!sourceControlOrg.githubInstallationId) {
+      console.log("[REPO CHECK] No GitHub App installation ID found for repository owner");
       return NextResponse.json(
         {
           hasPushAccess: false,

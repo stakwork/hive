@@ -52,10 +52,6 @@ export function StakworkRunDropdown({
     }
   };
 
-  const handleMenuItemClick = (url: string) => {
-    window.open(url, "_blank");
-  };
-
   const isWorkflowLoading = workflowFetchState === "loading";
   const isWorkflowError = workflowFetchState === "error";
   const isWorkflowReady = !!workflowId;
@@ -76,34 +72,45 @@ export function StakworkRunDropdown({
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleMenuItemClick(hiveUrl)}>
-          <ExternalLink className="w-4 h-4 mr-2" />
-          View Run on Hive
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() =>
-            handleMenuItemClick(`https://jobs.stakwork.com/admin/projects/${projectId}`)
-          }
-        >
-          <ExternalLink className="w-4 h-4 mr-2" />
-          View Run on Stak
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!isWorkflowReady || isWorkflowLoading}
-          onClick={() =>
-            isWorkflowReady &&
-            handleMenuItemClick(`https://jobs.stakwork.com/admin/workflows/${workflowId}`)
-          }
-        >
-          {isWorkflowLoading ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : isWorkflowError ? (
-            <ExternalLink className="w-4 h-4 mr-2 opacity-50" />
-          ) : (
+        <DropdownMenuItem asChild>
+          <a href={hiveUrl} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="w-4 h-4 mr-2" />
-          )}
-          {isWorkflowError ? "Workflow unavailable" : "View Workflow in Stak"}
+            View Run on Hive
+          </a>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a
+            href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <ExternalLink className="w-4 h-4 mr-2" />
+            View Run on Stak
+          </a>
+        </DropdownMenuItem>
+        {isWorkflowReady ? (
+          <DropdownMenuItem asChild>
+            <a
+              href={`https://jobs.stakwork.com/admin/workflows/${workflowId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View Workflow in Stak
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled>
+            {isWorkflowLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : isWorkflowError ? (
+              <ExternalLink className="w-4 h-4 mr-2 opacity-50" />
+            ) : (
+              <ExternalLink className="w-4 h-4 mr-2" />
+            )}
+            {isWorkflowError ? "Workflow unavailable" : "View Workflow in Stak"}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

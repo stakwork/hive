@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
@@ -26,6 +27,7 @@ interface TaskCardProps {
 export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const { isSuperAdmin } = useWorkspace();
 
   // Derive task href from conditional logic
   const taskHref = task.status === "TODO" && task.featureId
@@ -33,7 +35,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
     : `/w/${workspaceSlug}/task/${task.id}`;
 
   const handleArchiveToggle = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent navigation when clicking archive button
+    e.stopPropagation();
+    e.preventDefault(); // Prevent Link navigation when clicking archive button
     setIsUpdating(true);
     try {
       const response = await fetch(`/api/tasks/${task.id}`, {
@@ -113,9 +116,9 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
       </div>
 
-      {/* Archive button - absolute positioned top-right (hidden for TODO tasks) */}
+      {/* Archive button - absolute positioned top-right */}
       <AnimatePresence>
-        {isHovered && task.status !== "TODO" && (
+        {isHovered && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -131,6 +134,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                     size="sm"
                     onClick={handleArchiveToggle}
                     disabled={isUpdating}
+                    aria-label={isArchived ? "Unarchive" : "Archive"}
                     className="h-8 w-8 p-0 hover:bg-background/80"
                   >
                     {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
@@ -225,6 +229,14 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           </Badge>
         )}
 
+        {/* Optional: Prototype badge */}
+        {!hideWorkflowStatus && task.sourceType === "PROTOTYPE" && (
+          <Badge variant="secondary" className="gap-1 h-5">
+            <FlaskConical className="w-3 h-3" />
+            Prototype
+          </Badge>
+        )}
+
         {/* Workflow Status - hidden when PR artifact exists, workflow is completed, or task is TODO */}
         {/* Agent tasks show "Running" instead of "Pending" since they're active until completion */}
         {!hideWorkflowStatus && !task.prArtifact && task.workflowStatus !== "COMPLETED" && task.status !== "TODO" && (
@@ -235,6 +247,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                   ? "IN_PROGRESS"
                   : task.workflowStatus
               }
+              isSuperAdmin={isSuperAdmin}
+              stakworkProjectId={task.stakworkProjectId?.toString() ?? null}
             />
           </div>
         )}

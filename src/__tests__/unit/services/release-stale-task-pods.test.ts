@@ -305,6 +305,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: null, // No pod
+        agentPassword: null,
         status: "IN_PROGRESS",
         workflowStatus: "PENDING",
         chatMessages: [],
@@ -529,6 +530,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: null,
+        agentPassword: null,
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [

@@ -121,138 +121,153 @@ export async function claimPodAndGetFrontend(
 
   console.log(">>> claimed pod", pod.podId);
 
-  // Password is already decrypted from the database
-  if (!pod.password) {
-    throw new Error("Pod password not found");
-  }
-  const password = pod.password;
-
-  // Get port mappings as number array
-  const portArray = (pod.portMappings as number[] | null) || [];
-
-  // Convert port array to URL dictionary for PodWorkspace compatibility
-  const portMappings: Record<string, string> = {};
-  for (const port of portArray) {
-    portMappings[port.toString()] = buildPodUrl(pod.podId, port);
-  }
-
-  // Convert database pod to PodWorkspace format for compatibility
-  const workspace: PodWorkspace = {
-    id: pod.podId,
-    password,
-    portMappings,
-    state: pod.status,
-    usage_status: pod.usageStatus,
-    marked_at: pod.usageStatusMarkedAt?.toISOString() || "",
-    // Legacy fields - not used but kept for type compatibility
-    branches: [],
-    created: pod.createdAt.toISOString(),
-    customImage: false,
-    flagged_for_recreation: pod.flaggedForRecreation,
-    fqdn: "",
-    image: "",
-    primaryRepo: "",
-    repoName: "",
-    repositories: [],
-    subdomain: pod.podId,
-    url: "",
-    useDevContainer: false,
-  };
-
-  console.log(">>> workspace data", workspace);
-
-  let frontend: string | undefined;
-  let processList: ProcessInfo[] | undefined;
-
-  const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
-
-  // Always try to fetch process list if control port exists
-  if (controlPortUrl) {
-    try {
-      processList = await getProcessList(controlPortUrl, workspace.password);
-      console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
-    } catch (error) {
-      console.error(">>> Failed to fetch process list:", error);
+  try {
+    // Password is already decrypted from the database
+    if (!pod.password) {
+      throw new Error("Pod password not found");
     }
-  }
+    const password = pod.password;
 
-  // FIRST: Try to get frontend port from services array if provided
-  if (services && services.length > 0) {
-    try {
-      const frontendService = services.find((svc) => svc.name === "frontend");
+    // Get port mappings as number array
+    const portArray = (pod.portMappings as number[] | null) || [];
 
-      if (frontendService?.port) {
-        console.log(`>>> Found frontend port ${frontendService.port} from services array`);
+    // Convert port array to URL dictionary for PodWorkspace compatibility
+    const portMappings: Record<string, string> = {};
+    for (const port of portArray) {
+      portMappings[port.toString()] = buildPodUrl(pod.podId, port);
+    }
 
-        // Try to find the port in port mappings
-        frontend = workspace.portMappings[frontendService.port.toString()];
+    // Convert database pod to PodWorkspace format for compatibility
+    const workspace: PodWorkspace = {
+      id: pod.podId,
+      password,
+      portMappings,
+      state: pod.status,
+      usage_status: pod.usageStatus,
+      marked_at: pod.usageStatusMarkedAt?.toISOString() || "",
+      // Legacy fields - not used but kept for type compatibility
+      branches: [],
+      created: pod.createdAt.toISOString(),
+      customImage: false,
+      flagged_for_recreation: pod.flaggedForRecreation,
+      fqdn: "",
+      image: "",
+      primaryRepo: "",
+      repoName: "",
+      repositories: [],
+      subdomain: pod.podId,
+      url: "",
+      useDevContainer: false,
+    };
 
-        if (frontend) {
-          console.log(`>>> Using frontend from services array on port ${frontendService.port}:`, frontend);
-          return { frontend, workspace, processList };
+    console.log(">>> workspace data", workspace);
+
+    let frontend: string | undefined;
+    let processList: ProcessInfo[] | undefined;
+
+    const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
+
+    // Always try to fetch process list if control port exists
+    if (controlPortUrl) {
+      try {
+        processList = await getProcessList(controlPortUrl, workspace.password);
+        console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
+      } catch (error) {
+        console.error(">>> Failed to fetch process list:", error);
+      }
+    }
+
+    // FIRST: Try to get frontend port from services array if provided
+    if (services && services.length > 0) {
+      try {
+        const frontendService = services.find((svc) => svc.name === "frontend");
+
+        if (frontendService?.port) {
+          console.log(`>>> Found frontend port ${frontendService.port} from services array`);
+
+          // Try to find the port in port mappings
+          frontend = workspace.portMappings[frontendService.port.toString()];
+
+          if (frontend) {
+            console.log(`>>> Using frontend from services array on port ${frontendService.port}:`, frontend);
+            return { frontend, workspace, processList };
+          } else {
+            console.log(`>>> Port ${frontendService.port} from services not found in port mappings, trying fallbacks`);
+          }
         } else {
-          console.log(`>>> Port ${frontendService.port} from services not found in port mappings, trying fallbacks`);
+          console.log(">>> No frontend service found in services array, trying fallbacks");
         }
-      } else {
-        console.log(">>> No frontend service found in services array, trying fallbacks");
+      } catch (error) {
+        console.error(">>> Error getting port from services array, trying fallbacks:", error);
       }
-    } catch (error) {
-      console.error(">>> Error getting port from services array, trying fallbacks:", error);
     }
-  }
 
-  // SECOND: Try to get frontend from process discovery if we have process list
-  if (processList) {
-    try {
-      // Get the frontend URL from port mappings
-      frontend = getFrontendUrl(processList, workspace.portMappings);
-    } catch (error) {
+    // SECOND: Try to get frontend from process discovery if we have process list
+    if (processList) {
+      try {
+        // Get the frontend URL from port mappings
+        frontend = getFrontendUrl(processList, workspace.portMappings);
+      } catch (error) {
+        console.error(
+          `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
+          error,
+        );
+        // frontend remains undefined, will try fallback below
+      }
+    } else if (!controlPortUrl) {
+      // Control port not available, will try fallback
       console.error(
-        `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
-        error,
+        `>>> Control port (${POD_PORTS.CONTROL}) not found in port mappings, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}`,
       );
-      // frontend remains undefined, will try fallback below
     }
-  } else if (!controlPortUrl) {
-    // Control port not available, will try fallback
-    console.error(
-      `>>> Control port (${POD_PORTS.CONTROL}) not found in port mappings, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}`,
-    );
-  }
 
-  // If frontend not found via process discovery, use fallback
-  if (!frontend) {
-    // Fallback to port 3000 if process discovery failed or control port was missing
-    frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
+    // If frontend not found via process discovery, use fallback
+    if (!frontend) {
+      // Fallback to port 3000 if process discovery failed or control port was missing
+      frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
-    if (!frontend && controlPortUrl) {
-      // Final fallback: try to find frontend port from process list if we have it
-      let frontendPort = POD_PORTS.FRONTEND_FALLBACK as string; // default to 3000 if we can't find it
+      if (!frontend && controlPortUrl) {
+        // Final fallback: try to find frontend port from process list if we have it
+        let frontendPort = POD_PORTS.FRONTEND_FALLBACK as string; // default to 3000 if we can't find it
 
-      if (processList) {
-        const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
-        if (frontendProcess?.port) {
-          frontendPort = frontendProcess.port;
-          console.log(`>>> Found frontend process on port ${frontendPort} from process list`);
+        if (processList) {
+          const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
+          if (frontendProcess?.port) {
+            frontendPort = frontendProcess.port;
+            console.log(`>>> Found frontend process on port ${frontendPort} from process list`);
+          }
         }
+
+        // Replace control port with dynamically discovered frontend port in controlPortUrl
+        frontend = controlPortUrl.replace(POD_PORTS.CONTROL, frontendPort);
+        console.log(
+          `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${frontendPort} in controlPortUrl:`,
+          frontend,
+        );
+      } else if (frontend) {
+        console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
       }
 
-      // Replace control port with dynamically discovered frontend port in controlPortUrl
-      frontend = controlPortUrl.replace(POD_PORTS.CONTROL, frontendPort);
-      console.log(
-        `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${frontendPort} in controlPortUrl:`,
-        frontend,
-      );
-    } else if (frontend) {
-      console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
+      if (!frontend) {
+        throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
+      }
     }
 
-    if (!frontend) {
-      throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
+    return { frontend, workspace, processList };
+  } catch (error) {
+    // Release the pod if anything fails after claiming
+    try {
+      const released = await releasePodById(pod.podId);
+      if (!released) {
+        console.error(`>>> Rollback failed: pod ${pod.podId} not found in database`);
+      } else {
+        console.log(`>>> Released pod ${pod.podId} after post-claim failure`);
+      }
+    } catch (releaseError) {
+      console.error(`>>> Failed to release pod ${pod.podId}:`, releaseError);
     }
+    throw error;
   }
-
-  return { frontend, workspace, processList };
 }
 
 /**

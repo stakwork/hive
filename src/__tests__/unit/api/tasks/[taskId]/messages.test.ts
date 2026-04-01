@@ -270,6 +270,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
           mode: true,
           podId: true,
           featureId: true,
+          sourceType: true,
           feature: {
             select: {
               id: true,
@@ -585,6 +586,48 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       // Should not expose workspace member details or owner info in response
       expect(data.data.task).not.toHaveProperty("workspace");
       expect(data.data.task.workspaceId).toBe(mockWorkspaceId);
+    });
+
+    test("should include sourceType in task object", async () => {
+      const taskWithSourceType = {
+        ...mockTask,
+        sourceType: "PROTOTYPE",
+      };
+      (db.task.findFirst as Mock).mockResolvedValue(taskWithSourceType);
+      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+
+      const request = createAuthenticatedRequest(
+        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ taskId: mockTaskId }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.task).toHaveProperty("sourceType", "PROTOTYPE");
+    });
+
+    test("should include sourceType for USER task", async () => {
+      const taskWithSourceType = {
+        ...mockTask,
+        sourceType: "USER",
+      };
+      (db.task.findFirst as Mock).mockResolvedValue(taskWithSourceType);
+      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+
+      const request = createAuthenticatedRequest(
+        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ taskId: mockTaskId }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.task).toHaveProperty("sourceType", "USER");
     });
   });
 });

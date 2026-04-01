@@ -8,7 +8,8 @@ import type { PoolStatus } from "@/types/pool-manager";
  * Uses a single query with in-memory aggregation for optimal performance
  */
 export async function getPoolStatusFromPods(
-  swarmId: string
+  swarmId: string,
+  workspaceId: string
 ): Promise<PoolStatus> {
   const baseFilter = {
     swarmId,
@@ -18,15 +19,30 @@ export async function getPoolStatusFromPods(
     },
   };
 
-  // Fetch all pods matching the base filter in a single query
-  const pods = await db.pod.findMany({
-    where: baseFilter,
-    select: {
-      status: true,
-      usageStatus: true,
-      updatedAt: true,
-    },
-  });
+  // Fetch pods and queued task count in parallel
+  const [pods, queuedCount] = await Promise.all([
+    db.pod.findMany({
+      where: baseFilter,
+      select: {
+        status: true,
+        usageStatus: true,
+        updatedAt: true,
+      },
+    }),
+    db.task.count({
+      where: {
+        AND: [
+          { workspaceId },
+          { deleted: false },
+          { archived: false },
+          { status: "TODO" },
+          { systemAssigneeType: "TASK_COORDINATOR" },
+          { sourceType: { not: "USER_JOURNEY" } },
+          { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
+        ],
+      },
+    }),
+  ]);
 
   // Aggregate counts in-memory (more efficient than 5-6 separate DB queries)
   let runningVms = 0;
@@ -56,7 +72,7 @@ export async function getPoolStatusFromPods(
     }
 
     // Count by usage status (only RUNNING pods are truly available)
-    if (pod.usageStatus === PodUsageStatus.USED) {
+    if (pod.usageStatus === PodUsageStatus.USED && pod.status === PodStatus.RUNNING) {
       usedVms++;
     } else if (
       pod.usageStatus === PodUsageStatus.UNUSED &&
@@ -84,5 +100,6 @@ export async function getPoolStatusFromPods(
     usedVms,
     unusedVms,
     lastCheck,
+    queuedCount,
   };
 }

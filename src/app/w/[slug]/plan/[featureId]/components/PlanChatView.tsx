@@ -1,28 +1,30 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { diffWords } from "diff";
-import { ClipboardList } from "lucide-react";
-import { ChatArea, ArtifactsPanel } from "@/components/chat";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { usePusherConnection, type WorkflowStatusUpdate, type FeatureTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { ArtifactsPanel, ChatArea } from "@/components/chat";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
+import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
+  ArtifactType,
   ChatMessage,
   ChatRole,
   ChatStatus,
-  WorkflowStatus,
-  ArtifactType,
   createChatMessage,
+  WorkflowStatus,
 } from "@/lib/chat";
+import { useStreamContext } from "@/hooks/useStreamContext";
 import { getPusherClient } from "@/lib/pusher";
-import { PlanSection, PlanData, SectionHighlights, DiffToken } from "./PlanArtifact";
 import type { FeatureDetail } from "@/types/roadmap";
+import { diffWords } from "diff";
+import { ClipboardList } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -87,6 +89,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const { isSuperAdmin } = useWorkspace();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
@@ -97,9 +100,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const prevFeatureRef = useRef<FeatureDetail | null>(null);
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
   // Project log WebSocket for live thinking logs
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, false);
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {
@@ -198,6 +203,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
       prevFeatureRef.current = next;
       setFeature(next);
+      if (next.stakworkProjectId) {
+        setProjectId(next.stakworkProjectId.toString());
+      }
     } catch (err) {
       console.error("Error fetching feature:", err);
     }
@@ -208,7 +216,18 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     if (feature?.workflowStatus) {
       setWorkflowStatus(feature.workflowStatus);
     }
-  }, [feature?.workflowStatus]);
+    if (feature?.stakworkProjectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  }, [feature?.workflowStatus, feature?.stakworkProjectId]);
+
+  // Hydrate projectId on initial load (via useDetailResource) so WebSocket can re-subscribe after refresh
+  useEffect(() => {
+    if (feature?.stakworkProjectId && !projectId) {
+      setProjectId(feature.stakworkProjectId.toString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature?.stakworkProjectId]);
 
   // Load existing messages - promoted to useCallback for visibility refetch
   const loadMessages = useCallback(async () => {
@@ -275,7 +294,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       return [...msgs, message];
     });
     setIsLoading(false);
-  }, []);
+    onStreamMessage(message);
+  }, [onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
@@ -289,8 +309,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
         setIsChainVisible(false);
       }
+      onStreamStatusUpdate(update);
     },
-    [],
+    [onStreamStatusUpdate],
   );
 
   const handleFeatureTitleUpdate = useCallback(
@@ -309,7 +330,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string) => {
+    async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -317,11 +338,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         status: ChatStatus.SENDING,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -333,7 +354,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, sourceWebsocketID: getPusherClient().connection.socket_id }),
+          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id }),
         });
 
         if (res.ok) {
@@ -341,7 +362,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -375,11 +396,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         replyId: messageId,
         createdBy: session?.user
           ? {
-              id: session.user.id,
-              name: session.user.name || null,
-              email: session.user.email || null,
-              image: session.user.image || null,
-            }
+            id: session.user.id,
+            name: session.user.name || null,
+            email: session.user.email || null,
+            image: session.user.image || null,
+          }
           : undefined,
       });
 
@@ -402,7 +423,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           setMessages((msgs) =>
             msgs.map((m) => (m.id === newMessage.id ? { ...data.message, status: ChatStatus.SENT } : m)),
           );
-          
+
           // Start project log subscription if workflow was triggered
           if (data.workflow?.project_id) {
             setProjectId(data.workflow.project_id.toString());
@@ -457,6 +478,33 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
 
+  const handleTitleSave = useCallback(
+    async (newTitle: string) => {
+      await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      updateFeature({ title: newTitle });
+    },
+    [featureId, updateFeature]
+  );
+
+  const handleRetry = useCallback(async () => {
+    if (isRetrying || messages.length === 0) return;
+    const hasAssistantMessage = messages.some((m) => m.role === ChatRole.ASSISTANT);
+    const messageText = hasAssistantMessage
+      ? [...messages].reverse().find((m) => m.role === ChatRole.USER)?.message
+      : messages[0]?.message;
+    if (!messageText) return;
+    setIsRetrying(true);
+    try {
+      await sendMessage(messageText);
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [isRetrying, messages, sendMessage]);
+
   const chatAreaProps = {
     messages,
     onSend: sendMessage,
@@ -470,10 +518,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     featureId,
     featureTitle,
     taskMode: "live" as const,
-    isChainVisible,
     lastLogLine,
-    logs,
     sphinxInviteEnabled: sphinxReady,
+    onTitleSave: handleTitleSave,
+    stakworkProjectId: projectId,
+    onRetry: handleRetry,
+    isRetrying,
+    streamContext,
+    isSuperAdmin,
   };
 
   const artifactsPanelProps = {
@@ -499,7 +551,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   if (isMobile) {
     return (
-      <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <div className="flex flex-col h-dvh">
         {showPreview ? (
           <ArtifactsPanel
             {...artifactsPanelProps}
@@ -509,6 +561,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         ) : (
           <ChatArea
             {...chatAreaProps}
+            isPlanChat
             showPreviewToggle
             showPreview={showPreview}
             onTogglePreview={togglePreview}
@@ -520,11 +573,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-dvh">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">
-            <ChatArea {...chatAreaProps} />
+            <ChatArea {...chatAreaProps} isPlanChat />
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />

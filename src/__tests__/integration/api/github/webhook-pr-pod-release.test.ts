@@ -167,7 +167,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       // Verify task status was updated to DONE
       const updatedTask = await db.task.findUnique({
         where: { id: task.id },
-        select: { status: true },
+        select: { status: true, podId: true, agentPassword: true },
       });
       expect(updatedTask?.status).toBe(TaskStatus.DONE);
 
@@ -193,7 +193,8 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         })
       );
 
-      // Verify releaseTaskPod was called with correct params
+      // Verify releaseTaskPod was called with clearTaskFields: true — this ensures
+      // releasePodById nulls both podId and agentPassword on the task record.
       expect(releaseTaskPod).toHaveBeenCalledWith({
         taskId: task.id,
         podId: 'test-pod-123',

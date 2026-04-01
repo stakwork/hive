@@ -1125,6 +1125,92 @@ export async function seedAutoMergeTestScenarios(
   );
 }
 
+async function seedDashboardConversations(
+  users: Array<{ id: string; email: string }>,
+) {
+  // Find the alpha workspace to seed conversations into
+  const workspace = await prisma.workspace.findFirst({
+    where: { slug: "alpha-workspace" },
+    select: { id: true },
+  });
+
+  if (!workspace) {
+    console.log("⚠ alpha-workspace not found, skipping dashboard conversation seed");
+    return;
+  }
+
+  // Check if any dashboard conversations already exist
+  const existing = await prisma.sharedConversation.count({
+    where: { workspaceId: workspace.id, source: "dashboard" },
+  });
+
+  if (existing > 0) {
+    console.log(`✓ Dashboard conversations already seeded (${existing} found)`);
+    return;
+  }
+
+  const now = new Date();
+  const minus1h = new Date(now.getTime() - 60 * 60 * 1000);
+  const minus3h = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const minus1d = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const conversations = [
+    {
+      userId: users[0].id,
+      title: "How does the authentication flow work?",
+      messages: [
+        { role: "user", content: "How does the authentication flow work?", createdAt: now.toISOString() },
+        { role: "assistant", content: "The authentication flow uses NextAuth.js with GitHub OAuth...", createdAt: now.toISOString() },
+      ],
+      lastMessageAt: now,
+    },
+    {
+      userId: users[1].id,
+      title: "What are the main database models?",
+      messages: [
+        { role: "user", content: "What are the main database models?", createdAt: minus1h.toISOString() },
+        { role: "assistant", content: "The main models are Workspace, User, Task, Feature...", createdAt: minus1h.toISOString() },
+      ],
+      lastMessageAt: minus1h,
+    },
+    {
+      userId: users[0].id,
+      title: "How do janitor cron jobs work?",
+      messages: [
+        { role: "user", content: "How do janitor cron jobs work?", createdAt: minus3h.toISOString() },
+        { role: "assistant", content: "Janitor cron jobs run on a schedule defined in vercel.json...", createdAt: minus3h.toISOString() },
+      ],
+      lastMessageAt: minus3h,
+    },
+    {
+      userId: users[1].id,
+      title: "Explain the permission system",
+      messages: [
+        { role: "user", content: "Explain the permission system", createdAt: minus1d.toISOString() },
+        { role: "assistant", content: "The permission system uses role-based access control with roles: OWNER, ADMIN, PM, DEVELOPER, STAKEHOLDER, VIEWER...", createdAt: minus1d.toISOString() },
+      ],
+      lastMessageAt: minus1d,
+    },
+  ];
+
+  for (const conv of conversations) {
+    await prisma.sharedConversation.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: conv.userId,
+        title: conv.title,
+        messages: conv.messages as any,
+        followUpQuestions: [],
+        isShared: false,
+        source: "dashboard",
+        lastMessageAt: conv.lastMessageAt,
+      },
+    });
+  }
+
+  console.log(`✓ Created 4 dashboard conversations for recent chats seeding`);
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1135,6 +1221,7 @@ async function main() {
   await seedAutoMergeTestScenarios(users);
   await seedDeploymentTracking();
   await seedAgentLogs();
+  await seedDashboardConversations(users);
 
   console.log("Seed completed.");
 }

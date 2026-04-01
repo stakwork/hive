@@ -18,7 +18,7 @@ interface FeatureCardProps {
 }
 
 export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
-  const needsReview = feature._count.stakworkRuns > 0;
+  const needsReview = feature.awaitingFeedback;
 
   return (
     <Link href={`/w/${workspaceSlug}/plan/${feature.id}`} className="block">
@@ -33,7 +33,7 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
           {needsReview && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="flex-shrink-0">
+                <span className="flex-shrink-0" data-testid="needs-review-icon">
                   <Bell className="h-4 w-4 text-amber-500" />
                 </span>
               </TooltipTrigger>

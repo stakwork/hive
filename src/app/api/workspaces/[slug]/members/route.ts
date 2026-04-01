@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   getWorkspaceMembers,
   addWorkspaceMember,
@@ -12,23 +12,31 @@ import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  if (session?.user && (session.user as { id?: string }).id) {
+    return (session.user as { id: string }).id;
+  }
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+  if (token?.id && typeof token.id === "string") return token.id;
+  return null;
+}
+
 // GET /api/workspaces/[slug]/members - Get all workspace members
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = await getUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { slug } = await params;
-    const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Check workspace access
-    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+    const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
@@ -51,17 +59,16 @@ export async function GET(
 
 // POST /api/workspaces/[slug]/members - Add a member to workspace
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = await getUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { slug } = await params;
-    const userId = (session.user as { id: string }).id;
     const body = await request.json();
 
     const { githubUsername, role } = body;
@@ -79,8 +86,7 @@ export async function POST(
     }
 
     // Check workspace access and admin permissions
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
-    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
+    const access = await validateWorkspaceAccess(slug, userId);
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }

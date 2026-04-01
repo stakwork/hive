@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma, PodUsageStatus, WorkflowStatus } from "@prisma/client";
+import { Prisma, PodUsageStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -16,6 +16,7 @@ import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceCh
 import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
+import { createAndSendNotification } from "@/services/notifications";
 
 export const fetchCache = "force-no-store";
 
@@ -47,14 +48,14 @@ export async function POST(request: NextRequest) {
     } = body;
 
     let taskMode: string | undefined;
-    let task: { id: string; workspaceId: string; mode: string } | null = null;
+    let task: { id: string; workspaceId: string; mode: string; assigneeId: string | null; createdById: string; title: string } | null = null;
     if (taskId) {
       task = await db.task.findFirst({
         where: {
           id: taskId,
           deleted: false,
         },
-        select: { id: true, workspaceId: true, mode: true },
+        select: { id: true, workspaceId: true, mode: true, assigneeId: true, createdById: true, title: true },
       });
 
       if (!task) {
@@ -389,6 +390,20 @@ export async function POST(request: NextRequest) {
 
         if (podId || agentPassword) {
           try {
+            // Validate pod existence before writing to task — skip (don't throw) if not found
+            if (podId) {
+              const podExists = await db.pod.findFirst({
+                where: { podId, deletedAt: null },
+                select: { id: true },
+              });
+              if (!podExists) {
+                console.warn(
+                  `[chat/response] Artifact references nonexistent pod ${podId} — skipping task update for task ${taskId}`,
+                );
+                return NextResponse.json({ success: true });
+              }
+            }
+
             const updateData: { podId?: string; agentPassword?: string } = {};
 
             if (podId) {
@@ -401,24 +416,22 @@ export async function POST(request: NextRequest) {
               updateData.agentPassword = JSON.stringify(encrypted);
             }
 
-            const updatedTask = await db.task.update({
-              where: { id: taskId },
-              data: updateData,
-              include: {
-                workspace: {
-                  select: { slug: true },
+            // Wrap task update + pod sync in a single transaction to prevent partial writes
+            const updatedTask = await db.$transaction(async (tx) => {
+              const task = await tx.task.update({
+                where: { id: taskId },
+                data: updateData,
+                include: {
+                  workspace: {
+                    select: { slug: true },
+                  },
                 },
-              },
-            });
-            console.log(
-              `✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
-            );
+              });
 
-            // Sync pods table so pool status stays accurate
-            // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
-            if (podId) {
-              try {
-                await db.pod.updateMany({
+              // Sync pods table so pool status stays accurate
+              // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
+              if (podId) {
+                await tx.pod.updateMany({
                   where: { podId, deletedAt: null },
                   data: {
                     usageStatus: PodUsageStatus.USED,
@@ -427,10 +440,13 @@ export async function POST(request: NextRequest) {
                   },
                 });
                 console.log(`✅ Synced pods table: marked ${podId} as USED for task ${taskId}`);
-              } catch (podSyncError) {
-                console.error("Failed to sync pods table:", podSyncError);
               }
-            }
+
+              return task;
+            });
+            console.log(
+              `✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
+            );
 
             // Broadcast podId update to both channels for real-time UI updates
             const podUpdatePayload = {
@@ -478,26 +494,98 @@ export async function POST(request: NextRequest) {
 
     if (featureId) {
       try {
-        await db.feature.update({
-          where: { id: featureId },
-          data: {
-            workflowStatus: WorkflowStatus.COMPLETED,
-            workflowCompletedAt: new Date(),
-          },
-        });
-      } catch (error) {
-        console.error("Error updating feature workflow status:", error);
-      }
-
-      try {
         const channelName = getFeatureChannelName(featureId);
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
-        await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, {
-          taskId: featureId,
-          workflowStatus: WorkflowStatus.COMPLETED,
-        });
       } catch (error) {
         console.error("Error broadcasting feature update to Pusher:", error);
+      }
+
+      // Fire plan-page notifications based on artifact types (fire-and-forget)
+      try {
+        const feature = await db.feature.findUnique({
+          where: { id: featureId },
+          select: { createdById: true, workspaceId: true, title: true, workspace: { select: { slug: true } } },
+        });
+        if (feature) {
+          const planUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${featureId}`;
+          const targetUser = await db.user.findUnique({
+            where: { id: feature.createdById },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+
+          // Deduplicate by artifact type so multiple artifacts of the same type
+          // (e.g. two PLAN artifacts in one response) only fire one notification.
+          const seenArtifactTypes = new Set<ArtifactType>();
+          const uniqueArtifacts = chatMessage.artifacts.filter((a) => {
+            if (seenArtifactTypes.has(a.type)) return false;
+            seenArtifactTypes.add(a.type);
+            return true;
+          });
+
+          for (const dbArtifact of uniqueArtifacts) {
+            if (dbArtifact.type === ArtifactType.FORM) {
+              await createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_AWAITING_CLARIFICATION,
+                message: `@${alias} — Your plan for '${feature.title}' has a question waiting for your input: ${planUrl}`,
+              });
+            } else if (dbArtifact.type === ArtifactType.PLAN) {
+              await createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_AWAITING_APPROVAL,
+                message: `@${alias} — Your plan for '${feature.title}' is ready for your review: ${planUrl}`,
+              });
+            } else if (dbArtifact.type === ArtifactType.TASKS) {
+              await createAndSendNotification({
+                targetUserId: feature.createdById,
+                workspaceId: feature.workspaceId,
+                featureId,
+                notificationType: NotificationTriggerType.PLAN_TASKS_GENERATED,
+                message: `@${alias} — Tasks have been generated for '${feature.title}' and are ready to assign: ${planUrl}`,
+              });
+            }
+          }
+        }
+      } catch (notifError) {
+        console.error("Error firing plan notifications:", notifError);
+      }
+    }
+
+    // Fire GRAPH_CHAT_RESPONSE notification when taskId is present and no plan artifacts
+    if (taskId && !featureId && task) {
+      const hasPlanArtifact = chatMessage.artifacts.some(
+        (a) => a.type === ArtifactType.FORM || a.type === ArtifactType.PLAN || a.type === ArtifactType.TASKS,
+      );
+      if (!hasPlanArtifact) {
+        try {
+          const targetUserId = task.assigneeId ?? task.createdById;
+          const workspace = await db.workspace.findUnique({
+            where: { id: task.workspaceId },
+            select: { slug: true },
+          });
+          const targetUser = await db.user.findUnique({
+            where: { id: targetUserId },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+          if (workspace) {
+            const taskUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/task/${taskId}`;
+            await createAndSendNotification({
+              targetUserId,
+              workspaceId: task.workspaceId,
+              taskId,
+              notificationType: NotificationTriggerType.GRAPH_CHAT_RESPONSE,
+              message: `@${alias} — The assistant has responded to your question about '${task.title}': ${taskUrl}`,
+            });
+          }
+        } catch (notifError) {
+          console.error("Error firing graph chat notification:", notifError);
+        }
       }
     }
 

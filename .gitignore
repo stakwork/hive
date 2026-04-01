@@ -82,3 +82,15 @@ test-results
 
 # Private files
 private/
+
+# Accidental media files
+/*.png
+/*.webm
+/*.jpg
+/*.jpeg
+/*.gif
+/*.mp4
+/*.mov
+
+notes.md
+stadeum/AGENTS.md

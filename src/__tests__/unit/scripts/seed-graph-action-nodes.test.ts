@@ -4,9 +4,8 @@ import {
   TaskStatus,
   WorkflowStatus,
   ArtifactType,
-  StakworkRunType,
-  StakworkRunDecision,
   FeatureStatus,
+  ChatRole,
 } from "@prisma/client";
 
 // Mock Prisma client
@@ -23,10 +22,6 @@ const mockPrismaInstance = {
   },
   feature: {
     upsert: vi.fn(),
-    findMany: vi.fn(),
-  },
-  stakworkRun: {
-    create: vi.fn(),
     findMany: vi.fn(),
   },
   chatMessage: {
@@ -288,20 +283,30 @@ describe("seed-graph-action-nodes script", () => {
   });
 
   describe("feature creation", () => {
-    test("should create REQUIREMENTS features with completed StakworkRun", async () => {
+    test("should create awaiting-feedback features with ASSISTANT chat message", async () => {
       const featureData = {
-        id: `feature-requirements-1-${mockWorkspace.id}`,
-        title: "Feature Requirements 1: User profile management",
+        id: `feature-awaiting-1-${mockWorkspace.id}`,
+        title: "Feature Awaiting Feedback 1: User profile management",
         workspaceId: mockWorkspace.id,
         createdById: mockUser.id,
         updatedById: mockUser.id,
         status: FeatureStatus.PLANNED,
       };
 
+      mockPrismaInstance.feature.upsert.mockResolvedValue(featureData);
+
       await mockPrismaInstance.feature.upsert({
         where: { id: featureData.id },
         update: {},
         create: featureData,
+      });
+
+      await mockPrismaInstance.chatMessage.create({
+        data: {
+          featureId: featureData.id,
+          role: ChatRole.ASSISTANT,
+          message: "I've analyzed the requirements. Could you provide more details?",
+        },
       });
 
       expect(mockPrismaInstance.feature.upsert).toHaveBeenCalledWith(
@@ -311,116 +316,19 @@ describe("seed-graph-action-nodes script", () => {
           }),
         }),
       );
+      expect(mockPrismaInstance.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: ChatRole.ASSISTANT,
+            featureId: featureData.id,
+          }),
+        }),
+      );
     });
 
-    test("should create ARCHITECTURE features with completed StakworkRun", async () => {
+    test("should create not-awaiting features with USER last message (should NOT appear)", async () => {
       const featureData = {
-        id: `feature-architecture-1-${mockWorkspace.id}`,
-        workspaceId: mockWorkspace.id,
-        createdById: mockUser.id,
-        updatedById: mockUser.id,
-      };
-
-      mockPrismaInstance.feature.upsert.mockResolvedValue(featureData);
-
-      const stakworkRunData = {
-        webhookUrl: "https://example.com/webhook/architecture-1",
-        projectId: 6001,
-        type: StakworkRunType.ARCHITECTURE,
-        featureId: featureData.id,
-        workspaceId: mockWorkspace.id,
-        status: WorkflowStatus.COMPLETED,
-        decision: null,
-      };
-
-      await mockPrismaInstance.stakworkRun.create({
-        data: stakworkRunData,
-      });
-
-      expect(mockPrismaInstance.stakworkRun.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          type: StakworkRunType.ARCHITECTURE,
-          status: WorkflowStatus.COMPLETED,
-          decision: null,
-        }),
-      });
-    });
-
-    test("should create feature with clarifying questions in StakworkRun result", async () => {
-      const featureData = {
-        id: `feature-requirements-questions-${mockWorkspace.id}`,
-        workspaceId: mockWorkspace.id,
-        createdById: mockUser.id,
-        updatedById: mockUser.id,
-      };
-
-      mockPrismaInstance.feature.upsert.mockResolvedValue(featureData);
-
-      const stakworkRunData = {
-        webhookUrl: "https://example.com/webhook/requirements-questions",
-        projectId: 7001,
-        type: StakworkRunType.REQUIREMENTS,
-        featureId: featureData.id,
-        workspaceId: mockWorkspace.id,
-        status: WorkflowStatus.COMPLETED,
-        result: JSON.stringify({
-          tool_use: "ask_clarifying_questions",
-          questions: [
-            "Which social media platforms should be prioritized?",
-            "Should sharing be available for all content types or specific ones?",
-          ],
-        }),
-        dataType: "json",
-        decision: null,
-      };
-
-      await mockPrismaInstance.stakworkRun.create({
-        data: stakworkRunData,
-      });
-
-      expect(mockPrismaInstance.stakworkRun.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          result: expect.stringContaining("ask_clarifying_questions"),
-          dataType: "json",
-          decision: null,
-        }),
-      });
-    });
-
-    test("should create TASK_GENERATION feature with completed StakworkRun", async () => {
-      const featureData = {
-        id: `feature-task-generation-${mockWorkspace.id}`,
-        workspaceId: mockWorkspace.id,
-        createdById: mockUser.id,
-        updatedById: mockUser.id,
-      };
-
-      mockPrismaInstance.feature.upsert.mockResolvedValue(featureData);
-
-      const stakworkRunData = {
-        type: StakworkRunType.TASK_GENERATION,
-        featureId: featureData.id,
-        workspaceId: mockWorkspace.id,
-        status: WorkflowStatus.COMPLETED,
-        decision: null,
-      };
-
-      await mockPrismaInstance.stakworkRun.create({
-        data: stakworkRunData,
-      });
-
-      expect(mockPrismaInstance.stakworkRun.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          type: StakworkRunType.TASK_GENERATION,
-          status: WorkflowStatus.COMPLETED,
-          decision: null,
-        }),
-      });
-    });
-
-    test("should create features with ACCEPTED/REJECTED decisions that should not appear", async () => {
-      const featureData = {
-        id: `feature-decided-1-${mockWorkspace.id}`,
+        id: `feature-not-awaiting-1-${mockWorkspace.id}`,
         workspaceId: mockWorkspace.id,
         createdById: mockUser.id,
         updatedById: mockUser.id,
@@ -429,30 +337,27 @@ describe("seed-graph-action-nodes script", () => {
 
       mockPrismaInstance.feature.upsert.mockResolvedValue(featureData);
 
-      const stakworkRunData = {
-        type: StakworkRunType.REQUIREMENTS,
-        featureId: featureData.id,
-        workspaceId: mockWorkspace.id,
-        status: WorkflowStatus.COMPLETED,
-        decision: StakworkRunDecision.ACCEPTED,
-        feedback: "Looks good, proceed with implementation",
-      };
-
-      await mockPrismaInstance.stakworkRun.create({
-        data: stakworkRunData,
+      // Create ASSISTANT message then USER reply — last message is USER
+      await mockPrismaInstance.chatMessage.create({
+        data: { featureId: featureData.id, role: ChatRole.ASSISTANT, message: "What are your requirements?" },
+      });
+      await mockPrismaInstance.chatMessage.create({
+        data: { featureId: featureData.id, role: ChatRole.USER, message: "Here are my requirements..." },
       });
 
-      expect(mockPrismaInstance.stakworkRun.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          decision: StakworkRunDecision.ACCEPTED,
+      expect(mockPrismaInstance.chatMessage.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: ChatRole.USER,
+          }),
         }),
-      });
+      );
     });
   });
 
   describe("filtering logic verification", () => {
     test("should identify tasks that should appear on action-required graph", () => {
-      const tasks = [
+      const tasks: { id: string; workflowStatus: WorkflowStatus; archived: boolean; status?: TaskStatus }[] = [
         {
           id: "1",
           workflowStatus: WorkflowStatus.IN_PROGRESS,
@@ -498,44 +403,15 @@ describe("seed-graph-action-nodes script", () => {
     });
 
     test("should identify features that should appear on action-required graph", () => {
+      // awaitingFeedback = lastMsgRole === ASSISTANT && no tasks
       const features = [
-        {
-          id: "1",
-          stakworkRuns: [
-            {
-              type: StakworkRunType.REQUIREMENTS,
-              status: WorkflowStatus.COMPLETED,
-              decision: null,
-            },
-          ],
-        },
-        {
-          id: "2",
-          stakworkRuns: [
-            {
-              type: StakworkRunType.ARCHITECTURE,
-              status: WorkflowStatus.COMPLETED,
-              decision: null,
-            },
-          ],
-        },
-        {
-          id: "3",
-          stakworkRuns: [
-            {
-              type: StakworkRunType.TASK_GENERATION,
-              status: WorkflowStatus.COMPLETED,
-              decision: null,
-            },
-          ],
-        },
+        { id: "1", lastMsgRole: ChatRole.ASSISTANT, taskCount: 0 },
+        { id: "2", lastMsgRole: ChatRole.ASSISTANT, taskCount: 0 },
+        { id: "3", lastMsgRole: ChatRole.ASSISTANT, taskCount: 0 },
       ];
 
-      const shouldAppear = features.filter((f) =>
-        f.stakworkRuns.some(
-          (run) =>
-            run.status === WorkflowStatus.COMPLETED && run.decision === null,
-        ),
+      const shouldAppear = features.filter(
+        (f) => f.lastMsgRole === ChatRole.ASSISTANT && f.taskCount === 0,
       );
 
       expect(shouldAppear).toHaveLength(3);
@@ -543,33 +419,14 @@ describe("seed-graph-action-nodes script", () => {
 
     test("should identify features that should NOT appear on action-required graph", () => {
       const features = [
-        {
-          id: "1",
-          stakworkRuns: [
-            {
-              type: StakworkRunType.REQUIREMENTS,
-              status: WorkflowStatus.COMPLETED,
-              decision: StakworkRunDecision.ACCEPTED,
-            },
-          ],
-        },
-        {
-          id: "2",
-          stakworkRuns: [
-            {
-              type: StakworkRunType.ARCHITECTURE,
-              status: WorkflowStatus.COMPLETED,
-              decision: StakworkRunDecision.REJECTED,
-            },
-          ],
-        },
+        // Last message is USER — user already replied
+        { id: "1", lastMsgRole: ChatRole.USER, taskCount: 0 },
+        // Last message is ASSISTANT but tasks exist
+        { id: "2", lastMsgRole: ChatRole.ASSISTANT, taskCount: 5 },
       ];
 
-      const shouldAppear = features.filter((f) =>
-        f.stakworkRuns.some(
-          (run) =>
-            run.status === WorkflowStatus.COMPLETED && run.decision === null,
-        ),
+      const shouldAppear = features.filter(
+        (f) => f.lastMsgRole === ChatRole.ASSISTANT && f.taskCount === 0,
       );
 
       expect(shouldAppear).toHaveLength(0);

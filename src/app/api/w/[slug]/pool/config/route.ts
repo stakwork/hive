@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
-import { config, isSuperAdmin } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/config/env";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -24,14 +24,10 @@ export async function GET(
       );
     }
 
-    // Check if user is super admin
     const { db } = await import("@/lib/db");
-    const githubAuth = await db.gitHubAuth.findUnique({
-      where: { userId: userOrResponse.id },
-    });
-    const userIsSuperAdmin = isSuperAdmin(githubAuth?.githubUsername ?? "");
-
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const { checkIsSuperAdmin } = await import("@/lib/middleware/utils");
+    
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(
@@ -39,6 +35,9 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Check if user is superadmin
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     // Get swarm config
     const swarm = await db.swarm.findFirst({
@@ -83,16 +82,10 @@ export async function PATCH(
       );
     }
 
-    // Check if user is super admin
     const { db } = await import("@/lib/db");
-    const githubAuth = await db.gitHubAuth.findUnique({
-      where: { userId: userOrResponse.id },
-    });
 
-    const githubUsername = githubAuth?.githubUsername ?? "";
-    const userIsSuperAdmin = isSuperAdmin(githubUsername);
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
-    // Check if user is superadmin
     if (!userIsSuperAdmin) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Superadmin access required" },
@@ -100,7 +93,7 @@ export async function PATCH(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(
@@ -126,7 +119,6 @@ export async function PATCH(
       where: { workspaceId: workspace.id },
       select: {
         id: true,
-        poolName: true,
         poolApiKey: true,
       },
     });
@@ -138,7 +130,7 @@ export async function PATCH(
       );
     }
 
-    if (!swarm.poolName || !swarm.poolApiKey) {
+    if (!swarm.poolApiKey) {
       return NextResponse.json(
         { success: false, message: "Pool configuration incomplete" },
         { status: 400 }
@@ -154,7 +146,7 @@ export async function PATCH(
     // Forward to Pool Manager
     try {
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
-      const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.poolName)}`;
+      const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.id)}`;
 
       const response = await fetch(poolManagerUrl, {
         method: "PUT",

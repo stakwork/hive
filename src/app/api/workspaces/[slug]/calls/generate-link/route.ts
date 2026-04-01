@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
+import jwt from "jsonwebtoken";
 
 export async function POST(
   request: NextRequest,
@@ -12,11 +13,25 @@ export async function POST(
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const { slug } = await params;
+    const { slug: rawSlug } = await params;
+    const swarmName = request.nextUrl.searchParams.get("swarmName");
+
+    // Resolve workspace slug: use URL slug if real, otherwise look up by swarmName
+    let slug = rawSlug && rawSlug !== "_" ? rawSlug : null;
+
+    if (!slug && swarmName) {
+      const swarm = await db.swarm.findUnique({
+        where: { name: swarmName },
+        select: { workspace: { select: { slug: true, deleted: true } } },
+      });
+      if (swarm?.workspace && !swarm.workspace.deleted) {
+        slug = swarm.workspace.slug;
+      }
+    }
 
     if (!slug) {
       return NextResponse.json(
-        { error: "Workspace slug is required" },
+        { error: "Workspace slug or swarmName query parameter is required" },
         { status: 400 },
       );
     }
@@ -82,9 +97,19 @@ export async function POST(
       );
     }
 
-    // Generate call URL
+    // Mint a short-lived JWT for the agent to authenticate with the Hive API
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return NextResponse.json(
+        { error: "JWT secret not configured" },
+        { status: 500 },
+      );
+    }
+    const hiveToken = jwt.sign({ slug }, jwtSecret, { expiresIn: "4h" });
+
+    // Generate call URL with token
     const timestamp = Math.floor(Date.now() / 1000);
-    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
+    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}?hiveToken=${encodeURIComponent(hiveToken)}`;
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {

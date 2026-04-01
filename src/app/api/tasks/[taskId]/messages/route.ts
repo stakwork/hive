@@ -40,6 +40,7 @@ export async function GET(
         mode: true,
         podId: true,
         featureId: true,
+        sourceType: true,
         feature: {
           select: {
             id: true,
@@ -146,6 +147,7 @@ export async function GET(
             mode: task.mode,
             podId: task.podId,
             featureId: task.featureId,
+            sourceType: task.sourceType,
             feature: task.feature,
           },
           messages: clientMessages,

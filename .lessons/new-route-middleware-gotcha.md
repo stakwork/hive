@@ -1,0 +1,1 @@
+When you add a new route, remember to check `src/config/middleware.ts` to see if you need to add to the `ROUTE_POLICIES`!

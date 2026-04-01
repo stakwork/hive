@@ -225,123 +225,132 @@ export function useWhiteboardCollaboration({
   useEffect(() => {
     if (!COLLABORATION_ENABLED || !whiteboardId) return;
 
-    const pusher = getPusherClient();
-    const channelName = getWhiteboardChannelName(whiteboardId);
-    const channel = pusher.subscribe(channelName);
+    let pusher: ReturnType<typeof getPusherClient> | null = null;
+    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
+    let channelName: string | null = null;
 
-    channel.bind("pusher:subscription_succeeded", () => {
-      setIsConnected(true);
+    try {
+      pusher = getPusherClient();
+      channelName = getWhiteboardChannelName(whiteboardId);
+      channel = pusher.subscribe(channelName);
 
-      // Announce join
-      if (session?.user) {
-        fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "join",
-            user: {
-              odinguserId: session.user.id,
-              name: session.user.name || "Anonymous",
-              image: session.user.image || null,
-              color: userColorRef.current,
-              joinedAt: Date.now(),
-            },
-          }),
-        }).catch(console.error);
-      }
-    });
+      channel.bind("pusher:subscription_succeeded", () => {
+        setIsConnected(true);
 
-    // Handle remote element updates
-    channel.bind(
-      PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE,
-      (data: WhiteboardElementsUpdateEvent) => {
-        // Ignore our own updates
-        if (data.senderId === senderIdRef.current) return;
-
-        if (excalidrawAPI) {
-          const currentElements = excalidrawAPI.getSceneElements();
-          const remoteElements = data.elements as ExcalidrawElement[];
-
-          // Merge elements: remote elements take precedence for conflicts
-          const mergedElements = mergeElements(currentElements, remoteElements);
-
-          excalidrawAPI.updateScene({
-            elements: mergedElements,
-            appState: data.appState as any,
-          });
-
-          onRemoteUpdate?.();
+        // Announce join
+        if (session?.user) {
+          fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "join",
+              user: {
+                odinguserId: session.user.id,
+                name: session.user.name || "Anonymous",
+                image: session.user.image || null,
+                color: userColorRef.current,
+                joinedAt: Date.now(),
+              },
+            }),
+          }).catch(console.error);
         }
-      }
-    );
+      });
 
-    // Handle cursor updates
-    channel.bind(
-      PUSHER_EVENTS.WHITEBOARD_CURSOR_UPDATE,
-      (data: WhiteboardCursorUpdateEvent) => {
-        if (data.senderId === senderIdRef.current) return;
+      // Handle remote element updates
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE,
+        (data: WhiteboardElementsUpdateEvent) => {
+          // Ignore our own updates
+          if (data.senderId === senderIdRef.current) return;
 
-        setCursorPositions((prev) => {
-          const next = new Map(prev);
-          next.set(data.senderId, {
-            x: data.cursor.x,
-            y: data.cursor.y,
-            color: data.color,
-            username: data.username,
-          });
-          return next;
-        });
+          if (excalidrawAPI) {
+            const currentElements = excalidrawAPI.getSceneElements();
+            const remoteElements = data.elements as ExcalidrawElement[];
 
-        // Remove stale cursor after 3 seconds of inactivity
-        setTimeout(() => {
+            // Merge elements: remote elements take precedence for conflicts
+            const mergedElements = mergeElements(currentElements, remoteElements);
+
+            excalidrawAPI.updateScene({
+              elements: mergedElements,
+              appState: data.appState as any,
+            });
+
+            onRemoteUpdate?.();
+          }
+        }
+      );
+
+      // Handle cursor updates
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_CURSOR_UPDATE,
+        (data: WhiteboardCursorUpdateEvent) => {
+          if (data.senderId === senderIdRef.current) return;
+
           setCursorPositions((prev) => {
             const next = new Map(prev);
-            const cursor = next.get(data.senderId);
-            if (cursor && cursor.x === data.cursor.x && cursor.y === data.cursor.y) {
-              next.delete(data.senderId);
+            next.set(data.senderId, {
+              x: data.cursor.x,
+              y: data.cursor.y,
+              color: data.color,
+              username: data.username,
+            });
+            return next;
+          });
+
+          // Remove stale cursor after 3 seconds of inactivity
+          setTimeout(() => {
+            setCursorPositions((prev) => {
+              const next = new Map(prev);
+              const cursor = next.get(data.senderId);
+              if (cursor && cursor.x === data.cursor.x && cursor.y === data.cursor.y) {
+                next.delete(data.senderId);
+              }
+              return next;
+            });
+          }, 3000);
+        }
+      );
+
+      // Handle user join
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_USER_JOIN,
+        (data: WhiteboardUserJoinEvent) => {
+          setCollaborators((prev) => {
+            // Don't add ourselves or duplicates
+            if (
+              data.user.odinguserId === session?.user?.id ||
+              prev.some((c) => c.odinguserId === data.user.odinguserId)
+            ) {
+              return prev;
+            }
+            return [...prev, data.user];
+          });
+        }
+      );
+
+      // Handle user leave
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_USER_LEAVE,
+        (data: WhiteboardUserLeaveEvent) => {
+          setCollaborators((prev) =>
+            prev.filter((c) => c.odinguserId !== data.userId)
+          );
+          setCursorPositions((prev) => {
+            const next = new Map(prev);
+            // Remove cursor for any sender ID starting with the leaving user's ID
+            for (const key of next.keys()) {
+              if (key.startsWith(data.userId)) {
+                next.delete(key);
+              }
             }
             return next;
           });
-        }, 3000);
-      }
-    );
-
-    // Handle user join
-    channel.bind(
-      PUSHER_EVENTS.WHITEBOARD_USER_JOIN,
-      (data: WhiteboardUserJoinEvent) => {
-        setCollaborators((prev) => {
-          // Don't add ourselves or duplicates
-          if (
-            data.user.odinguserId === session?.user?.id ||
-            prev.some((c) => c.odinguserId === data.user.odinguserId)
-          ) {
-            return prev;
-          }
-          return [...prev, data.user];
-        });
-      }
-    );
-
-    // Handle user leave
-    channel.bind(
-      PUSHER_EVENTS.WHITEBOARD_USER_LEAVE,
-      (data: WhiteboardUserLeaveEvent) => {
-        setCollaborators((prev) =>
-          prev.filter((c) => c.odinguserId !== data.userId)
-        );
-        setCursorPositions((prev) => {
-          const next = new Map(prev);
-          // Remove cursor for any sender ID starting with the leaving user's ID
-          for (const key of next.keys()) {
-            if (key.startsWith(data.userId)) {
-              next.delete(key);
-            }
-          }
-          return next;
-        });
-      }
-    );
+        }
+      );
+    } catch {
+      // Pusher not configured in this environment
+      return;
+    }
 
     // Cleanup on unmount
     return () => {
@@ -357,8 +366,10 @@ export function useWhiteboardCollaboration({
         }).catch(console.error);
       }
 
-      channel.unbind_all();
-      pusher.unsubscribe(channelName);
+      channel?.unbind_all();
+      if (pusher && channelName) {
+        pusher.unsubscribe(channelName);
+      }
       setIsConnected(false);
     };
   }, [whiteboardId, excalidrawAPI, session, onRemoteUpdate]);

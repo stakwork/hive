@@ -13,20 +13,28 @@ import {
 } from "@/__tests__/support/helpers";
 
 describe("Generate Call Link API - Integration Tests", () => {
-  const originalEnv = process.env.LIVEKIT_CALL_BASE_URL;
+  const originalLiveKit = process.env.LIVEKIT_CALL_BASE_URL;
+  const originalJwt = process.env.JWT_SECRET;
 
   beforeEach(() => {
     vi.clearAllMocks();
     // Set default LiveKit URL for tests
     process.env.LIVEKIT_CALL_BASE_URL = "https://call.livekit.io/";
+    // JWT_SECRET is required by generate-link to mint a short-lived token
+    process.env.JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret";
   });
 
   afterEach(() => {
     // Restore original env
-    if (originalEnv) {
-      process.env.LIVEKIT_CALL_BASE_URL = originalEnv;
+    if (originalLiveKit) {
+      process.env.LIVEKIT_CALL_BASE_URL = originalLiveKit;
     } else {
       delete process.env.LIVEKIT_CALL_BASE_URL;
+    }
+    if (originalJwt) {
+      process.env.JWT_SECRET = originalJwt;
+    } else {
+      delete process.env.JWT_SECRET;
     }
   });
 
@@ -228,7 +236,7 @@ describe("Generate Call Link API - Integration Tests", () => {
           params: Promise.resolve({ slug: "" }),
         });
 
-        await expectError(response, "Workspace slug is required", 400);
+        await expectError(response, "Workspace slug or swarmName query parameter is required", 400);
       });
 
       test("returns error when workspace not found", async () => {
@@ -348,10 +356,10 @@ describe("Generate Call Link API - Integration Tests", () => {
 
         const data = await expectSuccess(response, 200);
 
-        // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}
+        // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}?hiveToken=...
         // Tests run in mock mode by default, so expect mock URL format
         expect(data.url).toContain("swarm42.sphinx.chat-.");
-        expect(data.url).toMatch(/\.(\d+)$/); // Ends with timestamp
+        expect(data.url).toMatch(/\.(\d+)\?hiveToken=/); // Timestamp followed by JWT query param
       });
 
       test("timestamp in URL is recent", async () => {
@@ -376,8 +384,8 @@ describe("Generate Call Link API - Integration Tests", () => {
 
         const data = await expectSuccess(response, 200);
 
-        // Extract timestamp from URL
-        const match = data.url.match(/\.(\d+)$/);
+        // Extract timestamp from URL (now followed by ?hiveToken=)
+        const match = data.url.match(/\.(\d+)\?hiveToken=/);
         expect(match).not.toBeNull();
 
         const urlTimestamp = parseInt(match![1], 10);

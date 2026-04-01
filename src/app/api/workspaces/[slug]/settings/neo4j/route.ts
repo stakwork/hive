@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { decryptEnvVars, encryptEnvVars, EncryptionService } from "@/lib/encryption";
@@ -34,8 +33,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 
   const { slug } = await params;
-  const isSuperAdmin = await checkIsSuperAdmin(userId);
-  const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
+  const access = await validateWorkspaceAccess(slug, userId, true);
   if (!access.hasAccess) {
     return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
   }
@@ -83,8 +81,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const { slug } = await params;
-  const isSuperAdmin = await checkIsSuperAdmin(userId);
-  const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
+  const access = await validateWorkspaceAccess(slug, userId, true);
   if (!access.hasAccess) {
     return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
   }

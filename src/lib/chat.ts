@@ -90,7 +90,7 @@ export interface WorkflowContent {
   workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
-  workflowVersionId?: string; // Workflow version ID (UUID) from graph
+  workflowVersionId?: string | number; // Workflow version ID (UUID or numeric) from graph
   projectInfo?: any; // Project data for project debugger mode
   debuggerProjectId?: string; // Project ID for debugger context
 }
@@ -165,6 +165,12 @@ export interface MediaContent {
   uploadedAt: string; // ISO timestamp
 }
 
+export interface StreamContent {
+  requestId: string;
+  eventsToken: string;
+  baseUrl: string;
+}
+
 export interface BountyContent {
   status: "PENDING" | "READY";
   bountyTitle: string;
@@ -200,7 +206,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
-    | BountyContent;
+    | BountyContent
+    | StreamContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -283,7 +290,8 @@ export function createArtifact(data: {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
-    | BountyContent;
+    | BountyContent
+    | StreamContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

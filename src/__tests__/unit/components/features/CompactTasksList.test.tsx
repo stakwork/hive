@@ -1,12 +1,13 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
 import type { FeatureWithDetails } from "@/types/roadmap";
 import type { WorkspaceWithAccess } from "@/types/workspace";
 import { TaskStatus } from "@prisma/client";
 import userEvent from "@testing-library/user-event";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Mock Next.js router
 const mockPush = vi.fn();
@@ -35,8 +36,40 @@ vi.mock("@/hooks/useTicketMutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
+  useRoadmapTaskMutations: () => ({
+    updateTicket: vi.fn().mockResolvedValue({}),
+  }),
+}));
+
 vi.mock("@/hooks/usePusherConnection", () => ({
   usePusherConnection: vi.fn(),
+}));
+
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/components/features/DependencyGraph", () => ({
+  DependencyGraph: ({ className }: any) => (
+    <div data-testid="dependency-graph" className={className} />
+  ),
+}));
+
+vi.mock("@/components/features/DependencyGraph/nodes", () => ({
+  RoadmapTaskNode: ({ data }: any) => <div data-testid="roadmap-task-node">{data.title}</div>,
+}));
+
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({ children, open }: any) => (
+    <div data-testid="collapsible" data-open={open}>{children}</div>
+  ),
+  CollapsibleTrigger: ({ children, asChild }: any) => (
+    <div data-testid="collapsible-trigger">{children}</div>
+  ),
+  CollapsibleContent: ({ children }: any) => (
+    <div data-testid="collapsible-content">{children}</div>
+  ),
 }));
 
 // Mock UI components
@@ -54,7 +87,11 @@ vi.mock("@/components/ui/select", () => ({
       {children}
     </div>
   ),
-  SelectTrigger: ({ children }: any) => <div>{children}</div>,
+  SelectTrigger: ({ children, className }: any) => (
+    <div data-testid="select-trigger" className={className}>
+      {children}
+    </div>
+  ),
   SelectValue: () => <span>Select</span>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children, value }: any) => (
@@ -83,6 +120,7 @@ vi.mock("@/components/ui/action-menu", () => ({
         <button
           key={idx}
           onClick={action.onClick}
+          disabled={action.disabled}
           data-testid={`action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}
         >
           {action.label}
@@ -105,6 +143,13 @@ vi.mock("@/components/tasks/MiniToggle", () => ({
 }));
 
 vi.mock("react-hot-toast", () => ({
+  toast: {
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock("sonner", () => ({
   toast: {
     info: vi.fn(),
     error: vi.fn(),
@@ -672,6 +717,354 @@ describe("CompactTasksList", () => {
       const taskCard = screen.getByText("In Progress Task").closest("div[class*='cursor-pointer']");
       const dot = taskCard?.querySelector(".bg-amber-500");
       expect(dot).toBeInTheDocument();
+    });
+  });
+
+  describe("Start Task action menu item", () => {
+    test("shows 'Start Task' in action menu for an unassigned TODO task", () => {
+      const task = createMockTask({ id: "task-todo", status: "TODO", systemAssigneeType: null });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-start-task")).toBeInTheDocument();
+    });
+
+    test("shows 'Start Task' for a TODO task already queued under TASK_COORDINATOR", () => {
+      const task = createMockTask({
+        id: "task-queued",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-start-task")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'Start Task' for an IN_PROGRESS task", () => {
+      const task = createMockTask({ id: "task-ip", status: "IN_PROGRESS" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-start-task")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'Start Task' for a DONE task", () => {
+      const task = createMockTask({ id: "task-done", status: "DONE" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-start-task")).not.toBeInTheDocument();
+    });
+
+    test("calls PATCH /api/tasks/[taskId] with startWorkflow:true on click", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), { status: 200 })
+      );
+      const task = createMockTask({ id: "task-start", status: "TODO" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const startBtn = screen.getByTestId("action-start-task");
+      startBtn.click();
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/tasks/task-start",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ startWorkflow: true }),
+          })
+        );
+      });
+
+      fetchSpy.mockRestore();
+    });
+
+    test("shows toast.error when the API returns a non-OK response", async () => {
+      const { toast } = await import("sonner");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(null, { status: 500 })
+      );
+      const task = createMockTask({ id: "task-fail", status: "TODO" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      screen.getByTestId("action-start-task").click();
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("Failed to start task");
+      });
+
+      vi.restoreAllMocks();
+    });
+
+    test("'Start Task' button is disabled while request is in flight for that task", async () => {
+      let resolveRequest!: (value: Response) => void;
+      vi.spyOn(globalThis, "fetch").mockReturnValue(
+        new Promise<Response>((res) => { resolveRequest = res; })
+      );
+
+      const task = createMockTask({ id: "task-loading", status: "TODO" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const startBtn = screen.getByTestId("action-start-task");
+      startBtn.click();
+
+      // While the fetch is pending, the button should be disabled
+      await waitFor(() => {
+        expect(screen.getByTestId("action-start-task")).toBeDisabled();
+      });
+
+      // Resolve the pending promise so the component can clean up
+      resolveRequest(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      vi.restoreAllMocks();
+    });
+  });
+
+  describe("Repo SelectTrigger truncation", () => {
+    test("SelectTrigger inner div has overflow-hidden to prevent long repo names wrapping", () => {
+      const task = createMockTask({
+        id: "task-repo",
+        title: "Repo Task",
+        status: "TODO",
+        repositoryId: "repo-1",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // The SelectTrigger should have max-w-[120px] to constrain width
+      const trigger = screen.getByTestId("select-trigger");
+      expect(trigger.className).toMatch(/max-w-\[120px\]/);
+
+      // The inner flex container must have overflow-hidden so long names like
+      // "sphinx-nav-fiber" don't wrap to a second line
+      const innerDiv = trigger.querySelector("div");
+      expect(innerDiv?.className).toMatch(/overflow-hidden/);
+    });
+
+    test("SelectValue is wrapped in a truncate span to clip long repo names", () => {
+      const task = createMockTask({
+        id: "task-repo2",
+        title: "Repo Task 2",
+        status: "TODO",
+        repositoryId: "repo-1",
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          workspace={{} as WorkspaceWithAccess}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const trigger = screen.getByTestId("select-trigger");
+      // The truncate wrapper span must exist inside the trigger
+      const truncateSpan = trigger.querySelector("span.truncate");
+      expect(truncateSpan).toBeInTheDocument();
+    });
+  });
+
+  describe("Dependency graph section", () => {
+    test("graph section is not rendered when all tasks have empty dependsOnTaskIds", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: [] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("dependency-graph")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+    });
+
+    test("graph section is not rendered when tasks have no dependsOnTaskIds field", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1" });
+      const task2 = createMockTask({ id: "t2" });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("dependency-graph")).not.toBeInTheDocument();
+    });
+
+    test("graph section is rendered when at least one task has a dependency", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("dependency-graph")).toBeInTheDocument();
+    });
+
+    test("graphOpen initialises to false (collapsed) by default on desktop", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const collapsible = screen.getByTestId("collapsible");
+      expect(collapsible).toHaveAttribute("data-open", "false");
+    });
+
+    test("graphOpen initialises to false (collapsed) by default on mobile", () => {
+      (useIsMobile as any).mockReturnValue(true);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const collapsible = screen.getByTestId("collapsible");
+      expect(collapsible).toHaveAttribute("data-open", "false");
+    });
+
+    test("DependencyGraph receives h-[280px] className on mobile", () => {
+      (useIsMobile as any).mockReturnValue(true);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const graph = screen.getByTestId("dependency-graph");
+      expect(graph.className).toContain("h-[280px]");
+    });
+
+    test("DependencyGraph receives h-[380px] className on desktop", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const graph = screen.getByTestId("dependency-graph");
+      expect(graph.className).toContain("h-[380px]");
     });
   });
 });

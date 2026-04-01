@@ -15,6 +15,7 @@ import {
   ArtifactType,
   PullRequestContent,
   BountyContent,
+  WorkflowContent,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
@@ -31,6 +32,8 @@ import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal, BountyRequestModal } from "./components";
 import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
+import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
+import { mapStakworkStatus } from "@/utils/conversions";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -38,6 +41,7 @@ import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useStreamContext } from "@/hooks/useStreamContext";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
@@ -52,7 +56,7 @@ export default function TaskChatPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { id: workspaceId, workspace } = useWorkspace();
+  const { id: workspaceId, workspace, isSuperAdmin } = useWorkspace();
   const { data: session } = useSession();
   const isMobile = useIsMobile();
   const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST) && workspace?.slug === "hive";
@@ -109,15 +113,18 @@ export default function TaskChatPage() {
   const [featureId, setFeatureId] = useState<string | null>(null);
   const [featureTitle, setFeatureTitle] = useState<string | null>(null);
   const [isReleasingPod, setIsReleasingPod] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [browserRefreshTrigger, setBrowserRefreshTrigger] = useState(0);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
     workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
+    workflowVersionId?: string;
   } | null>(null);
   const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
   const [currentProjectContext, setCurrentProjectContext] = useState<{
@@ -135,11 +142,23 @@ export default function TaskChatPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [isPrototypeTask, setIsPrototypeTask] = useState(false);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, false);
+
+  // Reconciliation polling: recover stuck IN_PROGRESS workflow status on page/tab load
+  const { workflowData: reconcilingWorkflowData } = useWorkflowPolling(
+    isReconciling && projectId ? projectId : null,
+    isReconciling,
+    5000,
+  );
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -157,6 +176,19 @@ export default function TaskChatPage() {
       return [...prev, message];
     });
 
+    // Update workflowRefId from incoming WORKFLOW artifact (workflow_editor mode only)
+    if (taskMode === "workflow_editor") {
+      const workflowArtifact = message.artifacts?.find(
+        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowRefId
+      );
+      if (workflowArtifact) {
+        const incomingRefId = (workflowArtifact.content as WorkflowContent).workflowRefId!;
+        setCurrentWorkflowContext((prev) =>
+          prev ? { ...prev, workflowRefId: incomingRefId } : prev
+        );
+      }
+    }
+
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
     const hasActionArtifact = message.artifacts?.some((artifact) => artifact.type === "FORM");
@@ -164,15 +196,38 @@ export default function TaskChatPage() {
     if (hasActionArtifact) {
       setIsChainVisible(false);
     }
-  }, []);
+
+    onStreamMessage(message);
+  }, [taskMode, onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
+    // Stop reconciliation polling when Pusher delivers the real status — prevents duplicate PATCH
+    setIsReconciling(false);
     // Hide processing indicator when workflow finishes
     if (update.workflowStatus === WorkflowStatus.COMPLETED) {
       setIsChainVisible(false);
+      if (taskMode !== "agent") {
+        setBrowserRefreshTrigger(prev => prev + 1);
+      }
     }
-  }, []);
+    onStreamStatusUpdate(update);
+  }, [taskMode, onStreamStatusUpdate]);
+
+  // When reconciliation polling returns a terminal state, persist it to the DB and update UI
+  useEffect(() => {
+    if (!reconcilingWorkflowData || !currentTaskId || !isReconciling) return;
+    const mapped = mapStakworkStatus(reconcilingWorkflowData.status);
+    if (mapped && mapped !== WorkflowStatus.IN_PROGRESS) {
+      setWorkflowStatus(mapped);
+      setIsReconciling(false);
+      fetch(`/api/tasks/${currentTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowStatus: mapped }),
+      }).catch((err) => console.error("Failed to reconcile workflowStatus:", err));
+    }
+  }, [reconcilingWorkflowData, currentTaskId, isReconciling]);
 
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -300,6 +355,13 @@ export default function TaskChatPage() {
           console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
 
+          // Begin reconciliation polling if the task loaded with an IN_PROGRESS workflow status
+          if (result.data.task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+            setIsReconciling(true);
+          } else {
+            setIsReconciling(false);
+          }
+
           // Create ephemeral WORKFLOW artifact for existing tasks with workflows
           // This artifact is not stored in DB - it's always generated client-side
           const projectId = result.data.task.stakworkProjectId.toString();
@@ -322,6 +384,9 @@ export default function TaskChatPage() {
               ),
             );
           }
+        } else {
+          // No stakworkProjectId — reconciliation cannot run
+          setIsReconciling(false);
         }
 
         // Set task title and description from API response
@@ -343,25 +408,50 @@ export default function TaskChatPage() {
           setFeatureTitle(result.data.task.feature.title);
         }
 
+        // Detect prototype task
+        if (result.data.task?.sourceType) {
+          setIsPrototypeTask(result.data.task.sourceType === "PROTOTYPE");
+        }
+
         // Restore workflow context for workflow_editor mode
         if (result.data.task?.mode === "workflow_editor" && result.data.messages) {
-          // Find the WORKFLOW artifact with workflowId and workflowName
+          // Scan ALL messages/artifacts (oldest → newest) so the last match wins,
+          // ensuring we restore the most recent workflowVersionId rather than the
+          // initial "Loaded" artifact's version.
+          type WorkflowArtifactContent = {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+          type RestoredWorkflowContext = {
+            workflowId: number | string;
+            workflowName: string;
+            workflowRefId: string;
+            workflowVersionId?: string;
+          };
+          const matchedContexts: RestoredWorkflowContext[] = [];
+
           for (const msg of result.data.messages) {
-            const workflowArtifact = msg.artifacts?.find(
-              (a: {
-                type: string;
-                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
-              }) => a.type === "WORKFLOW" && a.content?.workflowId,
-            );
-            if (workflowArtifact?.content?.workflowId) {
-              setCurrentWorkflowContext({
-                workflowId: workflowArtifact.content.workflowId,
-                workflowName:
-                  workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
-                workflowRefId: workflowArtifact.content.workflowRefId || "",
-              });
-              break;
+            for (const a of msg.artifacts ?? []) {
+              const artifact = a as { type: string; content?: WorkflowArtifactContent };
+              if (artifact.type === "WORKFLOW" && artifact.content?.workflowId) {
+                const c = artifact.content;
+                const prevVersionId = matchedContexts.length > 0
+                  ? matchedContexts[matchedContexts.length - 1].workflowVersionId
+                  : undefined;
+                matchedContexts.push({
+                  workflowId: c.workflowId!,
+                  workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+                  workflowRefId: c.workflowRefId || "",
+                  workflowVersionId: c.workflowVersionId != null ? String(c.workflowVersionId) : prevVersionId,
+                });
+              }
             }
+          }
+
+          if (matchedContexts.length > 0) {
+            setCurrentWorkflowContext(matchedContexts[matchedContexts.length - 1]);
           }
         }
 
@@ -404,6 +494,17 @@ export default function TaskChatPage() {
       loadTaskMessages(taskIdFromUrl);
     }
   }, [taskIdFromUrl, loadTaskMessages]);
+
+  // Re-subscribe to WebSocket on tab restore by reloading messages (which calls setProjectId)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentTaskId) {
+        loadTaskMessages(currentTaskId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentTaskId, loadTaskMessages]);
 
   // Handle project selection in project_debugger mode
   const handleProjectSelect = async (projectIdValue: string, projectData: any) => {
@@ -582,8 +683,8 @@ export default function TaskChatPage() {
       }
 
       // Create new task with workflow info
-      const taskTitle = workflowName 
-        ? `${workflowName}${workflowVersionId ? ` (v${workflowVersionId.substring(0, 8)})` : ''}`
+      const taskTitle = workflowName
+        ? `${workflowName} (ID: ${workflowId}${workflowVersionId ? ` · V${workflowVersionId.substring(0, 8)}` : ''})`
         : `Workflow ${workflowId}`;
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -679,9 +780,10 @@ export default function TaskChatPage() {
 
       // Store workflow context for later use in step editing
       setCurrentWorkflowContext({
-        workflowId: workflowId,
+        workflowId,
         workflowName: workflowName || `Workflow ${workflowId}`,
-        workflowRefId: workflowData.ref_id,
+        workflowRefId: versionRefId,
+        workflowVersionId,
       });
       // Clear webhook for fresh workflow conversation
       setWorkflowEditorWebhook(null);
@@ -801,7 +903,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string) => {
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -827,6 +929,7 @@ export default function TaskChatPage() {
             model: model || selectedModel, // Save selected AI model
             autoMerge: autoMerge || false, // Save auto-merge preference
             repositoryId: repositoryId, // Pass repository ID for multi-repo workspaces
+            branch: branch || null, // Pass selected branch
           }),
         });
 
@@ -929,6 +1032,9 @@ export default function TaskChatPage() {
 
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
+      if (!currentWorkflowContext.workflowRefId) {
+        return;
+      }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
       if (!messageText) return; // Need a message if no step selected
 
@@ -965,6 +1071,8 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            // Include latest workflow version ID if tracked
+            ...(currentWorkflowContext.workflowVersionId && { workflowVersionId: currentWorkflowContext.workflowVersionId }),
             // Include webhook if available for continuing existing workflow
             ...(webhookToUse && { webhook: webhookToUse }),
             // Only include step data if a step is selected
@@ -1003,12 +1111,17 @@ export default function TaskChatPage() {
         );
 
         setSelectedStep(null); // Clear step after sending
+        setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+        clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
+        setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
       } finally {
         setIsLoading(false);
       }
@@ -1074,12 +1187,15 @@ export default function TaskChatPage() {
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
+        setIsChainVisible(true);
+        clearLogs();
       } catch (error) {
         console.error("Error in project debugger:", error);
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send project debugger request. Please try again." });
+        setIsChainVisible(false);
       } finally {
         setIsLoading(false);
       }
@@ -1297,6 +1413,7 @@ export default function TaskChatPage() {
           console.log("Project ID:", result.workflow.project_id);
           setProjectId(result.workflow.project_id);
           setIsChainVisible(true);
+          setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
           clearLogs();
 
           // Create a WORKFLOW artifact with the project_id
@@ -1347,6 +1464,7 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
 
+        setWorkflowStatus(WorkflowStatus.PENDING);
         toast.error("Error", { description: "Failed to send message. Please try again." });
       } finally {
         setIsLoading(false);
@@ -1388,6 +1506,31 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
+  const handleVersionChange = useCallback(async (versionId: string) => {
+    if (!currentWorkflowContext) return;
+    const { workflowId, workflowRefId: prevWorkflowRefId } = currentWorkflowContext;
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/workflows/${workflowId}/versions`);
+      if (!response.ok) throw new Error(`Failed to fetch versions: ${response.statusText}`);
+      const data = await response.json();
+      const versions: Array<{ workflow_version_id: string; ref_id: string }> = data.versions ?? data ?? [];
+      const match = versions.find((v) => v.workflow_version_id === versionId);
+      if (!match) {
+        console.error(`handleVersionChange: version "${versionId}" not found in versions list — retaining previous workflowRefId`);
+        setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
+        return;
+      }
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: match.ref_id } : prev,
+      );
+    } catch (error) {
+      console.error("handleVersionChange: failed to resolve workflowRefId, retaining previous value", error);
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: prevWorkflowRefId } : prev,
+      );
+    }
+  }, [currentWorkflowContext, slug]);
+
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
 
@@ -1423,6 +1566,117 @@ export default function TaskChatPage() {
       });
     } finally {
       setIsReleasingPod(false);
+    }
+  };
+
+  const handleSaveAndPlan = useCallback(async () => {
+    if (!currentTaskId || !effectiveWorkspaceId || !slug || isSavingPlan) return;
+
+    setIsSavingPlan(true);
+    try {
+      // 1. Push prototype branch
+      const pushRes = await fetch(`/api/agent/prototype-push/${currentTaskId}`, { method: "POST" });
+      if (!pushRes.ok) throw new Error("Failed to push prototype branch");
+      const { branchName } = await pushRes.json();
+
+      // 2. Create Feature record
+      const featureRes = await fetch("/api/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: taskTitle, workspaceId: effectiveWorkspaceId }),
+      });
+      if (!featureRes.ok) throw new Error("Failed to create feature");
+      const { data: feature } = await featureRes.json();
+
+      // 3. Format messages — lowercase roles
+      const formattedHistory = messages
+        .filter((m) => m.message && m.role)
+        .map((m) => ({ role: m.role.toLowerCase() as "user" | "assistant", content: m.message }));
+
+      // 4. Seed Plan Mode with prototype history and branch reference
+      const seedMessage = `A UI prototype has been built on branch \`${branchName}\`.
+This branch must be used as the base branch for all UI implementation work.
+
+When defining requirements, architecture, and the implementation plan, ensure that all UI-related tasks explicitly reference this branch as their base branch.
+
+Architecture requirements:
+
+Convert the prototype into a production-ready feature implemented on this branch.
+
+Delete the temporary prototype/test page as part of the implementation (this is required, not optional cleanup).
+
+The prototype should be treated as a visual and interaction reference only.
+Plan and implement the real feature from this branch.`;
+      await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: seedMessage, history: formattedHistory, isPrototype: true }),
+      });
+
+      // 5. Navigate to Plan Mode
+      router.push(`/w/${slug}/plan/${feature.id}`);
+    } catch (error) {
+      console.error("Save and Plan failed:", error);
+      toast.error("Failed to save and plan", { description: "Please try again." });
+      setIsSavingPlan(false);
+    }
+  }, [currentTaskId, effectiveWorkspaceId, slug, taskTitle, messages, router, isSavingPlan]);
+
+  const handleRetry = async () => {
+    if (!currentTaskId || isRetrying) return;
+    setIsRetrying(true);
+
+    try {
+      if (taskMode === 'workflow_editor' && currentWorkflowContext) {
+        // Find last USER message text from messages state
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((m) => m.role === ChatRole.USER);
+        const messageText = lastUserMessage?.message ?? '';
+
+        if (!messageText || !currentWorkflowContext.workflowRefId) {
+          toast.error('Cannot retry: missing workflow context.');
+          return;
+        }
+
+        const webhookToUse = workflowEditorWebhook || undefined;
+
+        const res = await fetch('/api/workflow-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: currentTaskId,
+            message: messageText,
+            workflowId: currentWorkflowContext.workflowId,
+            workflowName: currentWorkflowContext.workflowName,
+            workflowRefId: currentWorkflowContext.workflowRefId,
+            ...(currentWorkflowContext.workflowVersionId && {
+              workflowVersionId: currentWorkflowContext.workflowVersionId,
+            }),
+            ...(webhookToUse && { webhook: webhookToUse }),
+          }),
+        });
+
+        if (!res.ok) throw new Error('Retry failed');
+
+        const result = await res.json();
+        if (result.workflow?.webhook) setWorkflowEditorWebhook(result.workflow.webhook);
+        if (result.workflow?.project_id) setProjectId(result.workflow.project_id.toString());
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+        setIsChainVisible(true);
+      } else {
+        // Existing path: all other modes
+        const res = await fetch(`/api/tasks/${currentTaskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retryWorkflow: true }),
+        });
+        if (!res.ok) throw new Error('Retry failed');
+      }
+    } catch {
+      toast.error('Failed to retry task. Please try again.');
+    } finally {
+      setIsRetrying(false);
     }
   };
 
@@ -1623,11 +1877,6 @@ export default function TaskChatPage() {
     | undefined;
   const prLink = prUrl?.url || null;
 
-  const isTerminalState =
-    workflowStatus === WorkflowStatus.HALTED ||
-    workflowStatus === WorkflowStatus.FAILED ||
-    workflowStatus === WorkflowStatus.ERROR;
-
   // Live mode: restrict input based on workflow state and pod availability
   const liveModeSendAllowed =
     !started || // Fresh task - can send to kick off
@@ -1638,7 +1887,7 @@ export default function TaskChatPage() {
   const inputDisabled =
     isLoading ||
     !isConnected ||
-    isTerminalState ||
+    (taskMode === "workflow_editor" && workflowStatus === WorkflowStatus.IN_PROGRESS) ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1691,6 +1940,7 @@ export default function TaskChatPage() {
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <AgentChatArea
@@ -1719,6 +1969,10 @@ export default function TaskChatPage() {
                     onOpenBountyRequest={
                       canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                     }
+                    onRetry={handleRetry}
+                    isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 )}
               </div>
@@ -1749,6 +2003,10 @@ export default function TaskChatPage() {
                       onOpenBountyRequest={
                         canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                       }
+                      onRetry={handleRetry}
+                      isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -1761,6 +2019,7 @@ export default function TaskChatPage() {
                       taskId={currentTaskId || undefined}
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -1791,6 +2050,10 @@ export default function TaskChatPage() {
                 onOpenBountyRequest={
                   canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                 }
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
+                stakworkProjectId={projectId}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1806,17 +2069,17 @@ export default function TaskChatPage() {
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
+                    browserRefreshTrigger={browserRefreshTrigger}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <ChatArea
-                    logs={logs}
                     messages={messages}
                     onSend={handleSend}
                     onArtifactAction={handleArtifactAction}
                     inputDisabled={inputDisabled}
                     isLoading={isLoading}
-                    hasNonFormArtifacts={hasNonFormArtifacts}
-                    isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
                     onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -1838,6 +2101,14 @@ export default function TaskChatPage() {
                     onOpenBountyRequest={
                       canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                     }
+                    onRetry={handleRetry}
+                    isRetrying={isRetrying}
+                    stakworkProjectId={projectId}
+                    isPrototypeTask={isPrototypeTask}
+                    isSavingPlan={isSavingPlan}
+                    onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                    isSuperAdmin={isSuperAdmin}
+                    streamContext={streamContext}
                   />
                 )}
               </div>
@@ -1846,14 +2117,11 @@ export default function TaskChatPage() {
                 <ResizablePanel defaultSize={40} minSize={25}>
                   <div className="h-full min-h-0 min-w-0">
                     <ChatArea
-                      logs={logs}
                       messages={messages}
                       onSend={handleSend}
                       onArtifactAction={handleArtifactAction}
                       inputDisabled={inputDisabled}
                       isLoading={isLoading}
-                      hasNonFormArtifacts={hasNonFormArtifacts}
-                      isChainVisible={isChainVisible}
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
                       onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -1872,6 +2140,14 @@ export default function TaskChatPage() {
                       onOpenBountyRequest={
                         canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                       }
+                      onRetry={handleRetry}
+                      isRetrying={isRetrying}
+                      stakworkProjectId={projectId}
+                      isPrototypeTask={isPrototypeTask}
+                      isSavingPlan={isSavingPlan}
+                      onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                      isSuperAdmin={isSuperAdmin}
+                      streamContext={streamContext}
                     />
                   </div>
                 </ResizablePanel>
@@ -1885,6 +2161,9 @@ export default function TaskChatPage() {
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
+                      browserRefreshTrigger={browserRefreshTrigger}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -1898,10 +2177,7 @@ export default function TaskChatPage() {
                 onArtifactAction={handleArtifactAction}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}
-                hasNonFormArtifacts={hasNonFormArtifacts}
-                isChainVisible={isChainVisible}
                 lastLogLine={lastLogLine}
-                logs={logs}
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 pendingStepAttachment={selectedStep}
@@ -1919,6 +2195,14 @@ export default function TaskChatPage() {
                 onOpenBountyRequest={
                   canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined
                 }
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
+                stakworkProjectId={projectId}
+                isPrototypeTask={isPrototypeTask}
+                isSavingPlan={isSavingPlan}
+                onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                isSuperAdmin={isSuperAdmin}
+                streamContext={streamContext}
               />
             </div>
           )}

@@ -3,8 +3,6 @@ import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
   expectNotFound,
@@ -14,10 +12,12 @@ import {
   expectWorkspaceExists,
   expectWorkspaceDeleted,
   generateUniqueSlug,
-  getMockedSession,
   createGetRequest,
   createPutRequest,
   createDeleteRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPutRequest,
+  createAuthenticatedDeleteRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Workspace Update API Integration Tests", () => {
@@ -37,7 +37,7 @@ describe("Workspace Update API Integration Tests", () => {
     };
   }
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
   });
 
@@ -45,9 +45,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should get workspace successfully with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
@@ -63,8 +61,6 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
       const { workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -74,9 +70,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest("http://localhost:3000/api/workspaces/nonexistent");
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/workspaces/nonexistent", ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
       await expectNotFound(response, "Workspace not found or access denied");
@@ -87,15 +81,13 @@ describe("Workspace Update API Integration Tests", () => {
     test("should update workspace successfully as owner with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
       const updateData = {
         name: "Updated Workspace Name",
         slug: generateUniqueSlug("updated"),
         description: "Updated description",
       };
 
-      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, updateData);
+      const request = createAuthenticatedPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, ownerUser, updateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -122,15 +114,13 @@ describe("Workspace Update API Integration Tests", () => {
     test.skip("should update workspace successfully as admin with real database operations", async () => {
       const { adminUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
       const updateData = {
         name: "Admin Updated Name",
         slug: workspace.slug, // Keep same slug
         description: "Admin updated description",
       };
 
-      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, updateData);
+      const request = createAuthenticatedPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, adminUser, updateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -175,14 +165,12 @@ describe("Workspace Update API Integration Tests", () => {
     test("should validate required fields with real schema validation", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
       const invalidData = {
         name: "", // Empty name should fail validation
         slug: workspace.slug,
       };
 
-      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, invalidData);
+      const request = createAuthenticatedPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, ownerUser, invalidData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -204,14 +192,12 @@ describe("Workspace Update API Integration Tests", () => {
         workspace: { slug: "conflict-slug", name: "Conflict Workspace" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
       const duplicateData = {
         name: "Updated Name",
         slug: conflictWorkspace.workspace.slug, // Try to use existing slug
       };
 
-      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, duplicateData);
+      const request = createAuthenticatedPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, ownerUser, duplicateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -229,9 +215,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should delete workspace successfully as owner with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, ownerUser);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -251,9 +235,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 403 for non-owner attempting deletion", async () => {
       const { adminUser, workspace } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, adminUser);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -270,9 +252,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspace();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createDeleteRequest("http://localhost:3000/api/workspaces/nonexistent");
+      const request = createAuthenticatedDeleteRequest("http://localhost:3000/api/workspaces/nonexistent", ownerUser);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
@@ -281,8 +261,6 @@ describe("Workspace Update API Integration Tests", () => {
 
     test("should return 401 for unauthenticated deletion", async () => {
       const { workspace } = await createTestWorkspace();
-
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
 

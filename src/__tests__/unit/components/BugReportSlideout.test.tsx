@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BugReportSlideout } from '@/components/BugReportSlideout';
@@ -9,16 +9,19 @@ import { toast } from 'sonner';
 // Mock the hooks and modules
 vi.mock('@/hooks/useWorkspace');
 vi.mock('sonner');
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({
-    data: { user: { id: 'user-123', name: 'Test User', email: 'test@example.com' } },
-    status: 'authenticated',
-  }),
-}));
 
 // Mock next/navigation
+const mockRouterPush = vi.fn();
 vi.mock('next/navigation', () => ({
   usePathname: () => '/w/test-workspace/plan',
+  useRouter: () => ({
+    push: mockRouterPush,
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 // Mock Sheet components to render children
@@ -65,12 +68,15 @@ describe('BugReportSlideout', () => {
       name: 'Test Workspace',
       slug: 'test-workspace',
     },
+    slug: 'test-workspace',
+    id: 'workspace-123',
     loading: false,
     error: null,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRouterPush.mockClear();
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(mockWorkspace as any);
     // Mock window.location.href
     Object.defineProperty(window, 'location', {
@@ -100,7 +106,7 @@ describe('BugReportSlideout', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       expect(screen.getByText('Report a Bug')).toBeInTheDocument();
-      expect(screen.getByText('Help us improve by reporting issues you encounter')).toBeInTheDocument();
+      expect(screen.getByText('Describe a bug in your codebase')).toBeInTheDocument();
       expect(screen.getByTestId('bug-description-textarea')).toBeInTheDocument();
       expect(screen.getByTestId('bug-screenshot-input')).toBeInTheDocument();
       expect(screen.getByTestId('submit-bug-report-button')).toBeInTheDocument();
@@ -117,6 +123,13 @@ describe('BugReportSlideout', () => {
 
       const submitButton = screen.getByTestId('submit-bug-report-button');
       expect(submitButton).toBeDisabled();
+    });
+
+    it('should not render Fast Track toggle', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      expect(screen.queryByTestId('fast-track-toggle')).not.toBeInTheDocument();
+      expect(screen.queryByText('Fast Track')).not.toBeInTheDocument();
     });
   });
 
@@ -286,14 +299,21 @@ describe('BugReportSlideout', () => {
   });
 
   describe('Successful Submission', () => {
-    it('should submit bug report without screenshot', async () => {
+    it('should submit bug report without screenshot and navigate to Plan Mode', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        // Feature creation
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        // Chat message
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
 
@@ -304,7 +324,8 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/features', {
+        // Feature creation — no brief or isFastTrack
+        expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/features', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -312,23 +333,37 @@ describe('BugReportSlideout', () => {
             workspaceId: 'workspace-123',
             status: 'BACKLOG',
             priority: 'HIGH',
-            brief: '**Reported from:** https://example.com/w/test-workspace/plan\n\nThis is a bug report description',
           }),
         });
+
+        // Chat message sent to Plan Mode
+        expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/features/feature-123/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'This is a bug report description', attachments: [] }),
+        });
+
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      expect(toast.success).toHaveBeenCalledWith('Bug report submitted. Thank you for helping us improve!');
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No success toast in new flow
+      expect(toast.success).not.toHaveBeenCalled();
     });
 
     it('should truncate long descriptions in title', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
 
@@ -340,48 +375,41 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/features', expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }));
+        const callArgs = (global.fetch as any).mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        expect(body.title).toBe('Bug Report: This is a very long bug report description that ex...');
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
-
-      // Check the body separately
-      const callArgs = (global.fetch as any).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.title).toBe('Bug Report: This is a very long bug report description that ex...');
-      expect(toast.success).toHaveBeenCalled();
-      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
-    it('should submit bug report with screenshot', async () => {
+    it('should submit bug report with screenshot and send attachment in chat message', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      // Mock fetch for all three API calls
-      global.fetch = vi
-        .fn()
-        // First call: Create feature
+      global.fetch = vi.fn()
+        // Feature creation
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
-        // Second call: Get presigned URL
+        // Get presigned URL
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
             presignedUrl: 'https://s3.amazonaws.com/presigned-url',
             publicUrl: 'https://s3.amazonaws.com/public-url/screenshot.png',
+            s3Path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
           }),
         })
-        // Third call: Upload to S3
+        // S3 upload
         .mockResolvedValueOnce({
           ok: true,
         })
-        // Fourth call: Update feature with image
+        // Chat message
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+          json: async () => ({ success: true }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -424,26 +452,44 @@ describe('BugReportSlideout', () => {
         headers: { 'Content-Type': 'image/png' },
       });
 
-      // Verify feature update with image
-      expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/features/feature-123', {
-        method: 'PATCH',
+      // Verify chat message includes attachment (no PATCH call)
+      expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/features/feature-123/chat', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brief: '![Bug Screenshot](https://s3.amazonaws.com/public-url/screenshot.png)\n\n**Reported from:** https://example.com/w/test-workspace/plan\n\nBug with screenshot',
+          message: 'Bug with screenshot',
+          attachments: [
+            {
+              path: 'features/workspace-id/swarm-id/feature-123/timestamp_screenshot.png',
+              filename: 'screenshot.png',
+              mimeType: 'image/png',
+              size: file.size,
+            },
+          ],
         }),
       });
 
-      expect(toast.success).toHaveBeenCalledWith('Bug report submitted. Thank you for helping us improve!');
+      expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
       expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No PATCH call to /api/features/feature-123
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        '/api/features/feature-123',
+        expect.objectContaining({ method: 'PATCH' })
+      );
     });
 
     it('should reset form after successful submission', async () => {
       const user = userEvent.setup();
 
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: 'feature-123' } }),
-      });
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
@@ -454,7 +500,7 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalled();
+        expect(mockRouterPush).toHaveBeenCalled();
       });
 
       // Form should be reset
@@ -488,19 +534,25 @@ describe('BugReportSlideout', () => {
       expect(onOpenChange).not.toHaveBeenCalled();
     });
 
-    it('should show error toast when image upload fails', async () => {
+    it('should fall through to send chat message without attachments when screenshot upload fails', async () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      global.fetch = vi
-        .fn()
+      global.fetch = vi.fn()
+        // Feature creation succeeds
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
+        // Upload presigned URL fails
         .mockResolvedValueOnce({
           ok: false,
           json: async () => ({ message: 'Upload service unavailable' }),
+        })
+        // Chat message still sent (without attachments)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -518,11 +570,20 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Upload service unavailable');
+        // Chat message sent without attachments (graceful degradation)
+        expect(global.fetch).toHaveBeenCalledWith('/api/features/feature-123/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Bug with screenshot', attachments: [] }),
+        });
+
+        // Navigation still happens
+        expect(mockRouterPush).toHaveBeenCalledWith('/w/test-workspace/plan/feature-123');
+        expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      // Slideout should close even though upload failed, because the feature was created
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      // No success toast, no error toast (silent degradation)
+      expect(toast.error).not.toHaveBeenCalled();
     });
 
     it('should handle network errors gracefully', async () => {
@@ -615,14 +676,14 @@ describe('BugReportSlideout', () => {
     });
   });
 
-  describe('Drag and Drop', () => {
-    const createFile = (name: string, type: string, size: number) => {
-      const file = new File(['file content'], name, { type, lastModified: Date.now() });
-      Object.defineProperty(file, 'size', { value: size, writable: false });
-      return file;
-    };
+  // Helper functions for file creation in tests
+  const createFile = (name: string, type: string, size: number) => {
+    const file = new File(['file content'], name, { type, lastModified: Date.now() });
+    Object.defineProperty(file, 'size', { value: size, writable: false });
+    return file;
+  };
 
-    const createDataTransfer = (files: File[]) => {
+  const createDataTransfer = (files: File[]) => {
       return {
         files,
         items: files.map(file => ({
@@ -635,11 +696,11 @@ describe('BugReportSlideout', () => {
         setData: () => {},
         clearData: () => {},
       };
-    };
+  };
 
+  describe('Drag and Drop', () => {
     it('should show visual feedback when dragging an image over the upload area', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
-
       const dropzone = screen.getByTestId('bug-screenshot-dropzone');
       
       // Simulate drag enter

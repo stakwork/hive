@@ -7,9 +7,10 @@ import { PRIORITY_LABELS } from "@/types/roadmap";
 
 interface RoadmapTaskNodeProps {
   data: TicketListItem;
+  direction?: "TB" | "LR";
 }
 
-export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
+export function RoadmapTaskNode({ data, direction = "LR" }: RoadmapTaskNodeProps) {
   const statusColors = {
     TODO: {
       border: "border-gray-400",
@@ -40,9 +41,12 @@ export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
 
   const colors = statusColors[data.status];
 
+  const targetPosition = direction === "TB" ? Position.Top : Position.Left;
+  const sourcePosition = direction === "TB" ? Position.Bottom : Position.Right;
+
   return (
     <>
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={targetPosition} />
       <div
         className={`px-4 py-3 rounded-lg border-2 ${colors.border} ${colors.bg} ${colors.hover} shadow-lg hover:shadow-xl transition-all cursor-pointer min-w-[250px]`}
       >
@@ -82,7 +86,7 @@ export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
           )}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={sourcePosition} />
     </>
   );
 }

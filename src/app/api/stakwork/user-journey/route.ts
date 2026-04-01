@@ -62,10 +62,11 @@ async function callStakwork(
       baseBranch,
       testName,
       tokenReference: getStakworkTokenReference(),
+      sourceHiveUrl: baseUrl,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
-      name: "hive_autogen",
+      name: `hive-task-${taskId}`,
       workflow_id: parseInt(config.STAKWORK_USER_JOURNEY_WORKFLOW_ID),
       webhook_url: workflowWebhookUrl,
       workflow_params: {

@@ -14,12 +14,23 @@ const elk = new ELK();
 
 export type LayoutAlgorithm = "layered" | "force" | "stress" | "mrtree";
 
+export type ComponentShape = "rounded-rect" | "rect" | "diamond";
+
+export type ComponentType = "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
+
 export interface ParsedComponent {
   id: string;
   name: string;
-  type: "client" | "gateway" | "service" | "worker" | "queue" | "cache" | "database" | "external";
+  type?: ComponentType | string | null;
+  shape?: ComponentShape | null;
+  layer?: number | null;
   color?: string | null;
   backgroundColor?: string | null;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  createdBy?: "user" | "ai";
 }
 
 export interface ParsedConnection {
@@ -85,6 +96,7 @@ interface ExcalidrawElement {
   startArrowhead?: string | null;
   endArrowhead?: string | null;
   elbowed?: boolean;
+  customData?: Record<string, unknown>;
 }
 
 interface LayoutedComponent extends ParsedComponent {
@@ -126,26 +138,75 @@ function generateSeed(): number {
 const NARROW_CHARS = new Set("iltf1.,;:!|'".split(""));
 const WIDE_CHARS = new Set("ABCDEFGHJKLNOPQRSUVXYZ".split(""));
 const VERY_WIDE_CHARS = new Set("mwMW@%".split(""));
+const PUNCTUATION_CHARS = new Set("-_/".split(""));
 
-function measureTextWidth(text: string, fontSize: number): number {
+// Shared sizing constants — exported so createComponentElement stays in sync
+export const FONT_SIZE = 16;
+export const LINE_HEIGHT = 1.25;
+export const SINGLE_LINE_HEIGHT = Math.ceil(FONT_SIZE * LINE_HEIGHT); // 20px
+export const PADDING_H = 48;
+export const PADDING_V = 32;
+export const MIN_WIDTH = 120;
+export const MAX_SINGLE_LINE_WIDTH = 400;
+export const MIN_HEIGHT = 60;
+
+export function measureTextWidth(text: string, fontSize: number): number {
   let width = 0;
   for (const ch of text) {
-    if (NARROW_CHARS.has(ch)) width += 5;
-    else if (VERY_WIDE_CHARS.has(ch)) width += 12;
-    else if (WIDE_CHARS.has(ch)) width += 10;
-    else width += 8;
+    if (ch === " ") width += 4;
+    else if (PUNCTUATION_CHARS.has(ch)) width += 5;
+    else if (NARROW_CHARS.has(ch)) width += 5;
+    else if (VERY_WIDE_CHARS.has(ch)) width += 13;
+    else if (WIDE_CHARS.has(ch)) width += 11;
+    else width += 9; // default lowercase / unmatched — tuned for Helvetica 16px
   }
   return width * (fontSize / 16);
 }
 
-function computeComponentSize(name: string): { width: number; height: number } {
-  const textW = measureTextWidth(name, 16);
-  const paddingH = 48;
-  const paddingV = 40;
-  return {
-    width: Math.max(120, textW + paddingH),
-    height: Math.max(60, 25 + paddingV),
-  };
+/**
+ * Compute how many lines a label needs when word-wrapped at `availableWidth`.
+ * Uses the same character-width heuristic as `measureTextWidth`.
+ */
+export function computeWordWrapLineCount(name: string, availableWidth: number): number {
+  const words = name.split(" ");
+  let lines = 1;
+  let lineWidth = 0;
+  for (const word of words) {
+    const wordWidth = measureTextWidth(word, FONT_SIZE);
+    const gap = lineWidth === 0 ? 0 : measureTextWidth(" ", FONT_SIZE);
+    if (lineWidth + gap + wordWidth > availableWidth) {
+      lines++;
+      lineWidth = wordWidth;
+    } else {
+      lineWidth += gap + wordWidth;
+    }
+  }
+  return lines;
+}
+
+export function computeComponentSize(name: string, shape?: ComponentShape | null): { width: number; height: number } {
+  const textW = measureTextWidth(name, FONT_SIZE);
+  let width: number;
+  let lineCount: number;
+
+  if (textW + PADDING_H <= MAX_SINGLE_LINE_WIDTH) {
+    width = Math.max(MIN_WIDTH, textW + PADDING_H);
+    lineCount = 1;
+  } else {
+    // Label too long for one line — word-wrap at inner width to get true line count
+    const innerWidth = MAX_SINGLE_LINE_WIDTH - PADDING_H;
+    width = MAX_SINGLE_LINE_WIDTH;
+    lineCount = computeWordWrapLineCount(name, innerWidth);
+  }
+
+  const height = Math.max(MIN_HEIGHT, lineCount * SINGLE_LINE_HEIGHT + PADDING_V);
+
+  // Diamonds display text in the inscribed rectangle, so they need ~1.4× size
+  if (shape === "diamond") {
+    return { width: Math.round(width * 1.42), height: Math.round(height * 1.42) };
+  }
+
+  return { width, height };
 }
 
 // --- Layer ordering for ELK constraints ---
@@ -176,54 +237,26 @@ const LAYER_PRIORITY: Record<string, number> = {
 
 /**
  * Validate layer constraints against graph edges to prevent ELK crashes.
- * FIRST is invalid if a node has incoming edges from non-FIRST nodes.
- * LAST is invalid if a node has outgoing edges to non-LAST nodes.
+ * ELK requires FIRST nodes to have NO incoming edges (only FIRST_SEPARATE
+ * sources are allowed, which we don't use). Similarly, LAST nodes must
+ * have NO outgoing edges. Only true source/sink nodes keep their constraint.
  */
 function getValidLayerConstraints(diagram: ParsedDiagram): Map<string, string> {
-  const typeById = new Map<string, string>();
-  for (const c of diagram.components) {
-    typeById.set(c.id, c.type);
-  }
-
-  // Build incoming/outgoing edge maps
-  const incoming = new Map<string, Set<string>>(); // nodeId → set of source nodeIds
-  const outgoing = new Map<string, Set<string>>(); // nodeId → set of target nodeIds
+  const hasIncoming = new Set<string>();
+  const hasOutgoing = new Set<string>();
   for (const conn of diagram.connections) {
-    if (!incoming.has(conn.to)) incoming.set(conn.to, new Set());
-    incoming.get(conn.to)!.add(conn.from);
-    if (!outgoing.has(conn.from)) outgoing.set(conn.from, new Set());
-    outgoing.get(conn.from)!.add(conn.to);
+    hasIncoming.add(conn.to);
+    hasOutgoing.add(conn.from);
   }
 
   const result = new Map<string, string>();
   for (const c of diagram.components) {
-    const constraint = LAYER_ORDER[c.type] || "";
-    if (constraint === "FIRST") {
-      // Invalid if any incoming edge comes from a non-FIRST node
-      const sources = incoming.get(c.id);
-      if (sources) {
-        for (const srcId of sources) {
-          const srcType = typeById.get(srcId);
-          if (!srcType || LAYER_ORDER[srcType] !== "FIRST") {
-            result.set(c.id, "");
-            break;
-          }
-        }
-      }
-    } else if (constraint === "LAST") {
-      // Invalid if any outgoing edge goes to a non-LAST node
-      const targets = outgoing.get(c.id);
-      if (targets) {
-        for (const tgtId of targets) {
-          const tgtType = typeById.get(tgtId);
-          if (!tgtType || LAYER_ORDER[tgtType] !== "LAST") {
-            result.set(c.id, "");
-            break;
-          }
-        }
-      }
-    }
-    if (!result.has(c.id)) {
+    const constraint = (c.type && LAYER_ORDER[c.type]) || "";
+    if (constraint === "FIRST" && hasIncoming.has(c.id)) {
+      result.set(c.id, "");
+    } else if (constraint === "LAST" && hasOutgoing.has(c.id)) {
+      result.set(c.id, "");
+    } else {
       result.set(c.id, constraint);
     }
   }
@@ -231,9 +264,79 @@ function getValidLayerConstraints(diagram: ParsedDiagram): Map<string, string> {
   return result;
 }
 
+// --- Diagram sanitisation ---
+
+const VALID_SHAPES: Set<ComponentShape> = new Set(["rounded-rect", "rect", "diamond"]);
+
+/**
+ * Validate and normalise a ParsedDiagram before it reaches ELK.
+ * - Removes components missing a required `id` or `name` field
+ * - Coerces unrecognised `shape` values to `undefined` (defaults to rounded-rect)
+ * - Removes connections whose `from` or `to` does not reference a valid component ID
+ */
+export function sanitiseDiagram(diagram: ParsedDiagram): ParsedDiagram {
+  const cleanedComponents = diagram.components.filter((c) => {
+    if (!c.id || !c.name) {
+      console.warn("[sanitiseDiagram] Discarding component missing id or name:", c);
+      return false;
+    }
+    return true;
+  }).map((c) => {
+    if (c.shape && !VALID_SHAPES.has(c.shape)) {
+      console.warn(`[sanitiseDiagram] Coercing unknown shape "${c.shape}" to undefined for component "${c.id}"`);
+      return { ...c, shape: undefined };
+    }
+    return c;
+  });
+
+  const validIds = new Set(cleanedComponents.map((c) => c.id));
+
+  const cleanedConnections = diagram.connections.filter((conn) => {
+    if (!validIds.has(conn.from) || !validIds.has(conn.to)) {
+      console.warn(`[sanitiseDiagram] Discarding connection with dangling IDs: from="${conn.from}" to="${conn.to}"`);
+      return false;
+    }
+    return true;
+  });
+
+  return { components: cleanedComponents, connections: cleanedConnections };
+}
+
 // --- ELK layout ---
 
-function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
+/**
+ * Estimate whether a layered diagram should render top-to-bottom ("DOWN") or
+ * left-to-right ("RIGHT") based on graph topology.
+ *
+ * Heuristic: if the topological depth (number of distinct layers) exceeds the
+ * maximum number of nodes in any single layer, the diagram is "deep" and
+ * benefits from a DOWN orientation to avoid excessive horizontal sprawl.
+ */
+export function computeLayeredDirection(diagram: ParsedDiagram): "RIGHT" | "DOWN" {
+  const depth = new Map<string, number>();
+  for (const c of diagram.components) depth.set(c.id, 0);
+
+  // Bellman-Ford relaxation — converges in |V|-1 passes for DAGs, safe for cycles
+  const passes = diagram.components.length;
+  for (let i = 0; i < passes; i++) {
+    for (const conn of diagram.connections) {
+      const d = (depth.get(conn.from) ?? 0) + 1;
+      if (d > (depth.get(conn.to) ?? 0)) depth.set(conn.to, d);
+    }
+  }
+
+  const layerCount = Math.max(...depth.values(), 0) + 1;
+
+  const nodesPerLayer = new Map<number, number>();
+  for (const d of depth.values()) {
+    nodesPerLayer.set(d, (nodesPerLayer.get(d) ?? 0) + 1);
+  }
+  const maxNodesInLayer = Math.max(...nodesPerLayer.values(), 1);
+
+  return layerCount > maxNodesInLayer ? "DOWN" : "RIGHT";
+}
+
+function getElkOptions(algorithm: LayoutAlgorithm, direction: "RIGHT" | "DOWN" = "RIGHT"): Record<string, string> {
   const common: Record<string, string> = {
     "elk.edgeLabels.inline": "true",
     "elk.padding": "[top=40,left=40,bottom=40,right=40]",
@@ -246,11 +349,12 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
       return {
         ...common,
         "elk.algorithm": "force",
-        "elk.force.temperature": "0.1",
+        "elk.force.temperature": "0.001",
         "elk.force.iterations": "300",
-        "elk.force.repulsion": "5.0",
-        "elk.spacing.nodeNode": "80",
-        "elk.spacing.componentComponent": "100",
+        "elk.force.repulsion": "2.0",
+        "elk.force.idealEdgeLength": "100",
+        "elk.spacing.nodeNode": "40",
+        "elk.spacing.componentComponent": "60",
       };
     case "stress":
       return {
@@ -275,7 +379,7 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
       return {
         ...common,
         "elk.algorithm": "layered",
-        "elk.direction": "RIGHT",
+        "elk.direction": direction,
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.spacing.nodeNode": "80",
         "elk.layered.spacing.nodeNodeBetweenLayers": "120",
@@ -289,20 +393,30 @@ function getElkOptions(algorithm: LayoutAlgorithm): Record<string, string> {
 }
 
 async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = "layered"): Promise<LayoutedDiagram> {
+  // Last-resort safety net: sanitise diagram for any caller that bypasses extractDiagramData
+  diagram = sanitiseDiagram(diagram);
+
   const componentSizes = new Map<string, { width: number; height: number }>();
   for (const c of diagram.components) {
-    componentSizes.set(c.id, computeComponentSize(c.name));
+    componentSizes.set(c.id, computeComponentSize(c.name, c.shape));
   }
 
   const useLayerConstraints = algorithm === "layered" || algorithm === "mrtree";
   const validConstraints = useLayerConstraints ? getValidLayerConstraints(diagram) : null;
+
+  // Determine layout direction for the layered algorithm
+  const layeredDirection = algorithm === "layered"
+    ? computeLayeredDirection(diagram)
+    : "RIGHT";
+  const outSide = layeredDirection === "DOWN" ? "SOUTH" : "EAST";
+  const inSide  = layeredDirection === "DOWN" ? "NORTH" : "WEST";
 
   // Build per-node port lists so multiple edges don't overlap.
   // Each connection endpoint gets its own port on the node.
   const outPorts = new Map<string, number>(); // nodeId → next outgoing port index
   const inPorts = new Map<string, number>();  // nodeId → next incoming port index
 
-  interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" }
+  interface PortInfo { portId: string; nodeId: string; side: "EAST" | "WEST" | "SOUTH" | "NORTH" }
   const edgePorts: { sourcePort: PortInfo; targetPort: PortInfo }[] = [];
 
   for (const conn of diagram.connections) {
@@ -315,8 +429,8 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
     const tgtPortId = `${conn.to}_in_${tgtIdx}`;
 
     edgePorts.push({
-      sourcePort: { portId: srcPortId, nodeId: conn.from, side: "EAST" },
-      targetPort: { portId: tgtPortId, nodeId: conn.to, side: "WEST" },
+      sourcePort: { portId: srcPortId, nodeId: conn.from, side: outSide },
+      targetPort: { portId: tgtPortId, nodeId: conn.to, side: inSide },
     });
   }
 
@@ -331,7 +445,7 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
   const elkGraph: ElkNode = {
     id: "root",
-    layoutOptions: getElkOptions(algorithm),
+    layoutOptions: getElkOptions(algorithm, layeredDirection),
     children: diagram.components.map((c) => {
       const size = componentSizes.get(c.id)!;
       const layoutOptions: Record<string, string> = {
@@ -340,7 +454,10 @@ async function applyLayout(diagram: ParsedDiagram, algorithm: LayoutAlgorithm = 
 
       if (useLayerConstraints && validConstraints) {
         const constraint = validConstraints.get(c.id) || "";
-        const priority = LAYER_PRIORITY[c.type] ?? 50;
+        // Use explicit layer (inverted: lower layer number = higher priority) or fall back to type-based priority
+        const priority = c.layer != null
+          ? Math.max(0, 100 - c.layer * 20)
+          : (c.type && LAYER_PRIORITY[c.type]) ?? 50;
         layoutOptions["elk.layered.priority.direction"] = String(priority);
         if (constraint) {
           layoutOptions["elk.layered.layering.layerConstraint"] = constraint;
@@ -510,15 +627,27 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
   const elementId = generateId();
   const textId = generateId();
   const timestamp = Date.now();
-  const defaults = getComponentColors(component.type);
+  const defaults = getComponentColors(component.type ?? "service");
   const strokeColor = component.color ?? defaults.strokeColor;
   const backgroundColor = component.backgroundColor ?? defaults.backgroundColor;
   const { width, height } = component;
-  const textWidth = measureTextWidth(component.name, 16);
+  const textWidth = measureTextWidth(component.name, FONT_SIZE);
+  const shape = component.shape ?? "rounded-rect";
+  // Excalidraw uses BOUND_TEXT_PADDING = 5 per side for bound text in containers.
+  // Match that so the initial text element width equals what autoResize would compute.
+  const BOUND_TEXT_PADDING = 5;
+  const textAreaWidth = width - BOUND_TEXT_PADDING * 2;
+  const lineCount = computeWordWrapLineCount(component.name, textAreaWidth);
+  const textHeight = Math.ceil(lineCount * FONT_SIZE * LINE_HEIGHT);
+  const clampedTextWidth = Math.min(textWidth, textAreaWidth);
 
-  const rectangle: ExcalidrawElement = {
+  // Map shape to Excalidraw element type and roundness
+  const excalidrawType = shape === "diamond" ? "diamond" : "rectangle";
+  const roundness = shape === "rounded-rect" ? { type: 3 } : shape === "diamond" ? { type: 2 } : null;
+
+  const shapeElement: ExcalidrawElement = {
     id: elementId,
-    type: "rectangle",
+    type: excalidrawType,
     x: component.x,
     y: component.y,
     width,
@@ -533,7 +662,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     opacity: 100,
     groupIds: [],
     frameId: null,
-    roundness: { type: 3 },
+    roundness,
     seed: generateSeed(),
     version: 1,
     versionNonce: generateSeed(),
@@ -542,15 +671,16 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     updated: timestamp,
     link: null,
     locked: false,
+    customData: { source: "ai" },
   };
 
   const text: ExcalidrawElement = {
     id: textId,
     type: "text",
-    x: component.x + width / 2 - textWidth / 2,
-    y: component.y + height / 2 - 12,
-    width: textWidth,
-    height: 25,
+    x: component.x + width / 2 - clampedTextWidth / 2,
+    y: component.y + height / 2 - textHeight / 2,
+    width: clampedTextWidth,
+    height: textHeight,
     angle: 0,
     strokeColor: "#1e1e1e",
     backgroundColor: "transparent",
@@ -579,12 +709,13 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     originalText: component.name,
     autoResize: true,
     lineHeight: 1.25,
+    customData: { source: "ai" },
   };
 
-  return [rectangle, text];
+  return [shapeElement, text];
 }
 
-function createConnectionElement(connection: LayoutedConnection): ExcalidrawElement[] {
+function createConnectionElement(connection: LayoutedConnection, sharp = false): ExcalidrawElement[] {
   if (connection.routePoints.length < 2) {
     return [];
   }
@@ -619,7 +750,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
     opacity: 100,
     groupIds: [],
     frameId: null,
-    roundness: { type: 2 },
+    roundness: sharp ? null : { type: 2 },
     seed: generateSeed(),
     version: 1,
     versionNonce: generateSeed(),
@@ -634,6 +765,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
     startArrowhead: null,
     endArrowhead: "arrow",
     elbowed: false,
+    customData: { source: "ai" },
   };
 
   const elements: ExcalidrawElement[] = [arrow];
@@ -678,6 +810,7 @@ function createConnectionElement(connection: LayoutedConnection): ExcalidrawElem
       originalText: connection.label,
       autoResize: true,
       lineHeight: 1.25,
+      customData: { source: "ai" },
     };
 
     elements.push(label);
@@ -723,7 +856,7 @@ function fixLabelCollisions(diagram: LayoutedDiagram): void {
 
 // --- Main conversion ---
 
-function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElement[] {
+function convertToExcalidrawElements(diagram: LayoutedDiagram, sharp = false): ExcalidrawElement[] {
   const elements: ExcalidrawElement[] = [];
 
   for (const component of diagram.components) {
@@ -731,7 +864,7 @@ function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElemen
   }
 
   for (const connection of diagram.connections) {
-    elements.push(...createConnectionElement(connection));
+    elements.push(...createConnectionElement(connection, sharp));
   }
 
   return elements;
@@ -739,7 +872,7 @@ function convertToExcalidrawElements(diagram: LayoutedDiagram): ExcalidrawElemen
 
 // --- Reverse color → type mapping ---
 
-const BG_COLOR_TO_TYPE: Record<string, ParsedComponent["type"]> = {
+const BG_COLOR_TO_TYPE: Record<string, ComponentType> = {
   "#ffec99": "client",
   "#fcc2d7": "gateway",
   "#99e9f2": "worker",
@@ -755,8 +888,11 @@ const BG_COLOR_TO_TYPE: Record<string, ParsedComponent["type"]> = {
  * Allows client-side re-layout without an API call.
  */
 export function extractParsedDiagram(elements: readonly Record<string, unknown>[]): ParsedDiagram | null {
-  const rectangles = elements.filter((e) => e.type === "rectangle" && !e.isDeleted);
-  if (rectangles.length === 0) return null;
+  // Collect rectangles and diamonds as component shapes
+  const shapeElements = elements.filter(
+    (e) => (e.type === "rectangle" || e.type === "diamond") && !e.isDeleted
+  );
+  if (shapeElements.length === 0) return null;
 
   const textById = new Map<string, Record<string, unknown>>();
   for (const el of elements) {
@@ -768,18 +904,36 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
   const components: ParsedComponent[] = [];
   const rectIdMap = new Map<string, string>(); // excalidraw id → component id
 
-  for (const rect of rectangles) {
-    const bound = (rect.boundElements as { id: string; type: string }[] | null) ?? [];
+  for (const el of shapeElements) {
+    const bound = (el.boundElements as { id: string; type: string }[] | null) ?? [];
     const boundText = bound.find((b) => b.type === "text");
     const textEl = boundText ? textById.get(boundText.id) : undefined;
     const name = (textEl?.text as string) ?? "Unknown";
-    const bg = (rect.backgroundColor as string) ?? "";
-    const type = BG_COLOR_TO_TYPE[bg] ?? "service";
-    const compId = (rect.id as string);
+    const bg = (el.backgroundColor as string) ?? "";
+    const type = BG_COLOR_TO_TYPE[bg] ?? undefined;
+    const compId = (el.id as string);
     rectIdMap.set(compId, compId);
-    const strokeColor = (rect.strokeColor as string) || undefined;
-    const bgColor = (rect.backgroundColor as string) || undefined;
-    components.push({ id: compId, name, type, color: strokeColor, backgroundColor: bgColor });
+    const strokeColor = (el.strokeColor as string) || undefined;
+    const bgColor = (el.backgroundColor as string) || undefined;
+
+    // Derive shape from Excalidraw element type + roundness
+    let shape: ComponentShape;
+    if (el.type === "diamond") {
+      shape = "diamond";
+    } else if (el.roundness) {
+      shape = "rounded-rect";
+    } else {
+      shape = "rect";
+    }
+
+    const elX = typeof el.x === "number" ? el.x : undefined;
+    const elY = typeof el.y === "number" ? el.y : undefined;
+    const elWidth = typeof el.width === "number" ? el.width : undefined;
+    const elHeight = typeof el.height === "number" ? el.height : undefined;
+    const customData = el.customData as Record<string, unknown> | undefined;
+    const createdBy: "user" | "ai" = customData?.source === "ai" ? "ai" : "user";
+
+    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor, x: elX, y: elY, width: elWidth, height: elHeight, createdBy });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -801,19 +955,19 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
     let minStartDist = Infinity;
     let minEndDist = Infinity;
 
-    for (const rect of rectangles) {
-      const rx = rect.x as number;
-      const ry = rect.y as number;
-      const rw = rect.width as number;
-      const rh = rect.height as number;
+    for (const el of shapeElements) {
+      const rx = el.x as number;
+      const ry = el.y as number;
+      const rw = el.width as number;
+      const rh = el.height as number;
       const cx = rx + rw / 2;
       const cy = ry + rh / 2;
 
       const dStart = Math.hypot(startX - cx, startY - cy);
       const dEnd = Math.hypot(endX - cx, endY - cy);
 
-      if (dStart < minStartDist) { minStartDist = dStart; fromId = rect.id as string; }
-      if (dEnd < minEndDist) { minEndDist = dEnd; toId = rect.id as string; }
+      if (dStart < minStartDist) { minStartDist = dStart; fromId = el.id as string; }
+      if (dEnd < minEndDist) { minEndDist = dEnd; toId = el.id as string; }
     }
 
     if (!fromId || !toId || fromId === toId) continue;
@@ -846,12 +1000,19 @@ export function serializeDiagramContext(
 
   lines.push("Components:");
   for (const c of parsed.components) {
-    const colors = [
+    const extras = [
+      c.shape && c.shape !== "rounded-rect" ? `shape: ${c.shape}` : "",
       c.color ? `color: ${c.color}` : "",
       c.backgroundColor ? `backgroundColor: ${c.backgroundColor}` : "",
     ].filter(Boolean).join(", ");
-    const colorInfo = colors ? `, ${colors}` : "";
-    lines.push(`- "${c.name}" (${c.type}${colorInfo})`);
+    const extraInfo = extras ? `, ${extras}` : "";
+    const typeLabel = c.type || "component";
+    const pos =
+      c.x != null && c.y != null && c.width != null && c.height != null
+        ? ` @ (x: ${Math.round(c.x)}, y: ${Math.round(c.y)}, w: ${Math.round(c.width)}, h: ${Math.round(c.height)})`
+        : "";
+    const author = c.createdBy === "ai" ? " [ai-generated]" : " [user-created]";
+    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})${pos}${author}`);
   }
 
   if (parsed.connections.length > 0) {
@@ -870,6 +1031,113 @@ export function serializeDiagramContext(
 }
 
 /**
+ * Compute the bounding box of all non-AI elements in an existing whiteboard
+ * element list. Elements tagged with `customData.source === "ai"` are excluded
+ * because they will be replaced by the incoming AI diagram.
+ *
+ * Returns null when no valid user elements exist (empty canvas).
+ */
+export function computeUserElementsBoundingBox(
+  existing: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of existing) {
+    const e = el as Record<string, unknown>;
+    // Skip AI-generated elements — they are being replaced
+    if ((e.customData as Record<string, unknown> | undefined)?.source === "ai") continue;
+
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Compute the bounding box of any element array without filtering by customData.
+ * Used internally to get the extents of freshly laid-out AI elements.
+ */
+function computeRawBoundingBox(
+  elements: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of elements) {
+    const e = el as Record<string, unknown>;
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Decide where to place the AI diagram relative to existing user content.
+ *
+ * Strategy:
+ * - If the user's bounding box is taller than it is wide (portrait), place the
+ *   AI diagram to the **right** (more horizontal space available).
+ * - Otherwise (landscape or square), place the AI diagram **below**.
+ *
+ * A fixed `gap` (default 80px) is added between the existing content and the
+ * new diagram.
+ */
+export function computePlacementOffset(
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  _aiWidth: number,
+  _aiHeight: number,
+  gap = 80
+): { offsetX: number; offsetY: number } {
+  const bboxW = bbox.maxX - bbox.minX;
+  const bboxH = bbox.maxY - bbox.minY;
+
+  if (bboxH >= bboxW) {
+    // Taller canvas → place to the right
+    return { offsetX: bbox.maxX + gap, offsetY: bbox.minY };
+  } else {
+    // Wider canvas → place below
+    return { offsetX: bbox.minX, offsetY: bbox.maxY + gap };
+  }
+}
+
+/**
+ * Shift every element in the array by (offsetX, offsetY).
+ *
+ * Arrow `points` are stored relative to the arrow's own (x, y) origin, so
+ * they must NOT be translated — only the arrow's x/y moves.
+ *
+ * Returns a new array; the input is not mutated.
+ */
+export function offsetExcalidrawElements(
+  elements: unknown[],
+  offsetX: number,
+  offsetY: number
+): unknown[] {
+  return elements.map((el) => {
+    const e = el as Record<string, unknown>;
+    const x = typeof e.x === "number" ? e.x + offsetX : e.x;
+    const y = typeof e.y === "number" ? e.y + offsetY : e.y;
+    return { ...e, x, y };
+    // Note: arrow `points` are relative to (x,y) and are intentionally left unchanged.
+  });
+}
+
+/**
  * Re-layout a parsed diagram with a given algorithm.
  * Runs entirely client-side (ELK + element creation). No API call needed.
  */
@@ -879,7 +1147,8 @@ export async function relayoutDiagram(
 ): Promise<ExcalidrawData> {
   const layouted = await applyLayout(parsed, algorithm);
   fixLabelCollisions(layouted);
-  const elements = convertToExcalidrawElements(layouted);
+  const sharp = algorithm === "layered" || algorithm === "mrtree";
+  const elements = convertToExcalidrawElements(layouted, sharp);
 
   return {
     elements,

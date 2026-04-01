@@ -2,9 +2,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";

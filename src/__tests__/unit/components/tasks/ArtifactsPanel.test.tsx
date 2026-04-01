@@ -1,6 +1,6 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 /**
  * Unit tests for ArtifactsPanel race condition fix logic.
@@ -452,6 +452,159 @@ describe("ArtifactsPanel - Failure UX (Amber Button & Toast)", () => {
 });
 
 /**
+ * Unit tests for ArtifactsPanel priority tab auto-switch (BROWSER auto-select).
+ *
+ * These tests verify the PRIORITY_TABS logic that auto-switches to the BROWSER tab
+ * the first time it appears, but backs off once the user has manually selected a tab.
+ */
+describe("ArtifactsPanel - Priority Tab Auto-Switch (BROWSER)", () => {
+  type ArtifactType = "PLAN" | "TASKS" | "CODE" | "DIFF" | "BROWSER" | "WORKFLOW" | "IDE" | "GRAPH";
+
+  // Mirror the module-level constant from ArtifactsPanel
+  const PRIORITY_TABS: ArtifactType[] = ["BROWSER"];
+
+  /**
+   * Simulates the priority-tab useEffect + hasUserSelectedTabRef logic.
+   */
+  function usePriorityTabLogic(initialTab: ArtifactType | null = null) {
+    const [activeTab, setActiveTab] = useState<ArtifactType | null>(initialTab);
+    const [availableTabs, setAvailableTabs] = useState<ArtifactType[]>([]);
+    const hasUserSelectedTabRef = useRef(false);
+
+    const handleUserTabSelect = (tab: ArtifactType) => {
+      hasUserSelectedTabRef.current = true;
+      setActiveTab(tab);
+    };
+
+    // Mirror the priority useEffect from ArtifactsPanel
+    useEffect(() => {
+      if (hasUserSelectedTabRef.current) return;
+      const priorityTab = availableTabs.find((t) => PRIORITY_TABS.includes(t));
+      if (priorityTab && activeTab !== priorityTab) {
+        setActiveTab(priorityTab);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableTabs]);
+
+    return {
+      activeTab,
+      availableTabs,
+      hasUserSelectedTabRef,
+      setAvailableTabs,
+      handleUserTabSelect,
+    };
+  }
+
+  test("auto-switches to BROWSER when BROWSER artifact first arrives (overrides WORKFLOW)", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("WORKFLOW" as ArtifactType));
+
+    // Start: only WORKFLOW available
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW");
+
+    // BROWSER artifact arrives
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("BROWSER");
+  });
+
+  test("auto-switches to BROWSER even when IDE is present (BROWSER has higher priority)", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    // Both BROWSER and IDE arrive together
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE", "BROWSER"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("BROWSER");
+  });
+
+  test("falls back to IDE via first-tab fallback when no BROWSER artifact present", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    // Only IDE available (no BROWSER) — priority effect is a no-op
+    act(() => {
+      result.current.setAvailableTabs(["IDE"] as ArtifactType[]);
+    });
+
+    // No priority match → activeTab unchanged (null); fallback in real component picks first tab
+    expect(result.current.activeTab).toBe(null);
+  });
+
+  test("does NOT re-switch after user has manually selected a tab", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    // Start with WORKFLOW
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW"] as ArtifactType[]);
+    });
+
+    // BROWSER arrives → auto-switches
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("BROWSER");
+
+    // User manually selects WORKFLOW
+    act(() => {
+      result.current.handleUserTabSelect("WORKFLOW" as ArtifactType);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW");
+    expect(result.current.hasUserSelectedTabRef.current).toBe(true);
+
+    // Another artifact update arrives — should NOT override user's choice
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER", "IDE"] as ArtifactType[]);
+    });
+
+    expect(result.current.activeTab).toBe("WORKFLOW"); // user's selection preserved
+  });
+
+  test("does not switch if BROWSER is already the active tab", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("BROWSER" as ArtifactType));
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER"] as ArtifactType[]);
+    });
+
+    // Still BROWSER — no unnecessary state churn
+    expect(result.current.activeTab).toBe("BROWSER");
+  });
+
+  test("does not switch when no priority tab is present in availableTabs", () => {
+    const { result } = renderHook(() => usePriorityTabLogic("WORKFLOW" as ArtifactType));
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "IDE"] as ArtifactType[]);
+    });
+
+    // No BROWSER in tabs → stays on WORKFLOW
+    expect(result.current.activeTab).toBe("WORKFLOW");
+  });
+
+  test("hasUserSelectedTabRef starts false (auto-switch fires on first BROWSER arrival)", () => {
+    const { result } = renderHook(() => usePriorityTabLogic(null));
+
+    expect(result.current.hasUserSelectedTabRef.current).toBe(false);
+
+    act(() => {
+      result.current.setAvailableTabs(["WORKFLOW", "BROWSER"] as ArtifactType[]);
+    });
+
+    // Should have auto-switched — ref still false (auto-switch, not user)
+    expect(result.current.activeTab).toBe("BROWSER");
+    expect(result.current.hasUserSelectedTabRef.current).toBe(false);
+  });
+});
+
+/**
  * Unit tests for ArtifactsPanel tab-reset guard fix.
  * 
  * These tests verify that the tab-reset guard respects valid URL-specified tabs
@@ -552,5 +705,134 @@ describe("ArtifactsPanel - Tab Reset Guard Logic", () => {
   test("controlled mode: BROWSER tab not in VALID_PLAN_TABS → reset occurs", () => {
     const shouldReset = shouldResetTab(["PLAN"], "BROWSER", true, false);
     expect(shouldReset).toBe(true);
+  });
+});
+
+/**
+ * Unit tests for ArtifactsPanel handleGenerateTasks error handling.
+ *
+ * These tests verify that:
+ * - catch path: toast.error is called and hasInitiatedGeneration resets to false
+ * - 409 path: isApiCalling resets to false after refetch (no frozen "Generating..." state)
+ */
+describe("ArtifactsPanel - handleGenerateTasks Error Handling", () => {
+  const mockToastError = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Simulates handleGenerateTasks logic with injectable fetch + toast.
+   */
+  function useHandleGenerateTasksLogic(
+    fetchImpl: () => Promise<{ status: number; ok: boolean }>,
+    refetchRunImpl: () => Promise<void> = async () => {}
+  ) {
+    const [isApiCalling, setIsApiCalling] = useState(false);
+    const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
+
+    const handleGenerateTasks = async () => {
+      setIsApiCalling(true);
+      setHasInitiatedGeneration(true);
+      try {
+        const response = await fetchImpl();
+
+        if (response.status === 409) {
+          await refetchRunImpl();
+          setIsApiCalling(false);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to generate tasks");
+        }
+
+        await refetchRunImpl();
+      } catch (error) {
+        console.error("Failed to generate tasks:", error);
+        setIsApiCalling(false);
+        setHasInitiatedGeneration(false);
+        mockToastError("Failed to generate tasks", {
+          description: "Something went wrong. Please try again.",
+        });
+      }
+    };
+
+    return { isApiCalling, hasInitiatedGeneration, handleGenerateTasks };
+  }
+
+  test("catch path: toast.error is called and hasInitiatedGeneration resets to false on API error", async () => {
+    const fetchImpl = async () => { throw new Error("Network error"); };
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl as unknown as () => Promise<{ status: number; ok: boolean }>)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(result.current.isApiCalling).toBe(false);
+    expect(result.current.hasInitiatedGeneration).toBe(false);
+    expect(mockToastError).toHaveBeenCalledWith(
+      "Failed to generate tasks",
+      { description: "Something went wrong. Please try again." }
+    );
+  });
+
+  test("catch path: toast.error is called on non-ok response (5xx)", async () => {
+    const fetchImpl = async () => ({ status: 500, ok: false });
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(result.current.isApiCalling).toBe(false);
+    expect(result.current.hasInitiatedGeneration).toBe(false);
+    expect(mockToastError).toHaveBeenCalledOnce();
+  });
+
+  test("409 path: isApiCalling resets to false after refetch (stale run — decision already set)", async () => {
+    const fetchImpl = async () => ({ status: 409, ok: false });
+    const refetchRunImpl = vi.fn(async () => {});
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl, refetchRunImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(refetchRunImpl).toHaveBeenCalledOnce();
+    expect(result.current.isApiCalling).toBe(false);
+    // hasInitiatedGeneration stays true (we treat 409 as soft success)
+    expect(result.current.hasInitiatedGeneration).toBe(true);
+    // No toast error for 409
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  test("happy path: refetch called, no toast, hasInitiatedGeneration stays true", async () => {
+    const fetchImpl = async () => ({ status: 200, ok: true });
+    const refetchRunImpl = vi.fn(async () => {});
+
+    const { result } = renderHook(() =>
+      useHandleGenerateTasksLogic(fetchImpl, refetchRunImpl)
+    );
+
+    await act(async () => {
+      await result.current.handleGenerateTasks();
+    });
+
+    expect(refetchRunImpl).toHaveBeenCalledOnce();
+    // On success, isApiCalling stays true — the run entering IN_PROGRESS takes over
+    expect(result.current.isApiCalling).toBe(true);
+    expect(result.current.hasInitiatedGeneration).toBe(true);
+    expect(mockToastError).not.toHaveBeenCalled();
   });
 });

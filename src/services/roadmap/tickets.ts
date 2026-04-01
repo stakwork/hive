@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -12,6 +12,7 @@ import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { updateFeatureStatusFromTasks } from "./feature-status-sync";
+import { createAndSendNotification } from "@/services/notifications";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
@@ -41,6 +42,7 @@ export async function getTicket(
       deploymentStatus: true,
       deployedToStagingAt: true,
       deployedToProductionAt: true,
+      workflowStatus: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -234,6 +236,7 @@ export async function createTicket(
       deploymentStatus: true,
       deployedToStagingAt: true,
       deployedToProductionAt: true,
+      workflowStatus: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -475,6 +478,7 @@ export async function updateTicket(
       deploymentStatus: true,
       deployedToStagingAt: true,
       deployedToProductionAt: true,
+      workflowStatus: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -494,6 +498,9 @@ export async function updateTicket(
           name: true,
         },
       },
+      workspace: {
+        select: { slug: true },
+      },
     },
   });
 
@@ -507,19 +514,54 @@ export async function updateTicket(
     }
   }
 
+  // Fire TASK_ASSIGNED notification (fire-and-forget)
+  if (
+    data.assigneeId &&
+    typeof data.assigneeId === "string" &&
+    !data.assigneeId.startsWith("system:") &&
+    data.assigneeId !== userId
+  ) {
+    const workspaceSlug = updatedTask.workspace?.slug;
+    const assigneeId = data.assigneeId;
+    void (async () => {
+      try {
+        const taskUrl = `${process.env.NEXTAUTH_URL}/w/${workspaceSlug}/task/${taskId}`;
+        const targetUser = await db.user.findUnique({
+          where: { id: assigneeId },
+          select: { sphinxAlias: true, name: true },
+        });
+        const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+        await createAndSendNotification({
+          targetUserId: assigneeId,
+          originatingUserId: userId,
+          taskId,
+          workspaceId: updatedTask.workspaceId,
+          notificationType: NotificationTriggerType.TASK_ASSIGNED,
+          message: `@${alias} — You have been assigned to task '${updatedTask.title}': ${taskUrl}`,
+        });
+      } catch (notifError) {
+        console.error("[updateTicket] Error firing TASK_ASSIGNED notification:", notifError);
+      }
+    })();
+  }
+
+  // Strip workspace from return value (not part of RoadmapTaskWithDetails type)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { workspace: _ws, ...taskWithoutWorkspace } = updatedTask;
+
   // Convert system assignee type to virtual user object
-  if (updatedTask.systemAssigneeType) {
-    const systemAssignee = getSystemAssigneeUser(updatedTask.systemAssigneeType);
+  if (taskWithoutWorkspace.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(taskWithoutWorkspace.systemAssigneeType);
 
     if (systemAssignee) {
       return {
-        ...updatedTask,
+        ...taskWithoutWorkspace,
         assignee: systemAssignee,
       };
     }
   }
 
-  return updatedTask;
+  return taskWithoutWorkspace;
 }
 
 /**
@@ -639,6 +681,7 @@ export async function reorderTickets(
       deploymentStatus: true,
       deployedToStagingAt: true,
       deployedToProductionAt: true,
+      workflowStatus: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,

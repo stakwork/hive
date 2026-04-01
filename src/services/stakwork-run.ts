@@ -11,6 +11,7 @@ import {
   UpdateStakworkRunDecisionInput,
   StakworkRunQuery,
   DataType,
+  isClarifyingQuestions,
 } from "@/types/stakwork";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/config/env";
@@ -27,8 +28,12 @@ import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
+import { sanitiseDiagram } from "@/services/excalidraw-layout";
+import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
+import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -138,21 +143,36 @@ export async function createStakworkRun(
     throw new Error("Access denied");
   }
 
+  // Guard: prevent duplicate TASK_GENERATION runs
+  if (input.featureId && input.type === StakworkRunType.TASK_GENERATION) {
+    const activeRun = await db.stakworkRun.findFirst({
+      where: {
+        featureId: input.featureId,
+        type: input.type,
+        status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      },
+      select: { id: true, status: true },
+    });
+    if (activeRun) {
+      throw new Error(`active_run:${activeRun.id}`);
+    }
+  }
+
   // Decrypt sensitive data
   const decryptedPAT =
     workspace.sourceControlOrg?.tokens[0]?.token
       ? encryptionService.decryptField(
-          "access_token",
-          workspace.sourceControlOrg.tokens[0].token
-        )
+        "access_token",
+        workspace.sourceControlOrg.tokens[0].token
+      )
       : null;
 
   const decryptedSwarmApiKey =
     workspace.swarm?.swarmApiKey
       ? encryptionService.decryptField(
-          "swarmApiKey",
-          workspace.swarm.swarmApiKey
-        )
+        "swarmApiKey",
+        workspace.swarm.swarmApiKey
+      )
       : null;
 
   // Get user info for username
@@ -358,8 +378,8 @@ export async function createStakworkRun(
 }
 
 /**
- * Create a lightweight Stakwork run for diagram generation.
- * Unlike createStakworkRun, this doesn't fetch repos, PATs, or swarm credentials.
+ * Create a Stakwork run for diagram generation, including swarm credentials,
+ * GitHub PAT, repo URLs, and whiteboard message history in the payload.
  */
 export async function createDiagramStakworkRun(input: {
   workspaceId: string;
@@ -369,8 +389,9 @@ export async function createDiagramStakworkRun(input: {
   layout: string;
   userId: string;
   diagramContext?: string | null;
+  currentMessageId?: string;
 }) {
-  // Validate workspace access
+  // Validate workspace access and fetch related credentials
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
     select: {
@@ -380,6 +401,27 @@ export async function createDiagramStakworkRun(input: {
       members: {
         where: { userId: input.userId },
         select: { role: true },
+      },
+      swarm: {
+        select: {
+          swarmUrl: true,
+          swarmApiKey: true,
+          swarmSecretAlias: true,
+          poolName: true,
+          id: true,
+        },
+      },
+      sourceControlOrg: {
+        include: {
+          tokens: {
+            where: { userId: input.userId },
+            take: 1,
+          },
+        },
+      },
+      repositories: {
+        orderBy: { createdAt: "asc" },
+        select: { repositoryUrl: true, branch: true },
       },
     },
   });
@@ -394,6 +436,40 @@ export async function createDiagramStakworkRun(input: {
   if (!isOwner && !isMember) {
     throw new Error("Access denied");
   }
+
+  // Decrypt sensitive credentials
+  const decryptedPAT = workspace.sourceControlOrg?.tokens[0]?.token
+    ? encryptionService.decryptField(
+      "access_token",
+      workspace.sourceControlOrg.tokens[0].token
+    )
+    : null;
+
+  const user = await db.user.findUnique({
+    where: { id: input.userId },
+    include: {
+      githubAuth: {
+        select: { githubUsername: true },
+      },
+    },
+  });
+  const githubUsername = user?.githubAuth?.githubUsername || null;
+
+  // Fetch whiteboard message history excluding the just-created message
+  const whiteboardHistory = input.currentMessageId
+    ? await db.whiteboardMessage.findMany({
+      where: {
+        whiteboardId: input.whiteboardId,
+        id: { not: input.currentMessageId },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { role: true, content: true },
+    })
+    : [];
+  const history = whiteboardHistory.map((m) => ({
+    role: m.role.toLowerCase() as "user" | "assistant",
+    content: m.content,
+  }));
 
   const baseUrl = getBaseUrl();
 
@@ -426,10 +502,21 @@ export async function createDiagramStakworkRun(input: {
 
     const vars: Record<string, unknown> = {
       runId: run.id,
+      workspaceId: input.workspaceId,
+      featureId: input.featureId ?? null,
+      whiteboardId: input.whiteboardId,
       architectureText: input.architectureText,
       layout: input.layout,
       webhookUrl,
       tokenReference: getStakworkTokenReference(),
+      swarmUrl: workspace.swarm?.swarmUrl || null,
+      swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
+      poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
+      username: githubUsername,
+      pat: decryptedPAT,
+      repo_url: workspace.repositories.map((r) => r.repositoryUrl).join(",") || null,
+      base_branch: workspace.repositories[0]?.branch || null,
+      history,
     };
     if (input.diagramContext) {
       vars.diagramContext = input.diagramContext;
@@ -474,10 +561,75 @@ export async function createDiagramStakworkRun(input: {
   }
 }
 
+const MAX_DIAGRAM_VERSIONS = 10;
+
+/**
+ * Merge existing whiteboard elements with newly AI-generated ones.
+ * - Preserves all user-created elements (those WITHOUT customData.source === "ai")
+ * - Replaces all previously AI-generated elements (those WITH customData.source === "ai")
+ *   with the new aiGenerated set
+ */
+export { mergeWhiteboardElements, tagElementsAsAi } from "@/services/whiteboard-elements";
+
+/**
+ * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
+ * Skipped when the whiteboard has no existing elements (first-time creation).
+ * Prunes oldest versions so the total stays at MAX_DIAGRAM_VERSIONS.
+ */
+async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<void> {
+  const existing = await db.whiteboard.findUnique({
+    where: { id: whiteboardId },
+    select: { elements: true, appState: true, files: true },
+  });
+
+  const elements = existing?.elements as unknown[];
+  if (!existing || !Array.isArray(elements) || elements.length === 0) return;
+
+  await db.$transaction(async (tx) => {
+    const label = `Before AI diagram – ${new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+
+    await tx.whiteboardVersion.create({
+      data: {
+        whiteboardId,
+        elements: existing.elements ?? [],
+        appState: existing.appState ?? {},
+        files: existing.files ?? {},
+        label,
+      },
+    });
+
+    const all = await tx.whiteboardVersion.findMany({
+      where: { whiteboardId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+
+    if (all.length > MAX_DIAGRAM_VERSIONS) {
+      const toDelete = all.slice(0, all.length - MAX_DIAGRAM_VERSIONS);
+      await tx.whiteboardVersion.deleteMany({
+        where: { id: { in: toDelete.map((v) => v.id) } },
+      });
+    }
+  });
+}
+
 /**
  * Extract diagram data (components + connections) from a Stakwork webhook result.
- * Stakwork may nest the diagram under `request_params.result`, so we check
- * multiple levels before giving up.
+ * Checks the following paths in order (most specific → least specific):
+ *
+ * 1. Top-level `components` (backward compat)
+ * 2. `request_params.result.components`
+ * 3. `request_params.components`
+ * 4. `.result.components`
+ * 5. `.result` (parsed as JSON string) `.components`
+ * 6. `artifacts[].content.components` — new Stakwork format where diagram data
+ *    is delivered as `{ artifacts: [{ type: "DIAGRAM", content: { components, connections } }] }`
  */
 function extractDiagramData(parsed: unknown): ParsedDiagram {
   logger.info("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
@@ -490,7 +642,8 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
     const tryExtract = (source: Record<string, unknown>, label: string): ParsedDiagram | null => {
       if (Array.isArray(source.components) && source.components.length > 0) {
         logger.info(`[diagram] Found components at ${label}`, "stakwork-run", { count: source.components.length });
-        return { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
+        const raw: ParsedDiagram = { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
+        return sanitiseDiagram(raw);
       }
       if (Array.isArray(source.components)) {
         logger.info(`[diagram] Found empty components at ${label}, searching deeper`, "stakwork-run");
@@ -536,6 +689,24 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
         }
       } catch {
         // Not valid JSON, ignore
+      }
+    }
+
+    // New Stakwork format: artifacts array with type === "DIAGRAM"
+    if (Array.isArray(obj.artifacts)) {
+      for (const artifact of obj.artifacts) {
+        if (
+          artifact &&
+          typeof artifact === "object" &&
+          (artifact as Record<string, unknown>).type === "DIAGRAM"
+        ) {
+          const content = (artifact as Record<string, unknown>).content;
+          if (content && typeof content === "object") {
+            logger.info("[diagram] Found components in artifacts[].content", "stakwork-run");
+            const extracted = tryExtract(content as Record<string, unknown>, "artifacts[].content");
+            if (extracted) return extracted;
+          }
+        }
       }
     }
 
@@ -593,11 +764,17 @@ export async function processStakworkRunWebhook(
         select: {
           slug: true,
           ownerId: true,
+          sphinxEnabled: true,
+          sphinxChatPubkey: true,
+          sphinxBotId: true,
+          sphinxBotSecret: true,
         },
       },
       feature: {
         select: {
           createdById: true,
+          isFastTrack: true,
+          title: true,
         },
       },
     },
@@ -626,8 +803,16 @@ export async function processStakworkRunWebhook(
   // Serialize result based on type
   let serializedResult: string | null = null;
   if (result !== undefined && result !== null) {
-    serializedResult =
-      typeof result === "string" ? result : JSON.stringify(result);
+    if (typeof result === "string") {
+      serializedResult = result;
+    } else {
+      // AI sometimes returns { "phases": "[{...}]" } instead of { "phases": [{...}] }
+      const obj = result as Record<string, unknown>;
+      if (type === StakworkRunType.TASK_GENERATION && typeof obj.phases === "string") {
+        obj.phases = JSON.parse(obj.phases as string);
+      }
+      serializedResult = JSON.stringify(obj);
+    }
   }
 
   // Step 1: Atomic update to prevent race conditions
@@ -663,7 +848,7 @@ export async function processStakworkRunWebhook(
     feature_id,
     whiteboard_id,
   });
-  
+
   if (
     type === "DIAGRAM_GENERATION" &&
     status === WorkflowStatus.COMPLETED &&
@@ -674,7 +859,12 @@ export async function processStakworkRunWebhook(
       logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id, whiteboard_id });
       logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
 
-      const { relayoutDiagram } = await import("@/services/excalidraw-layout");
+      const {
+        relayoutDiagram,
+        computeUserElementsBoundingBox,
+        computePlacementOffset,
+        offsetExcalidrawElements,
+      } = await import("@/services/excalidraw-layout");
       // Strip markdown code fences if LLM wrapped the JSON in ```json ... ```
       let cleanedResult = serializedResult.trim();
       if (cleanedResult.startsWith("```")) {
@@ -683,25 +873,68 @@ export async function processStakworkRunWebhook(
       const parsedResult = JSON.parse(cleanedResult);
       logger.debug("[diagram] Parsed result", "stakwork-run", { type: typeof parsedResult, isArray: Array.isArray(parsedResult) });
 
-      const diagramData = extractDiagramData(parsedResult);
-      logger.info("[diagram] Extracted diagram", "stakwork-run", {
-        componentCount: diagramData.components.length,
-        connectionCount: diagramData.connections.length,
-        componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
-      });
-
-      if (diagramData.components.length === 0) {
-        throw new Error("Diagram has no components to layout");
+      // Early-exit: if the AI returned clarifying questions instead of a diagram, persist them and broadcast
+      if (isClarifyingQuestions(parsedResult)) {
+        logger.info("[diagram] Clarifying questions response detected — skipping diagram generation", "stakwork-run", { whiteboard_id, feature_id });
+        const targetWhiteboardId = whiteboard_id
+          ?? (feature_id
+            ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id
+            : null);
+        if (targetWhiteboardId) {
+          const assistantMessage = await db.whiteboardMessage.create({
+            data: {
+              whiteboardId: targetWhiteboardId,
+              role: "ASSISTANT",
+              content: "I have a few questions before generating the diagram.",
+              status: "SENT",
+              metadata: parsedResult as unknown as Prisma.InputJsonValue,
+            },
+          });
+          const clarifyChannel = getWhiteboardChannelName(targetWhiteboardId);
+          await pusherServer.trigger(clarifyChannel, PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE, {
+            message: assistantMessage,
+            timestamp: new Date(),
+          });
+        }
+        return { runId: run.id, status };
       }
 
-      const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
-      const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
-        ? (queryParams.layout as typeof validLayouts[number])
-        : "layered";
-      logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
+      const useStakworkPositioning = canAccessServerFeature(
+        FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING
+      );
 
-      const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
-      logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
+      let aiElements: unknown[];
+      let appStateForSave: { viewBackgroundColor: string; gridSize: number | null };
+
+      if (useStakworkPositioning && Array.isArray(parsedResult)) {
+        // Flag ON: use raw pre-positioned Excalidraw elements from Stakwork
+        logger.info("[diagram] Using Stakwork positioning (ELK skipped)", "stakwork-run");
+        aiElements = tagElementsAsAi(parsedResult);
+        appStateForSave = { viewBackgroundColor: "#ffffff", gridSize: null };
+      } else {
+        // Flag OFF (default): run extractDiagramData -> ELK relayoutDiagram as today
+        const diagramData = extractDiagramData(parsedResult);
+        logger.info("[diagram] Extracted diagram", "stakwork-run", {
+          componentCount: diagramData.components.length,
+          connectionCount: diagramData.connections.length,
+          componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
+        });
+
+        if (diagramData.components.length === 0) {
+          throw new Error("Diagram has no components to layout");
+        }
+
+        const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
+        const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
+          ? (queryParams.layout as typeof validLayouts[number])
+          : "layered";
+        logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
+
+        const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
+        logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
+        aiElements = layoutData.elements as unknown[];
+        appStateForSave = layoutData.appState;
+      }
 
       let upsertedWhiteboard: { id: string } | null = null;
 
@@ -712,19 +945,45 @@ export async function processStakworkRunWebhook(
           select: { title: true },
         });
 
+        // Snapshot existing whiteboard before AI overwrites it, and fetch existing elements for merge
+        const existingByFeature = await db.whiteboard.findUnique({
+          where: { featureId: feature_id },
+          select: { id: true, elements: true },
+        });
+        if (existingByFeature) {
+          await snapshotWhiteboardBeforeAiUpdate(existingByFeature.id);
+        }
+
+        const existingFeatureElements = (existingByFeature?.elements as unknown[]) ?? [];
+
+        // Offset AI elements to avoid overlapping user-created content
+        const featureUserBbox = computeUserElementsBoundingBox(existingFeatureElements);
+        let featureAiElements = aiElements;
+        if (featureUserBbox) {
+          const aiMinX = Math.min(...featureAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
+          const aiMinY = Math.min(...featureAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
+          const aiMaxX = Math.max(...featureAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
+          const aiMaxY = Math.max(...featureAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
+          const { offsetX, offsetY } = computePlacementOffset(featureUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
+          featureAiElements = offsetExcalidrawElements(featureAiElements, offsetX - aiMinX, offsetY - aiMinY);
+        }
+
         await db.whiteboard.upsert({
           where: { featureId: feature_id },
           update: {
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            elements: mergeWhiteboardElements(
+              existingFeatureElements,
+              featureAiElements as unknown[]
+            ) as unknown as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
           create: {
             name: `${feature?.title || "Feature"} - Architecture`,
             workspaceId: workspace_id,
             featureId: feature_id,
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            elements: aiElements as unknown as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             files: {},
           },
         });
@@ -736,11 +995,35 @@ export async function processStakworkRunWebhook(
         });
       } else if (whiteboard_id) {
         // Standalone path: whiteboard already exists, just update elements
+        await snapshotWhiteboardBeforeAiUpdate(whiteboard_id);
+
+        // Fetch existing elements before overwriting so we can preserve user content
+        const existingWhiteboard = await db.whiteboard.findUnique({
+          where: { id: whiteboard_id },
+          select: { elements: true },
+        });
+
+        // Offset AI elements to avoid overlapping user-created content
+        const standaloneExistingElements = (existingWhiteboard?.elements as unknown[]) ?? [];
+        const standaloneUserBbox = computeUserElementsBoundingBox(standaloneExistingElements);
+        let standaloneAiElements = aiElements;
+        if (standaloneUserBbox) {
+          const aiMinX = Math.min(...standaloneAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
+          const aiMinY = Math.min(...standaloneAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
+          const aiMaxX = Math.max(...standaloneAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
+          const aiMaxY = Math.max(...standaloneAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
+          const { offsetX, offsetY } = computePlacementOffset(standaloneUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
+          standaloneAiElements = offsetExcalidrawElements(standaloneAiElements, offsetX - aiMinX, offsetY - aiMinY);
+        }
+
         await db.whiteboard.update({
           where: { id: whiteboard_id },
           data: {
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            elements: mergeWhiteboardElements(
+              standaloneExistingElements,
+              standaloneAiElements
+            ) as unknown as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
         });
@@ -872,11 +1155,107 @@ export async function processStakworkRunWebhook(
     }
   }
 
+  // Step 4: Fast Track chain - auto-trigger next run in sequence
+  const FAST_TRACK_CHAIN: Partial<Record<StakworkRunType, StakworkRunType>> = {
+    [StakworkRunType.REQUIREMENTS]: StakworkRunType.ARCHITECTURE,
+    [StakworkRunType.ARCHITECTURE]: StakworkRunType.TASK_GENERATION,
+  };
+
+  if (
+    run.autoAccept &&
+    run.feature?.isFastTrack &&
+    run.featureId &&
+    status === WorkflowStatus.COMPLETED &&
+    FAST_TRACK_CHAIN[run.type]
+  ) {
+    try {
+      await createStakworkRun(
+        {
+          type: FAST_TRACK_CHAIN[run.type]!,
+          workspaceId: run.workspaceId,
+          featureId: run.featureId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        },
+        run.feature.createdById ?? run.workspace.ownerId
+      );
+    } catch (chainError) {
+      console.error(`Fast Track chain failed to start next run for feature ${run.featureId}:`, chainError);
+    }
+  }
+
+  // Step 5: Sphinx failure notification for fast-track features
+  if (run.feature?.isFastTrack && run.featureId && status === WorkflowStatus.FAILED) {
+    await notifyFastTrackFailureViaSphinx(run, run.featureId);
+  }
+
   return {
     runId: run.id,
     status,
     dataType,
   };
+}
+
+/**
+ * Send Sphinx notification when a Fast Track run fails
+ */
+async function notifyFastTrackFailureViaSphinx(
+  run: {
+    workspace: {
+      slug: string;
+      ownerId: string;
+      sphinxEnabled: boolean | null;
+      sphinxChatPubkey: string | null;
+      sphinxBotId: string | null;
+      sphinxBotSecret: string | null;
+    };
+    feature: {
+      createdById: string | null;
+      isFastTrack: boolean | null;
+      title: string | null;
+    } | null;
+  },
+  featureId: string
+): Promise<void> {
+  try {
+    const { workspace, feature } = run;
+
+    // Early returns if Sphinx not configured
+    if (!workspace.sphinxEnabled || !workspace.sphinxBotSecret || !workspace.sphinxChatPubkey || !workspace.sphinxBotId) {
+      return;
+    }
+
+    // Check if creator has Sphinx alias
+    const creator = feature?.createdById
+      ? await db.user.findUnique({ where: { id: feature.createdById }, select: { sphinxAlias: true } })
+      : null;
+
+    if (!creator?.sphinxAlias) {
+      return;
+    }
+
+    // Decrypt bot secret
+    const decryptedSecret = encryptionService.decryptField("sphinxBotSecret", workspace.sphinxBotSecret);
+
+    // Build feature URL
+    const featureUrl = `${process.env.NEXTAUTH_URL}/w/${workspace.slug}/plan/${featureId}`;
+
+    // Build message
+    const message = `Fast Track bug fix for '${feature?.title ?? featureId}' has stalled — review it here: ${featureUrl}`;
+
+    // Send notification
+    await sendToSphinx(
+      {
+        chatPubkey: workspace.sphinxChatPubkey,
+        botId: workspace.sphinxBotId,
+        botSecret: decryptedSecret
+      },
+      message
+    );
+  } catch (err) {
+    console.error("[FastTrack] Sphinx failure notification error:", err);
+    // Never throws - this is a best-effort notification
+  }
 }
 
 /**
@@ -967,9 +1346,15 @@ async function applyAcceptResult(
 
       const featureWithPhase = await db.feature.findUnique({
         where: { id: run.featureId },
-        include: {
-          phases: { orderBy: { order: "asc" }, take: 1 },
-          workspace: { select: { id: true } },
+        select: {
+          isFastTrack: true,
+          phases: {
+            orderBy: { order: "asc" },
+            take: 1,
+          },
+          workspace: {
+            select: { id: true },
+          },
         },
       });
 
@@ -981,6 +1366,8 @@ async function applyAcceptResult(
       if (!defaultPhase) {
         throw new Error("No phase found for feature");
       }
+
+      const isFastTrack = featureWithPhase.isFastTrack ?? false;
 
       // Build URL→ID map for multi-repo task assignment
       const repos = await db.repository.findMany({
@@ -1012,8 +1399,11 @@ async function applyAcceptResult(
             status: "TODO",
             dependsOnTaskIds,
             repositoryId,
+            branch: task.branch || null,
             createdById: userId,
             updatedById: userId,
+            autoMerge: isFastTrack ? true : undefined,
+            systemAssigneeType: isFastTrack ? "TASK_COORDINATOR" : undefined,
           },
         });
 

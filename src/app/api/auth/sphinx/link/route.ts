@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { createSphinxToken } from "@/lib/auth/sphinx-token";
+import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const pubkey = sphinxChallenge.pubkey;
+    const { pubkey, alias, routeHint } = sphinxChallenge;
 
     // Encrypt pubkey before storing
     let encryptedPubkey: string;
@@ -132,13 +133,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update user with encrypted pubkey and upsert Account record
+    // Update user with encrypted pubkey, alias, route hint, and upsert Account record
     try {
       await db.$transaction(async (tx) => {
-        // Update user with encrypted Lightning pubkey
+        // Update user with encrypted Lightning pubkey and Sphinx profile info
         await tx.user.update({
           where: { id: userId },
-          data: { lightningPubkey: encryptedPubkey },
+          data: {
+            lightningPubkey: encryptedPubkey,
+            sphinxAlias: alias || undefined,
+            sphinxRouteHint: routeHint || undefined,
+          },
         });
 
         // Check if user already has a Sphinx account
@@ -213,6 +218,15 @@ export async function POST(request: NextRequest) {
       logger.error("Failed to delete used challenge", "SPHINX_AUTH", { 
         error: deleteError, 
         challenge 
+      });
+    }
+
+    // Send welcome DM to complete the key exchange early
+    if (routeHint && isDirectMessageConfigured()) {
+      sendDirectMessage(pubkey, "Welcome to Hive!", {
+        routeHint,
+      }).catch((err) => {
+        logger.error("Failed to send welcome DM", "SPHINX_AUTH", { error: err, userId });
       });
     }
 

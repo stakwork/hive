@@ -3,7 +3,12 @@ import { generateObject } from "ai";
 import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 
-export async function generateCommitMessage(taskId: string, baseUrl?: string, sinceTimestamp?: Date) {
+export async function generateCommitMessage(
+  taskId: string,
+  baseUrl?: string,
+  sinceTimestamp?: Date,
+  branchPrefix?: string,
+) {
   // Load conversation history from the task and get workspace slug
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -68,11 +73,17 @@ export async function generateCommitMessage(taskId: string, baseUrl?: string, si
     })
     .join("\n\n");
 
+  const branchPrefixInstruction = branchPrefix
+    ? `\nPrefix the branch name with '${branchPrefix}/' (e.g. ${branchPrefix}/dashboard-filter-ui).`
+    : "";
+
   const prompt = `Based on the following conversation between a user and an AI assistant working on a coding task, generate a concise git commit message and branch name:
 
 ${conversationPrompt}
 
-Generate a commit message that describes the changes made and a branch name that follows the format: category/brief-description (e.g., feat/add-commit-button, fix/auth-bug, refactor/improve-performance)`;
+Generate a commit message that describes the changes made and a branch name that follows the format: category/brief-description (e.g., feat/add-commit-button, fix/auth-bug, refactor/improve-performance)${branchPrefixInstruction}
+
+Never use 'prototype' or 'wip' as a branch prefix.`;
 
   const provider: Provider = "anthropic";
   const apiKey = getApiKeyForProvider(provider);

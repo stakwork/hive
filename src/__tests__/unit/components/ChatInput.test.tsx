@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInput } from "@/app/w/[slug]/task/[...taskParams]/components/ChatInput";
 import { WorkflowStatus } from "@/lib/chat";
@@ -72,8 +72,12 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: any) => <>{children}</>,
 }));
 
+let lastWorkflowStatusBadgeProps: Record<string, unknown> = {};
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge", () => ({
-  WorkflowStatusBadge: () => <div data-testid="workflow-status-badge">Status</div>,
+  WorkflowStatusBadge: (props: Record<string, unknown>) => {
+    lastWorkflowStatusBadgeProps = props;
+    return <div data-testid="workflow-status-badge">Status</div>;
+  },
 }));
 
 vi.mock("@/components/InputDebugAttachment", () => ({
@@ -90,6 +94,32 @@ vi.mock("@/hooks/useFeatureFlag", () => ({
 
 vi.mock("@/lib/utils/detect-code-paste", () => ({
   detectAndWrapCode: vi.fn((text: string) => text),
+}));
+
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: vi.fn(() => ({
+    workspaces: [
+      { slug: "alpha-ws", name: "Alpha Workspace" },
+      { slug: "beta-ws", name: "Beta Workspace" },
+      { slug: "current-ws", name: "Current Workspace" },
+    ],
+  })),
+}));
+
+vi.mock("@/components/ui/command", () => ({
+  Command: ({ children }: any) => <div data-testid="mention-popup">{children}</div>,
+  CommandList: ({ children }: any) => <div>{children}</div>,
+  CommandItem: ({ children, onSelect, "data-testid": testId, className }: any) => (
+    <div
+      data-testid={testId}
+      className={className}
+      role="option"
+      aria-selected={false}
+      onClick={onSelect}
+    >
+      {children}
+    </div>
+  ),
 }));
 
 describe("ChatInput - Task Mode", () => {
@@ -275,9 +305,9 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByText("Send")).toBeInTheDocument();
     });
 
-    test("renders workflow status badge", () => {
-      render(<ChatInput {...defaultProps} />);
-      
+    test("renders workflow status badge when in progress", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={"IN_PROGRESS" as WorkflowStatus} />);
+
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
     });
   });
@@ -325,12 +355,8 @@ describe("ChatInput - Task Mode", () => {
   });
 
   describe("Disabled States", () => {
-    test("disables textarea when disabled prop is true", () => {
-      render(<ChatInput {...defaultProps} disabled={true} />);
-      
-      const textarea = screen.getByTestId("chat-message-input");
-      expect(textarea).toBeDisabled();
-    });
+    // Note: Textarea is now always enabled to allow typing while blocking send
+    // See "Textarea typing while blocking send" test suite for new behavior
 
     test("disables send button when disabled prop is true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
@@ -496,7 +522,7 @@ describe("ChatInput - Task Mode", () => {
       const buttons = screen.getAllByRole("button");
       const imageButton = buttons.find(btn => 
         btn.className.includes("rounded-full") && 
-        btn.type === "button"
+        (btn as HTMLButtonElement).type === "button"
       );
       
       expect(imageButton).toBeTruthy();
@@ -695,5 +721,581 @@ describe("ChatInput - Task Mode", () => {
       // Should populate with just the new message (ref was cleared on send)
       expect(textarea.value).toBe("New message");
     });
+  });
+
+  describe("IN_PROGRESS workflow status", () => {
+    test("does NOT render standalone 'View on Stakwork' link when IN_PROGRESS with stakworkProjectId", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
+    });
+
+    test("renders WorkflowStatusBadge with stakworkProjectId when IN_PROGRESS", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("does NOT render standalone 'View on Stakwork' link when IN_PROGRESS without stakworkProjectId", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId={null}
+        />
+      );
+      expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
+    });
+
+    test("forwards isSuperAdmin=false to WorkflowStatusBadge by default", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(false);
+    });
+
+    test("forwards isSuperAdmin=true to WorkflowStatusBadge when passed", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+          isSuperAdmin={true}
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(true);
+    });
+  });
+
+  describe("Retry button", () => {
+    test("renders Retry button when isTerminalState and onRetry is provided (HALTED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (FAILED)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("renders Retry button when isTerminalState and onRetry is provided (ERROR)", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("does not render Retry button when onRetry is not provided", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("does not render Retry button when workflow is IN_PROGRESS even if onRetry provided", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} onRetry={onRetry} />);
+      expect(screen.queryByText("Retry")).not.toBeInTheDocument();
+    });
+
+    test("Retry button is disabled and shows spinner when isRetrying is true", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={true} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).toBeDisabled();
+    });
+
+    test("Retry button is enabled when isRetrying is false", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} isRetrying={false} />);
+      const retryButton = screen.getByText("Retry").closest("button");
+      expect(retryButton).not.toBeDisabled();
+    });
+
+    test("clicking Retry button calls onRetry", async () => {
+      const user = userEvent.setup();
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      await user.click(screen.getByText("Retry"));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    test("WorkflowStatusBadge is still rendered alongside Retry button", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} onRetry={onRetry} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    test("FAILED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("HALTED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("ERROR + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + PR artifact → status area is visible", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={true} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + no PR artifact → status area is visible", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={false} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+  });
+
+  describe("Textarea typing while blocking send", () => {
+    beforeEach(() => {
+      // Reset speech recognition state between tests
+      mockSpeechRecognitionState.transcript = "";
+      mockSpeechRecognitionState.isListening = false;
+    });
+
+    test("textarea is disabled when disabled=true", () => {
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should have disabled attribute
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is disabled when isLoading=true", () => {
+      render(<ChatInput {...defaultProps} isLoading={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should have disabled attribute when loading
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is enabled when both disabled=false and isLoading=false", () => {
+      render(<ChatInput {...defaultProps} disabled={false} isLoading={false} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should NOT have disabled attribute
+      expect(textarea).not.toBeDisabled();
+    });
+
+    test("Enter key does not submit when disabled=true", async () => {
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea is disabled — cannot type into it, onSend must not be called
+      expect(textarea).toBeDisabled();
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    test("Enter key submits when disabled=false", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Clear any existing content
+      await user.clear(textarea);
+      
+      // Type message
+      await user.type(textarea, "Test message");
+      
+      // Press Enter
+      await user.keyboard("{Enter}");
+      
+      // onSend should be called
+      expect(onSend).toHaveBeenCalledWith("Test message", undefined);
+    });
+
+    test("handleSubmit early returns when disabled=true", async () => {
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      const sendButton = screen.getByTestId("chat-message-submit");
+      
+      // Both textarea and send button should be disabled
+      expect(textarea).toBeDisabled();
+      expect(sendButton).toBeDisabled();
+      
+      // Verify onSend is not called
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    test("Send button remains disabled when disabled=true", async () => {
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      const sendButton = screen.getByTestId("chat-message-submit");
+      
+      // Textarea is disabled — use fireEvent to bypass the disabled guard and set a value
+      fireEvent.change(textarea, { target: { value: "Test message" } });
+      
+      // Send button should still be disabled even with text present
+      expect(sendButton).toBeDisabled();
+    });
+
+    test("typed content is preserved when disabled changes from true to false", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+
+      // Start enabled so we can type into the controlled textarea
+      const { rerender } = render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+      // Type content while enabled
+      await user.type(textarea, "Queued message");
+      expect(textarea.value).toBe("Queued message");
+
+      // Now disable — content (React state) should still be there
+      rerender(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      expect(textarea).toBeDisabled();
+      expect(textarea.value).toBe("Queued message");
+
+      // Re-enable — content should still be preserved
+      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      expect(textarea).not.toBeDisabled();
+      expect(textarea.value).toBe("Queued message");
+
+      // Now should be able to send
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("Queued message", undefined);
+    });
+
+    test("Shift+Enter adds newline instead of submitting when enabled", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      
+      // Test with disabled=false: Shift+Enter should add a newline, not submit
+      render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Type message and press Shift+Enter
+      await user.type(textarea, "Line 1{Shift>}{Enter}{/Shift}Line 2");
+      
+      // Should contain newline and onSend should NOT have been called
+      expect(textarea.value).toContain("\n");
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    test("mic button remains disabled when disabled=true", () => {
+      mockSpeechRecognitionState.isSupported = true;
+      
+      render(<ChatInput {...defaultProps} disabled={true} />);
+      
+      // Mic button is wrapped in Tooltip - find by its icon content
+      const buttons = screen.getAllByRole("button");
+      const micButton = buttons.find(btn => btn.querySelector("svg.lucide-mic"));
+      
+      expect(micButton).toBeDisabled();
+    });
+
+    test("image upload button remains disabled when disabled=true", () => {
+      render(<ChatInput {...defaultProps} disabled={true} taskMode="task" />);
+      
+      // Image button is wrapped in Tooltip - find by its icon content
+      const buttons = screen.getAllByRole("button");
+      const imageButton = buttons.find(btn => btn.querySelector("svg.lucide-image"));
+      
+      expect(imageButton).toBeDisabled();
+    });
+  });
+});
+
+// ── uploadToS3 branching tests ─────────────────────────────────────────────────
+
+describe("ChatInput - uploadToS3 branching", () => {
+  const baseProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset fetch mock between tests
+    global.fetch = vi.fn();
+    // jsdom doesn't implement URL.createObjectURL; stub it out
+    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  test("calls /api/upload/image with featureId when featureId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskMode="task" />);
+
+    // Drop a file to trigger handleFiles → uploadImage → uploadToS3
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // Wait for the fetch calls to resolve
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+    });
+  });
+
+  test("calls /api/upload/presigned-url with taskId when only taskId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "tasks/task-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"taskId":"task-1"'),
+        })
+      );
+    });
+  });
+
+  test("shows error toast when neither taskId nor featureId is provided", async () => {
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // fetch should never be called since the error is thrown before any network call
+    await vi.waitFor(() => {
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  test("featureId takes precedence over taskId when both are provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+      // Should not have called the task endpoint
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.anything()
+      );
+    });
+  });
+});
+
+// ── @mention autocomplete tests ────────────────────────────────────────────────
+
+describe("ChatInput - @mention autocomplete (plan chat)", () => {
+  const planProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+    isPlanChat: true,
+    currentWorkspaceSlug: "current-ws",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("popup appears when '@' is typed in plan chat", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    // All workspaces (excluding current-ws) should appear
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-beta-ws")).toBeInTheDocument();
+    expect(screen.queryByTestId("mention-item-current-ws")).not.toBeInTheDocument();
+  });
+
+  test("popup filters by partial slug after '@'", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@alp");
+
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.queryByTestId("mention-item-beta-ws")).not.toBeInTheDocument();
+  });
+
+  test("popup does NOT appear in non-plan (task) chat", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} isPlanChat={false} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("popup does NOT appear when '@' yields no matching workspaces", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@zzz-no-match");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("clicking a mention item inserts the full slug and closes popup", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "hello @alp");
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("mention-item-alpha-ws"));
+
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("Escape closes the popup without inserting text", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+    // Original partial text still in the input
+    expect(textarea.value).toContain("@alp");
+  });
+
+  test("Enter selects the highlighted item when popup is open (does NOT submit)", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} onSend={onSend} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    // Should insert, not submit
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("ArrowDown cycles highlight index", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    // Type '@' to show all workspaces (alpha-ws at index 0, beta-ws at index 1)
+    await user.type(textarea, "@");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    // Press ArrowDown once — should not crash and popup stays open
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    // Enter should now select beta-ws (index 1)
+    await user.keyboard("{Enter}");
+    const textarea2 = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+    expect(textarea2.value).toContain("@beta-ws");
   });
 });

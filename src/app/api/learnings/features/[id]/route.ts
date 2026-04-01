@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "../../utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -8,7 +8,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
     
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const { id } = await params;
     const { searchParams } = new URL(request.url);
@@ -22,7 +21,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Missing required parameter: id" }, { status: 400 });
     }
 
-    const swarmConfig = await getSwarmConfig(workspaceSlug, userOrResponse.id, { isSuperAdmin });
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
+    const swarmConfig = await getSwarmConfig(workspaceSlug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }

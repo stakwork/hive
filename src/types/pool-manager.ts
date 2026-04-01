@@ -79,6 +79,7 @@ export interface CreatePoolRequest {
   github_username: string;
   env_vars: EnvironmentVariable[]; //Key value pair of name and value
   container_files: Record<string, string>; // Generated server-side from database services
+  enable_cloudwatch_alarms?: boolean; // Enable AWS CloudWatch CPU alarms for this pool
 }
 //Response:
 // {
@@ -151,6 +152,7 @@ export interface PoolStatus {
   usedVms: number;
   unusedVms: number;
   lastCheck: string;
+  queuedCount: number;
 }
 
 export interface PoolStatusResponse {

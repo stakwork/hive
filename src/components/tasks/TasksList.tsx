@@ -16,13 +16,12 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
-import { Search, X, List, LayoutGrid, ArrowUpDown } from "lucide-react";
+import { Search, X, List, LayoutGrid, ArrowUpDown, Clock } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { KanbanView } from "@/components/ui/kanban-view";
-import { TASK_KANBAN_COLUMNS } from "@/types/roadmap";
-import { TaskStatus } from "@prisma/client";
+import { TASK_KANBAN_COLUMNS, WORKFLOW_EDITOR_KANBAN_COLUMN, TaskKanbanStatus } from "@/types/roadmap";
 import {
   Select,
   SelectContent,
@@ -30,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSearchParams } from "next/navigation";
 
 interface TasksListProps {
   workspaceId: string;
@@ -38,12 +38,19 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { waitingForInputCount } = useWorkspace();
+  const searchParams = useSearchParams();
 
-  // Archive tab state with localStorage persistence
-  const [activeTab, setActiveTab] = useState<"active" | "archived">(() => {
+  // Archive/Queue tab state with localStorage persistence
+  const [activeTab, setActiveTab] = useState<"queue" | "active" | "archived">(() => {
+    // URL param takes highest priority
+    const tabParam = searchParams?.get("tab");
+    if (tabParam === "queue") return "queue";
+    if (tabParam === "archived") return "archived";
+    if (tabParam === "active") return "active";
+    // Fall back to localStorage
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("tasks-tab-preference");
-      return (saved === "archived" ? "archived" : "active") as "active" | "archived";
+      if (saved === "queue" || saved === "archived" || saved === "active") return saved;
     }
     return "active";
   });
@@ -108,12 +115,28 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     apiSortBy,
     apiSortOrder
   );
+
+  // Queue data fetch — API handles all ordering, no pagination needed beyond a high limit
+  const { tasks: queuedTasks, loading: queueLoading } = useWorkspaceTasks(
+    workspaceId,
+    workspaceSlug,
+    false,
+    100,
+    false,
+    "",
+    {},
+    false,
+    undefined,
+    undefined,
+    true // queue=true
+  );
+
   const { stats } = useTaskStats(workspaceId);
 
   // Save tab preference to localStorage
   const handleTabChange = (value: string) => {
-    if (value === "active" || value === "archived") {
-      setActiveTab(value);
+    if (value === "active" || value === "archived" || value === "queue") {
+      setActiveTab(value as "queue" | "active" | "archived");
       localStorage.setItem("tasks-tab-preference", value);
     }
   };
@@ -149,12 +172,24 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   // Tasks are now sorted by the backend API, no need for client-side sorting
   const sortedTasks = tasks;
 
+  // Merge queued tasks into the active-task kanban board so they always appear
+  // in the Queue column regardless of pagination.
+  const activeKanbanItems = (() => {
+    if (queuedTasks.length === 0) return sortedTasks;
+    const mainTaskIds = new Set(sortedTasks.map((t) => t.id));
+    const missingQueuedTasks = queuedTasks.filter((t) => !mainTaskIds.has(t.id));
+    return missingQueuedTasks.length > 0 ? [...missingQueuedTasks, ...sortedTasks] : sortedTasks;
+  })();
+
+  const kanbanItems = activeTab === "queue" ? queuedTasks : activeKanbanItems;
+  const kanbanLoading = activeTab === "queue" ? queueLoading : loading;
+
   // Refresh task list when global notification count changes
   useEffect(() => {
     refetch();
   }, [waitingForInputCount, refetch]);
 
-  if (loading && tasks.length === 0) {
+  if (loading && tasks.length === 0 && activeTab !== "queue") {
     return <LoadingState />;
   }
 
@@ -182,6 +217,9 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <CardHeader className="flex flex-row items-center justify-between">
           <TabsList>
+            <TabsTrigger value="queue" data-testid="queue-tab">
+              Queue
+            </TabsTrigger>
             <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="archived">Archived</TabsTrigger>
           </TabsList>
@@ -202,6 +240,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               filters={filters}
               onFiltersChange={handleFiltersChange}
               onClearFilters={handleClearFilters}
+              workspaceSlug={workspaceSlug}
             />
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -243,6 +282,58 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             </Select>
           </div>
 
+          {(() => {
+            const hasWorkflowEditorTasks =
+              workspaceSlug === "stakwork" &&
+              sortedTasks.some((t: any) => t.mode === "workflow_editor");
+            const kanbanColumns = hasWorkflowEditorTasks
+              ? [WORKFLOW_EDITOR_KANBAN_COLUMN, ...TASK_KANBAN_COLUMNS]
+              : TASK_KANBAN_COLUMNS;
+
+            return viewType === "list" ? null : (
+              <div className="mt-4">
+                <KanbanView
+                  items={kanbanItems}
+                  columns={kanbanColumns}
+                  getItemStatus={(task: any): TaskKanbanStatus =>
+                    workspaceSlug === "stakwork" && task.mode === "workflow_editor"
+                      ? "WORKFLOW_EDITOR"
+                      : task.systemAssigneeType === "TASK_COORDINATOR" && task.status === "TODO"
+                        ? "QUEUE"
+                        : task.status
+                  }
+                  getItemId={(task: any) => task.id}
+                  renderCard={(task: any) => (
+                    <TaskCard
+                      task={task}
+                      workspaceSlug={workspaceSlug}
+                      isArchived={activeTab === "archived"}
+                      onUndoArchive={refetch}
+                    />
+                  )}
+                  sortItems={(a: any, b: any) => {
+                    if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
+                    if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
+                    return 0;
+                  }}
+                  loading={kanbanLoading}
+                />
+                {activeTab !== "queue" && pagination?.hasMore && (
+                  <div className="pt-3 border-t flex justify-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading ? "Loading..." : "Load More"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {viewType === "list" ? (
             <>
               <TabsContent value="active" className="mt-4 space-y-3">
@@ -274,6 +365,30 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                         </Button>
                       </div>
                     )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="queue" className="mt-4 space-y-3" data-testid="queue-tab-content">
+                {queueLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading queue...</div>
+                ) : queuedTasks.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground" data-testid="queue-empty-state">
+                    <Clock className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                    <p className="font-medium">No tasks in queue</p>
+                    <p className="text-sm mt-1">Tasks assigned to the Task Coordinator will appear here.</p>
+                  </div>
+                ) : (
+                  <>
+                    {queuedTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        workspaceSlug={workspaceSlug}
+                        isArchived={false}
+                        onUndoArchive={refetch}
+                      />
+                    ))}
                   </>
                 )}
               </TabsContent>
@@ -310,44 +425,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                 )}
               </TabsContent>
             </>
-          ) : (
-            <div className="mt-4">
-              <KanbanView
-                items={sortedTasks}
-                columns={TASK_KANBAN_COLUMNS}
-                getItemStatus={(task) => task.status as TaskStatus}
-                getItemId={(task) => task.id}
-                renderCard={(task) => (
-                  <TaskCard
-                    task={task}
-                    workspaceSlug={workspaceSlug}
-                    isArchived={activeTab === "archived"}
-                    onUndoArchive={refetch}
-                  />
-                )}
-                sortItems={(a, b) => {
-                  // Priority sorting for action artifacts, then respect user's sort preference
-                  if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
-                  if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
-                  // Already sorted by sortTasks function
-                  return 0;
-                }}
-                loading={loading}
-              />
-              {pagination?.hasMore && (
-                <div className="pt-3 border-t flex justify-center mt-4">
-                  <Button
-                    variant="outline"
-                    onClick={loadMore}
-                    disabled={loading}
-                    size="sm"
-                  >
-                    {loading ? "Loading..." : "Load More"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          ) : null}
         </CardContent>
       </Tabs>
     </Card>

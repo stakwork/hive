@@ -11,9 +11,52 @@ export default function NewPlanPage() {
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (message: string) => {
+  const handleSubmit = async (
+    message: string,
+    options?: { isPrototype: boolean; selectedRepoId: string | null },
+  ) => {
     setIsLoading(true);
     try {
+      if (options?.isPrototype) {
+        // Prototype flow: create a PROTOTYPE task and redirect to task chat
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: message.slice(0, 100),
+            workspaceSlug,
+            sourceType: "PROTOTYPE",
+            repositoryId: options.selectedRepoId,
+            mode: "live",
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to create prototype task");
+        }
+
+        const { data: task } = await res.json();
+
+        // Send the first message to trigger the Stakwork workflow
+        const chatRes = await fetch("/api/chat/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId: task.id,
+            message,
+            mode: "live",
+          }),
+        });
+
+        if (!chatRes.ok) {
+          console.error("Failed to send initial prototype message, but task was created");
+        }
+
+        router.push(`/w/${workspaceSlug}/task/${task.id}`);
+        return;
+      }
+
+      // Standard feature creation flow (unchanged)
       // 1. Create Feature record
       const featureRes = await fetch("/api/features", {
         method: "POST",

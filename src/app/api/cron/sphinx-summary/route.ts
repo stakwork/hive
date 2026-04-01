@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getAllRepositories } from "@/lib/helpers/repository";
 import { getWorkspaceAdminGithubToken } from "@/lib/sphinx/github-token";
 import { getMergedPRsForRepo, sendToSphinx, formatPRSummaryMessage } from "@/lib/sphinx/daily-pr-summary";
+import type { RepoPRs } from "@/lib/sphinx/daily-pr-summary";
 
 export async function GET(request: NextRequest) {
   // Verify cron authorization
@@ -47,22 +48,13 @@ export async function GET(request: NextRequest) {
     try {
       logger.info(`[SPHINX CRON] Processing workspace: ${workspace.slug}`);
 
-      // Get primary repository
-      const primaryRepo = await getPrimaryRepository(workspace.id);
-      if (!primaryRepo) {
-        logger.warn(`[SPHINX CRON] No repository found for workspace: ${workspace.slug}`);
-        results.push({ workspace: workspace.slug, success: false, error: "No repository" });
+      // Get all repositories for the workspace
+      const repos = await getAllRepositories(workspace.id);
+      if (repos.length === 0) {
+        logger.warn(`[SPHINX CRON] No repositories found for workspace: ${workspace.slug}`);
+        results.push({ workspace: workspace.slug, success: false, error: "No repositories" });
         continue;
       }
-
-      // Extract repo full name from URL (e.g., "https://github.com/owner/repo" -> "owner/repo")
-      const repoMatch = primaryRepo.repositoryUrl.match(/github\.com\/([^/]+\/[^/]+)/);
-      if (!repoMatch) {
-        logger.warn(`[SPHINX CRON] Invalid repository URL: ${primaryRepo.repositoryUrl}`);
-        results.push({ workspace: workspace.slug, success: false, error: "Invalid repo URL" });
-        continue;
-      }
-      const repoFullName = repoMatch[1].replace(/\.git$/, "");
 
       // Get GitHub token from workspace admin
       const githubToken = await getWorkspaceAdminGithubToken(workspace.slug);
@@ -72,12 +64,24 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Fetch merged PRs
-      const mergedPRs = await getMergedPRsForRepo(repoFullName, githubToken);
-      logger.info(`[SPHINX CRON] Found ${mergedPRs.length} merged PRs for ${repoFullName}`);
+      // Fetch merged PRs for every repo
+      const repoPRs: RepoPRs[] = [];
+      let totalPRCount = 0;
+      for (const repo of repos) {
+        const repoMatch = repo.repositoryUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+        if (!repoMatch) {
+          logger.warn(`[SPHINX CRON] Invalid repository URL: ${repo.repositoryUrl}`);
+          continue;
+        }
+        const repoFullName = repoMatch[1].replace(/\.git$/, "");
+        const mergedPRs = await getMergedPRsForRepo(repoFullName, githubToken);
+        logger.info(`[SPHINX CRON] Found ${mergedPRs.length} merged PRs for ${repoFullName}`);
+        repoPRs.push({ repoFullName, mergedPRs });
+        totalPRCount += mergedPRs.length;
+      }
 
-      // Format message
-      const message = formatPRSummaryMessage(mergedPRs, repoFullName, workspace.name);
+      // Format a single message covering all repos
+      const message = formatPRSummaryMessage(repoPRs, workspace.name);
 
       // Decrypt bot secret and send to Sphinx
       const botSecret = encryptionService.decryptField("sphinxBotSecret", workspace.sphinxBotSecret!);
@@ -93,7 +97,7 @@ export async function GET(request: NextRequest) {
 
       if (result.success) {
         logger.info(`[SPHINX CRON] Successfully sent summary for workspace: ${workspace.slug}`);
-        results.push({ workspace: workspace.slug, success: true, prCount: mergedPRs.length });
+        results.push({ workspace: workspace.slug, success: true, prCount: totalPRCount });
       } else {
         logger.error(`[SPHINX CRON] Failed to send to Sphinx for workspace: ${workspace.slug}`, "SPHINX_CRON", { error: result.error });
         results.push({ workspace: workspace.slug, success: false, error: result.error });

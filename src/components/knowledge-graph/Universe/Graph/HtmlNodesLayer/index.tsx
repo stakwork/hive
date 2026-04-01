@@ -52,10 +52,10 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
               {/* Node type indicator */}
               <div className="flex items-center gap-2 mb-1">
                 <div className={`w-2 h-2 rounded-full ${node.node_type === 'Feature' ? 'bg-emerald-400' :
-                    node.node_type === 'Function' ? 'bg-blue-400' :
-                      node.node_type === 'Class' ? 'bg-purple-400' :
-                        node.node_type === 'File' ? 'bg-orange-400' :
-                          'bg-gray-400'
+                  node.node_type === 'Function' ? 'bg-blue-400' :
+                    node.node_type === 'Class' ? 'bg-purple-400' :
+                      node.node_type === 'File' ? 'bg-orange-400' :
+                        'bg-gray-400'
                   } shadow-lg animate-pulse`}></div>
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                   {node.node_type}

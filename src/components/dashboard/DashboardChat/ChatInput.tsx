@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Eye, Image as ImageIcon, Lightbulb, Plus, Send, Share2, X } from "lucide-react";
+import { Image as ImageIcon, Plus, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -20,17 +20,9 @@ const MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
   disabled?: boolean;
-  showCreateFeature?: boolean;
-  onCreateFeature?: () => void;
-  isCreatingFeature?: boolean;
   imageData?: string | null;
   onImageUpload?: (imageData: string) => void;
   onImageRemove?: () => void;
-  showProvenanceToggle?: boolean;
-  isProvenanceSidebarOpen?: boolean;
-  onToggleProvenance?: () => void;
-  showShareButton?: boolean;
-  onShare?: () => void;
   extraWorkspaceSlugs?: string[];
   onAddWorkspace?: (slug: string) => void;
   onRemoveWorkspace?: (slug: string) => void;
@@ -40,17 +32,9 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
-  showCreateFeature = false,
-  onCreateFeature,
-  isCreatingFeature = false,
   imageData = null,
   onImageUpload,
   onImageRemove,
-  showProvenanceToggle = false,
-  isProvenanceSidebarOpen = false,
-  onToggleProvenance,
-  showShareButton = false,
-  onShare,
   extraWorkspaceSlugs = [],
   onAddWorkspace,
   onRemoveWorkspace,
@@ -311,7 +295,7 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             disabled={disabled}
             rows={rows}
-            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
+            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/90 border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
               }`}
           />
           <Button
@@ -323,45 +307,6 @@ export function ChatInput({
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        {showCreateFeature && (
-          <Button
-            type="button"
-            onClick={onCreateFeature}
-            disabled={isCreatingFeature || disabled}
-            variant="outline"
-            size="icon"
-            className="shrink-0 rounded-full h-10 w-10"
-            title="Create Feature"
-          >
-            <Lightbulb className="w-4 h-4" />
-          </Button>
-        )}
-        {showProvenanceToggle && (
-          <Button
-            type="button"
-            onClick={onToggleProvenance}
-            disabled={disabled}
-            variant="outline"
-            size="icon"
-            className="shrink-0 rounded-full h-10 w-10"
-            title={isProvenanceSidebarOpen ? "Hide sources" : "Show sources"}
-          >
-            <Eye className={`w-4 h-4 ${isProvenanceSidebarOpen ? "text-primary" : ""}`} />
-          </Button>
-        )}
-        {showShareButton && (
-          <Button
-            type="button"
-            onClick={onShare}
-            disabled={disabled}
-            variant="outline"
-            size="icon"
-            className="shrink-0 rounded-full h-10 w-10"
-            title="Share conversation"
-          >
-            <Share2 className="w-4 h-4" />
-          </Button>
-        )}
       </div>
     </form>
   );

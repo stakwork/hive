@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { createAndSendNotification } from "@/services/notifications";
+import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
 
 export const fetchCache = "force-no-store";
 
@@ -139,12 +141,33 @@ export async function POST(request: NextRequest) {
         id: finalTaskId,
         deleted: false,
       },
+      select: {
+        id: true,
+        workspaceId: true,
+        workflowStatus: true,
+        assigneeId: true,
+        createdById: true,
+        title: true,
+        featureId: true,
+        mode: true,
+        haltRetryAttempted: true,
+        workspace: { select: { slug: true } },
+      },
     });
 
     if (!task) {
       // If no task found, check if this is a feature (plan mode uses featureId as taskId)
       const feature = await db.feature.findFirst({
         where: { id: finalTaskId },
+        select: {
+          id: true,
+          workspaceId: true,
+          workflowStatus: true,
+          assigneeId: true,
+          createdById: true,
+          title: true,
+          workspace: { select: { slug: true } },
+        },
       });
 
       if (feature) {
@@ -152,6 +175,30 @@ export async function POST(request: NextRequest) {
           where: { id: feature.id },
           data: buildWorkflowTimestamps(workflowStatus),
         });
+
+        // Fire WORKFLOW_HALTED notification for feature path (fire-and-forget)
+        if (workflowStatus === WorkflowStatus.HALTED) {
+          void (async () => {
+            try {
+              const targetUserId = feature.assigneeId ?? feature.createdById;
+              const planUrl = `${process.env.NEXTAUTH_URL}/w/${feature.workspace.slug}/plan/${feature.id}`;
+              const targetUser = await db.user.findUnique({
+                where: { id: targetUserId },
+                select: { sphinxAlias: true, name: true },
+              });
+              const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+              await createAndSendNotification({
+                targetUserId,
+                featureId: feature.id,
+                workspaceId: feature.workspaceId,
+                notificationType: NotificationTriggerType.WORKFLOW_HALTED,
+                message: `@${alias} — A workflow for '${feature.title}' has halted and needs your attention: ${planUrl}`,
+              });
+            } catch (notifError) {
+              console.error("[stakwork/webhook] Error firing WORKFLOW_HALTED (feature) notification:", notifError);
+            }
+          })();
+        }
 
         try {
           await pusherServer.trigger(
@@ -173,6 +220,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    // Auto-retry once for workflow_editor tasks on terminal status before surfacing failure
+    const isTerminal =
+      workflowStatus === WorkflowStatus.HALTED ||
+      workflowStatus === WorkflowStatus.FAILED ||
+      workflowStatus === WorkflowStatus.ERROR;
+
+    if (isTerminal) {
+      const retried = await retryWorkflowEditorTask(task.id);
+      if (retried) {
+        return NextResponse.json({ success: true, action: "retried" }, { status: 200 });
+      }
+    }
+
     const updatedTask = await db.task.update({
       where: { id: finalTaskId },
       data: buildWorkflowTimestamps(workflowStatus),
@@ -182,6 +242,30 @@ export async function POST(request: NextRequest) {
         featureId: true,
       },
     });
+
+    // Fire WORKFLOW_HALTED notification for task path (fire-and-forget)
+    if (workflowStatus === WorkflowStatus.HALTED) {
+      void (async () => {
+        try {
+          const targetUserId = task.assigneeId ?? task.createdById;
+          const taskUrl = `${process.env.NEXTAUTH_URL}/w/${task.workspace.slug}/task/${task.id}`;
+          const targetUser = await db.user.findUnique({
+            where: { id: targetUserId },
+            select: { sphinxAlias: true, name: true },
+          });
+          const alias = targetUser?.sphinxAlias ?? targetUser?.name ?? "User";
+          await createAndSendNotification({
+            targetUserId,
+            taskId: task.id,
+            workspaceId: task.workspaceId,
+            notificationType: NotificationTriggerType.WORKFLOW_HALTED,
+            message: `@${alias} — A workflow for task '${task.title}' has halted and needs your attention: ${taskUrl}`,
+          });
+        } catch (notifError) {
+          console.error("[stakwork/webhook] Error firing WORKFLOW_HALTED (task) notification:", notifError);
+        }
+      })();
+    }
 
     // Sync feature status if task belongs to a feature
     if (updatedTask.featureId) {

@@ -1,3 +1,10 @@
+export interface AgentLogStats {
+  totalMessages: number;
+  estimatedTokens: number;
+  totalToolCalls: number;
+  toolFrequency: Record<string, number>;
+}
+
 export interface AgentLogRecord {
   id: string;
   blobUrl: string;
@@ -6,6 +13,7 @@ export interface AgentLogRecord {
   taskId: string | null;
   featureTitle: string | null;
   createdAt: Date;
+  stats?: AgentLogStats;
 }
 
 export interface AgentLogsResponse {

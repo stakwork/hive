@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -24,10 +23,9 @@ export async function GET(
   }
 
   const { slug } = await params;
-  const isSuperAdmin = await checkIsSuperAdmin(session.user.id);
-  const access = await validateWorkspaceAccess(slug, session.user.id, true, { isSuperAdmin });
+  const access = await validateWorkspaceAccess(slug, session.user.id, true);
 
-  if (!access.canAdmin) {
+  if (!access.canRead) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
@@ -63,8 +61,7 @@ export async function PUT(
   }
 
   const { slug } = await params;
-  const isSuperAdmin = await checkIsSuperAdmin(session.user.id);
-  const access = await validateWorkspaceAccess(slug, session.user.id, true, { isSuperAdmin });
+  const access = await validateWorkspaceAccess(slug, session.user.id, true);
 
   if (!access.canAdmin) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });

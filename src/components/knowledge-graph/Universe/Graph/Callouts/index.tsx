@@ -1,6 +1,6 @@
 import { useStoreId } from '@/stores/StoreProvider'
-import { getStoreBundle } from '@/stores/createStoreFactory'
 import { DEFAULT_CALLOUT_TTL_MS } from '@/stores/calloutConstants'
+import { getStoreBundle } from '@/stores/createStoreFactory'
 import type { GraphCallout } from '@/stores/graphStore.types'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'

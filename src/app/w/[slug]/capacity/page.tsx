@@ -7,7 +7,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertCircle, Server, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import React, { useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
 
 import { CapacityControls } from "@/components/capacity/CapacityControls";
 import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
@@ -16,9 +18,9 @@ import { VMCardSkeleton } from "@/components/capacity/VMCardSkeleton";
 import { VMData } from "@/types/pool-manager";
 
 export default function CapacityPage() {
-  const { workspace, slug } = useWorkspace();
+  const { workspace, slug, isAdmin, isOwner } = useWorkspace();
   const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
+  const { poolStatus, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [basicDataLoading, setBasicDataLoading] = useState(true);
@@ -32,7 +34,6 @@ export default function CapacityPage() {
 
   // Track if metrics have been fetched to prevent infinite loop
   const metricsFetched = useRef(false);
-  const metricsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleViewChange = (mode: '2d' | '3d') => {
     setViewMode(mode);
@@ -94,19 +95,7 @@ export default function CapacityPage() {
         setMetricsLoading(true);
         setMetricsError(false);
 
-        // Set 5-second timeout matching API timeout
-        metricsTimeoutRef.current = setTimeout(() => {
-          setMetricsError(true);
-          setMetricsLoading(false);
-        }, 5000);
-
         const response = await fetch(`/api/w/${slug}/pool/workspaces`);
-
-        // Clear timeout on response
-        if (metricsTimeoutRef.current) {
-          clearTimeout(metricsTimeoutRef.current);
-          metricsTimeoutRef.current = null;
-        }
 
         if (!response.ok) {
           console.warn("Failed to fetch real-time metrics");
@@ -116,22 +105,15 @@ export default function CapacityPage() {
 
         const result = await response.json();
 
-        // Check for warning about unavailable metrics
-        if (result.warning) {
+        // Only error if warning AND no workspace data was returned
+        if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
           setMetricsError(true);
-        }
-
-        if (result.success && result.data) {
+        } else if (result.success && result.data) {
           setVmData(result.data.workspaces || []);
         }
       } catch (err) {
         console.warn("Failed to load real-time metrics:", err);
         setMetricsError(true);
-        // Clear timeout on error
-        if (metricsTimeoutRef.current) {
-          clearTimeout(metricsTimeoutRef.current);
-          metricsTimeoutRef.current = null;
-        }
       } finally {
         setMetricsLoading(false);
         metricsFetched.current = true;
@@ -144,25 +126,23 @@ export default function CapacityPage() {
   }, [slug, isPoolActive, basicDataLoading, vmData.length]);
 
   // Manual refresh handler
+  const handleDeletePod = async (vm: VMData) => {
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/workspaces/${vm.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setVmData((prev) => prev.filter((v) => v.id !== vm.id));
+    } catch {
+      toast.error("Failed to delete pod");
+    }
+  };
+
   const handleRefreshMetrics = async () => {
     metricsFetched.current = false;
     setMetricsError(false);
     setMetricsLoading(true);
     
     try {
-      // Set 5-second timeout matching API timeout
-      metricsTimeoutRef.current = setTimeout(() => {
-        setMetricsError(true);
-        setMetricsLoading(false);
-      }, 5000);
-
       const response = await fetch(`/api/w/${slug}/pool/workspaces`);
-
-      // Clear timeout on response
-      if (metricsTimeoutRef.current) {
-        clearTimeout(metricsTimeoutRef.current);
-        metricsTimeoutRef.current = null;
-      }
 
       if (!response.ok) {
         console.warn("Failed to fetch real-time metrics");
@@ -172,22 +152,15 @@ export default function CapacityPage() {
 
       const result = await response.json();
 
-      // Check for warning about unavailable metrics
-      if (result.warning) {
+      // Only error if warning AND no workspace data was returned
+      if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
         setMetricsError(true);
-      }
-
-      if (result.success && result.data) {
+      } else if (result.success && result.data) {
         setVmData(result.data.workspaces || []);
       }
     } catch (err) {
       console.warn("Failed to load real-time metrics:", err);
       setMetricsError(true);
-      // Clear timeout on error
-      if (metricsTimeoutRef.current) {
-        clearTimeout(metricsTimeoutRef.current);
-        metricsTimeoutRef.current = null;
-      }
     } finally {
       setMetricsLoading(false);
       metricsFetched.current = true;
@@ -232,9 +205,16 @@ export default function CapacityPage() {
     );
   }
 
+  const queuedCountActions = poolStatus?.queuedCount ? (
+    <Link href={`/w/${slug}/tasks?tab=queue`} className="text-sm text-muted-foreground hover:underline">
+      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span>{" "}
+      {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
+    </Link>
+  ) : undefined;
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Capacity" />
+      <PageHeader title="Capacity" actions={queuedCountActions} />
 
       {/* Loading skeleton while fetching basic data */}
       {basicDataLoading && (
@@ -279,10 +259,12 @@ export default function CapacityPage() {
 
           {/* 2D View */}
           {viewMode === '2d' && (
-            <VMGrid 
-              vms={vmData} 
+            <VMGrid
+              vms={vmData}
               metricsLoading={metricsLoading}
               metricsError={metricsError}
+              isAdmin={isAdmin || isOwner}
+              onDeletePod={handleDeletePod}
             />
           )}
         </>

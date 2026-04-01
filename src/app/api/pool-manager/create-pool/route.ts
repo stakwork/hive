@@ -286,6 +286,7 @@ export async function POST(request: NextRequest) {
         github_username: github_pat?.username || "",
         env_vars: [], // Empty array - all env vars now in PM2 config
         container_files: finalContainerFiles,
+        enable_cloudwatch_alarms: true,
       }),
       3,
       1000

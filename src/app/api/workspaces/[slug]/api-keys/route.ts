@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createApiKey, listApiKeys } from "@/lib/api-keys";
 import { createApiKeySchema } from "@/lib/schemas/api-keys";
@@ -12,7 +11,7 @@ export const runtime = "nodejs";
 /**
  * GET /api/workspaces/[slug]/api-keys
  * List all API keys for a workspace
- * Permissions: OWNER, ADMIN, PM, DEVELOPER (canWrite)
+ * Permissions: OWNER, ADMIN
  */
 export async function GET(
   request: Request,
@@ -26,13 +25,12 @@ export async function GET(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
-    // Check workspace access - need write permission
-    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
-    if (!access.hasAccess || !access.canWrite) {
+    // Check workspace access - need admin permission
+    const access = await validateWorkspaceAccess(slug, userId, true);
+    if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
-        { error: "Forbidden - write access required" },
+        { error: "Forbidden - admin access required" },
         { status: 403 }
       );
     }
@@ -58,7 +56,7 @@ export async function GET(
 /**
  * POST /api/workspaces/[slug]/api-keys
  * Create a new API key for a workspace
- * Permissions: OWNER, ADMIN, PM, DEVELOPER (canWrite)
+ * Permissions: OWNER, ADMIN
  *
  * Note: The raw key is only returned once in this response!
  */
@@ -74,13 +72,12 @@ export async function POST(
 
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
-    // Check workspace access - need write permission
-    const access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin });
-    if (!access.hasAccess || !access.canWrite) {
+    // Check workspace access - need admin permission
+    const access = await validateWorkspaceAccess(slug, userId, true);
+    if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
-        { error: "Forbidden - write access required" },
+        { error: "Forbidden - admin access required" },
         { status: 403 }
       );
     }

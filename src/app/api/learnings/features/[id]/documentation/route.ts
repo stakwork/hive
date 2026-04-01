@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "@/app/api/learnings/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function PUT(
   request: NextRequest,
@@ -11,7 +11,6 @@ export async function PUT(
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     const { id } = await params;
     const body = await request.json();
@@ -24,7 +23,8 @@ export async function PUT(
       );
     }
 
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin });
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
+    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }

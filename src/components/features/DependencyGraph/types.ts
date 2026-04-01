@@ -16,6 +16,9 @@ export interface DependencyGraphProps<T extends GraphEntity> {
     title: string;
     description: string;
   };
+  className?: string;
+  /** Pass true when the graph becomes visible so fitView fires at the right time */
+  open?: boolean;
 }
 
 export interface LayoutConfig {

@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   RefreshCw,
   ExternalLink,
@@ -39,6 +39,7 @@ export function BrowserArtifactPanel({
   externalTestCode,
   externalTestTitle,
   onClose,
+  browserRefreshTrigger,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
@@ -52,6 +53,7 @@ export function BrowserArtifactPanel({
   externalTestTitle?: string | null;
   isMobile?: boolean;
   onClose?: () => void;
+  browserRefreshTrigger?: number;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -154,6 +156,15 @@ export function BrowserArtifactPanel({
       previewPlaywrightReplay(externalTestCode);
     }
   }, [externalTestCode, isRecorderReady, previewActions.length, previewPlaywrightReplay]);
+
+  // Auto-refresh iframe when live mode workflow completes
+  const prevRefreshTriggerRef = useRef<number>(0);
+  useEffect(() => {
+    if (browserRefreshTrigger && browserRefreshTrigger > prevRefreshTriggerRef.current) {
+      prevRefreshTriggerRef.current = browserRefreshTrigger;
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [browserRefreshTrigger]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -326,6 +337,7 @@ export function BrowserArtifactPanel({
                               onClick={handleRefresh} 
                               className="h-6 w-6 p-0 absolute right-1 top-1/2 -translate-y-1/2"
                               type="button"
+                              aria-label="Refresh"
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
@@ -489,7 +501,7 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={isUrlReady ? content.url : "about:blank"}
+                  src={isUrlReady ? (isActive ? (displayUrl || content.url) : content.url) : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                   allow="camera *; microphone *; clipboard-read *; clipboard-write *"

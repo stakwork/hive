@@ -38,6 +38,7 @@ interface IPoolManagerService {
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
   getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
   startStaklink: (poolId: string, podId: string, poolApiKey: string) => Promise<StaklinkStartResponse>;
+  deletePodFromPool: (poolId: string, workspaceId: string, poolApiKey: string) => Promise<void>;
 }
 
 export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
@@ -124,6 +125,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           usedVms: data.status.used_vms,
           unusedVms: data.status.unused_vms,
           lastCheck: data.status.last_check,
+          queuedCount: 0,
         },
       };
     } catch (error) {
@@ -172,6 +174,29 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           password: vm.password,
         })),
       };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fetch")) {
+        throw new Error("Unable to connect to pool service");
+      }
+      throw error;
+    }
+  }
+
+  async deletePodFromPool(poolId: string, workspaceId: string, poolApiKey: string): Promise<void> {
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
+
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}/workspaces/${workspaceId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${decryptedApiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete pod: ${response.status}`);
+      }
     } catch (error) {
       if (error instanceof Error && error.message.includes("fetch")) {
         throw new Error("Unable to connect to pool service");

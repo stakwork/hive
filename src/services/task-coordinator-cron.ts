@@ -1,10 +1,11 @@
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { releaseTaskPod } from "@/lib/pods";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
+import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
+
+export type DependencyCheckResult = "SATISFIED" | "PENDING" | "PERMANENTLY_BLOCKED";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -19,18 +20,23 @@ export interface TaskCoordinatorExecutionResult {
 }
 
 /**
- * Check if all task dependencies are satisfied (completed)
+ * Check the state of all task dependencies.
  *
- * Dependency satisfaction logic:
- * 1. If task has NO PR artifacts: Check task.status === "DONE" (manual completion)
- * 2. If task has PR artifacts: Check latest PR artifact status === "DONE" (merged)
- *    - Ignores task.status when PR exists (PR merge is source of truth)
+ * Returns:
+ * - "SATISFIED"          — all dependencies are done; task is ready to dispatch
+ * - "PENDING"            — at least one dependency is not yet done but may complete later
+ * - "PERMANENTLY_BLOCKED" — at least one dependency is in a state it can never recover from
+ *                           (CANCELLED task or CANCELLED PR artifact)
+ *
+ * Dependency logic per dep:
+ * 1. No PR artifacts: DONE → satisfied | CANCELLED → PERMANENTLY_BLOCKED | else → PENDING
+ * 2. Has PR artifacts (latest by createdAt): DONE → satisfied | CANCELLED → PERMANENTLY_BLOCKED | else → PENDING
  */
-export async function areDependenciesSatisfied(
+export async function checkDependencies(
   dependsOnTaskIds: string[]
-): Promise<boolean> {
+): Promise<DependencyCheckResult> {
   if (dependsOnTaskIds.length === 0) {
-    return true; // No dependencies = always satisfied
+    return "SATISFIED"; // No dependencies = always satisfied
   }
 
   // Batch fetch all dependency tasks with their PR artifacts
@@ -61,7 +67,7 @@ export async function areDependenciesSatisfied(
     console.warn(
       `[TaskCoordinator] Dependency validation warning: Expected ${dependsOnTaskIds.length} dependencies, found ${dependencyTasks.length}`
     );
-    return false; // Missing dependencies = not satisfied
+    return "PENDING"; // Missing dependencies = not satisfied
   }
 
   // Check if each dependency is satisfied
@@ -69,63 +75,71 @@ export async function areDependenciesSatisfied(
     // Collect all PR artifacts from chat messages
     const prArtifacts = depTask.chatMessages.flatMap((message) => message.artifacts);
 
-    let isDependencySatisfied = false;
-
     if (prArtifacts.length === 0) {
       // No PR artifacts - check manual status
-      isDependencySatisfied = depTask.status === "DONE";
-
-      if (!isDependencySatisfied) {
-        console.log(
-          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - no PR artifact, status: ${depTask.status}`
-        );
+      if (depTask.status === "DONE") {
+        continue; // Satisfied — check next dep
       }
+      if (depTask.status === "CANCELLED") {
+        console.log(
+          `[TaskCoordinator] Dependency ${depTask.id} is permanently cancelled (no PR, status: CANCELLED)`
+        );
+        return "PERMANENTLY_BLOCKED";
+      }
+      // TODO, IN_PROGRESS, BLOCKED — still pending
+      console.log(
+        `[TaskCoordinator] Dependency ${depTask.id} not satisfied - no PR artifact, status: ${depTask.status}`
+      );
+      return "PENDING";
     } else {
       // Has PR artifacts - find latest and check if merged
-      // Sort by createdAt to get most recent
       const sortedArtifacts = [...prArtifacts].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       const latestPrArtifact = sortedArtifacts[0];
       const content = latestPrArtifact.content as { status?: string; url?: string } | null;
 
-      isDependencySatisfied = content?.status === "DONE";
-
-      if (!isDependencySatisfied) {
-        console.log(
-          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - has PR artifact (${content?.url || 'unknown'}), latest status: ${content?.status || 'unknown'}`
-        );
+      if (content?.status === "DONE") {
+        continue; // Satisfied — check next dep
       }
-    }
-
-    if (!isDependencySatisfied) {
-      return false;
+      if (content?.status === "CANCELLED") {
+        console.log(
+          `[TaskCoordinator] Dependency ${depTask.id} is permanently cancelled (PR: ${content?.url || "unknown"}, status: CANCELLED)`
+        );
+        return "PERMANENTLY_BLOCKED";
+      }
+      // IN_PROGRESS or unknown — still pending
+      console.log(
+        `[TaskCoordinator] Dependency ${depTask.id} not satisfied - has PR artifact (${content?.url || 'unknown'}), latest status: ${content?.status || 'unknown'}`
+      );
+      return "PENDING";
     }
   }
 
-  return true; // All dependencies satisfied
+  return "SATISFIED"; // All dependencies satisfied
 }
 
 /**
- * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
+ * Process ticket sweep - find and dispatch eligible tasks assigned to TASK_COORDINATOR.
+ * Dispatches up to `slotsAvailable` tasks in a single run, skipping tasks with unmet deps.
+ * Returns the number of tasks actually dispatched.
  */
 export async function processTicketSweep(
   workspaceId: string,
-  workspaceSlug: string
-): Promise<boolean> {
-  console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
+  workspaceSlug: string,
+  slotsAvailable: number
+): Promise<number> {
+  console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug} (slots: ${slotsAvailable})`);
 
-  // Query for candidate tickets: TODO status, TASK_COORDINATOR assignee
-  // We fetch more tasks to filter by dependency satisfaction
+  // Fetch enough candidates to survive dependency filtering
   const candidateTasks = await db.task.findMany({
     where: {
-      workspaceId,
-      status: "TODO",
-      systemAssigneeType: "TASK_COORDINATOR",
-      deleted: false,
-      OR: [
-        { featureId: null },
-        { feature: { status: { not: "CANCELLED" } } },
+      AND: [
+        { workspaceId },
+        { status: "TODO" },
+        { systemAssigneeType: "TASK_COORDINATOR" },
+        { deleted: false },
+        { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],
     },
     select: {
@@ -152,68 +166,62 @@ export async function processTicketSweep(
       },
     },
     orderBy: [
-      {
-        priority: "desc", // CRITICAL first, then HIGH, MEDIUM, LOW
-      },
-      {
-        createdAt: "asc", // Oldest first for same priority
-      },
+      { priority: "desc" }, // CRITICAL first, then HIGH, MEDIUM, LOW
+      { createdAt: "asc" },  // Oldest first for same priority
     ],
-    take: 20, // Fetch more candidates to filter through
+    take: Math.max(slotsAvailable * 3, 20), // Generous buffer for dependency skips
   });
 
   if (candidateTasks.length === 0) {
     console.log(`[TaskCoordinator] No candidate tickets found for workspace ${workspaceSlug}`);
-    return false;
+    return 0;
   }
 
   console.log(`[TaskCoordinator] Found ${candidateTasks.length} candidate tickets, checking dependencies...`);
 
-  // Filter tasks by dependency satisfaction
-  let task = null;
-  for (const candidateTask of candidateTasks) {
-    const dependenciesSatisfied = await areDependenciesSatisfied(
-      candidateTask.dependsOnTaskIds
-    );
+  let dispatched = 0;
 
-    if (dependenciesSatisfied) {
-      task = candidateTask;
-      console.log(
-        `[TaskCoordinator] Found eligible task ${task.id} with ${task.dependsOnTaskIds.length} satisfied dependencies`
-      );
-      break;
-    } else {
-      console.log(
-        `[TaskCoordinator] Skipping task ${candidateTask.id} - dependencies not satisfied`
-      );
+  for (const candidateTask of candidateTasks) {
+    if (dispatched === slotsAvailable) break;
+
+    const depResult = await checkDependencies(candidateTask.dependsOnTaskIds);
+
+    if (depResult === "PERMANENTLY_BLOCKED") {
+      console.log(`[TaskCoordinator] Unassigning task ${candidateTask.id} - dependency permanently cancelled`);
+      await db.task.update({
+        where: { id: candidateTask.id },
+        data: { systemAssigneeType: null },
+      });
+      continue;
+    }
+
+    if (depResult === "PENDING") {
+      console.log(`[TaskCoordinator] Skipping task ${candidateTask.id} - dependencies not satisfied`);
+      continue;
+    }
+
+    console.log(`[TaskCoordinator] Processing ticket ${candidateTask.id} (${candidateTask.priority}) for workspace ${workspaceSlug}`);
+
+    try {
+      const userId = candidateTask.createdById ?? candidateTask.feature?.createdById;
+      await startTaskWorkflow({
+        taskId: candidateTask.id,
+        userId,
+        mode: "live",
+      });
+      dispatched++;
+      console.log(`[TaskCoordinator] Successfully processed ticket ${candidateTask.id} (${dispatched}/${slotsAvailable})`);
+    } catch (error) {
+      // Log and skip this task — don't abort the sweep; already-dispatched tasks stay counted
+      console.error(`[TaskCoordinator] Error processing ticket ${candidateTask.id}:`, error);
     }
   }
 
-  if (!task) {
-    console.log(
-      `[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`
-    );
-    return false;
+  if (dispatched === 0) {
+    console.log(`[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`);
   }
-  console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
-  try {
-    // Assign to task creator, fall back to feature creator if needed
-    const userId = task.createdById ?? task.feature?.createdById;
-
-    // Start workflow for this task (automatically builds message and feature context)
-    await startTaskWorkflow({
-      taskId: task.id,
-      userId,
-      mode: "live", // Use production workflow for automated task coordinator
-    });
-
-    console.log(`[TaskCoordinator] Successfully processed ticket ${task.id}`);
-    return true;
-  } catch (error) {
-    console.error(`[TaskCoordinator] Error processing ticket ${task.id}:`, error);
-    throw error;
-  }
+  return dispatched;
 }
 
 /**
@@ -472,22 +480,15 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         workspacesProcessed++;
         console.log(`[TaskCoordinator] Processing workspace: ${workspace.slug}`);
 
-        // Skip if no swarm or pool API key
-        if (!workspace.swarm?.id || !workspace.swarm?.poolApiKey) {
+        // Skip if no swarm configured
+        if (!workspace.swarm?.id) {
           console.log(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
           continue;
         }
 
-        // Check available pods
-        const config = getServiceConfig("poolManager");
-        const poolManagerService = new PoolManagerService(config);
-
-        const poolStatusResponse = await poolManagerService.getPoolStatus(
-          workspace.swarm.id,
-          workspace.swarm.poolApiKey
-        );
-
-        const availablePods = poolStatusResponse.status.unusedVms;
+        // Check available pods using local DB (same source of truth as UI)
+        const poolStatus = await getPoolStatusFromPods(workspace.swarm.id, workspace.id);
+        const availablePods = poolStatus.unusedVms;
         console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
         if (availablePods <= 1) {
@@ -495,19 +496,19 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           continue;
         }
 
-        let itemProcessed = false;
+        const slotsAvailable = availablePods - 1;
+        let ticketsDispatched = 0;
 
         // Priority 1: Ticket Sweep (if enabled)
         if (workspace.janitorConfig?.ticketSweepEnabled) {
           try {
-            itemProcessed = await processTicketSweep(
+            ticketsDispatched = await processTicketSweep(
               workspace.id,
-              workspace.slug
+              workspace.slug,
+              slotsAvailable
             );
-            if (itemProcessed) {
-              tasksCreated++;
-              console.log(`[TaskCoordinator] Processed ticket sweep for workspace ${workspace.slug}`);
-            }
+            tasksCreated += ticketsDispatched;
+            console.log(`[TaskCoordinator] Dispatched ${ticketsDispatched}/${slotsAvailable} tasks for workspace ${workspace.slug}`);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error(`[TaskCoordinator] Ticket sweep failed for workspace ${workspace.slug}:`, errorMessage);
@@ -518,8 +519,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           }
         }
 
-        // Priority 2: Recommendation Sweep (if enabled and no ticket was processed)
-        if (!itemProcessed && workspace.janitorConfig?.recommendationSweepEnabled) {
+        // Priority 2: Recommendation Sweep (if enabled and no tickets were dispatched)
+        if (ticketsDispatched === 0 && workspace.janitorConfig?.recommendationSweepEnabled) {
           try {
             // Get pending recommendations ordered by priority (CRITICAL > HIGH > MEDIUM > LOW)
             const pendingRecommendations = await db.janitorRecommendation.findMany({
@@ -572,7 +573,6 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
                 );
 
                 tasksCreated++;
-                itemProcessed = true;
                 console.log(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
 
               } catch (error) {

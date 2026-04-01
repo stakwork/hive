@@ -22,6 +22,10 @@ const VIDEO_MAGIC_NUMBERS: Record<string, number[]> = {
   'video/webm': [0x1a, 0x45, 0xdf, 0xa3],
 }
 
+const AUDIO_MAGIC_NUMBERS: Record<string, number[]> = {
+  'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
+}
+
 export class S3Service {
   private client: S3Client
   private bucketName: string
@@ -214,6 +218,44 @@ export class S3Service {
     } catch {
       return false
     }
+  }
+
+  validateAudioBuffer(buffer: Buffer, expectedType: string): boolean {
+    try {
+      const magicNumbers = AUDIO_MAGIC_NUMBERS[expectedType]
+
+      if (!magicNumbers) {
+        return false
+      }
+
+      if (buffer.length < magicNumbers.length) {
+        return false
+      }
+
+      for (let i = 0; i < magicNumbers.length; i++) {
+        if (buffer[i] !== magicNumbers[i]) {
+          return false
+        }
+      }
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  generateVoiceSignaturePath(userId: string): string {
+    return `voice-signatures/${userId}/signature.wav`
+  }
+
+  generateWhiteboardImagePath(
+    workspaceId: string,
+    whiteboardId: string,
+    fileId: string,
+    mimeType: string
+  ): string {
+    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'bin'
+    return `whiteboards/${workspaceId}/${whiteboardId}/${fileId}.${ext}`
   }
 }
 

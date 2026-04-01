@@ -32,91 +32,63 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
       setLoading(true);
 
       try {
-        // Fetch all screenshots for this feature in a single request
+        // Fetch all image attachments for this feature in a single request
         const response = await fetch(
-          `/api/screenshots?workspaceId=${workspaceId}&featureId=${feature.id}`,
+          `/api/features/${feature.id}/attachments`,
           { credentials: 'include' }
         );
 
         if (!response.ok) {
-          console.error('Error fetching screenshots:', response.statusText);
+          console.error('Error fetching attachments:', response.statusText);
           setLoading(false);
           return;
         }
 
         const data = await response.json();
-        const screenshots: any[] = data.screenshots || [];
+        const attachments: any[] = data.attachments || [];
 
-        // Group screenshots by task
+        // Group attachments by task
         const grouped: GroupedScreenshots[] = [];
         const flat: Screenshot[] = [];
-        const unassignedScreenshots: Screenshot[] = [];
 
-        // Create a map to group screenshots by taskId
-        const screenshotsByTask = new Map<string, any[]>();
+        // Create a map to group attachments by taskId
+        const attachmentsByTask = new Map<string, any[]>();
 
-        screenshots.forEach((s: any) => {
-          if (s.taskId) {
-            const existing = screenshotsByTask.get(s.taskId) || [];
-            existing.push(s);
-            screenshotsByTask.set(s.taskId, existing);
-          } else {
-            // Screenshots with no taskId
-            const normalized: Screenshot = {
-              id: s.id,
-              actionIndex: s.actionIndex,
-              dataUrl: s.s3Url ?? "",
-              timestamp: s.timestamp,
-              url: s.pageUrl,
-              s3Key: s.s3Key,
-              s3Url: s.s3Url,
-              hash: s.hash,
-            };
-            unassignedScreenshots.push(normalized);
-            flat.push(normalized);
+        attachments.forEach((a: any) => {
+          if (a.taskId) {
+            const existing = attachmentsByTask.get(a.taskId) || [];
+            existing.push(a);
+            attachmentsByTask.set(a.taskId, existing);
           }
         });
 
-        // Build grouped data for screenshots with taskId
-        screenshotsByTask.forEach((screenshots, taskId) => {
-          // Find task title
-          const task = feature.phases
-            .flatMap((p) => p.tasks)
-            .find((t) => t.id === taskId);
+        // Build grouped data for attachments with taskId
+        attachmentsByTask.forEach((taskAttachments, taskId) => {
+          // Use taskTitle from attachment data (already included in API response)
+          const taskTitle = taskAttachments[0]?.taskTitle || "Untitled Task";
 
-          if (!task) return;
-
-          // Normalize and sort screenshots
-          const normalizedScreenshots: Screenshot[] = screenshots
-            .map((s: any) => ({
-              id: s.id,
-              actionIndex: s.actionIndex,
-              dataUrl: s.s3Url ?? "",
-              timestamp: s.timestamp,
-              url: s.pageUrl,
-              s3Key: s.s3Key,
-              s3Url: s.s3Url,
-              hash: s.hash,
+          // Normalize and sort attachments
+          const normalizedScreenshots: Screenshot[] = taskAttachments
+            .map((a: any, index: number) => ({
+              id: a.id,
+              actionIndex: index, // Use index within this task group
+              dataUrl: a.url, // Presigned S3 URL
+              timestamp: a.createdAt,
+              url: a.filename, // Display filename
+              s3Key: undefined,
+              s3Url: a.url,
+              hash: undefined,
             }))
             .sort((a, b) => a.actionIndex - b.actionIndex);
 
           grouped.push({
             taskId,
-            taskTitle: task.title,
+            taskTitle,
             screenshots: normalizedScreenshots,
           });
 
           flat.push(...normalizedScreenshots);
         });
-
-        // Add unassigned screenshots group if any exist
-        if (unassignedScreenshots.length > 0) {
-          grouped.push({
-            taskId: null,
-            taskTitle: "Feature Screenshots (No Task)",
-            screenshots: unassignedScreenshots.sort((a, b) => a.actionIndex - b.actionIndex),
-          });
-        }
 
         setGroupedScreenshots(grouped);
         setAllScreenshots(flat);
@@ -128,7 +100,7 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     }
 
     fetchScreenshots();
-  }, [feature, workspaceId]);
+  }, [feature.id, workspaceId]);
 
   const handleScreenshotClick = (screenshot: Screenshot) => {
     setSelectedScreenshot(screenshot);
@@ -144,7 +116,7 @@ export function VerifyPanel({ feature, workspaceId }: VerifyPanelProps) {
     setSelectedScreenshot(screenshot);
   };
 
-  if (loading) {
+  if (loading && groupedScreenshots.length === 0) {
     return (
       <div className="space-y-6">
         {[1, 2].map((i) => (

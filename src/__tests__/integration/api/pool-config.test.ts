@@ -8,10 +8,11 @@ import { db } from "@/lib/db";
 
 // Mock the middleware utils
 const getMockedRequireAuth = vi.hoisted(() => vi.fn());
+const getMockedCheckIsSuperAdmin = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: vi.fn((req: NextRequest) => ({ user: null })),
   requireAuth: getMockedRequireAuth,
-  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
+  checkIsSuperAdmin: getMockedCheckIsSuperAdmin,
 }));
 
 describe("Pool Config API", () => {
@@ -100,6 +101,7 @@ describe("Pool Config API", () => {
         email: regularUser.email!,
         name: regularUser.name!,
       });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
 
       const request = createAuthenticatedGetRequest(
         `/api/w/${workspace.slug}/pool/config`,
@@ -126,6 +128,7 @@ describe("Pool Config API", () => {
         email: superadminUser.email!,
         name: superadminUser.name!,
       });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
 
       const request = createAuthenticatedGetRequest(
         `/api/w/${workspace.slug}/pool/config`,
@@ -192,6 +195,9 @@ describe("Pool Config API", () => {
     let fetchSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+      // Mock superadmin check - most PATCH tests use superadmin
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
+
       // Mock global fetch for Pool Manager API calls
       fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
         new Response(JSON.stringify({ success: true }), {
@@ -206,6 +212,7 @@ describe("Pool Config API", () => {
     });
 
     it("should return 403 for non-superadmin user", async () => {
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
       getMockedRequireAuth.mockReturnValue({
         id: regularUser.id,
         email: regularUser.email!,
@@ -316,7 +323,7 @@ describe("Pool Config API", () => {
 
       // Verify Pool Manager was called
       expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`/pools/${encodeURIComponent(swarm.poolName!)}`),
+        expect.stringContaining(`/pools/${encodeURIComponent(swarm.id)}`),
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
