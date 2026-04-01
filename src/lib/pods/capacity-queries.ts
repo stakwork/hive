@@ -28,6 +28,27 @@ export async function getBasicVMDataFromPods(
     },
   });
 
+  // Batch-fetch tasks for all USED pods in a single query
+  const usedTaskIds = pods
+    .filter((pod) => pod.usageStatus === "USED" && pod.usageStatusMarkedBy)
+    .map((pod) => pod.usageStatusMarkedBy as string);
+
+  const taskMap = new Map<string, { id: string; title: string; createdBy: { name: string | null; image: string | null } }>();
+
+  if (usedTaskIds.length > 0) {
+    const tasks = await db.task.findMany({
+      where: { id: { in: usedTaskIds } },
+      select: {
+        id: true,
+        title: true,
+        createdBy: { select: { name: true, image: true } },
+      },
+    });
+    for (const task of tasks) {
+      taskMap.set(task.id, task);
+    }
+  }
+
   return pods.map((pod) => {
     const url = buildPodUrl(pod.podId, POD_PORTS.CONTROL);
     const subdomain = pod.podId;
@@ -55,6 +76,12 @@ export async function getBasicVMDataFromPods(
     const user_info =
       usage_status === "used" ? pod.usageStatusMarkedBy ?? undefined : undefined;
 
+    // Attach task info for used pods
+    const assignedTask =
+      usage_status === "used" && pod.usageStatusMarkedBy
+        ? (taskMap.get(pod.usageStatusMarkedBy) ?? null)
+        : null;
+
     return {
       id: pod.podId,
       subdomain,
@@ -66,6 +93,16 @@ export async function getBasicVMDataFromPods(
       password: pod.password || undefined,
       url,
       repository: undefined, // Not available in basic query
+      assignedTask: assignedTask
+        ? {
+            id: assignedTask.id,
+            title: assignedTask.title,
+            creator: {
+              name: assignedTask.createdBy.name,
+              image: assignedTask.createdBy.image,
+            },
+          }
+        : null,
       resource_usage: {
         available: false, // Mark as unavailable - will be fetched from pool-manager
         requests: {

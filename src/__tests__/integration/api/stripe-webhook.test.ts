@@ -29,6 +29,8 @@ function buildCheckoutCompletedEvent(
   sessionId: string,
   workspaceId: string,
   paymentIntentId = 'pi_test_abc123',
+  amountTotal = 2000,
+  currency = 'usd',
 ): Stripe.Event {
   return {
     id: 'evt_test_completed',
@@ -37,6 +39,8 @@ function buildCheckoutCompletedEvent(
       object: {
         id: sessionId,
         payment_intent: paymentIntentId,
+        amount_total: amountTotal,
+        currency,
         metadata: { workspaceId },
       } as unknown as Stripe.Checkout.Session,
     },

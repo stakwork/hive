@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const userId = (session.user as { id: string }).id;
 
   let body: z.infer<typeof claimBodySchema> = {};
   try {
@@ -30,9 +31,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No payment session found' }, { status: 400 });
   }
 
+<<<<<<< HEAD
   const userId = session.user.id;
 
   // Look up existing payment record (created at checkout time)
+=======
+  const { sessionId } = body;
+
+  // Idempotency: if already PAID, return existing record without calling Stripe again
+>>>>>>> master
   const existing = await db.swarmPayment.findUnique({
     where: { stripeSessionId: sessionId },
   });
@@ -63,24 +70,55 @@ export async function POST(req: NextRequest) {
 
   let payment;
   if (existing) {
+<<<<<<< HEAD
     // Record was created at checkout time — update with userId and mark PAID
+=======
+    // Update existing PENDING record → PAID
+>>>>>>> master
     payment = await db.swarmPayment.update({
       where: { stripeSessionId: sessionId },
       data: { status: 'PAID', stripePaymentIntentId, userId },
     });
   } else {
-    // No prior record (e.g. checkout bypassed) — create one
+    // Create new PAID record (pre-auth: no SwarmPayment yet)
+    const workspaceName = stripeSession.metadata?.workspaceName ?? null;
+    const workspaceSlug = stripeSession.metadata?.workspaceSlug ?? null;
     payment = await db.swarmPayment.create({
       data: {
         stripeSessionId: sessionId,
         stripePaymentIntentId,
+        workspaceName,
+        workspaceSlug,
         status: 'PAID',
         userId,
       },
     });
   }
 
+<<<<<<< HEAD
   const res = NextResponse.json({ payment });
   res.cookies.delete('stripe_session_id');
   return res;
+=======
+  // Record WorkspaceTransaction (workspaceId null at claim time — backfilled when workspace is created)
+  try {
+    await db.workspaceTransaction.create({
+      data: {
+        workspaceId: null,
+        type: 'STRIPE',
+        amountUsd: stripeSession.amount_total,
+        currency: stripeSession.currency,
+        swarmPaymentId: payment.id,
+      },
+    });
+  } catch (err) {
+    // Unique constraint: transaction already created by webhook (Path A) — safe to ignore
+    logger.warn('WorkspaceTransaction already exists for SwarmPayment', 'stripe-claim', {
+      swarmPaymentId: payment.id,
+      err,
+    });
+  }
+
+  return NextResponse.json({ payment });
+>>>>>>> master
 }

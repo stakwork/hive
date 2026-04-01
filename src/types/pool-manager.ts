@@ -187,6 +187,14 @@ export interface VMData {
   repositories?: string[];
   branches?: string[];
   password?: string;
+  assignedTask?: {
+    id: string;
+    title: string;
+    creator: {
+      name: string | null;
+      image: string | null;
+    };
+  } | null;
 }
 
 export interface PoolWorkspacesResponse {
