@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getStripeClient } from '@/services/stripe';
 import { logger } from '@/lib/logger';
 import { db } from '@/lib/db';
+import { generateSecurePassword } from '@/lib/utils/password';
+import { EncryptionService } from '@/lib/encryption';
 
 const checkoutBodySchema = z.object({
   workspaceName: z.string().min(1),
@@ -19,6 +21,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { workspaceName, workspaceSlug } = body;
+
+  const password = generateSecurePassword(20);
+  const encryptedPassword = JSON.stringify(
+    EncryptionService.getInstance().encryptField('swarmPaymentPassword', password)
+  );
 
   try {
     const stripe = getStripeClient();
@@ -42,6 +49,7 @@ export async function POST(req: NextRequest) {
         workspaceSlug,
         status: 'PENDING',
         workspaceId: null,
+        password: encryptedPassword,
       },
     });
 
@@ -64,6 +72,7 @@ export async function POST(req: NextRequest) {
         workspaceSlug,
         status: 'PENDING',
         workspaceId: null,
+        password: encryptedPassword,
       },
     });
 
