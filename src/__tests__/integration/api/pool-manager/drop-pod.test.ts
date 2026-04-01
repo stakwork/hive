@@ -396,7 +396,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       );
     });
 
-    test("calls updatePodRepositories using buildPodUrl even when portMappings is missing control port", async () => {
+    test("handles missing control port gracefully when latest=true", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -407,7 +407,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         poolApiKey: "test-api-key",
       });
 
-      // Create a pod with stale portMappings (no 15552)
+      // Create a pod without control port
       const pod = await createTestPod({
         podId: "pod-no-control",
         swarmId: swarm.id,
@@ -432,16 +432,11 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // Should succeed — control URL is now built from podId directly
+      // Should succeed despite missing control port
       await expectSuccess(response, 200);
 
-      // Should call updatePodRepositories with URL built from podId (not portMappings)
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://pod-no-control-15552.workspaces.sphinx.chat/latest",
-        expect.objectContaining({
-          method: "PUT",
-        })
-      );
+      // Should not call updatePodRepositories
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

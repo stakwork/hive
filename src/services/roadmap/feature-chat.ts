@@ -32,7 +32,11 @@ export async function fetchFeatureChatHistory(
       id: { not: excludeMessageId },
     },
     include: {
-      artifacts: true,
+      artifacts: {
+        where: {
+          type: ArtifactType.PLAN,
+        },
+      },
       attachments: true,
     },
     orderBy: {
@@ -286,8 +290,25 @@ export async function sendFeatureChatMessage({
       featureId,
       chatMessage.id,
     );
-    const isFirstMessage = dbHistory.length === 0;
-    const mergedHistory = [...dbHistory, ...(bodyHistory ?? [])];
+
+    // Drop failed exchanges: keep USER+ASSISTANT pairs only when
+    // the ASSISTANT has a PLAN artifact (i.e. Stakwork responded successfully).
+    const filteredHistory = dbHistory.filter((msg, idx) => {
+      if (msg.role === "ASSISTANT") {
+        const artifacts = msg.artifacts as { type: string }[];
+        return artifacts.length > 0;
+      }
+      if (msg.role === "USER") {
+        const next = dbHistory[idx + 1];
+        if (!next || next.role !== "ASSISTANT") return false;
+        const artifacts = next.artifacts as { type: string }[];
+        return artifacts.length > 0;
+      }
+      return true;
+    });
+
+    const isFirstMessage = filteredHistory.length === 0;
+    const mergedHistory = [...filteredHistory, ...(bodyHistory ?? [])];
 
     // Build feature context using the auto-created Phase 1
     let featureContext = undefined;

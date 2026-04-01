@@ -14,34 +14,31 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "20"
 
       - name: Cache node_modules
-        uses: actions/cache@v3
+        id: cache-node-modules
+        uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}-${{ hashFiles('prisma/schema.prisma') }}
 
       - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
       - name: Cache Next.js build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: .next
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('**/*.js', '**/*.ts', '**/*.tsx') }}
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**/*.js', 'src/**/*.ts', 'src/**/*.tsx') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
             ${{ runner.os }}-nextjs-

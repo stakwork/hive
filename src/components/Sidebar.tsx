@@ -98,6 +98,7 @@ interface SidebarContentProps {
   isBugReportOpen: boolean;
   setIsBugReportOpen: (open: boolean) => void;
   canAdmin: boolean;
+  workspaceKind?: string | null;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -160,6 +161,7 @@ function SidebarContent({
   isBugReportOpen,
   setIsBugReportOpen,
   canAdmin,
+  workspaceKind,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -327,6 +329,27 @@ function SidebarContent({
       </div>
       {/* Voice Agent Indicator */}
       <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
+      {/* GraphMindset Admin */}
+      {workspaceKind === "graph_mindset" && workspaceSlug && (
+        <div className="px-4 pb-2">
+          <Button
+            asChild
+            variant="ghost"
+            className="w-full justify-start"
+          >
+            <a
+              href={`https://${workspaceSlug}.sphinx.chat:8800`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setIsOpen(false)}
+              data-testid="graphmindset-admin-button"
+            >
+              <Brain className="w-4 h-4 mr-2" />
+              GraphMindset Admin
+            </a>
+          </Button>
+        </div>
+      )}
       {/* Settings */}
       {canAdmin && (
         <div className="px-4 pb-2">
@@ -369,6 +392,7 @@ function SidebarContent({
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
+  const workspaceKind = workspace?.workspaceKind;
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
@@ -450,6 +474,7 @@ export function Sidebar({ user }: SidebarProps) {
               isBugReportOpen={isBugReportOpen}
               setIsBugReportOpen={setIsBugReportOpen}
               canAdmin={canAdmin}
+              workspaceKind={workspaceKind}
             />
           </SheetContent>
         </Sheet>
@@ -471,6 +496,7 @@ export function Sidebar({ user }: SidebarProps) {
             isBugReportOpen={isBugReportOpen}
             setIsBugReportOpen={setIsBugReportOpen}
             canAdmin={canAdmin}
+            workspaceKind={workspaceKind}
           />
         </div>
       </div>

@@ -17,6 +17,8 @@ export interface MockEc2Instance {
   instanceType: string;
   launchTime: Date;
   tags: MockEc2Tag[];
+  publicIp: string | null;
+  privateIp: string | null;
 }
 
 const INITIAL_INSTANCES: MockEc2Instance[] = [
@@ -30,7 +32,10 @@ const INITIAL_INSTANCES: MockEc2Instance[] = [
       { key: 'Swarm', value: 'superadmin' },
       { key: 'Name', value: 'swarm-node-1' },
       { key: 'Environment', value: 'production' },
+      { key: 'UserAssignedName', value: 'swarm-node-1' },
     ],
+    publicIp: '54.123.45.67',
+    privateIp: '10.0.1.10',
   },
   {
     instanceId: 'i-mock0000000002',
@@ -42,7 +47,10 @@ const INITIAL_INSTANCES: MockEc2Instance[] = [
       { key: 'Swarm', value: 'superadmin' },
       { key: 'Name', value: 'swarm-node-2' },
       { key: 'Environment', value: 'production' },
+      { key: 'UserAssignedName', value: 'swarm-node-2' },
     ],
+    publicIp: '54.200.11.88',
+    privateIp: '10.0.1.11',
   },
   {
     instanceId: 'i-mock0000000003',
@@ -54,7 +62,10 @@ const INITIAL_INSTANCES: MockEc2Instance[] = [
       { key: 'Swarm', value: 'superadmin' },
       { key: 'Name', value: 'swarm-node-3' },
       { key: 'Environment', value: 'staging' },
+      { key: 'UserAssignedName', value: 'swarm-node-3' },
     ],
+    publicIp: null,
+    privateIp: '10.0.1.12',
   },
   {
     instanceId: 'i-mock0000000004',
@@ -66,7 +77,10 @@ const INITIAL_INSTANCES: MockEc2Instance[] = [
       { key: 'Swarm', value: 'superadmin' },
       { key: 'Name', value: 'swarm-node-4' },
       { key: 'Environment', value: 'staging' },
+      { key: 'UserAssignedName', value: 'swarm-node-4' },
     ],
+    publicIp: '18.234.56.90',
+    privateIp: '10.0.1.13',
   },
   {
     instanceId: 'i-mock0000000005',
@@ -78,7 +92,10 @@ const INITIAL_INSTANCES: MockEc2Instance[] = [
       { key: 'Swarm', value: 'superadmin' },
       { key: 'Name', value: 'swarm-node-5' },
       { key: 'Environment', value: 'development' },
+      { key: 'UserAssignedName', value: 'swarm-node-5' },
     ],
+    publicIp: null,
+    privateIp: null,
   },
 ];
 

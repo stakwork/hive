@@ -5,22 +5,17 @@ import userEvent from "@testing-library/user-event";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 
 describe("StakworkRunDropdown", () => {
-  const mockWindowOpen = vi.fn();
-  const originalWindowOpen = window.open;
-
   beforeEach(() => {
-    window.open = mockWindowOpen;
     global.fetch = vi.fn();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    window.open = originalWindowOpen;
   });
 
   it("renders with workflowId pre-provided and does not fetch", async () => {
     const user = userEvent.setup();
-    
+
     render(
       <StakworkRunDropdown
         projectId="123"
@@ -37,21 +32,20 @@ describe("StakworkRunDropdown", () => {
     // Confirm no fetch was made
     expect(global.fetch).not.toHaveBeenCalled();
 
-    // Verify "View Workflow in Stak" is enabled with correct URL
+    // Verify "View Workflow in Stak" is enabled with correct href
     const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
     expect(workflowItem).not.toHaveAttribute("aria-disabled", "true");
-
-    // Click the workflow item
-    await user.click(workflowItem);
-    expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/42/edit",
-      "_blank"
+    expect(workflowItem.closest("a")).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/workflows/42/edit"
     );
+    expect(workflowItem.closest("a")).toHaveAttribute("target", "_blank");
+    expect(workflowItem.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("renders without workflowId, fetches successfully, and enables workflow item", async () => {
     const user = userEvent.setup();
-    
+
     // Mock successful fetch
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       json: async () => ({
@@ -77,24 +71,20 @@ describe("StakworkRunDropdown", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/stakwork/projects/456");
     });
 
-    // Wait for loading state to complete
+    // Wait for loading state to complete and check href
     await waitFor(() => {
       const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
       expect(workflowItem).not.toHaveAttribute("aria-disabled", "true");
+      expect(workflowItem.closest("a")).toHaveAttribute(
+        "href",
+        "https://jobs.stakwork.com/admin/workflows/99/edit"
+      );
     });
-
-    // Click the workflow item
-    const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
-    await user.click(workflowItem);
-    expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/99/edit",
-      "_blank"
-    );
   });
 
   it("renders without workflowId, fetch fails, and shows workflow unavailable", async () => {
     const user = userEvent.setup();
-    
+
     // Mock failed fetch
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
 
@@ -110,16 +100,17 @@ describe("StakworkRunDropdown", () => {
     const trigger = screen.getByRole("button", { name: /stak run/i });
     await user.click(trigger);
 
-    // Wait for error state
+    // Wait for error state — item is disabled and has no <a>
     await waitFor(() => {
       const workflowItem = screen.getByRole("menuitem", { name: /workflow unavailable/i });
       expect(workflowItem).toHaveAttribute("aria-disabled", "true");
+      expect(workflowItem.closest("a")).toBeNull();
     });
   });
 
   it("does not re-fetch on second open (cached state)", async () => {
     const user = userEvent.setup();
-    
+
     // Mock successful fetch
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       json: async () => ({
@@ -144,7 +135,7 @@ describe("StakworkRunDropdown", () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    // Close dropdown (click outside or escape)
+    // Close dropdown
     await user.keyboard("{Escape}");
 
     // Second open
@@ -186,9 +177,9 @@ describe("StakworkRunDropdown", () => {
     expect(trigger.className).toContain("text-muted-foreground");
   });
 
-  it("opens all three menu items with correct URLs", async () => {
+  it("opens all three menu items with correct hrefs", async () => {
     const user = userEvent.setup();
-    
+
     render(
       <StakworkRunDropdown
         projectId="123"
@@ -202,31 +193,57 @@ describe("StakworkRunDropdown", () => {
     const trigger = screen.getByRole("button", { name: /stak run/i });
     await user.click(trigger);
 
-    // Click "View Run on Hive"
+    // Check "View Run on Hive" anchor
     const hiveItem = screen.getByRole("menuitem", { name: /view run on hive/i });
-    await user.click(hiveItem);
-    expect(mockWindowOpen).toHaveBeenCalledWith("https://example.com/hive-page", "_blank");
+    expect(hiveItem.closest("a")).toHaveAttribute("href", "https://example.com/hive-page");
+    expect(hiveItem.closest("a")).toHaveAttribute("target", "_blank");
+    expect(hiveItem.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
 
-    // Re-open dropdown
-    await user.click(trigger);
-
-    // Click "View Run on Stak"
+    // Check "View Run on Stak" anchor
     const stakItem = screen.getByRole("menuitem", { name: /view run on stak/i });
-    await user.click(stakItem);
-    expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/projects/123",
-      "_blank"
+    expect(stakItem.closest("a")).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/projects/123"
+    );
+    expect(stakItem.closest("a")).toHaveAttribute("target", "_blank");
+    expect(stakItem.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
+
+    // Check "View Workflow in Stak" anchor
+    const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
+    expect(workflowItem.closest("a")).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/workflows/42/edit"
+    );
+    expect(workflowItem.closest("a")).toHaveAttribute("target", "_blank");
+    expect(workflowItem.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("workflow item has no <a> and is disabled while loading", async () => {
+    const user = userEvent.setup();
+
+    // Mock a fetch that never resolves (stays loading)
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise(() => {})
     );
 
-    // Re-open dropdown
+    render(
+      <StakworkRunDropdown
+        projectId="222"
+        hiveUrl="https://example.com/current-page"
+        variant="button"
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /stak run/i });
     await user.click(trigger);
 
-    // Click "View Workflow in Stak"
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/stakwork/projects/222");
+    });
+
+    // While loading, the item should be disabled with no <a>
     const workflowItem = screen.getByRole("menuitem", { name: /view workflow in stak/i });
-    await user.click(workflowItem);
-    expect(mockWindowOpen).toHaveBeenCalledWith(
-      "https://jobs.stakwork.com/admin/workflows/42/edit",
-      "_blank"
-    );
+    expect(workflowItem).toHaveAttribute("aria-disabled", "true");
+    expect(workflowItem.closest("a")).toBeNull();
   });
 });

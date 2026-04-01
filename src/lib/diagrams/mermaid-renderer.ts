@@ -92,6 +92,13 @@ export async function renderMermaidToSvg(source: string): Promise<string> {
   const mermaid = await getMermaid();
 
   try {
+    await mermaid.parse(trimmed);
+    console.log("✅ Parse OK");
+  } catch (parseErr) {
+    console.error("❌ PARSE ERROR:", parseErr);
+  }
+
+  try {
     const { svg } = await mermaid.render(nextId(), trimmed);
     return svg;
   } catch (elkErr) {
