@@ -2,7 +2,9 @@ import { db } from '@/lib/db';
 import type { SwarmPayment, SwarmPaymentStatus } from '@prisma/client';
 
 export interface CreateTestSwarmPaymentOptions {
-  workspaceId: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  workspaceSlug?: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string | null;
   status?: SwarmPaymentStatus;
@@ -20,7 +22,9 @@ export async function createTestSwarmPayment(
 
   return db.swarmPayment.create({
     data: {
-      workspaceId: options.workspaceId,
+      workspaceId: options.workspaceId ?? null,
+      workspaceName: options.workspaceName ?? null,
+      workspaceSlug: options.workspaceSlug ?? null,
       stripeSessionId: options.stripeSessionId ?? `cs_test_${timestamp}_${uniqueId}`,
       stripePaymentIntentId: options.stripePaymentIntentId ?? null,
       status: options.status ?? 'PENDING',

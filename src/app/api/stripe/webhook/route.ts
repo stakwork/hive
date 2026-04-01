@@ -99,16 +99,23 @@ export async function POST(req: NextRequest) {
     });
 
     if (payment) {
-      await db.$transaction([
-        db.swarmPayment.update({
+      if (payment.workspaceId) {
+        await db.$transaction([
+          db.swarmPayment.update({
+            where: { id: payment.id },
+            data: { status: 'FAILED', failureCode, failureMessage },
+          }),
+          db.workspace.update({
+            where: { id: payment.workspaceId },
+            data: { paymentStatus: 'FAILED' },
+          }),
+        ]);
+      } else {
+        await db.swarmPayment.update({
           where: { id: payment.id },
           data: { status: 'FAILED', failureCode, failureMessage },
-        }),
-        db.workspace.update({
-          where: { id: payment.workspaceId },
-          data: { paymentStatus: 'FAILED' },
-        }),
-      ]);
+        });
+      }
     } else {
       logger.info(
         'payment_intent.payment_failed: no matching SwarmPayment found (pre-auth or unknown)',
