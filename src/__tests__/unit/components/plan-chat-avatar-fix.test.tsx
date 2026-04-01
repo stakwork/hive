@@ -77,9 +77,12 @@ describe("PlanChatView - Avatar Fix", () => {
   const mockFetch = vi.fn();
   global.fetch = mockFetch;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Don't clear all mocks - it resets our ChatArea mock implementation
     mockFetch.mockClear();
+    // Clear ChatArea call history so waitFor correctly waits for the current test's render
+    const { ChatArea } = await import("@/components/chat");
+    vi.mocked(ChatArea).mockClear();
     // Mock fetch to return a complete message object that includes all fields
     mockFetch.mockImplementation(async (url: string, options?: any) => {
       if (url.includes('/chat')) {
