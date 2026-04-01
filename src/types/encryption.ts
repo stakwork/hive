@@ -33,7 +33,8 @@ export type EncryptableField =
   | "vercelApiToken"
   | "vercelWebhookSecret"
   | "sphinxBotSecret"
-  | "lightningPubkey";
+  | "lightningPubkey"
+  | "swarmPaymentPassword";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
