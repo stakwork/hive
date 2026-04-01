@@ -119,3 +119,62 @@ describe('MarkdownRenderer — feature image URL resolution', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('MarkdownRenderer — user variant special character rendering', () => {
+  it('renders URL with angle-bracket template fully including port', async () => {
+    const { container } = render(
+      <MarkdownRenderer variant="user">
+        {'https://<slug>.sphinx.chat:8800'}
+      </MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain('https://<slug>.sphinx.chat:8800');
+    });
+  });
+
+  it('renders bare ampersand in query string correctly', async () => {
+    const { container } = render(
+      <MarkdownRenderer variant="user">
+        {'https://example.com?foo=1&bar=2'}
+      </MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain('&');
+      expect(container.textContent).not.toContain('&amp;');
+    });
+  });
+
+  it('renders standalone angle brackets literally', async () => {
+    const { container } = render(
+      <MarkdownRenderer variant="user">
+        {'<some-value>'}
+      </MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain('<some-value>');
+    });
+  });
+
+  it('still renders markdown bold and code in user messages', async () => {
+    const { container } = render(
+      <MarkdownRenderer variant="user">
+        {'**bold** and `code`'}
+      </MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.querySelector('strong')).not.toBeNull();
+      expect(container.querySelector('code')).not.toBeNull();
+    });
+  });
+
+  it('assistant variant is unaffected — renders HTML without escaping', async () => {
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">
+        {'<div>hello</div>'}
+      </MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain('hello');
+    });
+  });
+});
