@@ -80,6 +80,10 @@ export async function POST(req: NextRequest) {
       where: { id: workspace.id },
       data: { paymentStatus: 'PAID' },
     }),
+    db.workspaceTransaction.updateMany({
+      where: { lightningPaymentId: payment.id },
+      data: { workspaceId: workspace.id },
+    }),
   ]);
 
   // Provision swarm non-blocking
