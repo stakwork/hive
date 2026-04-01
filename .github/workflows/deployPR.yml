@@ -333,6 +333,10 @@ jobs:
             "20260301004827_add_fast_track_to_feature" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='is_fast_track';"
 
+          resolve_migration \
+            "20260319000000_add_created_by_id_to_whiteboards" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
