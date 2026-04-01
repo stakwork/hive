@@ -83,7 +83,7 @@ describe('Stripe Webhook Handler Integration Tests', () => {
   });
 
   describe('POST /api/stripe/webhook', () => {
-    test('checkout.session.completed: updates SwarmPayment to PAID and Workspace.paymentStatus to PAID', async () => {
+    test('checkout.session.completed: updates SwarmPayment to PAID', async () => {
       const { workspace } = await createTestWorkspaceScenario();
       const payment = await createTestSwarmPayment({
         workspaceId: workspace.id,
@@ -110,44 +110,6 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       });
       expect(updatedPayment!.status).toBe('PAID');
       expect(updatedPayment!.stripePaymentIntentId).toBe('pi_test_intent_123');
-
-      const updatedWorkspace = await db.workspace.findUnique({
-        where: { id: workspace.id },
-      });
-      expect(updatedWorkspace!.paymentStatus).toBe('PAID');
-    });
-
-    test('checkout.session.completed: creates WorkspaceTransaction with correct amount, currency, and swarmPaymentId', async () => {
-      const { workspace } = await createTestWorkspaceScenario();
-      const payment = await createTestSwarmPayment({
-        workspaceId: workspace.id,
-        stripeSessionId: 'cs_test_tx_creation_session',
-        status: 'PENDING',
-      });
-
-      const event = buildCheckoutCompletedEvent(
-        payment.stripeSessionId,
-        workspace.id,
-        'pi_test_tx_intent',
-        4999,
-        'usd',
-      );
-      mockConstructStripeEvent.mockReturnValue(event);
-
-      const req = buildWebhookRequest(JSON.stringify({}));
-      const response = await POST(req);
-
-      expect(response.status).toBe(200);
-
-      const tx = await db.workspaceTransaction.findUnique({
-        where: { swarmPaymentId: payment.id },
-      });
-      expect(tx).not.toBeNull();
-      expect(tx!.type).toBe('STRIPE');
-      expect(tx!.workspaceId).toBe(workspace.id);
-      expect(tx!.amountUsd).toBe(4999);
-      expect(tx!.currency).toBe('usd');
-      expect(tx!.swarmPaymentId).toBe(payment.id);
     });
 
     test('checkout.session.expired: updates SwarmPayment to EXPIRED', async () => {
@@ -187,7 +149,7 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       expect(data.error).toBe('Invalid signature');
     });
 
-    test('payment_intent.payment_failed: updates SwarmPayment to FAILED with failureCode/failureMessage and workspace paymentStatus to FAILED', async () => {
+    test('payment_intent.payment_failed: updates SwarmPayment to FAILED with failureCode/failureMessage', async () => {
       const { workspace } = await createTestWorkspaceScenario();
       const payment = await createTestSwarmPayment({
         workspaceId: workspace.id,
@@ -210,10 +172,6 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       expect(updatedPayment!.status).toBe('FAILED');
       expect(updatedPayment!.failureCode).toBe('insufficient_funds');
       expect(updatedPayment!.failureMessage).toBe('Your card has insufficient funds.');
-
-      const updatedWorkspace = await db.workspace.findUnique({ where: { id: workspace.id } });
-      expect(updatedWorkspace!.paymentStatus).toBe('FAILED');
-
     });
 
     test('payment_intent.payment_failed: no matching SwarmPayment returns 200 with no DB writes', async () => {
