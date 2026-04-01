@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
 
     if (workspaceId) {
       // Path A: workspace already existed at checkout time — update payment status and provision swarm
+      const swarmPayment = await db.swarmPayment.findUnique({ where: { stripeSessionId } });
       await db.$transaction([
         db.swarmPayment.update({
           where: { stripeSessionId },
@@ -39,6 +40,15 @@ export async function POST(req: NextRequest) {
         db.workspace.update({
           where: { id: workspaceId },
           data: { paymentStatus: 'PAID' },
+        }),
+        db.workspaceTransaction.create({
+          data: {
+            workspaceId,
+            type: 'STRIPE',
+            amountUsd: stripeSession.amount_total,
+            currency: stripeSession.currency,
+            swarmPaymentId: swarmPayment?.id ?? null,
+          },
         }),
       ]);
 

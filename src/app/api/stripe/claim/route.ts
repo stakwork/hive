@@ -126,20 +126,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 });
   }
 
-  await db.$transaction([
-    db.swarmPayment.create({
+  await db.$transaction(async (tx) => {
+    const swarmPayment = await tx.swarmPayment.create({
       data: {
         workspaceId: workspace.id,
         stripeSessionId: sessionId,
         stripePaymentIntentId,
         status: 'PAID',
       },
-    }),
-    db.workspace.update({
+    });
+    await tx.workspace.update({
       where: { id: workspace.id },
       data: { paymentStatus: 'PAID' },
-    }),
-  ]);
+    });
+    await tx.workspaceTransaction.create({
+      data: {
+        workspaceId: workspace.id,
+        type: 'STRIPE',
+        amountUsd: stripeSession.amount_total,
+        currency: stripeSession.currency,
+        swarmPaymentId: swarmPayment.id,
+      },
+    });
+  });
 
   // Kick off swarm provisioning (non-blocking — failures are logged but don't fail the response)
   (async () => {
