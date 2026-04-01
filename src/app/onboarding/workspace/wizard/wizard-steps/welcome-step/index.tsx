@@ -103,20 +103,10 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
       setIsClaiming(true);
       try {
-        const password = localStorage.getItem("graphMindsetPassword");
-        if (!password) {
-          setPollError(
-            "Setup data is missing. Please restart onboarding from the beginning."
-          );
-          setIsClaiming(false);
-          claimCalledRef.current = false;
-          return;
-        }
-
         const res = await fetch("/api/stripe/claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: stripeSessionId, password }),
+          body: JSON.stringify({ sessionId: stripeSessionId }),
         });
         const data = await res.json();
 
@@ -125,8 +115,6 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
           setIsClaiming(false);
           return;
         }
-
-        localStorage.removeItem("graphMindsetPassword");
 
         const workspaceId = data?.workspace?.id;
         if (workspaceId) {
