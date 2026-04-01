@@ -79,16 +79,14 @@ export function GraphMindsetCard() {
         return;
       }
 
-      const { sessionUrl, sessionId } = stripeJson;
+      const { sessionUrl } = stripeJson;
       if (!sessionUrl) {
         setSubmitError("No payment URL returned. Please try again.");
         setIsLoading(false);
         return;
       }
 
-      // 3. Persist sessionId for WelcomeStep to claim after return
-      localStorage.setItem("graphMindsetSessionId", sessionId);
-
+      // sessionId is now stored in an httpOnly cookie set by the checkout API
       window.location.href = sessionUrl;
     } catch {
       setSubmitError("Something went wrong. Please try again.");

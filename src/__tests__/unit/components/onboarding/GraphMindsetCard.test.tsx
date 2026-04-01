@@ -171,7 +171,7 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/pay/test");
     });
-    expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
+    // sessionId is now stored in an httpOnly cookie by the checkout API, not localStorage
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
 
     expect(mockFetch).toHaveBeenLastCalledWith(
@@ -214,7 +214,7 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/pay/test");
     });
-    expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
+    // sessionId is now stored in an httpOnly cookie by the checkout API, not localStorage
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
     expect(localStorage.getItem("graphMindsetWorkspaceId")).toBeNull();
 
