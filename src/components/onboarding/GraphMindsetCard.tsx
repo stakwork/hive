@@ -5,17 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
-import { Network, Zap, Loader2 } from "lucide-react";
+import { Network, Zap, Loader2, CreditCard } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function GraphMindsetCard() {
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [nameError, setNameError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLightningLoading, setIsLightningLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const router = useRouter();
 
   const validateSlug = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -51,17 +54,17 @@ export function GraphMindsetCard() {
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setName(value);
+    setShowPaymentOptions(false);
     validateSlug(value);
   };
 
-  const handleCreateGraph = async () => {
+  const handlePayWithCard = async () => {
     setIsLoading(true);
     setSubmitError("");
 
     try {
-      // 1. Persist name and password so WelcomeStep.claimPayment can use them after sign-in
+      // 1. Persist name so WelcomeStep.claimPayment can use it after sign-in
       localStorage.setItem("graphMindsetWorkspaceName", name);
-      localStorage.setItem("graphMindsetPassword", password);
 
       // 2. Create Stripe checkout session
       const stripeRes = await fetch("/api/stripe/checkout", {
@@ -93,7 +96,14 @@ export function GraphMindsetCard() {
     }
   };
 
-  const isButtonDisabled = !name.trim() || !password.trim() || !isAvailable || isValidating || isLoading;
+  const handlePayWithLightning = () => {
+    setIsLightningLoading(true);
+    localStorage.setItem("graphMindsetWorkspaceName", name);
+    localStorage.setItem("graphMindsetWorkspaceSlug", name);
+    router.push("/onboarding/lightning-payment");
+  };
+
+  const isButtonDisabled = !name.trim() || !isAvailable || isValidating || isLoading;
 
   return (
     <Card className="overflow-hidden border border-blue-500/30 bg-card">
@@ -152,16 +162,6 @@ export function GraphMindsetCard() {
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Graph password</label>
-              <Input
-                type="password"
-                placeholder="Min. 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-
             <ul className="text-xs text-muted-foreground space-y-1.5 pl-1">
               <li className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
@@ -182,22 +182,42 @@ export function GraphMindsetCard() {
             <p className="text-xs text-destructive">{submitError}</p>
           )}
 
-          <Button
-            disabled={isButtonDisabled}
-            onClick={handleCreateGraph}
-            className="w-full gap-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processing…
-              </>
-            ) : (
-              <>
-                Create my graph <Network className="w-4 h-4" />
-              </>
-            )}
-          </Button>
+          {!showPaymentOptions ? (
+            <Button
+              disabled={isButtonDisabled}
+              onClick={() => setShowPaymentOptions(true)}
+              className="w-full gap-2"
+            >
+              Create my graph <Network className="w-4 h-4" />
+            </Button>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={handlePayWithCard}
+                disabled={isLoading}
+                className="flex-1 gap-2"
+                variant="default"
+              >
+                {isLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                ) : (
+                  <><CreditCard className="w-4 h-4" /> Pay with Card</>
+                )}
+              </Button>
+              <Button
+                onClick={handlePayWithLightning}
+                disabled={isLightningLoading}
+                className="flex-1 gap-2"
+                variant="outline"
+              >
+                {isLightningLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                ) : (
+                  <><Zap className="w-4 h-4 text-yellow-500" /> Pay with Lightning</>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Card>
