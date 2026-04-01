@@ -25,6 +25,10 @@ vi.mock("@/components/auth/GitHubAuthModal", () => ({
   GitHubAuthModal: () => null,
 }));
 
+vi.mock("@/components/onboarding/SwarmSetupLoader", () => ({
+  SwarmSetupLoader: () => null,
+}));
+
 vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
   GraphMindsetCard: () => (
     <div>
