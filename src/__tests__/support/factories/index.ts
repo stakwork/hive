@@ -30,3 +30,6 @@ export * from "./whiteboard-message.factory";
 
 // LLM model factories
 export * from "./llm-model.factory";
+
+// Payment factories
+export * from "./workspace-transaction.factory";
