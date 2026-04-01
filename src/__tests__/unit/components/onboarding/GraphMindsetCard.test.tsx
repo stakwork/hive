@@ -62,21 +62,14 @@ async function fillName(value: string) {
   await act(async () => { vi.advanceTimersByTime(600); });
 }
 
-/** Helper: type into the password field */
-function fillPassword(value: string) {
-  const input = screen.getByPlaceholderText("Min. 8 characters");
-  fireEvent.change(input, { target: { value } });
-}
-
 /** Helper: fill valid form and wait for "available" message */
-async function fillValidForm(name = "my-graph", pw = "secret123") {
+async function fillValidForm(name = "my-graph") {
   vi.useFakeTimers();
   mockFetch.mockReturnValueOnce(availableSlugResponse());
   render(<GraphMindsetCard />);
   await fillName(name);
   vi.useRealTimers();
   await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
-  fillPassword(pw);
 }
 
 describe("GraphMindsetCard", () => {
@@ -105,23 +98,6 @@ describe("GraphMindsetCard", () => {
     expect(button).toBeDisabled();
   });
 
-  it("renders a password field with label 'Graph password'", () => {
-    render(<GraphMindsetCard />);
-    expect(screen.getByText("Graph password")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Min. 8 characters")).toBeInTheDocument();
-  });
-
-  it("button remains disabled when name is available but password is empty", async () => {
-    vi.useFakeTimers();
-    mockFetch.mockReturnValue(availableSlugResponse());
-    render(<GraphMindsetCard />);
-    await fillName("my-graph");
-    vi.useRealTimers();
-    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
-    // Password is still empty
-    expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
-  });
-
   it("button remains disabled while name is being validated (isValidating)", async () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
@@ -143,7 +119,7 @@ describe("GraphMindsetCard", () => {
     expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
   });
 
-  it("button is enabled when slug is available AND password is non-empty", async () => {
+  it("button is enabled when slug is available", async () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(availableSlugResponse());
     render(<GraphMindsetCard />);
@@ -152,7 +128,6 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/Name is available/i)).toBeInTheDocument();
     });
-    fillPassword("secret123");
     expect(screen.getByRole("button", { name: /create my graph/i })).not.toBeDisabled();
   });
 
@@ -178,7 +153,7 @@ describe("GraphMindsetCard", () => {
     expect(screen.queryByRole("button", { name: /create my graph/i })).not.toBeInTheDocument();
   });
 
-  it("stores password in localStorage and redirects to Stripe when 'Pay with Card' is clicked", async () => {
+  it("stores name in localStorage and redirects to Stripe when 'Pay with Card' is clicked", async () => {
     await fillValidForm();
 
     const createBtn = screen.getByRole("button", { name: /create my graph/i });
@@ -198,7 +173,6 @@ describe("GraphMindsetCard", () => {
     });
     expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
-    expect(localStorage.getItem("graphMindsetPassword")).toBe("secret123");
 
     expect(mockFetch).toHaveBeenLastCalledWith(
       "/api/stripe/checkout",
@@ -220,7 +194,6 @@ describe("GraphMindsetCard", () => {
 
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
     expect(localStorage.getItem("graphMindsetWorkspaceSlug")).toBe("my-graph");
-    expect(localStorage.getItem("graphMindsetPassword")).toBe("secret123");
     expect(mockRouterPush).toHaveBeenCalledWith("/onboarding/lightning-payment");
   });
 
