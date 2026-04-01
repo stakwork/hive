@@ -49,6 +49,7 @@ interface AgentChatAreaProps {
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
   stakworkProjectId?: string | null;
+  isSuperAdmin?: boolean;
 }
 
 export function AgentChatArea({
@@ -78,6 +79,7 @@ export function AgentChatArea({
   onRetry,
   isRetrying = false,
   stakworkProjectId,
+  isSuperAdmin = false,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -313,6 +315,7 @@ export function AgentChatArea({
         taskMode={taskMode}
         onOpenBountyRequest={onOpenBountyRequest}
         stakworkProjectId={stakworkProjectId}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {onReleasePod && (

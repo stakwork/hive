@@ -102,6 +102,63 @@ describe("TASK_ASSIGNED notification", () => {
     expect(sendDirectMessage).not.toHaveBeenCalled();
   });
 
+  it("creates a SKIPPED notification_trigger row when workspace has Sphinx disabled", async () => {
+    const plainOwner = await db.user.create({
+      data: { email: "plain-owner@test.com", name: "Plain Owner" },
+    });
+    const plainAssignee = await db.user.create({
+      data: { email: "plain-assignee@test.com", name: "Plain Assignee", sphinxAlias: "plain-alias" },
+    });
+
+    // Plain workspace — no Sphinx configuration
+    const plainWorkspace = await db.workspace.create({
+      data: {
+        name: "Plain Workspace",
+        slug: "plain-ws-skipped",
+        ownerId: plainOwner.id,
+        sphinxEnabled: false,
+      },
+    });
+
+    await db.workspaceMember.create({
+      data: { workspaceId: plainWorkspace.id, userId: plainOwner.id, role: "OWNER" },
+    });
+
+    const plainFeature = await db.feature.create({
+      data: {
+        title: "Plain Feature",
+        workspaceId: plainWorkspace.id,
+        createdById: plainOwner.id,
+        updatedById: plainOwner.id,
+      },
+    });
+
+    const plainTask = await db.task.create({
+      data: {
+        title: "Plain Task",
+        workspaceId: plainWorkspace.id,
+        featureId: plainFeature.id,
+        createdById: plainOwner.id,
+        updatedById: plainOwner.id,
+      },
+    });
+
+    await updateTicket(plainTask.id, plainOwner.id, { assigneeId: plainAssignee.id });
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const record = await db.notificationTrigger.findFirst({
+      where: {
+        targetUserId: plainAssignee.id,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,
+        taskId: plainTask.id,
+      },
+    });
+
+    expect(record).not.toBeNull();
+    expect(record!.status).toBe(NotificationTriggerStatus.SKIPPED);
+  });
+
   it("does NOT create a notification when self-assigning", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: owner.id });
 

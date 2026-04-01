@@ -24,6 +24,8 @@ interface UseStakworkGenerationOptions {
   enabled?: boolean;
 }
 
+const STALE_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 export function useStakworkGeneration({
   featureId,
   type,
@@ -32,6 +34,7 @@ export function useStakworkGeneration({
   const [latestRun, setLatestRun] = useState<StakworkRun | null>(null);
   const [querying, setQuerying] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isStale, setIsStale] = useState(false);
   const { workspace } = useWorkspace();
 
   const queryLatestRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -77,6 +80,21 @@ export function useStakworkGeneration({
     if (!enabled || !workspace?.id) return;
     queryLatestRun();
   }, [enabled, workspace?.id, featureId, type, queryLatestRun]);
+
+  useEffect(() => {
+    if (!latestRun || (latestRun.status !== "IN_PROGRESS" && latestRun.status !== "PENDING")) {
+      setIsStale(false);
+      return;
+    }
+    const elapsed = Date.now() - new Date(latestRun.createdAt).getTime();
+    const remaining = STALE_RUN_TIMEOUT_MS - elapsed;
+    if (remaining <= 0) {
+      setIsStale(true);
+      return;
+    }
+    const timer = setTimeout(() => setIsStale(true), remaining);
+    return () => clearTimeout(timer);
+  }, [latestRun]);
 
   useEffect(() => {
     if (!enabled || !workspace?.slug) return;
@@ -151,5 +169,6 @@ export function useStakworkGeneration({
     refetch: queryLatestRun,
     stopRun,
     isStopping,
+    isStale,
   };
 }

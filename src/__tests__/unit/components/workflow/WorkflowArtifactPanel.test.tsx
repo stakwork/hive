@@ -58,7 +58,8 @@ vi.mock("@/components/ProjectInfoCard", () => ({
 }));
 
 vi.mock("@/components/StakworkRunDropdown", () => ({
-  StakworkRunDropdown: () => null,
+  StakworkRunDropdown: ({ projectId }: { projectId: string }) =>
+    React.createElement("div", { "data-testid": "stakwork-run-dropdown", "data-project-id": projectId }),
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
@@ -337,6 +338,42 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
       const tabsList = container.querySelector('[role="tablist"]');
       expect(tabsList?.className).toContain("grid-cols-5");
     });
+  });
+});
+
+describe("WorkflowArtifactPanel — StakworkRunDropdown isSuperAdmin gating", () => {
+  const artifactWithProject = makeArtifact({
+    workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+    projectId: "test-project-123",
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=false (default)", () => {
+    render(<WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} />);
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=false explicitly", () => {
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} isSuperAdmin={false} />,
+    );
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
+  });
+
+  it("DOES render StakworkRunDropdown when isSuperAdmin=true and projectId is present", () => {
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} isSuperAdmin={true} />,
+    );
+    expect(screen.getByTestId("stakwork-run-dropdown")).toBeInTheDocument();
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=true but projectId is absent", () => {
+    const artifactNoProject = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+    });
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactNoProject]} isActive={true} isSuperAdmin={true} />,
+    );
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
   });
 });
 

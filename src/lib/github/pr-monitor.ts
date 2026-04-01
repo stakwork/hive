@@ -573,10 +573,12 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       a.type = 'PULL_REQUEST'
       AND t.deleted = false
       AND t.archived = false
+      AND t.mode != 'agent'
       -- Only monitor workspaces with PR monitoring enabled
       AND COALESCE(jc.pr_monitor_enabled, false) = true
       -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
+      AND a.content->>'url' LIKE 'https://github.com/%'
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
       -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
       -- This prevents PRs from getting stuck if a fix attempt never completes
@@ -905,14 +907,12 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
           (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
           (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
 
-        // If pod is available, trigger an automatic fix
-        // The triggerFix function auto-detects whether to use agent mode or live mode
-        // Trigger if: fix enabled, pod available, cooldown elapsed, not gave_up,
+        // Trigger an automatic fix for live-mode tasks (agent-mode tasks are excluded at query time)
+        // Trigger if: fix enabled, cooldown elapsed, not gave_up,
         // and either state changed OR no existing resolution (stale was cleared / never dispatched)
         const canAttemptFix = stateChanged || !pr.progress?.resolution || isStaleInProgress;
         const shouldTriggerFix =
           isFixEnabledForState &&
-          pr.podId &&
           canAttemptFix &&
           cooldownElapsed &&
           progress.resolution?.status !== "gave_up";
@@ -946,13 +946,6 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             });
             // Don't set resolution — leave it unset so next cron run retries
           }
-        } else if (!pr.podId && (stateChanged || !pr.progress?.resolution)) {
-          // No pod available — just mark as notified
-          progress.resolution = {
-            status: "notified",
-            attempts: currentAttempts,
-            lastAttemptAt: lastAttemptAt,
-          };
         } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
           log.info("Skipping PR fix - fix type disabled for workspace", {
             taskId: pr.taskId,
@@ -1207,7 +1200,7 @@ export async function triggerLiveModeFix(
       mode: "live",
     });
 
-    if (!result.stakworkData?.success) {
+    if (!result.stakworkData?.projectId) {
       log.error("Failed to trigger Stakwork workflow", {
         taskId,
         error: result.stakworkData?.error,
@@ -1215,7 +1208,7 @@ export async function triggerLiveModeFix(
       return { success: false, error: "Failed to trigger Stakwork workflow" };
     }
 
-    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.data?.project_id });
+    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.projectId });
     return { success: true };
   } catch (error) {
     log.error("Error triggering live mode fix", { taskId, error: String(error) });

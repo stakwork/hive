@@ -89,6 +89,7 @@ export async function createWorkspace(
         slug: data.slug,
         ownerId: data.ownerId,
         repositoryDraft: data.repositoryUrl,
+        workspaceKind: data.workspaceKind,
       },
     });
     return {
@@ -192,6 +193,7 @@ export async function getWorkspaceById(
       poolState: workspace.swarm?.poolState || null,
       podState: workspace.swarm?.podState || "NOT_STARTED",
       swarmUrl: workspace.swarm?.swarmUrl || null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -233,6 +235,7 @@ export async function getWorkspaceById(
     poolState: workspace.swarm?.poolState || null,
     podState: workspace.swarm?.podState || "NOT_STARTED",
     swarmUrl: workspace.swarm?.swarmUrl || null,
+    workspaceKind: workspace.workspaceKind,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -307,6 +310,7 @@ export async function getWorkspaceBySlug(
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -340,6 +344,7 @@ export async function getWorkspaceBySlug(
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -384,6 +389,7 @@ export async function getWorkspaceBySlug(
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
     nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+    workspaceKind: workspace.workspaceKind,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -1077,6 +1083,16 @@ export async function getWorkspaceMembers(
   }
 
   // Map owner to WorkspaceMember format for consistent UI
+  const ownerLightningPubkey = workspace.owner.lightningPubkey ?? undefined;
+  let ownerDecryptedLightningPubkey: string | null = null;
+  if (ownerLightningPubkey) {
+    try {
+      ownerDecryptedLightningPubkey = encryptionService.decryptField("lightningPubkey", ownerLightningPubkey);
+    } catch {
+      ownerDecryptedLightningPubkey = null;
+    }
+  }
+
   const owner = {
     id: workspace.owner.id, // Use real user ID
     userId: workspace.owner.id,
@@ -1087,7 +1103,8 @@ export async function getWorkspaceMembers(
       name: workspace.owner.name,
       email: workspace.owner.email,
       image: workspace.owner.image,
-      lightningPubkey: workspace.owner.lightningPubkey ?? undefined,
+      lightningPubkey: ownerLightningPubkey,
+      decryptedLightningPubkey: ownerDecryptedLightningPubkey,
       sphinxAlias: workspace.owner.sphinxAlias ?? undefined,
       github: workspace.owner.githubAuth
         ? {
