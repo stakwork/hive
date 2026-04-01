@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,15 +104,27 @@ export default function AgentLogsPage() {
     router.replace(newUrl, { scroll: false });
   }, [pathname, router, searchParams]);
 
+  // Keep a ref to the latest goToPage to avoid it being a dep in the debounce effect
+  const goToPageRef = useRef(goToPage);
+  useEffect(() => {
+    goToPageRef.current = goToPage;
+  }); // no dep array — keeps ref current after every render
+
+  // Track previous search keyword so we only reset page when it actually changes
+  const prevSearchKeyword = useRef("");
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchKeyword);
-      goToPage(1); // Reset to first page on search
+      if (searchKeyword !== prevSearchKeyword.current) {
+        goToPageRef.current(1); // only reset page when search actually changed
+      }
+      prevSearchKeyword.current = searchKeyword;
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchKeyword, goToPage]);
+  }, [searchKeyword]); // goToPage intentionally omitted — accessed via ref
 
   // Fetch logs
   useEffect(() => {
