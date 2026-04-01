@@ -25,6 +25,7 @@ describe("POST /api/learnings/diagrams/edit", () => {
   let workspace: Workspace;
   let swarm: Swarm;
   let repository: Repository;
+  let repository2: Repository;
   let nonMember: User;
 
   beforeEach(async () => {
@@ -59,6 +60,12 @@ describe("POST /api/learnings/diagrams/edit", () => {
       repository = await createTestRepository({
         workspaceId: workspace.id,
         repositoryUrl: "https://github.com/test-owner/test-diagram-edit-repo",
+        branch: "main",
+      });
+
+      repository2 = await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test-owner/test-diagram-edit-repo-2",
         branch: "main",
       });
 
@@ -230,6 +237,36 @@ describe("POST /api/learnings/diagrams/edit", () => {
     expect(callArg.prompt).toContain("<user-prompt>");
     expect(callArg.prompt).toContain("Add Z node");
     expect(callArg.prompt).toContain("</user-prompt>");
+  });
+
+  it("should call repoAgent with all workspace repo URLs joined by comma", async () => {
+    const sourceDiagram = await db.diagram.create({
+      data: {
+        name: "Multi Repo Flow",
+        body: "graph TD\n  A --> B",
+        description: null,
+        createdBy: owner.id,
+        groupId: generateUniqueId("group"),
+      },
+    });
+    await db.diagramWorkspace.create({
+      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    });
+
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\ngraph TD\n  A --> B --> C\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/edit",
+      { workspace: workspace.slug, diagramId: sourceDiagram.id, prompt: "Add C node" },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.repo_url).toBe(
+      "https://github.com/test-owner/test-diagram-edit-repo,https://github.com/test-owner/test-diagram-edit-repo-2"
+    );
   });
 
   it("should return 422 when repoAgent response has no mermaid block", async () => {

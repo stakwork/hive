@@ -27,3 +27,6 @@ export * from "./graphFactory";
 
 // Whiteboard factories
 export * from "./whiteboard-message.factory";
+
+// LLM model factories
+export * from "./llm-model.factory";

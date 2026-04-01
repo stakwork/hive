@@ -35,10 +35,17 @@ describe("POST /api/agent Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    // Enable agent mode feature flag for all tests
+    process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE = "true";
+
     // Setup default mock for streaming
     mockStreamText.mockResolvedValue({
       toDataStreamResponse: vi.fn(() => new Response("mocked stream")),
     });
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE;
   });
 
   describe("Authentication", () => {

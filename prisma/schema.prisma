@@ -200,6 +200,8 @@ model Workspace {
   sphinxBotSecret        String?                 @map("sphinx_bot_secret")
   sphinxChatPubkey       String?                 @map("sphinx_chat_pubkey")
   sphinxEnabled          Boolean                 @default(false) @map("sphinx_enabled")
+  paymentStatus          PaymentStatus           @default(PENDING) @map("payment_status")
+  workspaceKind          String?                 @map("workspace_kind")
   agentLogs              AgentLog[]
   diagrams               DiagramWorkspace[]
   features               Feature[]
@@ -210,6 +212,8 @@ model Workspace {
   sharedConversations    SharedConversation[]
   stakworkRuns           StakworkRun[]
   swarm                  Swarm?
+  swarmPayments          SwarmPayment[]
+  lightningPayments      LightningPayment[]
   tasks                  Task[]
   whiteboards            Whiteboard[]
   apiKeys                WorkspaceApiKey[]
@@ -1226,4 +1230,85 @@ enum NotificationTriggerStatus {
 
 enum NotificationMethod {
   SPHINX
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum SwarmPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
+model SwarmPayment {
+  id                    String             @id @default(cuid())
+  workspaceId           String             @map("workspace_id")
+  stripeSessionId       String             @unique @map("stripe_session_id")
+  stripePaymentIntentId String?            @map("stripe_payment_intent_id")
+  status                SwarmPaymentStatus @default(PENDING)
+  amount                Int?
+  currency              String?
+  failureCode           String?            @map("failure_code")
+  failureMessage        String?            @map("failure_message")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([stripeSessionId])
+  @@index([stripePaymentIntentId])
+  @@map("swarm_payments")
+}
+
+enum LlmProvider {
+  GOOGLE
+  ANTHROPIC
+  OPENAI
+  AWS_BEDROCK
+  OTHER
+}
+
+model LlmModel {
+  id               String      @id @default(cuid())
+  name             String
+  provider         LlmProvider
+  providerLabel    String?     @map("provider_label")
+  inputPricePer1M  Float       @map("input_price_per_1m")
+  outputPricePer1M Float       @map("output_price_per_1m")
+  dateStart        DateTime?   @map("date_start")
+  dateEnd          DateTime?   @map("date_end")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  @@index([provider])
+  @@map("llm_models")
+}
+
+enum LightningPaymentStatus {
+  UNPAID
+  PAID
+  EXPIRED
+}
+
+model LightningPayment {
+  id             String                 @id @default(cuid())
+  workspaceId    String?                @map("workspace_id")
+  workspaceName  String?                @map("workspace_name")
+  workspaceSlug  String?                @map("workspace_slug")
+  paymentHash    String                 @unique @map("payment_hash")
+  invoice        String
+  amount         Int
+  status         LightningPaymentStatus @default(UNPAID)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  workspace      Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([paymentHash])
+  @@map("lightning_payments")
 }

@@ -45,6 +45,12 @@ export default async function AdminLayout({
                 >
                   Swarms
                 </Link>
+                <Link
+                  href="/admin/llm-models"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  LLM Models
+                </Link>
               </nav>
             </div>
             <Link
