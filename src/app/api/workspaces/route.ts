@@ -118,6 +118,44 @@ export async function POST(request: NextRequest) {
       repositoryUrl,
       workspaceKind,
     });
+
+    // For graph_mindset workspaces: link the user's pending SwarmPayment and save swarm details
+    if (workspaceKind === "graph_mindset") {
+      const { swarmId, graphUrl } = body;
+
+      // Link the most recent unclaimed PAID payment to this workspace
+      const payment = await db.swarmPayment.findFirst({
+        where: { userId: ownerId, status: "PAID", workspaceId: null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (payment) {
+        await db.$transaction([
+          db.swarmPayment.update({
+            where: { id: payment.id },
+            data: { workspaceId: workspace.id },
+          }),
+          db.workspace.update({
+            where: { id: workspace.id },
+            data: { paymentStatus: "PAID" },
+          }),
+        ]);
+      }
+
+      // Save swarm record if swarmId was provided from graph creation step
+      if (swarmId) {
+        await db.swarm.create({
+          data: {
+            workspaceId: workspace.id,
+            name: finalSlug,
+            swarmId,
+            swarmUrl: graphUrl || null,
+            status: "ACTIVE",
+            instanceType: "m6i.xlarge",
+          },
+        });
+      }
+    }
+
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
     const message = getErrorMessage(error, "Failed to create workspace.");
