@@ -386,16 +386,27 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const deployment = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.sha,
-              environment: `preview-${{ github.event.pull_request.number }}`,
-              auto_merge: false,
-              required_contexts: [],
-              description: 'PR preview deployment'
-            });
-            return deployment.data.id;
+            const maxAttempts = 5;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                const deployment = await github.rest.repos.createDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: context.sha,
+                  environment: `preview-${{ github.event.pull_request.number }}`,
+                  auto_merge: false,
+                  required_contexts: [],
+                  description: 'PR preview deployment'
+                });
+                return deployment.data.id;
+              } catch (err) {
+                console.log(`Attempt ${attempt}/${maxAttempts} failed: ${err.status} ${err.message}`);
+                if (attempt === maxAttempts) throw err;
+                const wait = attempt * 15000;
+                console.log(`Waiting ${wait / 1000}s before retry...`);
+                await new Promise(r => setTimeout(r, wait));
+              }
+            }
 
       - name: Mark Success
         if: success() && steps.deployment.outputs.result
