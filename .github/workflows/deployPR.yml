@@ -61,7 +61,7 @@ jobs:
 
           for attempt in 1 2 3 4 5; do
             git fetch origin
-            if git push origin "+$PR_SHA:refs/heads/$PREVIEW_BRANCH"; then
+            if git push --force --no-force-with-lease origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH"; then
               echo "Push succeeded on attempt $attempt"
               break
             fi
