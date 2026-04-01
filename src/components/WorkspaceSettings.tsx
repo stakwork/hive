@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -35,12 +36,10 @@ import { PresignedImage } from "@/components/ui/presigned-image";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
-import { invalidateCachedLogoUrl } from "@/lib/workspace-logo-cache";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import type { WorkspaceWithRole } from "@/types/workspace";
 
 export function WorkspaceSettings() {
   const { workspace, refreshCurrentWorkspace } = useWorkspace();
@@ -54,9 +53,8 @@ export function WorkspaceSettings() {
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { logoUrls, refetchLogo } = useWorkspaceLogos(
-    workspace ? [workspace as unknown as WorkspaceWithRole] : []
-  );
+  const workspaceList = useMemo(() => workspace ? [workspace] : [], [workspace]);
+  const { logoUrls, refetchLogo, clearLogo } = useWorkspaceLogos(workspaceList);
   const logoUrl = workspace ? (logoUrls[workspace.id] ?? null) : null;
 
   const form = useForm<UpdateWorkspaceInput>({
@@ -137,12 +135,8 @@ export function WorkspaceSettings() {
       // Update UI immediately to avoid page refresh
       setLogoPreview(URL.createObjectURL(file));
 
-      // Fetch the new presigned URL to replace preview with actual URL
-      const imageResponse = await fetch(`/api/workspaces/${workspace.slug}/image`);
-      if (imageResponse.ok) {
-        const imageData = await imageResponse.json();
-        setLogoUrl(imageData.presignedUrl);
-      }
+      // Fetch the new presigned URL into cache
+      await refetchLogo(workspace.id);
 
       toast("Success", { description: "Workspace logo updated successfully" });
 
@@ -179,7 +173,7 @@ export function WorkspaceSettings() {
 
       // Update UI immediately to avoid page refresh
       setLogoPreview(null);
-      setLogoUrl(null);
+      clearLogo(workspace.id);
 
       toast("Success", { description: "Workspace logo removed successfully" });
 
@@ -256,7 +250,11 @@ export function WorkspaceSettings() {
                     <div className="flex items-center gap-3">
                       {canAccessWorkspaceLogo && (
                         <div className="relative flex-shrink-0">
-                          {logoPreview || logoUrl ? (
+                          {workspace.logoKey && !logoPreview && !logoUrl ? (
+                            <div className="w-12 h-12 rounded-lg overflow-hidden border">
+                              <Skeleton className="w-full h-full rounded-none" />
+                            </div>
+                          ) : logoPreview || logoUrl ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <div className="relative w-12 h-12 rounded-lg overflow-hidden border group cursor-pointer">
@@ -281,7 +279,7 @@ export function WorkspaceSettings() {
                                         src={logoUrl}
                                         alt="Logo"
                                         className="w-full h-full object-cover"
-                                        onRefetchUrl={refetchLogoUrl}
+                                        onRefetchUrl={() => refetchLogo(workspace.id)}
                                       />
                                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <Edit className="w-4 h-4 text-white" />
