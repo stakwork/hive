@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/stripe/claim/route';
 import { db } from '@/lib/db';
 import { createTestUser } from '@/__tests__/support/factories';
+import { createTestSwarmPayment } from '@/__tests__/support/factories/swarm-payment.factory';
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 
@@ -183,15 +184,13 @@ describe('Stripe Claim Route Integration Tests', () => {
       } as any);
 
       const sessionId = `cs_test_claim_update_${Date.now()}`;
-      // Pre-create the PENDING record as checkout would
-      const pendingPayment = await db.swarmPayment.create({
-        data: {
-          stripeSessionId: sessionId,
-          workspaceName: 'Test Workspace',
-          workspaceSlug: 'test-workspace',
-          status: 'PENDING',
-          workspaceId: null,
-        },
+      // Pre-create the PENDING record as checkout would (with encrypted password)
+      const pendingPayment = await createTestSwarmPayment({
+        stripeSessionId: sessionId,
+        workspaceName: 'Test Workspace',
+        workspaceSlug: 'test-workspace',
+        status: 'PENDING',
+        workspaceId: undefined,
       });
 
       mockRetrieveSession.mockResolvedValue(buildPaidStripeSession(sessionId, 'pi_test_update_789'));
