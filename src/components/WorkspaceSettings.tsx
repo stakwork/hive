@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -34,6 +35,7 @@ import { PresignedImage } from "@/components/ui/presigned-image";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -47,49 +49,13 @@ export function WorkspaceSettings() {
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchLogoUrl = async () => {
-      if (!workspace?.logoKey || !workspace?.slug) {
-        setLogoUrl(null);
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
-        if (response.ok) {
-          const data = await response.json();
-          setLogoUrl(data.presignedUrl);
-        }
-      } catch (error) {
-        console.error("Error fetching logo URL:", error);
-      }
-    };
-
-    fetchLogoUrl();
-  }, [workspace?.logoKey, workspace?.slug]);
-
-  // Function to refetch the logo URL when the presigned URL expires
-  const refetchLogoUrl = useCallback(async (): Promise<string | null> => {
-    if (!workspace?.slug) return null;
-
-    try {
-      const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
-      if (response.ok) {
-        const data = await response.json();
-        setLogoUrl(data.presignedUrl);
-        return data.presignedUrl;
-      }
-      return null;
-    } catch (error) {
-      console.error("Error refetching logo URL:", error);
-      return null;
-    }
-  }, [workspace?.slug]);
+  const workspaceList = useMemo(() => workspace ? [workspace] : [], [workspace]);
+  const { logoUrls, refetchLogo, clearLogo } = useWorkspaceLogos(workspaceList);
+  const logoUrl = workspace ? (logoUrls[workspace.id] ?? null) : null;
 
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
@@ -169,12 +135,8 @@ export function WorkspaceSettings() {
       // Update UI immediately to avoid page refresh
       setLogoPreview(URL.createObjectURL(file));
 
-      // Fetch the new presigned URL to replace preview with actual URL
-      const imageResponse = await fetch(`/api/workspaces/${workspace.slug}/image`);
-      if (imageResponse.ok) {
-        const imageData = await imageResponse.json();
-        setLogoUrl(imageData.presignedUrl);
-      }
+      // Fetch the new presigned URL into cache
+      await refetchLogo(workspace.id);
 
       toast("Success", { description: "Workspace logo updated successfully" });
 
@@ -211,7 +173,7 @@ export function WorkspaceSettings() {
 
       // Update UI immediately to avoid page refresh
       setLogoPreview(null);
-      setLogoUrl(null);
+      clearLogo(workspace.id);
 
       toast("Success", { description: "Workspace logo removed successfully" });
 
@@ -288,7 +250,11 @@ export function WorkspaceSettings() {
                     <div className="flex items-center gap-3">
                       {canAccessWorkspaceLogo && (
                         <div className="relative flex-shrink-0">
-                          {logoPreview || logoUrl ? (
+                          {workspace.logoKey && !logoPreview && !logoUrl ? (
+                            <div className="w-12 h-12 rounded-lg overflow-hidden border">
+                              <Skeleton className="w-full h-full rounded-none" />
+                            </div>
+                          ) : logoPreview || logoUrl ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <div className="relative w-12 h-12 rounded-lg overflow-hidden border group cursor-pointer">
@@ -313,7 +279,7 @@ export function WorkspaceSettings() {
                                         src={logoUrl}
                                         alt="Logo"
                                         className="w-full h-full object-cover"
-                                        onRefetchUrl={refetchLogoUrl}
+                                        onRefetchUrl={() => refetchLogo(workspace.id)}
                                       />
                                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <Edit className="w-4 h-4 text-white" />
