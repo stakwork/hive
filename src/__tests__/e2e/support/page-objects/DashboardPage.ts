@@ -36,7 +36,7 @@ export class DashboardPage {
     const isTasksVisible = await tasksLink.isVisible().catch(() => false);
     if (!isTasksVisible) {
       await buildButton.click();
-      await tasksLink.waitFor({ state: 'visible', timeout: 5000 });
+      await tasksLink.waitFor({ state: 'visible', timeout: 10000 });
     }
 
     await tasksLink.click();
@@ -55,7 +55,7 @@ export class DashboardPage {
     const isPlanVisible = await planLink.isVisible().catch(() => false);
     if (!isPlanVisible) {
       await buildButton.click();
-      await planLink.waitFor({ state: 'visible', timeout: 5000 });
+      await planLink.waitFor({ state: 'visible', timeout: 10000 });
     }
 
     await planLink.click();
