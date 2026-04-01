@@ -4,7 +4,8 @@ export interface CreateSwarmRequest {
   // name: string;
   instance_type: string;
   password?: string;
-
+  workspace_type?: string;
+  env?: Record<string, string>;
 }
 
 export interface StopSwarmRequest {

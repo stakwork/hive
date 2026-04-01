@@ -8,15 +8,19 @@ import { logger } from '@/lib/logger';
 import { createWorkspace, ensureUniqueSlug } from '@/services/workspace';
 import { SwarmService } from '@/services/swarm';
 import { getServiceConfig, serviceConfigs } from '@/config/services';
-import { generateSecurePassword } from '@/lib/utils/password';
 import { saveOrUpdateSwarm } from '@/services/swarm/db';
 import { SwarmStatus } from '@prisma/client';
 import { SWARM_DEFAULT_INSTANCE_TYPE } from '@/lib/constants';
 import { optionalEnvVars } from '@/config/env';
 import { getPersonalOAuthToken } from '@/lib/githubApp';
+import { stakworkService } from '@/lib/service-factory';
+import { EncryptionService } from '@/lib/encryption';
+
+const encryptionService = EncryptionService.getInstance();
 
 const claimBodySchema = z.object({
   sessionId: z.string().min(1),
+  password: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -141,17 +145,48 @@ export async function POST(req: NextRequest) {
     }),
   ]);
 
+  // Create Stakwork customer and store token (non-blocking — failures are logged but don't fail the response)
+  let stakworkToken: string | undefined;
+  let stakworkCustomerId = '';
+  try {
+    const stakworkSvc = stakworkService();
+    const customerResponse = await stakworkSvc.createCustomer(workspaceName);
+    stakworkToken = (customerResponse as any)?.data?.token as string | undefined;
+    stakworkCustomerId = String((customerResponse as any)?.data?.id ?? '');
+
+    if (stakworkToken) {
+      const encryptedStakworkApiKey = encryptionService.encryptField('stakworkApiKey', stakworkToken);
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { stakworkApiKey: JSON.stringify(encryptedStakworkApiKey) },
+      });
+    }
+  } catch (err) {
+    logger.error('Failed to create Stakwork customer during claim', 'stripe-claim', { err });
+  }
+
   // Kick off swarm provisioning (non-blocking — failures are logged but don't fail the response)
+  const capturedStakworkToken = stakworkToken;
+  const capturedStakworkCustomerId = stakworkCustomerId;
+  const capturedLightningPubkey = (session.user as { lightningPubkey?: string }).lightningPubkey ?? '';
+  const capturedPassword = body.password;
+
   (async () => {
     try {
       const swarmService = new SwarmService(getServiceConfig('swarm'));
-      const swarmPassword = generateSecurePassword(20);
       const apiResponse = await swarmService.createSwarm({
         instance_type: SWARM_DEFAULT_INSTANCE_TYPE,
-        password: swarmPassword,
+        password: capturedPassword,
+        workspace_type: 'graph_mindset',
+        env: {
+          STAKWORK_ADD_NODE_TOKEN: capturedStakworkToken ?? '',
+          STAKWORK_RADAR_REQUEST_TOKEN: capturedStakworkToken ?? '',
+          OWNER_PUBKEY: capturedLightningPubkey,
+          STAKWORK_CUSTOMER_ID: capturedStakworkCustomerId,
+        },
       });
       const { swarm_id, address, x_api_key, ec2_id } = apiResponse.data;
-      await saveOrUpdateSwarm({
+      const savedSwarm = await saveOrUpdateSwarm({
         workspaceId: workspace.id,
         name: swarm_id,
         status: SwarmStatus.ACTIVE,
@@ -160,8 +195,17 @@ export async function POST(req: NextRequest) {
         swarmApiKey: x_api_key,
         swarmSecretAlias: `{{${swarm_id}_API_KEY}}`,
         swarmId: swarm_id,
-        swarmPassword,
+        swarmPassword: capturedPassword,
       });
+
+      // Register Stakwork secret after swarm is saved
+      if (capturedStakworkToken && savedSwarm) {
+        const sanitizedAlias = (savedSwarm.swarmSecretAlias || '').replace(/{{(.*?)}}/g, '$1');
+        if (sanitizedAlias && savedSwarm.swarmApiKey) {
+          const decryptedKey = encryptionService.decryptField('swarmApiKey', savedSwarm.swarmApiKey);
+          await stakworkService().createSecret(sanitizedAlias, decryptedKey, capturedStakworkToken);
+        }
+      }
     } catch (err) {
       logger.error('Failed to provision swarm after claim', 'stripe-claim', { err });
     }
