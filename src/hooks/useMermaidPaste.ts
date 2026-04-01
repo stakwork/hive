@@ -15,7 +15,7 @@ import {
   computePlacementOffset,
   offsetExcalidrawElements,
 } from "@/services/excalidraw-layout";
-import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
+import { tagElementsAsAi } from "@/services/whiteboard-elements";
 
 export interface UseMermaidPasteOptions {
   excalidrawAPI: ExcalidrawImperativeAPI | null;
@@ -95,14 +95,10 @@ export function useMermaidPaste({
         return;
       }
 
-      // Generate a unique ID for this paste session so scoped merging can distinguish
-      // elements from this paste vs elements from prior pastes
-      const pasteId = crypto.randomUUID();
+      // Tag new elements as AI-generated
+      const tagged = tagElementsAsAi(data.elements) as unknown[];
 
-      // Tag all elements as AI-generated (with pasteId for scoped replacement)
-      const tagged = tagElementsAsAi(data.elements, pasteId) as unknown[];
-
-      // Compute placement offset relative to existing user content
+      // Compute placement offset relative to existing content so pasted diagram doesn't overlap
       const existing = Array.from(excalidrawAPI.getSceneElements()) as unknown[];
       const bbox = computeUserElementsBoundingBox(existing);
 
@@ -122,8 +118,8 @@ export function useMermaidPaste({
         positioned = tagged;
       }
 
-      // Merge with existing elements (user elements preserved, only this session's AI replaced)
-      const merged = mergeWhiteboardElements(existing, positioned, pasteId) as unknown as readonly ExcalidrawElement[];
+      // Append new elements — never remove existing content
+      const merged = [...existing, ...positioned] as unknown as readonly ExcalidrawElement[];
 
       // Suppress the onChange save guard for this programmatic update (updateScene + scrollToContent)
       programmaticUpdateCountRef.current += 2;
@@ -144,7 +140,8 @@ export function useMermaidPaste({
       toast.success(`Imported ${count} node${count === 1 ? "" : "s"} from Mermaid diagram`);
     };
 
-    document.addEventListener("paste", handlePaste);
-    return () => document.removeEventListener("paste", handlePaste);
+    // Use capture phase to intercept before Excalidraw's built-in mermaid paste handler
+    document.addEventListener("paste", handlePaste, true);
+    return () => document.removeEventListener("paste", handlePaste, true);
   }, [isEnabled, excalidrawAPI, programmaticUpdateCountRef, saveToDatabase]);
 }
