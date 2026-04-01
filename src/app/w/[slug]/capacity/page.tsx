@@ -265,6 +265,7 @@ export default function CapacityPage() {
               metricsError={metricsError}
               isAdmin={isAdmin || isOwner}
               onDeletePod={handleDeletePod}
+              workspaceSlug={slug}
             />
           )}
         </>
