@@ -26,16 +26,11 @@ vi.mock("@/services/excalidraw-layout", () => ({
   offsetExcalidrawElements: vi.fn((els: unknown[]) => els),
 }));
 
-const mockTagElementsAsAi = vi.fn((els: unknown[], pasteId?: string) =>
-  els.map((e) => ({ ...(e as object), customData: { source: "ai", ...(pasteId ? { pasteId } : {}) } }))
-);
-const mockMergeWhiteboardElements = vi.fn(
-  (existing: unknown[], ai: unknown[], _pasteId?: string) => [...existing, ...ai]
+const mockTagElementsAsAi = vi.fn((els: unknown[]) =>
+  els.map((e) => ({ ...(e as object), customData: { source: "ai" } }))
 );
 vi.mock("@/services/whiteboard-elements", () => ({
-  tagElementsAsAi: (els: unknown[], pasteId?: string) => mockTagElementsAsAi(els, pasteId),
-  mergeWhiteboardElements: (existing: unknown[], ai: unknown[], pasteId?: string) =>
-    mockMergeWhiteboardElements(existing, ai, pasteId),
+  tagElementsAsAi: (els: unknown[]) => mockTagElementsAsAi(els),
 }));
 
 // ---- import after mocks ----
@@ -319,77 +314,51 @@ describe("useMermaidPaste", () => {
     const removeEventListenerSpy = vi.spyOn(document, "removeEventListener");
     const { unmount } = renderMermaidPasteHook();
     unmount();
-    expect(removeEventListenerSpy).toHaveBeenCalledWith("paste", expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("paste", expect.any(Function), true);
   });
 
-  it("passes a unique pasteId to tagElementsAsAi and mergeWhiteboardElements on each paste", async () => {
+  it("appends new elements without removing existing ones", async () => {
+    const existingElement = {
+      id: "user-drawn",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+    };
+    excalidrawAPI.getSceneElements.mockReturnValue([existingElement] as never);
+
     renderMermaidPasteHook();
 
     const event = makePasteEvent(SIMPLE_GRAPH);
     await fireAndFlush(event);
 
-    // tagElementsAsAi and mergeWhiteboardElements must both be called with the same pasteId
-    const tagCall = mockTagElementsAsAi.mock.calls[0];
-    const mergeCall = mockMergeWhiteboardElements.mock.calls[0];
-    const pasteId = tagCall[1] as string;
+    const updateCall = excalidrawAPI.updateScene.mock.calls[0][0];
+    const elements = updateCall.elements as Array<{ id: string }>;
 
-    expect(pasteId).toBeTruthy();
-    expect(typeof pasteId).toBe("string");
-    // Both calls receive the same pasteId
-    expect(mergeCall[2]).toBe(pasteId);
+    // Existing element is preserved
+    expect(elements.some((e) => e.id === "user-drawn")).toBe(true);
+    // New elements are appended
+    expect(elements.length).toBeGreaterThan(1);
   });
 
-  it("two sequential pastes use different pasteIds and each passes its own pasteId through", async () => {
+  it("two sequential pastes both append: second paste preserves first paste elements", async () => {
     renderMermaidPasteHook();
 
     // First paste
     await fireAndFlush(makePasteEvent(SIMPLE_GRAPH));
+    const firstElements = excalidrawAPI.updateScene.mock.calls[0][0].elements as unknown[];
+
+    // Simulate canvas now containing first paste elements
+    excalidrawAPI.getSceneElements.mockReturnValue(firstElements as never);
+
     // Second paste
     await fireAndFlush(makePasteEvent(SIMPLE_GRAPH));
+    const secondElements = excalidrawAPI.updateScene.mock.calls[1][0].elements as unknown[];
 
-    const firstPasteId = mockTagElementsAsAi.mock.calls[0][1] as string;
-    const secondPasteId = mockTagElementsAsAi.mock.calls[1][1] as string;
-
-    // Each paste generates a distinct pasteId
-    expect(firstPasteId).toBeTruthy();
-    expect(secondPasteId).toBeTruthy();
-    expect(firstPasteId).not.toBe(secondPasteId);
-
-    // Each mergeWhiteboardElements call uses its own paste's pasteId
-    expect(mockMergeWhiteboardElements.mock.calls[0][2]).toBe(firstPasteId);
-    expect(mockMergeWhiteboardElements.mock.calls[1][2]).toBe(secondPasteId);
-  });
-
-  it("two sequential pastes coexist: second paste does not remove first paste elements", async () => {
-    // Use the real whiteboard-elements functions (not mocked) to verify coexistence
-    vi.doUnmock("@/services/whiteboard-elements");
-    const { tagElementsAsAi: realTag, mergeWhiteboardElements: realMerge } = await import(
-      "@/services/whiteboard-elements"
-    );
-
-    const firstElements = [
-      { id: "first-1", x: 0, y: 0, width: 100, height: 50 },
-      { id: "first-2", x: 150, y: 0, width: 100, height: 50 },
-    ];
-    const secondElements = [
-      { id: "second-1", x: 0, y: 0, width: 100, height: 50 },
-    ];
-
-    const paste1Id = "paste-1";
-    const paste2Id = "paste-2";
-
-    // Simulate first paste: tag + merge onto empty canvas
-    const tagged1 = realTag(firstElements, paste1Id);
-    const afterPaste1 = realMerge([], tagged1, paste1Id);
-
-    // Simulate second paste: tag + merge onto canvas that already has first paste
-    const tagged2 = realTag(secondElements, paste2Id);
-    const afterPaste2 = realMerge(afterPaste1, tagged2, paste2Id);
-
-    // Both first and second paste elements must coexist
-    const ids = afterPaste2.map((el) => (el as { id: string }).id);
-    expect(ids).toContain("first-1");
-    expect(ids).toContain("first-2");
-    expect(ids).toContain("second-1");
+    // Second paste should contain all first paste elements plus new ones
+    expect(secondElements.length).toBeGreaterThan(firstElements.length);
+    for (const el of firstElements) {
+      expect(secondElements).toContainEqual(el);
+    }
   });
 });
