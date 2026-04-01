@@ -60,7 +60,6 @@ export interface SyncPoolManagerParams {
   poolApiKey: string; // encrypted
   poolCpu?: string | null;
   poolMemory?: string | null;
-  userId?: string; // optional - for getting GitHub credentials
 }
 
 export interface SyncPoolManagerResult {
@@ -73,7 +72,7 @@ export interface SyncPoolManagerResult {
  * Extracted from stakgraph route for reuse in memory bump and other scenarios
  */
 export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Promise<SyncPoolManagerResult> {
-  const { workspaceId, workspaceSlug, swarmId, poolApiKey, poolCpu, poolMemory, userId } = params;
+  const { workspaceId, workspaceSlug, swarmId, poolApiKey, poolCpu, poolMemory } = params;
 
   try {
     // Decrypt pool API key
@@ -228,17 +227,14 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     // Use mergedContainerFiles to preserve user modifications (Dockerfile, docker-compose, etc.)
     const files = getDevContainerFilesFromBase64(mergedContainerFiles);
 
-    // Get GitHub credentials - use provided userId or fall back to workspace owner
-    let effectiveUserId = userId;
-    if (!effectiveUserId) {
-      const workspace = await db.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { ownerId: true },
-      });
-      effectiveUserId = workspace?.ownerId;
-    }
-
-    const githubCreds = effectiveUserId ? await getGithubUsernameAndPAT(effectiveUserId, workspaceSlug) : null;
+    // Always use the workspace owner's GitHub PAT
+    const workspaceOwner = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { ownerId: true },
+    });
+    const githubCreds = workspaceOwner?.ownerId
+      ? await getGithubUsernameAndPAT(workspaceOwner.ownerId, workspaceSlug)
+      : null;
 
     // Get primary repo branch
     const primaryRepo = await getPrimaryRepository(workspaceId);
