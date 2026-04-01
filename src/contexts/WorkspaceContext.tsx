@@ -22,6 +22,7 @@ interface WorkspaceContextType {
   slug: string;
   id: string;
   role: WorkspaceRole | null;
+  isSuperAdmin: boolean;
 
   // Available workspaces
   workspaces: WorkspaceWithRole[];
@@ -58,7 +59,7 @@ export function WorkspaceProvider({
   children,
   initialSlug,
 }: WorkspaceProviderProps) {
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -259,6 +260,7 @@ export function WorkspaceProvider({
   const slug = workspace?.slug || "";
   const id = workspace?.id || "";
   const role = workspace?.userRole || null;
+  const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
 
   // Consider access granted if:
   // 1. Workspace is loaded, OR
@@ -273,6 +275,7 @@ export function WorkspaceProvider({
     slug,
     id,
     role,
+    isSuperAdmin,
 
     // Available workspaces
     workspaces,

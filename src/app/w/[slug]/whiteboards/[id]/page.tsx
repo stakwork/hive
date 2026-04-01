@@ -8,6 +8,7 @@ import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { useMermaidPaste } from "@/hooks/useMermaidPaste";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
@@ -260,6 +261,16 @@ export default function WhiteboardDetailPage() {
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
 
+      // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        return;
+      }
+
       // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
       if (onChangeSaveTimeoutRef.current) {
         clearTimeout(onChangeSaveTimeoutRef.current);
@@ -270,6 +281,13 @@ export default function WhiteboardDetailPage() {
     },
     [broadcastElements, saveToDatabase]
   );
+
+  useMermaidPaste({
+    excalidrawAPI,
+    programmaticUpdateCountRef,
+    saveToDatabase,
+    isEnabled: !savePausedRef.current,
+  });
 
   // Save on user interaction (pointerup) — never fires from programmatic updateScene
   const handlePointerUp = useCallback(() => {
@@ -418,6 +436,21 @@ export default function WhiteboardDetailPage() {
     if (Object.keys(resolved).length > 0) {
       excalidrawAPI.addFiles(Object.values(resolved));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
+
+  // Auto-fit all content into view on initial load
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const timer = setTimeout(() => {
+      excalidrawAPI.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: false,
+        duration: 0,
+      });
+    }, 100);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI]);
 
@@ -632,11 +665,18 @@ export default function WhiteboardDetailPage() {
           )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: whiteboard.elements as readonly ExcalidrawElement[],
-              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-              files: resolvedFilesRef.current,
-            }}
+            initialData={(() => {
+              const hasElements = (whiteboard.elements as unknown[]).length > 0;
+              const initialAppState = {
+                ...getInitialAppState(whiteboard.appState as Partial<AppState>),
+                ...(!hasElements ? { zoom: { value: 1 } } : {}),
+              };
+              return {
+                elements: whiteboard.elements as readonly ExcalidrawElement[],
+                appState: initialAppState as Partial<AppState>,
+                files: resolvedFilesRef.current,
+              };
+            })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}

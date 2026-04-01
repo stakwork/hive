@@ -54,6 +54,7 @@ describe("POST /api/learnings/diagrams/create", () => {
   let workspace: Workspace;
   let swarm: Swarm;
   let repository: Repository;
+  let repository2: Repository;
   let memberViewer: User;
   let nonMember: User;
 
@@ -91,6 +92,12 @@ describe("POST /api/learnings/diagrams/create", () => {
       repository = await createTestRepository({
         workspaceId: workspace.id,
         repositoryUrl: "https://github.com/test-owner/test-diagram-repo",
+        branch: "main",
+      });
+
+      repository2 = await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: "https://github.com/test-owner/test-diagram-repo-2",
         branch: "main",
       });
 
@@ -242,6 +249,24 @@ describe("POST /api/learnings/diagrams/create", () => {
       where: { diagramId: data.diagram.id, workspaceId: workspace.id },
     });
     expect(link).not.toBeNull();
+  });
+
+  it("should call repoAgent with all workspace repo URLs joined by comma", async () => {
+    const mermaidBody = "graph TD\n  A --> B";
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\n" + mermaidBody + "\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/create",
+      { workspace: workspace.slug, name: "Multi Repo Diagram", prompt: "Show the system" },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.repo_url).toBe(
+      "https://github.com/test-owner/test-diagram-repo,https://github.com/test-owner/test-diagram-repo-2"
+    );
   });
 
   it("should return 500 when repoAgent throws", async () => {

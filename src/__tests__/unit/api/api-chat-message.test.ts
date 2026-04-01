@@ -489,7 +489,7 @@ describe("POST /api/chat/message", () => {
       });
     });
 
-    it("should update task workflow status to FAILED on Stakwork error", async () => {
+    it("should leave workflowStatus unchanged on Stakwork error (no project_id)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         statusText: "Server Error",
@@ -499,18 +499,8 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      expect(mockDb.task.update).toHaveBeenCalledWith({
-        where: { id: mockTaskId },
-        data: {
-          workflowStatus: WorkflowStatus.FAILED,
-        },
-        select: {
-          workflowStartedAt: true,
-          workflowCompletedAt: true,
-          featureId: true,
-          workspace: { select: { slug: true } },
-        },
-      });
+      // Non-2xx response → no project_id → no workflowStatus update
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
     it("should use mock service when Stakwork not configured", async () => {

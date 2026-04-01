@@ -569,92 +569,75 @@ describe('ChatMessage', () => {
     });
   });
 
-  describe('Hover Interactions', () => {
-    it('shows workflow link on hover', async () => {
+  describe('Hover Interactions (CSS group-hover)', () => {
+    it('renders WorkflowUrlLink with opacity-0 and group-hover:opacity-100 classes', () => {
       const message = createTestMessage({
         workflowUrl: 'https://example.com/workflow',
         message: 'Hoverable message',
       });
 
       render(
-        <ChatMessage 
-          message={message} 
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      const messageElement = screen.getByText('Hoverable message').closest('div');
-      
-      // Initially hidden (opacity-0)
-      expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-
-      // Simulate hover
-      fireEvent.mouseEnter(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
-      });
-
-      // Simulate mouse leave
-      fireEvent.mouseLeave(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-      });
+      const link = screen.getByTestId('workflow-url-link');
+      expect(link).toHaveClass('opacity-0');
+      expect(link).toHaveClass('group-hover:opacity-100');
     });
 
-    it('maintains hover state during parent re-renders (memoization test)', async () => {
+    it('does not render WorkflowUrlLink when workflowUrl is absent', () => {
       const message = createTestMessage({
-        workflowUrl: 'https://example.com/workflow/123',
-        message: 'Test message content',
+        workflowUrl: null,
+        message: 'Message without workflow',
       });
 
-      const { rerender } = render(
-        <ChatMessage 
-          message={message} 
+      render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      const messageElement = screen.getByText(/test message content/i).closest('div');
-      expect(messageElement).toBeInTheDocument();
+      expect(screen.queryByTestId('workflow-url-link')).not.toBeInTheDocument();
+    });
 
-      // Hover over the element
-      fireEvent.mouseEnter(messageElement!);
-      
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+    it('message bubble has group class for CSS hover targeting', () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow',
+        message: 'Message with group class',
       });
 
-      // Simulate parent re-render with identical props (should not reset hover state)
-      rerender(
-        <ChatMessage 
-          message={message} 
+      render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      // Verify hover state is still active after re-render
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+      const bubble = screen.getByTestId('markdown-renderer').parentElement!;
+      expect(bubble).toHaveClass('group');
+    });
+
+    it('does not attach onMouseEnter or onMouseLeave handlers to the outer motion div', () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow',
+        message: 'No handler message',
       });
 
-      // Simulate another parent re-render (e.g., from polling)
-      rerender(
-        <ChatMessage 
-          message={message} 
+      const { container } = render(
+        <ChatMessage
+          message={message}
           onArtifactAction={mockOnArtifactAction}
         />
       );
 
-      // Verify hover state persists
-      expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
-
-      // Verify hover out still works
-      fireEvent.mouseLeave(messageElement!);
-      await waitFor(() => {
-        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
-      });
+      const outerDiv = container.firstChild as HTMLElement;
+      // These event handlers should not be present (CSS handles hover now)
+      expect(outerDiv.onmouseenter).toBeNull();
+      expect(outerDiv.onmouseleave).toBeNull();
     });
   });
 

@@ -41,6 +41,7 @@ interface ArtifactsPanelProps {
   onControlledTabChange?: (tab: ArtifactType) => void;
   sectionHighlights?: SectionHighlights | null;
   browserRefreshTrigger?: number;
+  isSuperAdmin?: boolean;
 }
 
 export function ArtifactsPanel({
@@ -61,6 +62,7 @@ export function ArtifactsPanel({
   onControlledTabChange,
   sectionHighlights,
   browserRefreshTrigger,
+  isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -72,10 +74,13 @@ export function ArtifactsPanel({
   // Tracks whether the user has manually clicked a tab — suppresses priority auto-switch after that.
   const hasUserSelectedTabRef = useRef(false);
 
+  const [hasAttachments, setHasAttachments] = useState(false);
+
   const handleUserTabSelect = useCallback((tab: ArtifactType) => {
+    if (!hasAttachments && tab === "VERIFY") return;
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
-  }, [setActiveTab]);
+  }, [setActiveTab, hasAttachments]);
 
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
@@ -152,14 +157,23 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  const { latestRun, refetch: refetchRun } = useStakworkGeneration({
+  // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
+  useEffect(() => {
+    if (!hasTasks || !featureId) return;
+    fetch(`/api/features/${featureId}/attachments/count`)
+      .then((r) => r.json())
+      .then((data) => { if (data.count > 0) setHasAttachments(true); })
+      .catch(() => {});
+  }, [hasTasks, featureId]);
+
+  const { latestRun, refetch: refetchRun, isStale } = useStakworkGeneration({
     featureId: featureId || "",
     type: "TASK_GENERATION",
     enabled: hasFeature,
   });
 
   const isRunInProgress = latestRun?.status === "IN_PROGRESS" || latestRun?.status === "PENDING";
-  const isRunFailed = latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
+  const isRunFailed = isStale || latestRun?.status === "FAILED" || latestRun?.status === "ERROR" || latestRun?.status === "HALTED";
   const isGenerating = isApiCalling || isRunInProgress;
   const showTasksTab = hasTasks || isGenerating || hasInitiatedGeneration;
   const showVerifyTab = hasTasks;
@@ -221,6 +235,7 @@ export function ArtifactsPanel({
       if (response.status === 409) {
         // Another run is already active — sync state and treat as success
         await refetchRun();
+        setIsApiCalling(false);
         return;
       }
 
@@ -232,6 +247,10 @@ export function ArtifactsPanel({
     } catch (error) {
       console.error("Failed to generate tasks:", error);
       setIsApiCalling(false);
+      setHasInitiatedGeneration(false);
+      toast.error("Failed to generate tasks", {
+        description: "Something went wrong. Please try again.",
+      });
     }
   }, [featureId, workspaceId, refetchRun, isGenerating, isControlled, onControlledTabChange]);
 
@@ -364,6 +383,7 @@ export function ArtifactsPanel({
             activeArtifact={activeTab}
             onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
+            disabledTabs={hasAttachments ? [] : ["VERIFY"]}
           />
         </motion.div>
 
@@ -449,6 +469,7 @@ export function ArtifactsPanel({
                 isActive={activeTab === "WORKFLOW"}
                 onStepSelect={onStepSelect}
                 onVersionChange={onVersionChange}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           )}

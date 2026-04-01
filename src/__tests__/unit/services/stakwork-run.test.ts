@@ -13,6 +13,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { pusherServer } from "@/lib/pusher";
 import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
 import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/client";
+import { isClarifyingQuestions } from "@/types/stakwork";
 import { config } from "@/config/env";
 
 vi.mock("@/lib/db");
@@ -35,6 +36,9 @@ vi.mock("@/services/excalidraw-layout", () => ({
     appState: { viewBackgroundColor: "#ffffff", gridSize: null },
   }),
   sanitiseDiagram: vi.fn((diagram: unknown) => diagram),
+  computeUserElementsBoundingBox: vi.fn().mockReturnValue(null),
+  computePlacementOffset: vi.fn().mockReturnValue({ offsetX: 0, offsetY: 0 }),
+  offsetExcalidrawElements: vi.fn((elements: unknown[]) => elements),
 }));
 vi.mock("@/lib/ai/utils", () => ({
   buildFeatureContext: vi.fn((feature: any) => {
@@ -1955,6 +1959,317 @@ describe("Stakwork Run Service", () => {
         "layered"
       );
     });
+
+    // ---- Clarifying Questions early-exit branch ----
+
+    describe("isClarifyingQuestions type guard", () => {
+      test("returns true for a valid clarifying questions payload", () => {
+        expect(
+          isClarifyingQuestions({
+            tool_use: "ask_clarifying_questions",
+            content: [{ question: "What is the scope?", type: "text" }],
+          })
+        ).toBe(true);
+      });
+
+      test("returns true with multiple questions and options", () => {
+        expect(
+          isClarifyingQuestions({
+            tool_use: "ask_clarifying_questions",
+            content: [
+              { question: "Pick a style", type: "single_choice", options: ["A", "B"] },
+              { question: "Any other notes?", type: "text" },
+            ],
+          })
+        ).toBe(true);
+      });
+
+      test("returns false when tool_use is missing", () => {
+        expect(
+          isClarifyingQuestions({ content: [{ question: "Q", type: "text" }] })
+        ).toBe(false);
+      });
+
+      test("returns false when tool_use is a different value", () => {
+        expect(
+          isClarifyingQuestions({
+            tool_use: "generate_diagram",
+            content: [{ question: "Q", type: "text" }],
+          })
+        ).toBe(false);
+      });
+
+      test("returns false when content is empty array", () => {
+        expect(
+          isClarifyingQuestions({ tool_use: "ask_clarifying_questions", content: [] })
+        ).toBe(false);
+      });
+
+      test("returns false when content items are missing question field", () => {
+        expect(
+          isClarifyingQuestions({
+            tool_use: "ask_clarifying_questions",
+            content: [{ type: "text" }],
+          })
+        ).toBe(false);
+      });
+
+      test("returns false for a normal diagram payload", () => {
+        expect(
+          isClarifyingQuestions({
+            components: [{ id: "c1", name: "Service" }],
+            connections: [],
+          })
+        ).toBe(false);
+      });
+
+      test("returns false for null / primitives", () => {
+        expect(isClarifyingQuestions(null)).toBe(false);
+        expect(isClarifyingQuestions("string")).toBe(false);
+        expect(isClarifyingQuestions(42)).toBe(false);
+      });
+    });
+
+    test("should store clarifying questions as WhiteboardMessage and fire Pusher without generating a diagram (feature-linked)", async () => {
+      const clarifyingPayload = {
+        tool_use: "ask_clarifying_questions",
+        content: [
+          { question: "What is the scope of the system?", type: "text" },
+          { question: "Which components are in scope?", type: "multiple_choice", options: ["Auth", "API", "DB"] },
+        ],
+      };
+
+      const mockRun = {
+        id: "run-clarify-1",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-clarify",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-clarify" });
+      const mockAssistantMsg = {
+        id: "msg-clarify-1",
+        role: "ASSISTANT",
+        content: "I have a few questions before generating the diagram.",
+        status: "SENT",
+        metadata: clarifyingPayload,
+      };
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMsg);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const result = await processStakworkRunWebhook(
+        {
+          result: clarifyingPayload,
+          project_status: "completed",
+          project_id: 99001,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-clarify",
+        }
+      );
+
+      expect(result.runId).toBe("run-clarify-1");
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+
+      // WhiteboardMessage should have been created with the full metadata
+      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+        data: {
+          whiteboardId: "wb-clarify",
+          role: "ASSISTANT",
+          content: "I have a few questions before generating the diagram.",
+          status: "SENT",
+          metadata: clarifyingPayload,
+        },
+      });
+
+      // Pusher should have been triggered with the message
+      expect(mockedPusherServer.trigger).toHaveBeenCalledWith(
+        "whiteboard-wb-clarify",
+        "whiteboard-chat-message",
+        { message: mockAssistantMsg, timestamp: expect.any(Date) }
+      );
+
+      // No diagram extraction or ELK layout should have occurred
+      expect(relayoutDiagram).not.toHaveBeenCalled();
+
+      // No whiteboard element update should have occurred
+      expect(db.whiteboard.update).not.toHaveBeenCalled();
+      expect(db.whiteboard.upsert).not.toHaveBeenCalled();
+    });
+
+    test("should store clarifying questions for standalone whiteboard_id (no feature_id)", async () => {
+      const clarifyingPayload = {
+        tool_use: "ask_clarifying_questions",
+        content: [{ question: "Describe the auth flow in detail.", type: "text" }],
+      };
+
+      const mockRun = {
+        id: "run-clarify-standalone",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: null,
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const mockAssistantMsg = {
+        id: "msg-clarify-2",
+        role: "ASSISTANT",
+        content: "I have a few questions before generating the diagram.",
+        status: "SENT",
+        metadata: clarifyingPayload,
+      };
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue(mockAssistantMsg);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const result = await processStakworkRunWebhook(
+        {
+          result: clarifyingPayload,
+          project_status: "completed",
+          project_id: 99002,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          whiteboard_id: "wb-standalone-clarify",
+        }
+      );
+
+      expect(result.runId).toBe("run-clarify-standalone");
+
+      // WhiteboardMessage created with standalone whiteboard id
+      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+        data: {
+          whiteboardId: "wb-standalone-clarify",
+          role: "ASSISTANT",
+          content: "I have a few questions before generating the diagram.",
+          status: "SENT",
+          metadata: clarifyingPayload,
+        },
+      });
+
+      expect(mockedPusherServer.trigger).toHaveBeenCalledWith(
+        "whiteboard-wb-standalone-clarify",
+        "whiteboard-chat-message",
+        { message: mockAssistantMsg, timestamp: expect.any(Date) }
+      );
+
+      // No diagram work
+      expect(relayoutDiagram).not.toHaveBeenCalled();
+      expect(db.whiteboard.update).not.toHaveBeenCalled();
+    });
+
+    test("should not call whiteboardMessage.create when no whiteboard is resolvable for clarifying questions", async () => {
+      const clarifyingPayload = {
+        tool_use: "ask_clarifying_questions",
+        content: [{ question: "What do you want?", type: "text" }],
+      };
+
+      const mockRun = {
+        id: "run-clarify-no-wb",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: null,
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.whiteboardMessage.create = vi.fn();
+      mockedPusherServer.trigger = vi.fn();
+
+      // No whiteboard_id, no feature_id in query params
+      const result = await processStakworkRunWebhook(
+        {
+          result: clarifyingPayload,
+          project_status: "completed",
+          project_id: 99003,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+        }
+      );
+
+      expect(result.runId).toBe("run-clarify-no-wb");
+      expect(db.whiteboardMessage.create).not.toHaveBeenCalled();
+      // Pusher may be called for the workspace run-update event, but never for a whiteboard channel
+      const whiteboardTriggerCalls = (mockedPusherServer.trigger as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === "string" && call[0].startsWith("whiteboard-")
+      );
+      expect(whiteboardTriggerCalls).toHaveLength(0);
+      expect(relayoutDiagram).not.toHaveBeenCalled();
+    });
+
+    test("normal diagram payload still generates diagram and does not hit clarifying-questions path", async () => {
+      const diagramComponents = [
+        { id: "c1", name: "API Gateway", type: "gateway" },
+        { id: "c2", name: "Auth Service", type: "service" },
+      ];
+      const diagramConnections = [{ from: "c1", to: "c2", label: "calls" }];
+
+      const mockRun = {
+        id: "run-normal-diagram",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-normal",
+        workspace: { slug: "test-workspace" },
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue({ title: "Normal Feature" });
+      mockedDb.whiteboard.upsert = vi.fn().mockResolvedValue({});
+      mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue({ id: "wb-normal" });
+      mockedDb.whiteboardMessage.create = vi.fn().mockResolvedValue({
+        id: "msg-normal",
+        role: "ASSISTANT",
+        content: "Diagram updated based on your request.",
+        status: "SENT",
+      });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      vi.mocked(relayoutDiagram).mockResolvedValueOnce({
+        elements: [{ id: "el-1", type: "rectangle" } as any],
+        appState: { viewBackgroundColor: "#ffffff", gridSize: null },
+      });
+
+      const result = await processStakworkRunWebhook(
+        {
+          result: { components: diagramComponents, connections: diagramConnections },
+          project_status: "completed",
+          project_id: 99004,
+        },
+        {
+          type: "DIAGRAM_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-normal",
+        }
+      );
+
+      expect(result.runId).toBe("run-normal-diagram");
+
+      // relayoutDiagram MUST have been called — we took the normal diagram path
+      expect(relayoutDiagram).toHaveBeenCalled();
+
+      // Whiteboard was upserted
+      expect(db.whiteboard.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { featureId: "feature-normal" } })
+      );
+
+      // ASSISTANT message with standard content created
+      expect(db.whiteboardMessage.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ content: "Diagram updated based on your request." }),
+      });
+    });
+
+    // ---- end clarifying questions tests ----
 
     test("should use feature creator identity when auto-accepting TASK_GENERATION", async () => {
       const mockRun = {
@@ -3956,5 +4271,186 @@ describe("Stakwork Run Service", () => {
       const callArgs = mockStakworkRequest.mock.calls[0][1];
       expect(callArgs.workflow_params.set_var.attributes.vars.history).toEqual([]);
     });
+
+    test("should include diagramContext in vars when provided", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const diagramContext =
+        'Components:\n- "Auth Service" (service) @ (x: 120, y: 80, w: 160, h: 60) [user-created]';
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw an auth flow",
+        layout: "layered",
+        userId: "user-1",
+        diagramContext,
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.diagramContext).toBe(diagramContext);
+    });
+
+    test("should not include diagramContext in vars when not provided", async () => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(baseWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(baseUser);
+      mockedDb.whiteboardMessage.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(baseRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(baseRunUpdated);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 99999 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createDiagramStakworkRun({
+        workspaceId: "ws-1",
+        whiteboardId: "wb-1",
+        architectureText: "Draw an auth flow",
+        layout: "layered",
+        userId: "user-1",
+      });
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1];
+      expect(callArgs.workflow_params.set_var.attributes.vars.diagramContext).toBeUndefined();
+    });
+  });
+});
+
+// ─── extractDiagramData (unit tests via processStakworkRunWebhook) ─────────────
+// We test extractDiagramData indirectly through processStakworkRunWebhook because
+// the function is not exported. The mocked sanitiseDiagram is an identity fn,
+// so any components that survive extraction will appear in the relayoutDiagram call.
+
+describe("extractDiagramData — payload format variants", () => {
+  const COMPONENT = { id: "comp1", name: "Service A", type: "service" };
+
+  // Shared DB mocks that satisfy the processStakworkRunWebhook flow
+  const PROJECT_ID = 88888;
+  const WORKSPACE_ID = "ws-extract-test";
+  const WHITEBOARD_ID = "wb-extract-test";
+
+  const baseRun = {
+    id: "run-extract",
+    type: StakworkRunType.DIAGRAM_GENERATION,
+    workspaceId: WORKSPACE_ID,
+    featureId: null,
+    status: WorkflowStatus.IN_PROGRESS,
+    projectId: PROJECT_ID,
+    webhookUrl: `http://localhost/api/webhook?type=DIAGRAM_GENERATION&workspace_id=${WORKSPACE_ID}&whiteboard_id=${WHITEBOARD_ID}`,
+    decision: null,
+    stakworkRunId: null,
+    dataType: "string",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const baseWhiteboard = {
+    id: WHITEBOARD_ID,
+    workspaceId: WORKSPACE_ID,
+    elements: [],
+    appState: {},
+    files: {},
+    version: 1,
+    featureId: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const mockedDb = vi.mocked(db) as any;
+    mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(baseRun);
+    mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    mockedDb.whiteboard.findUnique = vi.fn().mockResolvedValue(baseWhiteboard);
+    mockedDb.whiteboard.findFirst = vi.fn().mockResolvedValue(null);
+    mockedDb.whiteboard.update = vi.fn().mockResolvedValue(baseWhiteboard);
+    mockedDb.whiteboardVersion.count = vi.fn().mockResolvedValue(0);
+    mockedDb.whiteboardVersion.create = vi.fn().mockResolvedValue({});
+    mockedDb.whiteboardVersion.findFirst = vi.fn().mockResolvedValue(null);
+    vi.mocked(pusherServer.trigger).mockResolvedValue(undefined as any);
+    vi.mocked(relayoutDiagram).mockResolvedValue({
+      elements: [{ id: "layouted-el", type: "rectangle", customData: { source: "ai" } }] as any,
+      appState: { viewBackgroundColor: "#ffffff" } as any,
+    });
+    vi.mocked(sanitiseDiagram).mockImplementation((d: unknown) => d as any);
+  });
+
+  function makePayload(result: unknown) {
+    return { project_id: PROJECT_ID, project_status: "completed", result };
+  }
+
+  const queryContext = {
+    type: "DIAGRAM_GENERATION" as const,
+    workspace_id: WORKSPACE_ID,
+    whiteboard_id: WHITEBOARD_ID,
+  };
+
+  test("legacy top-level components shape extracts correctly", async () => {
+    const result = { components: [COMPONENT], connections: [] };
+    await expect(
+      processStakworkRunWebhook(makePayload(result), queryContext)
+    ).resolves.not.toThrow();
+    expect(relayoutDiagram).toHaveBeenCalledWith(
+      expect.objectContaining({ components: [COMPONENT] }),
+      expect.anything()
+    );
+  });
+
+  test("artifacts array with single DIAGRAM entry extracts correctly", async () => {
+    const result = {
+      featureId: null,
+      message: null,
+      artifacts: [{ type: "DIAGRAM", content: { components: [COMPONENT], connections: [] } }],
+    };
+    await expect(
+      processStakworkRunWebhook(makePayload(result), queryContext)
+    ).resolves.not.toThrow();
+    expect(relayoutDiagram).toHaveBeenCalledWith(
+      expect.objectContaining({ components: [COMPONENT] }),
+      expect.anything()
+    );
+  });
+
+  test("artifacts array — only second entry has type DIAGRAM — extracts correctly", async () => {
+    const result = {
+      artifacts: [
+        { type: "OTHER", content: { components: [{ id: "wrong" }], connections: [] } },
+        { type: "DIAGRAM", content: { components: [COMPONENT], connections: [] } },
+      ],
+    };
+    await expect(
+      processStakworkRunWebhook(makePayload(result), queryContext)
+    ).resolves.not.toThrow();
+    expect(relayoutDiagram).toHaveBeenCalledWith(
+      expect.objectContaining({ components: [COMPONENT] }),
+      expect.anything()
+    );
+  });
+
+  test("artifacts array with no DIAGRAM entry resolves without calling relayoutDiagram", async () => {
+    const result = {
+      artifacts: [
+        { type: "OTHER", content: { components: [COMPONENT], connections: [] } },
+      ],
+    };
+    // The outer catch in processStakworkRunWebhook swallows post-processing errors
+    // (by design — to keep the UI spinner from hanging). The observable behaviour is
+    // that the call resolves and relayoutDiagram is never invoked.
+    await expect(
+      processStakworkRunWebhook(makePayload(result), queryContext)
+    ).resolves.not.toThrow();
+    expect(relayoutDiagram).not.toHaveBeenCalled();
   });
 });

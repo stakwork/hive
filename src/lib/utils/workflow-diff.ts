@@ -44,6 +44,29 @@ function omitPosition(step: unknown): unknown {
   return step;
 }
 
+function omitConnectionMeta(conn: unknown): unknown {
+  if (conn && typeof conn === "object" && !Array.isArray(conn)) {
+    const { id: _id, ...rest } = conn as Record<string, unknown>;
+    return rest;
+  }
+  return conn;
+}
+
+function normaliseTransitions(raw: unknown): Record<string, unknown> {
+  if (Array.isArray(raw)) {
+    const result: Record<string, unknown> = {};
+    for (const step of raw) {
+      if (step && typeof step === "object") {
+        const s = step as Record<string, unknown>;
+        const key = String(s.id ?? s.unique_id ?? Object.keys(result).length);
+        result[key] = s;
+      }
+    }
+    return result;
+  }
+  return (raw ?? {}) as Record<string, unknown>;
+}
+
 export function computeWorkflowDiff(
   originalJson: string | null,
   updatedJson: string | null,
@@ -59,8 +82,8 @@ export function computeWorkflowDiff(
   const changedConnectionIds = new Set<string>();
 
   // Diff transitions (steps) by key
-  const origTransitions = (original.transitions ?? {}) as Record<string, unknown>;
-  const updatedTransitions = (updated.transitions ?? {}) as Record<string, unknown>;
+  const origTransitions = normaliseTransitions(original.transitions);
+  const updatedTransitions = normaliseTransitions(updated.transitions);
 
   const allStepKeys = new Set([...Object.keys(origTransitions), ...Object.keys(updatedTransitions)]);
 
@@ -112,7 +135,7 @@ export function computeWorkflowDiff(
 
     if (!inOrig || !inUpdated) {
       changedConnectionIds.add(key);
-    } else if (JSON.stringify(origConns.get(key)) !== JSON.stringify(updatedConns.get(key))) {
+    } else if (JSON.stringify(omitConnectionMeta(origConns.get(key))) !== JSON.stringify(omitConnectionMeta(updatedConns.get(key)))) {
       changedConnectionIds.add(key);
     }
   }

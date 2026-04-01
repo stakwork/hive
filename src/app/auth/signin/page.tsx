@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
@@ -105,7 +106,7 @@ function SignInContent() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className={`w-full ${hasMockProvider ? "max-w-2xl" : "max-w-md"}`}>
         <Link
           href="/"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors"
@@ -201,6 +202,20 @@ function SignInContent() {
             </div>
           </CardContent>
         </Card>
+
+        {hasMockProvider && (
+          <div className="mt-6">
+            <div className="relative mb-4">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">GraphMindset (Dev)</span>
+              </div>
+            </div>
+            <GraphMindsetCard />
+          </div>
+        )}
       </div>
     </div>
   );

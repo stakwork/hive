@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
 import { computeSectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanChatView";
 import type { FeatureDetail } from "@/types/roadmap";

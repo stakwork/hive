@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     ownerId = (session.user as { id: string }).id;
   }
 
-  const { name, description, slug, repositoryUrl } = body;
+  const { name, description, slug, repositoryUrl, workspaceKind } = body;
   let finalName = name;
   let finalSlug = slug;
 
@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
       slug: finalSlug,
       ownerId,
       repositoryUrl,
+      workspaceKind,
     });
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {

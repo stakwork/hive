@@ -6,6 +6,11 @@ import {
   computeWordWrapLineCount,
   computeLayeredDirection,
   relayoutDiagram,
+  computeUserElementsBoundingBox,
+  computePlacementOffset,
+  offsetExcalidrawElements,
+  extractParsedDiagram,
+  serializeDiagramContext,
   FONT_SIZE,
   LINE_HEIGHT,
   MIN_WIDTH,
@@ -378,6 +383,47 @@ async function getBoundTextElement(name: string) {
   return textEl;
 }
 
+describe("AI element tagging (customData.source === 'ai')", () => {
+  test("all elements from a single component carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "c1", name: "Service A", type: "service" }],
+      connections: [],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+
+  test("arrow and label elements from connections carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [
+        { id: "c1", name: "Client", type: "client" },
+        { id: "c2", name: "Service", type: "service" },
+      ],
+      connections: [{ from: "c1", to: "c2", label: "REST" }],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+
+  test("diamond shape component elements carry customData.source === 'ai'", async () => {
+    const diagram: ParsedDiagram = {
+      components: [{ id: "d1", name: "Decision", type: "gateway", shape: "diamond" }],
+      connections: [],
+    };
+    const result = await relayoutDiagram(diagram);
+    expect(result.elements.length).toBeGreaterThan(0);
+    for (const el of result.elements) {
+      expect((el as Record<string, unknown>).customData).toEqual({ source: "ai" });
+    }
+  });
+});
+
 describe("createComponentElement text height", () => {
   test("short label (API) produces text element with height === SINGLE_LINE_HEIGHT", async () => {
     const textEl = await getBoundTextElement("API");
@@ -417,5 +463,234 @@ describe("createComponentElement text height", () => {
     expect(textEl).toBeDefined();
     expect(textEl!.height).toBeGreaterThan(SINGLE_LINE_HEIGHT);
     expect(textEl!.height).toBeGreaterThanOrEqual(Math.ceil(2 * FONT_SIZE * LINE_HEIGHT));
+  });
+});
+
+describe("computeUserElementsBoundingBox", () => {
+  test("returns null for empty array", () => {
+    expect(computeUserElementsBoundingBox([])).toBeNull();
+  });
+
+  test("returns null when all elements are AI-tagged", () => {
+    const elements = [
+      { x: 0, y: 0, width: 100, height: 50, customData: { source: "ai" } },
+      { x: 200, y: 200, width: 80, height: 60, customData: { source: "ai" } },
+    ];
+    expect(computeUserElementsBoundingBox(elements)).toBeNull();
+  });
+
+  test("correctly computes bbox across multiple user elements", () => {
+    const elements = [
+      { x: 10, y: 20, width: 100, height: 50 },          // maxX=110, maxY=70
+      { x: 50, y: 5, width: 60, height: 30 },             // maxX=110, maxY=35
+      { x: 200, y: 100, width: 40, height: 40 },          // maxX=240, maxY=140
+      { x: 5, y: 200, width: 30, height: 20, customData: { source: "ai" } }, // excluded
+    ];
+    const bbox = computeUserElementsBoundingBox(elements);
+    expect(bbox).toEqual({ minX: 10, minY: 5, maxX: 240, maxY: 140 });
+  });
+
+  test("skips elements missing numeric x/y/width/height", () => {
+    const elements = [
+      { x: 10, y: 20, width: 100, height: 50 },
+      { x: "bad", y: 20, width: 100, height: 50 },        // invalid x
+      { x: 10, y: 20, width: undefined, height: 50 },     // missing width
+    ];
+    const bbox = computeUserElementsBoundingBox(elements);
+    // Only the first valid element contributes
+    expect(bbox).toEqual({ minX: 10, minY: 20, maxX: 110, maxY: 70 });
+  });
+});
+
+describe("computePlacementOffset", () => {
+  test("places below when bbox is wider than tall (bboxW > bboxH)", () => {
+    // wide bbox: 400 wide, 100 tall
+    const bbox = { minX: 0, minY: 0, maxX: 400, maxY: 100 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150);
+    expect(offsetX).toBe(0);          // bbox.minX
+    expect(offsetY).toBe(180);        // bbox.maxY + 80
+  });
+
+  test("places to the right when bbox is taller than wide (bboxH >= bboxW)", () => {
+    // tall bbox: 100 wide, 400 tall
+    const bbox = { minX: 50, minY: 10, maxX: 150, maxY: 410 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150);
+    expect(offsetX).toBe(230);        // bbox.maxX + 80
+    expect(offsetY).toBe(10);         // bbox.minY
+  });
+
+  test("places to the right for a square bbox (bboxH === bboxW)", () => {
+    const bbox = { minX: 0, minY: 0, maxX: 200, maxY: 200 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 100, 100);
+    expect(offsetX).toBe(280);        // bbox.maxX + 80
+    expect(offsetY).toBe(0);          // bbox.minY
+  });
+
+  test("respects custom gap value", () => {
+    const bbox = { minX: 0, minY: 0, maxX: 300, maxY: 100 };
+    const { offsetX, offsetY } = computePlacementOffset(bbox, 200, 150, 40);
+    expect(offsetY).toBe(140);        // bbox.maxY + 40
+  });
+});
+
+describe("offsetExcalidrawElements", () => {
+  test("shifts x and y of shape and text elements", () => {
+    const elements = [
+      { id: "a", type: "rectangle", x: 10, y: 20, width: 100, height: 50 },
+      { id: "b", type: "text", x: 30, y: 40, width: 80, height: 20 },
+    ];
+    const shifted = offsetExcalidrawElements(elements, 50, 100);
+    expect(shifted[0]).toMatchObject({ x: 60, y: 120 });
+    expect(shifted[1]).toMatchObject({ x: 80, y: 140 });
+  });
+
+  test("does not modify points on arrow elements", () => {
+    const arrow = {
+      id: "arr",
+      type: "arrow",
+      x: 10,
+      y: 20,
+      points: [[0, 0], [50, 50]],
+    };
+    const shifted = offsetExcalidrawElements([arrow], 100, 200);
+    const result = shifted[0] as typeof arrow;
+    expect(result.x).toBe(110);
+    expect(result.y).toBe(220);
+    // points remain relative to (x, y) — unchanged
+    expect(result.points).toEqual([[0, 0], [50, 50]]);
+  });
+
+  test("does not mutate the input array", () => {
+    const elements = [{ id: "a", type: "rectangle", x: 0, y: 0, width: 50, height: 50 }];
+    const original = elements[0];
+    offsetExcalidrawElements(elements, 10, 10);
+    expect(elements[0]).toBe(original);
+    expect((elements[0] as any).x).toBe(0); // unchanged
+  });
+});
+
+describe("extractParsedDiagram — position and authorship", () => {
+  function makeRectEl(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "rect-1",
+      type: "rectangle",
+      x: 100,
+      y: 200,
+      width: 150,
+      height: 60,
+      isDeleted: false,
+      backgroundColor: "#a5d8ff",
+      strokeColor: "#1971c2",
+      roundness: { type: 3 },
+      boundElements: [{ id: "text-1", type: "text" }],
+      ...overrides,
+    };
+  }
+
+  function makeTextEl(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "text-1",
+      type: "text",
+      x: 110,
+      y: 220,
+      width: 130,
+      height: 20,
+      isDeleted: false,
+      text: "Auth Service",
+      containerId: "rect-1",
+      ...overrides,
+    };
+  }
+
+  test("user-created element: captures x, y, width, height and createdBy=user when no customData", () => {
+    const elements = [makeRectEl(), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram).not.toBeNull();
+    const comp = diagram!.components[0];
+    expect(comp.x).toBe(100);
+    expect(comp.y).toBe(200);
+    expect(comp.width).toBe(150);
+    expect(comp.height).toBe(60);
+    expect(comp.createdBy).toBe("user");
+  });
+
+  test("ai-generated element: createdBy=ai when customData.source === 'ai'", () => {
+    const elements = [makeRectEl({ customData: { source: "ai" } }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram).not.toBeNull();
+    expect(diagram!.components[0].createdBy).toBe("ai");
+  });
+
+  test("element with other customData.source: createdBy=user", () => {
+    const elements = [makeRectEl({ customData: { source: "user" } }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram!.components[0].createdBy).toBe("user");
+  });
+
+  test("element with no customData: createdBy=user", () => {
+    const elements = [makeRectEl({ customData: undefined }), makeTextEl()];
+    const diagram = extractParsedDiagram(elements);
+    expect(diagram!.components[0].createdBy).toBe("user");
+  });
+});
+
+describe("serializeDiagramContext — position and authorship output", () => {
+  function makeRectEl(id: string, text: string, x: number, y: number, customData?: Record<string, unknown>) {
+    return [
+      {
+        id,
+        type: "rectangle",
+        x,
+        y,
+        width: 160,
+        height: 60,
+        isDeleted: false,
+        backgroundColor: "#a5d8ff",
+        strokeColor: "#1971c2",
+        roundness: { type: 3 },
+        boundElements: [{ id: `${id}-text`, type: "text" }],
+        customData,
+      },
+      {
+        id: `${id}-text`,
+        type: "text",
+        x: x + 10,
+        y: y + 20,
+        width: 140,
+        height: 20,
+        isDeleted: false,
+        text,
+        containerId: id,
+      },
+    ];
+  }
+
+  test("includes position string for elements with x/y/width/height", () => {
+    const elements = makeRectEl("c1", "Auth Service", 120, 80);
+    const result = serializeDiagramContext(elements);
+    expect(result).not.toBeNull();
+    expect(result).toContain("@ (x: 120, y: 80, w: 160, h: 60)");
+  });
+
+  test("labels user-created elements with [user-created]", () => {
+    const elements = makeRectEl("c1", "Auth Service", 120, 80);
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("[user-created]");
+  });
+
+  test("labels ai-generated elements with [ai-generated]", () => {
+    const elements = makeRectEl("c1", "Database", 400, 80, { source: "ai" });
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("[ai-generated]");
+  });
+
+  test("rounds fractional coordinates", () => {
+    const elements = makeRectEl("c1", "Service", 100.7, 200.3);
+    const result = serializeDiagramContext(elements);
+    expect(result).toContain("x: 101, y: 200");
+  });
+
+  test("returns null for empty elements array", () => {
+    expect(serializeDiagramContext([])).toBeNull();
   });
 });

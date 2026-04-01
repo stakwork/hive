@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 
-const MAX_VERSIONS = 3;
+const MAX_VERSIONS = 10;
 
 async function checkWhiteboardAccess(whiteboardId: string, userId: string) {
   const whiteboard = await db.whiteboard.findUnique({

@@ -26,6 +26,11 @@ export interface ParsedComponent {
   layer?: number | null;
   color?: string | null;
   backgroundColor?: string | null;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  createdBy?: "user" | "ai";
 }
 
 export interface ParsedConnection {
@@ -91,6 +96,7 @@ interface ExcalidrawElement {
   startArrowhead?: string | null;
   endArrowhead?: string | null;
   elbowed?: boolean;
+  customData?: Record<string, unknown>;
 }
 
 interface LayoutedComponent extends ParsedComponent {
@@ -665,6 +671,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     updated: timestamp,
     link: null,
     locked: false,
+    customData: { source: "ai" },
   };
 
   const text: ExcalidrawElement = {
@@ -702,6 +709,7 @@ function createComponentElement(component: LayoutedComponent): ExcalidrawElement
     originalText: component.name,
     autoResize: true,
     lineHeight: 1.25,
+    customData: { source: "ai" },
   };
 
   return [shapeElement, text];
@@ -757,6 +765,7 @@ function createConnectionElement(connection: LayoutedConnection, sharp = false):
     startArrowhead: null,
     endArrowhead: "arrow",
     elbowed: false,
+    customData: { source: "ai" },
   };
 
   const elements: ExcalidrawElement[] = [arrow];
@@ -801,6 +810,7 @@ function createConnectionElement(connection: LayoutedConnection, sharp = false):
       originalText: connection.label,
       autoResize: true,
       lineHeight: 1.25,
+      customData: { source: "ai" },
     };
 
     elements.push(label);
@@ -916,7 +926,14 @@ export function extractParsedDiagram(elements: readonly Record<string, unknown>[
       shape = "rect";
     }
 
-    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor });
+    const elX = typeof el.x === "number" ? el.x : undefined;
+    const elY = typeof el.y === "number" ? el.y : undefined;
+    const elWidth = typeof el.width === "number" ? el.width : undefined;
+    const elHeight = typeof el.height === "number" ? el.height : undefined;
+    const customData = el.customData as Record<string, unknown> | undefined;
+    const createdBy: "user" | "ai" = customData?.source === "ai" ? "ai" : "user";
+
+    components.push({ id: compId, name, type, shape, color: strokeColor, backgroundColor: bgColor, x: elX, y: elY, width: elWidth, height: elHeight, createdBy });
   }
 
   const arrows = elements.filter((e) => e.type === "arrow" && !e.isDeleted);
@@ -990,7 +1007,12 @@ export function serializeDiagramContext(
     ].filter(Boolean).join(", ");
     const extraInfo = extras ? `, ${extras}` : "";
     const typeLabel = c.type || "component";
-    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})`);
+    const pos =
+      c.x != null && c.y != null && c.width != null && c.height != null
+        ? ` @ (x: ${Math.round(c.x)}, y: ${Math.round(c.y)}, w: ${Math.round(c.width)}, h: ${Math.round(c.height)})`
+        : "";
+    const author = c.createdBy === "ai" ? " [ai-generated]" : " [user-created]";
+    lines.push(`- "${c.name}" (${typeLabel}${extraInfo})${pos}${author}`);
   }
 
   if (parsed.connections.length > 0) {
@@ -1006,6 +1028,113 @@ export function serializeDiagramContext(
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Compute the bounding box of all non-AI elements in an existing whiteboard
+ * element list. Elements tagged with `customData.source === "ai"` are excluded
+ * because they will be replaced by the incoming AI diagram.
+ *
+ * Returns null when no valid user elements exist (empty canvas).
+ */
+export function computeUserElementsBoundingBox(
+  existing: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of existing) {
+    const e = el as Record<string, unknown>;
+    // Skip AI-generated elements — they are being replaced
+    if ((e.customData as Record<string, unknown> | undefined)?.source === "ai") continue;
+
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Compute the bounding box of any element array without filtering by customData.
+ * Used internally to get the extents of freshly laid-out AI elements.
+ */
+function computeRawBoundingBox(
+  elements: unknown[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+
+  for (const el of elements) {
+    const e = el as Record<string, unknown>;
+    const x = e.x, y = e.y, w = e.width, h = e.height;
+    if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") continue;
+
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+    found = true;
+  }
+
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
+/**
+ * Decide where to place the AI diagram relative to existing user content.
+ *
+ * Strategy:
+ * - If the user's bounding box is taller than it is wide (portrait), place the
+ *   AI diagram to the **right** (more horizontal space available).
+ * - Otherwise (landscape or square), place the AI diagram **below**.
+ *
+ * A fixed `gap` (default 80px) is added between the existing content and the
+ * new diagram.
+ */
+export function computePlacementOffset(
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  _aiWidth: number,
+  _aiHeight: number,
+  gap = 80
+): { offsetX: number; offsetY: number } {
+  const bboxW = bbox.maxX - bbox.minX;
+  const bboxH = bbox.maxY - bbox.minY;
+
+  if (bboxH >= bboxW) {
+    // Taller canvas → place to the right
+    return { offsetX: bbox.maxX + gap, offsetY: bbox.minY };
+  } else {
+    // Wider canvas → place below
+    return { offsetX: bbox.minX, offsetY: bbox.maxY + gap };
+  }
+}
+
+/**
+ * Shift every element in the array by (offsetX, offsetY).
+ *
+ * Arrow `points` are stored relative to the arrow's own (x, y) origin, so
+ * they must NOT be translated — only the arrow's x/y moves.
+ *
+ * Returns a new array; the input is not mutated.
+ */
+export function offsetExcalidrawElements(
+  elements: unknown[],
+  offsetX: number,
+  offsetY: number
+): unknown[] {
+  return elements.map((el) => {
+    const e = el as Record<string, unknown>;
+    const x = typeof e.x === "number" ? e.x + offsetX : e.x;
+    const y = typeof e.y === "number" ? e.y + offsetY : e.y;
+    return { ...e, x, y };
+    // Note: arrow `points` are relative to (x,y) and are intentionally left unchanged.
+  });
 }
 
 /**

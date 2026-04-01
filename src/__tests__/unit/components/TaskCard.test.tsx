@@ -10,6 +10,15 @@ import { TaskData } from "@/hooks/useWorkspaceTasks";
 // Make React globally available for components that use the classic JSX transform
 globalThis.React = React;
 
+// Mock useWorkspace since TaskCard now calls it
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    workspace: { id: "workspace-1", slug: "test-ws" },
+    slug: "test-ws",
+    isSuperAdmin: false,
+  }),
+}));
+
 // Mock framer-motion: render children immediately without animations
 vi.mock("framer-motion", () => ({
   motion: {

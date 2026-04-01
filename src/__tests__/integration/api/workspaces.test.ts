@@ -157,5 +157,38 @@ describe("Workspace API - Integration Tests", () => {
 
       await expectError(response, "Missing required fields", 400);
     });
+
+    test("persists workspaceKind when provided", async () => {
+      const user = await createTestUser();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const slug = generateUniqueSlug("graph-workspace");
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Graph Workspace",
+        slug,
+        workspaceKind: "GRAPH",
+      });
+
+      const response = await POST(request);
+      const data = await expectSuccess(response, 201);
+
+      expect(data.workspace.workspaceKind).toBe("GRAPH");
+    });
+
+    test("creates workspace with null workspaceKind when not provided", async () => {
+      const user = await createTestUser();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const slug = generateUniqueSlug("plain-workspace");
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Plain Workspace",
+        slug,
+      });
+
+      const response = await POST(request);
+      const data = await expectSuccess(response, 201);
+
+      expect(data.workspace.workspaceKind).toBeNull();
+    });
   });
 });
