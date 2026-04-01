@@ -15,10 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
 
 interface CreateSwarmDialogProps {
   open: boolean;
@@ -53,7 +49,6 @@ export default function CreateSwarmDialog({
   onOpenChange,
   onCreated,
 }: CreateSwarmDialogProps) {
-  const [swarmType, setSwarmType] = useState<string>("graph_mindset");
   const [autoGenerate, setAutoGenerate] = useState(true);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -74,7 +69,6 @@ export default function CreateSwarmDialog({
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      setSwarmType("graph_mindset");
       setAutoGenerate(true);
       setShowPassword(false);
       setSubmitting(false);
@@ -89,7 +83,6 @@ export default function CreateSwarmDialog({
     setSubmitting(true);
     try {
       const body: Record<string, string> = { password };
-      if (swarmType === "graph_mindset") body.workspace_type = "graph_mindset";
 
       const res = await fetch("/api/admin/swarms", {
         method: "POST",
@@ -155,24 +148,6 @@ export default function CreateSwarmDialog({
         {!credentials ? (
           /* ── Form State ── */
           <div className="space-y-5">
-            {/* Swarm Type */}
-            <div className="space-y-2">
-              <Label>Swarm Type</Label>
-              <ToggleGroup
-                type="single"
-                value={swarmType}
-                onValueChange={(v) => { if (v) setSwarmType(v); }}
-                className="justify-start"
-              >
-                <ToggleGroupItem value="graph_mindset" aria-label="Graph Mindset">
-                  Graph Mindset
-                </ToggleGroupItem>
-                <ToggleGroupItem value="other" aria-label="Other">
-                  Other
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-
             {/* Password */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">

@@ -28,50 +28,7 @@ vi.mock("@/components/ui/dialog", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/toggle-group", () => ({
-  ToggleGroup: ({
-    children,
-    value,
-    onValueChange,
-  }: {
-    children: React.ReactNode;
-    value: string;
-    onValueChange: (v: string) => void;
-  }) => (
-    <div data-testid="toggle-group" data-value={value}>
-      {React.Children.map(children, (child) => {
-        if (!React.isValidElement(child)) return child;
-        const item = child as React.ReactElement<{
-          value: string;
-          children: React.ReactNode;
-          "aria-label"?: string;
-        }>;
-        return React.cloneElement(item, {
-          onClick: () => onValueChange(item.props.value),
-        } as React.HTMLAttributes<HTMLElement>);
-      })}
-    </div>
-  ),
-  ToggleGroupItem: ({
-    children,
-    value,
-    "aria-label": ariaLabel,
-    onClick,
-  }: {
-    children: React.ReactNode;
-    value: string;
-    "aria-label"?: string;
-    onClick?: () => void;
-  }) => (
-    <button
-      data-testid={`toggle-${value}`}
-      aria-label={ariaLabel ?? String(children)}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  ),
-}));
+
 
 vi.mock("@/components/ui/checkbox", () => ({
   Checkbox: ({
@@ -218,10 +175,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("CreateSwarmDialog", () => {
-  it("renders the form with Graph Mindset selected by default", () => {
+  it("renders the form with submit button", () => {
     render(<CreateSwarmDialog {...defaultProps} />);
-    expect(screen.getByText("Graph Mindset")).toBeInTheDocument();
-    expect(screen.getByText("Other")).toBeInTheDocument();
     expect(screen.getByTestId("create-swarm-submit")).toBeInTheDocument();
   });
 
@@ -245,50 +200,6 @@ describe("CreateSwarmDialog", () => {
     await user.click(checkbox);
     const input = screen.getByTestId("password-input") as HTMLInputElement;
     expect(input.readOnly).toBe(false);
-  });
-
-  it("submits with graph_mindset workspace_type when Graph Mindset is selected", async () => {
-    const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockCredentials,
-    });
-
-    render(<CreateSwarmDialog {...defaultProps} />);
-    await user.click(screen.getByTestId("create-swarm-submit"));
-
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        "/api/admin/swarms",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining('"workspace_type":"graph_mindset"'),
-        })
-      );
-    });
-  });
-
-  it("submits without workspace_type when Other is selected", async () => {
-    const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockCredentials,
-    });
-
-    render(<CreateSwarmDialog {...defaultProps} />);
-
-    // Switch to Other
-    await user.click(screen.getByTestId("toggle-other"));
-
-    await user.click(screen.getByTestId("create-swarm-submit"));
-
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      const body = JSON.parse(
-        (mockFetch.mock.calls[0][1] as RequestInit).body as string
-      );
-      expect("workspace_type" in body).toBe(false);
-    });
   });
 
   it("shows results view with all credential fields after success", async () => {

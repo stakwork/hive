@@ -146,8 +146,8 @@ function parseEdge(line: string): ParsedEdge | null {
     const m = re.exec(line);
     if (m) {
       return {
-        from: m[fromGroup].trim(),
-        to: m[toGroup].trim(),
+        from: m[fromGroup].trim().replace(/;+$/, ""),
+        to: m[toGroup].trim().replace(/;+$/, ""),
         label: labelGroup ? m[labelGroup].trim() : "",
       };
     }

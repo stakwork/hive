@@ -20,11 +20,10 @@ beforeEach(() => {
   });
   mockFetch.mockReset();
   localStorage.clear();
-  // Default response handles the fork config useEffect on mount.
-  // mockReturnValueOnce calls in individual tests override this for their specific calls.
+  // Default fallback response
   mockFetch.mockResolvedValue({
     ok: true,
-    json: () => Promise.resolve({ repoUrl: null }),
+    json: () => Promise.resolve({}),
   });
 });
 afterEach(() => {
@@ -48,6 +47,19 @@ function takenSlugResponse() {
     json: () =>
       Promise.resolve({ data: { isAvailable: false, slug: "taken", message: "Name is already taken" } }),
   });
+}
+
+/** Helper: type into the name field and advance the debounce timer */
+async function fillName(value: string) {
+  const input = screen.getByPlaceholderText("e.g., my-api-graph");
+  fireEvent.change(input, { target: { value } });
+  await act(async () => { vi.advanceTimersByTime(600); });
+}
+
+/** Helper: type into the password field */
+function fillPassword(value: string) {
+  const input = screen.getByPlaceholderText("Min. 8 characters");
+  fireEvent.change(input, { target: { value } });
 }
 
 describe("GraphMindsetCard", () => {
@@ -76,25 +88,37 @@ describe("GraphMindsetCard", () => {
     expect(button).toBeDisabled();
   });
 
+  it("renders a password field with label 'Graph password'", () => {
+    render(<GraphMindsetCard />);
+    expect(screen.getByText("Graph password")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Min. 8 characters")).toBeInTheDocument();
+  });
+
+  it("button remains disabled when name is available but password is empty", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockReturnValue(availableSlugResponse());
+    render(<GraphMindsetCard />);
+    await fillName("my-graph");
+    vi.useRealTimers();
+    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
+    // Password is still empty
+    expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
+  });
+
   it("button remains disabled while name is being validated (isValidating)", async () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("my-graph");
     const button = screen.getByRole("button", { name: /create my graph/i });
     expect(button).toBeDisabled();
   });
 
   it("button remains disabled when slug is taken", async () => {
     vi.useFakeTimers();
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "taken" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("taken");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText("Name is already taken")).toBeInTheDocument();
@@ -102,53 +126,40 @@ describe("GraphMindsetCard", () => {
     expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
   });
 
-  it("button is enabled when slug is available", async () => {
+  it("button is enabled when slug is available AND password is non-empty", async () => {
     vi.useFakeTimers();
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(availableSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("my-graph");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText(/Name is available/i)).toBeInTheDocument();
     });
+    fillPassword("secret123");
     expect(screen.getByRole("button", { name: /create my graph/i })).not.toBeDisabled();
   });
 
   it("shows inline error for taken slug", async () => {
     vi.useFakeTimers();
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "taken" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("taken");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText("Name is already taken")).toBeInTheDocument();
     });
   });
 
-  it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
+  it("stores password in localStorage and redirects to Stripe on success", async () => {
     vi.useFakeTimers();
-    // Fork config (mount effect)
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("my-graph");
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
 
-    // Workspace creation
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ workspace: { id: "ws_test_123" } }),
-    });
+    fillPassword("secret123");
 
     // Stripe checkout
     mockFetch.mockResolvedValueOnce({
@@ -164,10 +175,50 @@ describe("GraphMindsetCard", () => {
     });
     expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
-    expect(localStorage.getItem("graphMindsetWorkspaceId")).toBe("ws_test_123");
+    expect(localStorage.getItem("graphMindsetPassword")).toBe("secret123");
 
-    // Four fetches: fork config (mount) + slug check + workspace creation + Stripe checkout
-    expect(mockFetch).toHaveBeenCalledTimes(4);
+    // Two fetches: slug check + Stripe checkout
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "/api/stripe/checkout",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ workspaceName: "my-graph", workspaceSlug: "my-graph" }),
+      })
+    );
+  });
+
+  it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockReturnValueOnce(availableSlugResponse());
+    render(<GraphMindsetCard />);
+
+    const input = screen.getByPlaceholderText("e.g., my-api-graph");
+    fireEvent.change(input, { target: { value: "my-graph" } });
+    await act(async () => { vi.advanceTimersByTime(600); });
+    vi.useRealTimers();
+    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
+
+    fillPassword("mypassword");
+
+    // Stripe checkout
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ sessionUrl: "https://checkout.stripe.com/pay/test", sessionId: "cs_test_123" }),
+    });
+
+    const button = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(button); });
+
+    await waitFor(() => {
+      expect(window.location.href).toBe("https://checkout.stripe.com/pay/test");
+    });
+    expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
+    expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
+    expect(localStorage.getItem("graphMindsetWorkspaceId")).toBeNull();
+
+    // Two fetches: slug check + Stripe checkout (no fork config, no workspace creation)
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenLastCalledWith(
       "/api/stripe/checkout",
       expect.objectContaining({
@@ -179,8 +230,6 @@ describe("GraphMindsetCard", () => {
 
   it("shows inline error on Stripe session creation failure", async () => {
     vi.useFakeTimers();
-    // Fork config (mount effect)
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ repoUrl: null }) });
     mockFetch.mockReturnValueOnce(availableSlugResponse());
     render(<GraphMindsetCard />);
 
@@ -190,6 +239,9 @@ describe("GraphMindsetCard", () => {
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
 
+    fillPassword("mypassword");
+
+    // Stripe checkout fails
     mockFetch.mockResolvedValueOnce({
       ok: false,
       json: () => Promise.resolve({ error: "Stripe error" }),
