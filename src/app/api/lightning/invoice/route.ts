@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
         invoice: payment_request,
         amount,
         status: 'UNPAID',
+        userId: session.user.id,
       },
     });
 
