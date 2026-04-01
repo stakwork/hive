@@ -7,6 +7,7 @@ export interface CreateTestLightningPaymentOptions {
   invoice?: string;
   amount?: number;
   status?: LightningPaymentStatus;
+  createdAt?: Date;
 }
 
 export async function createTestLightningPayment(
@@ -20,6 +21,7 @@ export async function createTestLightningPayment(
       invoice: options.invoice ?? `lnbc1mock_${rand}`,
       amount: options.amount ?? 1000,
       status: options.status ?? 'UNPAID',
+      ...(options.createdAt ? { createdAt: options.createdAt } : {}),
     },
   });
 }

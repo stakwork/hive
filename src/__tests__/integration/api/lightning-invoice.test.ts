@@ -124,11 +124,13 @@ describe('Lightning Invoice API Integration Tests', () => {
         workspaceId: workspace.id,
         paymentHash: 'hash_older',
         amount: 500,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
       });
       await createTestLightningPayment({
         workspaceId: workspace.id,
         paymentHash: 'hash_latest',
         amount: 1000,
+        createdAt: new Date('2024-01-02T00:00:00Z'),
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
