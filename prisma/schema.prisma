@@ -1259,7 +1259,7 @@ model SwarmPayment {
   failureMessage        String?            @map("failure_message")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
-  workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace             Workspace?         @relation(fields: [workspaceId], references: [id])
 
   @@index([workspaceId])
   @@index([stripeSessionId])
