@@ -10,6 +10,8 @@ export interface CreateTestSwarmPaymentOptions {
   status?: SwarmPaymentStatus;
   amount?: number | null;
   currency?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
 }
 
 export async function createTestSwarmPayment(
@@ -28,6 +30,8 @@ export async function createTestSwarmPayment(
       status: options.status ?? 'PENDING',
       amount: options.amount ?? null,
       currency: options.currency ?? null,
+      failureCode: options.failureCode ?? null,
+      failureMessage: options.failureMessage ?? null,
     },
   });
 }
