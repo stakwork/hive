@@ -186,7 +186,7 @@ function SphinxLinkStep({ isAlreadyLinked, onComplete, onSessionUpdate }: Sphinx
 
         setIsSuccess(true);
         await onSessionUpdate();
-        onComplete(data.forkUrl);
+        onComplete();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to link account");
         setIsVerified(false);
