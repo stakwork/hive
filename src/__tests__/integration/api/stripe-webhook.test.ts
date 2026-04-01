@@ -52,6 +52,23 @@ function buildCheckoutCompletedEvent(
   } as Stripe.Event;
 }
 
+function buildPaymentFailedEvent(
+  paymentIntentId: string,
+  declineCode = 'insufficient_funds',
+  message = 'Your card has insufficient funds.',
+): Stripe.Event {
+  return {
+    id: 'evt_test_failed',
+    type: 'payment_intent.payment_failed',
+    data: {
+      object: {
+        id: paymentIntentId,
+        last_payment_error: { decline_code: declineCode, code: declineCode, message },
+      } as unknown as Stripe.PaymentIntent,
+    },
+  } as Stripe.Event;
+}
+
 function buildCheckoutExpiredEvent(sessionId: string): Stripe.Event {
   return {
     id: 'evt_test_expired',
@@ -167,12 +184,11 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       expect(response.status).toBe(200);
       expect((await response.json())).toEqual({ received: true });
       expect(mockCreateSwarm).toHaveBeenCalledWith(
-        expect.objectContaining({ workspace_type: 'graph_mindset' }),
+        expect.objectContaining({ instance_type: expect.any(String) }),
       );
 
       const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
       expect(swarm).not.toBeNull();
-      expect(swarm!.workspaceType).toBe('graph_mindset');
       expect(swarm!.status).toBe('ACTIVE');
     });
 
@@ -220,6 +236,53 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       // Payment/workspace still updated despite swarm failure
       const updatedWorkspace = await db.workspace.findUnique({ where: { id: workspace.id } });
       expect(updatedWorkspace!.paymentStatus).toBe('PAID');
+    });
+
+    test('payment_intent.payment_failed: updates SwarmPayment to FAILED with failureCode/failureMessage and workspace paymentStatus to FAILED', async () => {
+      const { workspace } = await createTestWorkspaceScenario();
+      const payment = await createTestSwarmPayment({
+        workspaceId: workspace.id,
+        stripePaymentIntentId: 'pi_test_declined',
+        status: 'PENDING',
+      });
+
+      const event = buildPaymentFailedEvent('pi_test_declined');
+      mockConstructStripeEvent.mockReturnValue(event);
+
+      const req = buildWebhookRequest(JSON.stringify({}));
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ received: true });
+
+      const updatedPayment = await db.swarmPayment.findUnique({
+        where: { id: payment.id },
+      });
+      expect(updatedPayment!.status).toBe('FAILED');
+      expect(updatedPayment!.failureCode).toBe('insufficient_funds');
+      expect(updatedPayment!.failureMessage).toBe('Your card has insufficient funds.');
+
+      const updatedWorkspace = await db.workspace.findUnique({ where: { id: workspace.id } });
+      expect(updatedWorkspace!.paymentStatus).toBe('FAILED');
+
+      expect(mockCreateSwarm).not.toHaveBeenCalled();
+    });
+
+    test('payment_intent.payment_failed: no matching SwarmPayment returns 200 with no DB writes', async () => {
+      const event = buildPaymentFailedEvent('pi_unknown_intent_xyz');
+      mockConstructStripeEvent.mockReturnValue(event);
+
+      const req = buildWebhookRequest(JSON.stringify({}));
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ received: true });
+
+      // Confirm no SwarmPayment was created or modified
+      const payment = await db.swarmPayment.findFirst({
+        where: { stripePaymentIntentId: 'pi_unknown_intent_xyz' },
+      });
+      expect(payment).toBeNull();
     });
 
     test('unknown event type: returns 200 with no DB writes', async () => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getStripeClient } from '@/services/stripe';
 import { logger } from '@/lib/logger';
+import { db } from '@/lib/db';
 
 const checkoutBodySchema = z.object({
   workspaceName: z.string().min(1),
@@ -34,9 +35,30 @@ export async function POST(req: NextRequest) {
       metadata: { workspaceName, workspaceSlug },
     });
 
+    await db.swarmPayment.create({
+      data: {
+        stripeSessionId: stripeSession.id,
+        workspaceName,
+        workspaceSlug,
+        status: 'PENDING',
+        workspaceId: null,
+      },
+    });
+
     return NextResponse.json({ sessionUrl: stripeSession.url, sessionId: stripeSession.id });
   } catch (err) {
     logger.error('Failed to create Stripe checkout session', 'stripe-checkout', { err });
+
+    await db.swarmPayment.create({
+      data: {
+        stripeSessionId: `stripe_failed_${crypto.randomUUID()}`,
+        workspaceName,
+        workspaceSlug,
+        status: 'PENDING',
+        workspaceId: null,
+      },
+    });
+
     return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 });
   }
 }

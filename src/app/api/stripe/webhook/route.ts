@@ -50,7 +50,6 @@ export async function POST(req: NextRequest) {
           const apiResponse = await swarmService.createSwarm({
             instance_type: SWARM_DEFAULT_INSTANCE_TYPE,
             password: swarmPassword,
-            workspace_type: 'graph_mindset',
           });
           const { swarm_id, address, x_api_key, ec2_id } = apiResponse.data;
           await saveOrUpdateSwarm({
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
             swarmSecretAlias: `{{${swarm_id}_API_KEY}}`,
             swarmId: swarm_id,
             swarmPassword,
-            workspaceType: 'graph_mindset',
           });
         } catch (err) {
           logger.error('Failed to create graph_mindset swarm after payment', 'stripe-webhook', { err });
@@ -88,6 +86,43 @@ export async function POST(req: NextRequest) {
       where: { stripeSessionId: stripeSession.id },
       data: { status: 'EXPIRED' },
     });
+  }
+
+  if (event.type === 'payment_intent.payment_failed') {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    const failureCode =
+      intent.last_payment_error?.decline_code ?? intent.last_payment_error?.code ?? null;
+    const failureMessage = intent.last_payment_error?.message ?? null;
+
+    const payment = await db.swarmPayment.findFirst({
+      where: { stripePaymentIntentId: intent.id },
+    });
+
+    if (payment) {
+      if (payment.workspaceId) {
+        await db.$transaction([
+          db.swarmPayment.update({
+            where: { id: payment.id },
+            data: { status: 'FAILED', failureCode, failureMessage },
+          }),
+          db.workspace.update({
+            where: { id: payment.workspaceId },
+            data: { paymentStatus: 'FAILED' },
+          }),
+        ]);
+      } else {
+        await db.swarmPayment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', failureCode, failureMessage },
+        });
+      }
+    } else {
+      logger.info(
+        'payment_intent.payment_failed: no matching SwarmPayment found (pre-auth or unknown)',
+        'stripe-webhook',
+        { paymentIntentId: intent.id },
+      );
+    }
   }
 
   return NextResponse.json({ received: true });

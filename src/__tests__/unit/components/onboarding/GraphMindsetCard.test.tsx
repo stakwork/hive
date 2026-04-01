@@ -8,6 +8,11 @@ vi.mock("@/components/onboarding/GraphNetworkIcon", () => ({
   GraphNetworkIcon: () => <div data-testid="graph-network-icon" />,
 }));
 
+const mockRouterPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+}));
+
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -19,6 +24,7 @@ beforeEach(() => {
     value: { href: "" },
   });
   mockFetch.mockReset();
+  mockRouterPush.mockReset();
   localStorage.clear();
   // Default fallback response
   mockFetch.mockResolvedValue({
@@ -47,6 +53,23 @@ function takenSlugResponse() {
     json: () =>
       Promise.resolve({ data: { isAvailable: false, slug: "taken", message: "Name is already taken" } }),
   });
+}
+
+/** Helper: type into the name field and advance the debounce timer */
+async function fillName(value: string) {
+  const input = screen.getByPlaceholderText("e.g., my-api-graph");
+  fireEvent.change(input, { target: { value } });
+  await act(async () => { vi.advanceTimersByTime(600); });
+}
+
+/** Helper: fill valid form and wait for "available" message */
+async function fillValidForm(name = "my-graph") {
+  vi.useFakeTimers();
+  mockFetch.mockReturnValueOnce(availableSlugResponse());
+  render(<GraphMindsetCard />);
+  await fillName(name);
+  vi.useRealTimers();
+  await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
 }
 
 describe("GraphMindsetCard", () => {
@@ -79,9 +102,7 @@ describe("GraphMindsetCard", () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("my-graph");
     const button = screen.getByRole("button", { name: /create my graph/i });
     expect(button).toBeDisabled();
   });
@@ -90,9 +111,7 @@ describe("GraphMindsetCard", () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "taken" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("taken");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText("Name is already taken")).toBeInTheDocument();
@@ -104,9 +123,7 @@ describe("GraphMindsetCard", () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(availableSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("my-graph");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText(/Name is available/i)).toBeInTheDocument();
@@ -118,25 +135,29 @@ describe("GraphMindsetCard", () => {
     vi.useFakeTimers();
     mockFetch.mockReturnValue(takenSlugResponse());
     render(<GraphMindsetCard />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "taken" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
+    await fillName("taken");
     vi.useRealTimers();
     await waitFor(() => {
       expect(screen.getByText("Name is already taken")).toBeInTheDocument();
     });
   });
 
-  it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
-    vi.useFakeTimers();
-    mockFetch.mockReturnValueOnce(availableSlugResponse());
-    render(<GraphMindsetCard />);
+  it("shows payment options after clicking 'Create my graph' with valid form", async () => {
+    await fillValidForm();
 
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
-    vi.useRealTimers();
-    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
+    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(createBtn); });
+
+    expect(screen.getByRole("button", { name: /pay with card/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pay with lightning/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create my graph/i })).not.toBeInTheDocument();
+  });
+
+  it("stores name in localStorage and redirects to Stripe when 'Pay with Card' is clicked", async () => {
+    await fillValidForm();
+
+    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(createBtn); });
 
     // Stripe checkout
     mockFetch.mockResolvedValueOnce({
@@ -144,8 +165,51 @@ describe("GraphMindsetCard", () => {
       json: () => Promise.resolve({ sessionUrl: "https://checkout.stripe.com/pay/test", sessionId: "cs_test_123" }),
     });
 
-    const button = screen.getByRole("button", { name: /create my graph/i });
-    await act(async () => { fireEvent.click(button); });
+    const cardBtn = screen.getByRole("button", { name: /pay with card/i });
+    await act(async () => { fireEvent.click(cardBtn); });
+
+    await waitFor(() => {
+      expect(window.location.href).toBe("https://checkout.stripe.com/pay/test");
+    });
+    expect(localStorage.getItem("graphMindsetSessionId")).toBe("cs_test_123");
+    expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "/api/stripe/checkout",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ workspaceName: "my-graph", workspaceSlug: "my-graph" }),
+      })
+    );
+  });
+
+  it("stores localStorage keys and calls router.push when 'Pay with Lightning' is clicked", async () => {
+    await fillValidForm();
+
+    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(createBtn); });
+
+    const lightningBtn = screen.getByRole("button", { name: /pay with lightning/i });
+    await act(async () => { fireEvent.click(lightningBtn); });
+
+    expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
+    expect(localStorage.getItem("graphMindsetWorkspaceSlug")).toBe("my-graph");
+    expect(mockRouterPush).toHaveBeenCalledWith("/onboarding/lightning-payment");
+  });
+
+  it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
+    await fillValidForm();
+
+    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(createBtn); });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ sessionUrl: "https://checkout.stripe.com/pay/test", sessionId: "cs_test_123" }),
+    });
+
+    const cardBtn = screen.getByRole("button", { name: /pay with card/i });
+    await act(async () => { fireEvent.click(cardBtn); });
 
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/pay/test");
@@ -154,8 +218,6 @@ describe("GraphMindsetCard", () => {
     expect(localStorage.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
     expect(localStorage.getItem("graphMindsetWorkspaceId")).toBeNull();
 
-    // Two fetches: slug check + Stripe checkout (no fork config, no workspace creation)
-    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenLastCalledWith(
       "/api/stripe/checkout",
       expect.objectContaining({
@@ -166,15 +228,10 @@ describe("GraphMindsetCard", () => {
   });
 
   it("shows inline error on Stripe session creation failure", async () => {
-    vi.useFakeTimers();
-    mockFetch.mockReturnValueOnce(availableSlugResponse());
-    render(<GraphMindsetCard />);
+    await fillValidForm();
 
-    const input = screen.getByPlaceholderText("e.g., my-api-graph");
-    fireEvent.change(input, { target: { value: "my-graph" } });
-    await act(async () => { vi.advanceTimersByTime(600); });
-    vi.useRealTimers();
-    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
+    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    await act(async () => { fireEvent.click(createBtn); });
 
     // Stripe checkout fails
     mockFetch.mockResolvedValueOnce({
@@ -182,8 +239,8 @@ describe("GraphMindsetCard", () => {
       json: () => Promise.resolve({ error: "Stripe error" }),
     });
 
-    const button = screen.getByRole("button", { name: /create my graph/i });
-    await act(async () => { fireEvent.click(button); });
+    const cardBtn = screen.getByRole("button", { name: /pay with card/i });
+    await act(async () => { fireEvent.click(cardBtn); });
 
     await waitFor(() => {
       expect(screen.getByText("Stripe error")).toBeInTheDocument();

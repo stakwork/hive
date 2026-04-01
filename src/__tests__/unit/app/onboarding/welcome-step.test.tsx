@@ -8,7 +8,7 @@ const mockRouterPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockRouterPush }),
-  useSearchParams: () => ({ get: () => null }),
+  useSearchParams: vi.fn(() => ({ get: () => null })),
   redirect: vi.fn(),
 }));
 
@@ -25,6 +25,10 @@ vi.mock("@/components/auth/GitHubAuthModal", () => ({
   GitHubAuthModal: () => null,
 }));
 
+vi.mock("@/components/onboarding/SwarmSetupLoader", () => ({
+  SwarmSetupLoader: () => null,
+}));
+
 vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
   GraphMindsetCard: () => (
     <div>
@@ -37,9 +41,11 @@ vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
 
 import { useSession } from "next-auth/react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useSearchParams } from "next/navigation";
 
 const mockUseSession = useSession as ReturnType<typeof vi.fn>;
 const mockUseWorkspace = useWorkspace as ReturnType<typeof vi.fn>;
+const mockUseSearchParams = useSearchParams as ReturnType<typeof vi.fn>;
 
 describe("WelcomeStep - GraphMindsetCard integration", () => {
   beforeEach(() => {
@@ -118,3 +124,5 @@ describe("WelcomeStep - Go to my workspace button", () => {
     expect(mockRouterPush).toHaveBeenCalledWith("/");
   });
 });
+
+

@@ -30,12 +30,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch, workspace_type } = body;
+    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
 
-    console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, workspace_type: ${workspace_type}, user: ${session.user.id}`);
+    console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`);
 
-    if (!workspaceId || (!repositoryUrl && workspace_type !== 'graph_mindset')) {
-      console.log(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}, workspace_type: ${workspace_type}`);
+    if (!workspaceId || !repositoryUrl) {
+      console.log(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}`);
       return NextResponse.json(
         {
           success: false,
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         console.log(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`);
       }
     } else {
-      console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl (workspace_type: ${workspace_type})`);
+      console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl`);
     }
 
     // Check for existing swarm and create placeholder in single transaction
@@ -138,7 +138,6 @@ export async function POST(request: NextRequest) {
           name: randomUUID(), // Temporary name
           instanceType: SWARM_DEFAULT_INSTANCE_TYPE,
           status: SwarmStatus.PENDING, // Mark as pending during creation
-          ...(workspace_type ? { workspaceType: workspace_type } : {}),
           // Leave other fields null/empty until external API completes
         },
       });
@@ -201,7 +200,6 @@ export async function POST(request: NextRequest) {
       const apiResponse = await swarmService.createSwarm({
         instance_type,
         password: swarmPassword,
-        ...(workspace_type ? { workspace_type } : {}),
       });
 
       const apiCallDuration = Date.now() - startTime;
@@ -229,7 +227,6 @@ export async function POST(request: NextRequest) {
         swarmSecretAlias: swarmSecretAlias,
         swarmId: swarm_id,
         swarmPassword: swarmPassword,
-        ...(workspace_type ? { workspaceType: workspace_type } : {}),
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
