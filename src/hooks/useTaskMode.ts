@@ -34,7 +34,8 @@ export function useTaskMode() {
 }
 
 function isValidMode(mode: string): boolean {
-  if (mode === "live" || mode === "agent" || mode === "workflow_editor" || mode === "project_debugger" || mode === "prompts") return true;
+  if (mode === "live" || mode === "workflow_editor" || mode === "project_debugger" || mode === "prompts") return true;
+  if (mode === "agent" && process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE === 'true') return true;
   if (mode === "test" && isDevelopmentMode()) return true;
   return false;
 }
