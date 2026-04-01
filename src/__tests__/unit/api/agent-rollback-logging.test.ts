@@ -63,6 +63,11 @@ vi.mock("@/lib/ai/models", () => ({
   getApiKeyForModel: vi.fn().mockReturnValue("key"),
 }));
 
+vi.mock("@/lib/feature-flags", () => ({
+  canAccessServerFeature: vi.fn().mockReturnValue(true),
+  FEATURE_FLAGS: { TASK_AGENT_MODE: "TASK_AGENT_MODE" },
+}));
+
 describe("POST /api/agent — claimPodForTask rollback logging", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;

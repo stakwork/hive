@@ -88,4 +88,62 @@ describe("mergeWhiteboardElements", () => {
     expect(result).toContainEqual(nullCustomEl);
     expect(result).toContainEqual(newAiEl);
   });
+
+  describe("pasteId scoped removal", () => {
+    const pasteId1 = "paste-session-1";
+    const pasteId2 = "paste-session-2";
+
+    const firstPasteEl = {
+      id: "first-paste-1",
+      type: "rectangle",
+      customData: { source: "ai", pasteId: pasteId1 },
+    };
+    const secondPasteEl = {
+      id: "second-paste-1",
+      type: "rectangle",
+      customData: { source: "ai", pasteId: pasteId2 },
+    };
+    const noSessionAiEl = {
+      id: "no-session-ai",
+      type: "ellipse",
+      customData: { source: "ai" },
+    };
+
+    test("when pasteId provided, only elements with the same pasteId are removed", () => {
+      const existing = [userEl, firstPasteEl, secondPasteEl];
+      const result = mergeWhiteboardElements(existing, [newAiEl], pasteId2);
+
+      // first paste session's elements must be preserved
+      expect(result).toContainEqual(firstPasteEl);
+      // second paste session's elements replaced
+      expect(result).not.toContainEqual(secondPasteEl);
+      // user elements always preserved
+      expect(result).toContainEqual(userEl);
+      // new AI elements appended
+      expect(result).toContainEqual(newAiEl);
+    });
+
+    test("when pasteId provided, AI elements with no pasteId (server-generated) are preserved", () => {
+      const existing = [userEl, noSessionAiEl, firstPasteEl];
+      const result = mergeWhiteboardElements(existing, [newAiEl], pasteId1);
+
+      // server-generated AI (no pasteId) is NOT removed in scoped mode
+      expect(result).toContainEqual(noSessionAiEl);
+      // targeted paste session is removed
+      expect(result).not.toContainEqual(firstPasteEl);
+      expect(result).toContainEqual(userEl);
+      expect(result).toContainEqual(newAiEl);
+    });
+
+    test("when pasteId is omitted, all source=ai elements are removed (existing server behaviour)", () => {
+      const existing = [userEl, firstPasteEl, secondPasteEl, noSessionAiEl];
+      const result = mergeWhiteboardElements(existing, [newAiEl]);
+
+      expect(result).toContainEqual(userEl);
+      expect(result).not.toContainEqual(firstPasteEl);
+      expect(result).not.toContainEqual(secondPasteEl);
+      expect(result).not.toContainEqual(noSessionAiEl);
+      expect(result).toContainEqual(newAiEl);
+    });
+  });
 });
