@@ -62,7 +62,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
         if (data?.payment) {
           setIsClaiming(false);
-          // Payment linked to user — stay on page for now
+          router.push("/onboarding/graphmindset");
         } else {
           setClaimError("Failed to confirm payment. Please contact support.");
           setIsClaiming(false);
@@ -72,7 +72,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         setIsClaiming(false);
       }
     },
-    []
+    [router]
   );
 
   // Handle Stripe return on mount
