@@ -18,6 +18,7 @@ import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENT
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -1154,15 +1155,17 @@ export async function triggerLiveModeFix(
   prompt: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Load task to get workspace owner and workflow status
+    // 1. Load task to get task creator, workspace owner, and workflow status
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
         mode: true,
         workflowStatus: true,
+        createdById: true,
         workspace: {
           select: {
             ownerId: true,
+            slug: true,
           },
         },
       },
@@ -1186,7 +1189,18 @@ export async function triggerLiveModeFix(
       return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
     }
 
-    const userId = task.workspace.ownerId;
+    // Prefer task creator; fall back to workspace owner if they have no GitHub credentials
+    const creatorCredentials = await getGithubUsernameAndPAT(
+      task.createdById,
+      task.workspace.slug,
+    );
+    if (!creatorCredentials) {
+      log.info("Task creator has no GitHub credentials, falling back to workspace owner", {
+        taskId,
+        createdById: task.createdById,
+      });
+    }
+    const userId = creatorCredentials ? task.createdById : task.workspace.ownerId;
 
     // 2. Create the fix message with PR monitor context
     const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
