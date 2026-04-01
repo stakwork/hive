@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
   const payment = await db.lightningPayment.findFirst({
     where: { workspaceId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
 
   return NextResponse.json({ payment });
