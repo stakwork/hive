@@ -89,6 +89,7 @@ export async function createWorkspace(
         slug: data.slug,
         ownerId: data.ownerId,
         repositoryDraft: data.repositoryUrl,
+        workspaceKind: data.workspaceKind,
       },
     });
     return {
@@ -192,6 +193,7 @@ export async function getWorkspaceById(
       poolState: workspace.swarm?.poolState || null,
       podState: workspace.swarm?.podState || "NOT_STARTED",
       swarmUrl: workspace.swarm?.swarmUrl || null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -233,6 +235,7 @@ export async function getWorkspaceById(
     poolState: workspace.swarm?.poolState || null,
     podState: workspace.swarm?.podState || "NOT_STARTED",
     swarmUrl: workspace.swarm?.swarmUrl || null,
+    workspaceKind: workspace.workspaceKind,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -307,6 +310,7 @@ export async function getWorkspaceBySlug(
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -340,6 +344,7 @@ export async function getWorkspaceBySlug(
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+      workspaceKind: workspace.workspaceKind,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -384,6 +389,7 @@ export async function getWorkspaceBySlug(
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
     nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+    workspaceKind: workspace.workspaceKind,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),

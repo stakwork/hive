@@ -863,9 +863,9 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
     });
 
-    test("IN_PROGRESS + PR artifact → status area is hidden", () => {
+    test("IN_PROGRESS + PR artifact → status area is visible", () => {
       render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={true} />);
-      expect(screen.queryByTestId("workflow-status-badge")).not.toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
     });
 
     test("IN_PROGRESS + no PR artifact → status area is visible", () => {

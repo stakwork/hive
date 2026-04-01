@@ -133,7 +133,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return NextResponse.json({ error: "Pod not found" }, { status: 404 });
       }
 
-      if (!podDetails.password) {
+      const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+      const hasControlPort = podDetails.portMappings?.includes(controlPort) ?? false;
+
+      if (!hasControlPort) {
+        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
+      } else if (!podDetails.password) {
         console.error("Pod password not found, skipping repository reset");
       } else {
         try {
