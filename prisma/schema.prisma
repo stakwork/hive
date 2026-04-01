@@ -214,6 +214,7 @@ model Workspace {
   swarm                  Swarm?
   swarmPayments          SwarmPayment[]
   lightningPayments      LightningPayment[]
+  workspaceTransactions  WorkspaceTransaction[]
   tasks                  Task[]
   whiteboards            Whiteboard[]
   apiKeys                WorkspaceApiKey[]
@@ -1260,6 +1261,7 @@ model SwarmPayment {
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
   workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceTransaction  WorkspaceTransaction?
 
   @@index([workspaceId])
   @@index([stripeSessionId])
@@ -1308,9 +1310,34 @@ model LightningPayment {
   status         LightningPaymentStatus @default(UNPAID)
   createdAt      DateTime               @default(now()) @map("created_at")
   updatedAt      DateTime               @updatedAt @map("updated_at")
-  workspace      Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace            Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceTransaction WorkspaceTransaction?
 
   @@index([workspaceId])
   @@index([paymentHash])
   @@map("lightning_payments")
+}
+
+enum WorkspaceTransactionType {
+  LIGHTNING
+  STRIPE
+}
+
+model WorkspaceTransaction {
+  id                 String                   @id @default(cuid())
+  workspaceId        String?                  @map("workspace_id")
+  type               WorkspaceTransactionType
+  amountSats         Int?                     @map("amount_sats")
+  btcPriceUsd        Float?                   @map("btc_price_usd")
+  amountUsd          Float?                   @map("amount_usd")
+  currency           String?
+  lightningPaymentId String?                  @unique @map("lightning_payment_id")
+  swarmPaymentId     String?                  @unique @map("swarm_payment_id")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  workspace          Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lightningPayment   LightningPayment?        @relation(fields: [lightningPaymentId], references: [id])
+  swarmPayment       SwarmPayment?            @relation(fields: [swarmPaymentId], references: [id])
+
+  @@index([workspaceId])
+  @@map("workspace_transactions")
 }
