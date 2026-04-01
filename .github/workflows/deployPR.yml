@@ -329,6 +329,10 @@ jobs:
             "20260228185557_default_ticket_sweep_enabled" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_configs' AND column_name='ticket_sweep_enabled' AND column_default='true';"
 
+          resolve_migration \
+            "20260319000000_add_created_by_id_to_whiteboards" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"

@@ -13,6 +13,7 @@ const baseVM: VMData = {
   usage_status: "unused",
   user_info: null,
   marked_at: null,
+  assignedTask: null,
   resource_usage: { available: false },
 };
 
@@ -47,6 +48,79 @@ describe("VMGrid — dropdown visibility", () => {
       />
     );
     expect(screen.getByRole("button")).toBeInTheDocument();
+  });
+});
+
+describe("VMGrid — assigned task display", () => {
+  it("renders task title as a link when usage_status is used and assignedTask is set", () => {
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            usage_status: "used",
+            assignedTask: {
+              id: "t1",
+              title: "Fix auth bug",
+              creator: { name: "Alice", image: null },
+            },
+          }),
+        ]}
+        workspaceSlug="test-workspace"
+      />
+    );
+    const link = screen.getByRole("link", { name: "Fix auth bug" });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/w/test-workspace/task/t1");
+  });
+
+  it("renders avatar fallback icon when creator has no image", () => {
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            usage_status: "used",
+            assignedTask: {
+              id: "t1",
+              title: "Fix auth bug",
+              creator: { name: "Alice", image: null },
+            },
+          }),
+        ]}
+        workspaceSlug="test-workspace"
+      />
+    );
+    // Avatar fallback (User icon) should be present since image is null
+    expect(screen.getByRole("link", { name: "Fix auth bug" })).toBeInTheDocument();
+  });
+
+  it("renders nothing for task section when usage_status is used but assignedTask is null", () => {
+    render(
+      <VMGrid
+        vms={[makeVM({ usage_status: "used", assignedTask: null })]}
+        workspaceSlug="test-workspace"
+      />
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing for task section when usage_status is unused", () => {
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            usage_status: "unused",
+            assignedTask: {
+              id: "t1",
+              title: "Should not show",
+              creator: { name: "Alice", image: null },
+            },
+          }),
+        ]}
+        workspaceSlug="test-workspace"
+      />
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText("Should not show")).not.toBeInTheDocument();
   });
 });
 
