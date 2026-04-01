@@ -156,8 +156,9 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(response1.status).toBe(200);
       const data1 = await response1.json();
       const firstPaymentId = data1.payment.id;
+      expect(data1.payment.status).toBe('PAID');
 
-      // Second call — Stripe retrieve should NOT be called again (idempotency short-circuits)
+      // Second call — already PAID so idempotency short-circuits before Stripe
       const req2 = buildClaimRequest({ sessionId });
       const response2 = await POST(req2);
       expect(response2.status).toBe(200);
@@ -174,6 +175,42 @@ describe('Stripe Claim Route Integration Tests', () => {
 
       // Stripe was only called once (idempotency skips it on second call)
       expect(mockRetrieveSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('updates existing PENDING SwarmPayment to PAID when checkout record already exists', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const sessionId = `cs_test_claim_update_${Date.now()}`;
+      // Pre-create the PENDING record as checkout would
+      const pendingPayment = await db.swarmPayment.create({
+        data: {
+          stripeSessionId: sessionId,
+          workspaceName: 'Test Workspace',
+          workspaceSlug: 'test-workspace',
+          status: 'PENDING',
+          workspaceId: null,
+        },
+      });
+
+      mockRetrieveSession.mockResolvedValue(buildPaidStripeSession(sessionId, 'pi_test_update_789'));
+
+      const req = buildClaimRequest({ sessionId });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // Same record updated, not a new one
+      expect(data.payment.id).toBe(pendingPayment.id);
+      expect(data.payment.status).toBe('PAID');
+      expect(data.payment.stripePaymentIntentId).toBe('pi_test_update_789');
+      expect(data.payment.workspaceId).toBeNull();
+
+      // No duplicates
+      const allPayments = await db.swarmPayment.findMany({ where: { stripeSessionId: sessionId } });
+      expect(allPayments).toHaveLength(1);
     });
   });
 });

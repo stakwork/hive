@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
 
   const { sessionId } = body;
 
-  // Idempotency: if this session was already claimed, return the existing payment
+  // Idempotency: if already claimed as PAID, return the existing payment
   const existing = await db.swarmPayment.findUnique({
     where: { stripeSessionId: sessionId },
   });
-  if (existing) {
+  if (existing?.status === 'PAID') {
     return NextResponse.json({ payment: existing });
   }
 
@@ -51,14 +51,24 @@ export async function POST(req: NextRequest) {
   const stripePaymentIntentId =
     typeof stripeSession.payment_intent === 'string' ? stripeSession.payment_intent : null;
 
-  const payment = await db.swarmPayment.create({
-    data: {
-      stripeSessionId: sessionId,
-      stripePaymentIntentId,
-      status: 'PAID',
-      workspaceId: null,
-    },
-  });
+  let payment;
+  if (existing) {
+    // Record was created at checkout time (PENDING) — update it to PAID
+    payment = await db.swarmPayment.update({
+      where: { stripeSessionId: sessionId },
+      data: { status: 'PAID', stripePaymentIntentId },
+    });
+  } else {
+    // No prior record (e.g. checkout bypassed) — create one
+    payment = await db.swarmPayment.create({
+      data: {
+        stripeSessionId: sessionId,
+        stripePaymentIntentId,
+        status: 'PAID',
+        workspaceId: null,
+      },
+    });
+  }
 
   return NextResponse.json({ payment });
 }
