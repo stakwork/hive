@@ -12,6 +12,7 @@ export interface CreateTestSwarmPaymentOptions {
   currency?: string | null;
   failureCode?: string | null;
   failureMessage?: string | null;
+  userId?: string | null;
 }
 
 export async function createTestSwarmPayment(
@@ -32,6 +33,7 @@ export async function createTestSwarmPayment(
       currency: options.currency ?? null,
       failureCode: options.failureCode ?? null,
       failureMessage: options.failureMessage ?? null,
+      userId: options.userId ?? null,
     },
   });
 }
