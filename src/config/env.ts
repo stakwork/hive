@@ -78,6 +78,14 @@ export const optionalEnvVars = {
   SUPER_ADMIN_USER_IDS: process.env.SUPER_ADMIN_USER_IDS || "",
   USE_MOCKS,
   MOCK_BASE,
+  REDIS_URL: process.env.REDIS_URL,
+  ONBOARDING_FORK_REPOS: process.env.ONBOARDING_FORK_REPOS || "",
+  LIGHTNING_NODE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/lnd`
+    : process.env.LIGHTNING_NODE_URL || '',
+  LIGHTNING_MACAROON: process.env.LIGHTNING_MACAROON || '',
+  LIGHTNING_TLS_CERT: process.env.LIGHTNING_TLS_CERT || '',
+  LIGHTNING_AMOUNT_SATS: parseInt(process.env.LIGHTNING_AMOUNT_SATS || '500000'),
 } as const;
 
 /**

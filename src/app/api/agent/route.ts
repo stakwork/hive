@@ -65,6 +65,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
+import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 
 const encryptionService = EncryptionService.getInstance();
@@ -253,8 +254,12 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   } catch (error) {
     // Release the pod if setup failed after claiming
     try {
-      await releasePodById(podWorkspace.id);
-      console.log(`[Agent] Released pod ${podWorkspace.id} after setup failure`);
+      const released = await releasePodById(podWorkspace.id);
+      if (!released) {
+        console.error(`[Agent] Rollback failed: pod ${podWorkspace.id} not found in database`);
+      } else {
+        console.log(`[Agent] Released pod ${podWorkspace.id} after setup failure`);
+      }
     } catch (releaseError) {
       console.error(`[Agent] Failed to release pod ${podWorkspace.id}:`, releaseError);
     }
@@ -413,6 +418,11 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 1a. Gate agent mode behind feature flag
+  if (!canAccessServerFeature(FEATURE_FLAGS.TASK_AGENT_MODE)) {
+    return NextResponse.json({ error: "Agent mode is not enabled" }, { status: 403 });
   }
 
   if (!taskId) {

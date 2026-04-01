@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Loader2, PenLine, Link2 } from "lucide-react";
+import { Plus, Trash2, Loader2, PenLine, Link2, MoreHorizontal, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
@@ -24,8 +25,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FilterDropdownHeader } from "@/components/features/TableColumnHeaders";
+import { MoveWhiteboardDialog } from "@/components/whiteboard/MoveWhiteboardDialog";
 
 const STORAGE_KEY = "whiteboards-filters-preference";
 
@@ -47,7 +55,9 @@ interface CreatorOption {
 
 export default function WhiteboardsPage() {
   const router = useRouter();
-  const { id: workspaceId, slug } = useWorkspace();
+  const { id: workspaceId, slug, role } = useWorkspace();
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   const [whiteboards, setWhiteboards] = useState<WhiteboardItem[]>([]);
   const [creatorOptions, setCreatorOptions] = useState<CreatorOption[]>([
     { value: "ALL", label: "All Creators", image: null },
@@ -56,6 +66,7 @@ export default function WhiteboardsPage() {
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<WhiteboardItem | null>(null);
 
   const [creatorFilter, setCreatorFilter] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -291,24 +302,54 @@ export default function WhiteboardsPage() {
                       </Link>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDeleteId(wb.id);
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                      {(role === "OWNER" || role === "ADMIN" || wb.createdBy?.id === currentUserId) && (
+                        <DropdownMenuItem
+                          onClick={() => setMoveTarget(wb)}
+                        >
+                          <ArrowRightLeft className="w-4 h-4 mr-2" />
+                          Move to workspace
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleteId(wb.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </CardHeader>
               </Card>
             </Link>
           ))}
         </div>
       )}
+
+      <MoveWhiteboardDialog
+        whiteboard={moveTarget}
+        open={!!moveTarget}
+        onOpenChange={(open) => { if (!open) setMoveTarget(null); }}
+        onMoved={(whiteboardId) => {
+          setWhiteboards((prev) => prev.filter((wb) => wb.id !== whiteboardId));
+          setMoveTarget(null);
+        }}
+      />
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

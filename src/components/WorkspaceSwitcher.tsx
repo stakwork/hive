@@ -127,8 +127,10 @@ export function WorkspaceSwitcher({
                     alt={activeWorkspace.name}
                     className="w-full h-full object-cover"
                     onRefetchUrl={() => refetchLogo(activeWorkspace.id)}
-                    fallback={<Building2 className="w-4 h-4" />}
+                    fallback={<Skeleton className="w-full h-full rounded-none" />}
                   />
+                ) : canAccessWorkspaceLogo && activeWorkspace.logoKey ? (
+                  <Skeleton className="w-full h-full rounded-none" />
                 ) : (
                   <Building2 className="w-4 h-4" />
                 )}
@@ -162,8 +164,10 @@ export function WorkspaceSwitcher({
                   alt={activeWorkspace.name}
                   className="w-full h-full object-cover"
                   onRefetchUrl={() => refetchLogo(activeWorkspace.id)}
-                  fallback={<Building2 className="w-3.5 h-3.5" />}
+                  fallback={<Skeleton className="w-full h-full rounded-none" />}
                 />
+              ) : canAccessWorkspaceLogo && activeWorkspace.logoKey ? (
+                <Skeleton className="w-full h-full rounded-none" />
               ) : (
                 <Building2 className="w-3.5 h-3.5" />
               )}
@@ -194,8 +198,10 @@ export function WorkspaceSwitcher({
                             alt={workspace.name}
                             className="w-full h-full object-cover"
                             onRefetchUrl={() => refetchLogo(workspace.id)}
-                            fallback={<Building2 className="w-3.5 h-3.5" />}
+                            fallback={<Skeleton className="w-full h-full rounded-none" />}
                           />
+                        ) : canAccessWorkspaceLogo && workspace.logoKey ? (
+                          <Skeleton className="w-full h-full rounded-none" />
                         ) : (
                           <Building2 className="w-3.5 h-3.5" />
                         )}

@@ -58,8 +58,21 @@ jobs:
 
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git fetch origin
-          git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin
+            if git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force; then
+              echo "Push succeeded on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "Push failed after 5 attempts"
+              exit 1
+            fi
+            SLEEP=$((attempt * 10))
+            echo "Push failed (attempt $attempt), retrying in ${SLEEP}s..."
+            sleep $SLEEP
+          done
 
       ############################################################
       # 2b️⃣ Checkout preview branch so Vercel deploys as preview-1/2/3
@@ -321,7 +334,21 @@ jobs:
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
-          npx prisma migrate deploy
+
+          # Retry prisma migrate deploy — Neon endpoint may sleep between steps
+          for attempt in 1 2 3 4 5; do
+            if npx prisma migrate deploy; then
+              echo "✅ Migrations deployed successfully (attempt $attempt)"
+              break
+            fi
+            if [ $attempt -eq 5 ]; then
+              echo "❌ prisma migrate deploy failed after 5 attempts"
+              exit 1
+            fi
+            echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+            sleep 15
+          done
+
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################

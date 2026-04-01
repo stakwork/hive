@@ -6,6 +6,7 @@ export interface CreateWorkspaceRequest {
   slug: string;
   ownerId: string;
   repositoryUrl?: string;
+  workspaceKind?: string;
 }
 
 export interface WorkspaceResponse {
@@ -19,6 +20,7 @@ export interface WorkspaceResponse {
   nodeTypeOrder?: Array<{ type: string; value: number }> | null;
   createdAt: string;
   updatedAt: string;
+  workspaceKind?: string | null;
 }
 
 // Re-export WorkspaceRole for convenience

@@ -213,8 +213,13 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
 
       render(<TaskPage />);
 
+      // Wait for component to finish loading (isLoading=false) to avoid capturing
+      // a handleSend closure where isLoading=true which would short-circuit the send
       await waitFor(() => {
-        expect(ChatArea).toHaveBeenCalled();
+        const calls = vi.mocked(ChatArea).mock.calls;
+        const latestProps = calls[calls.length - 1]?.[0];
+        expect(latestProps).toBeDefined();
+        expect(latestProps.isLoading).toBe(false);
       });
 
       const initialCallCount = vi.mocked(ChatArea).mock.calls.length;
@@ -238,7 +243,7 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       props = getLatestProps();
       const messages = props.messages || [];
       const optimisticMessage = messages.find((m: any) => m.message === "Edit this workflow");
-      
+
       expect(optimisticMessage).toBeDefined();
       expect(optimisticMessage.createdBy).toEqual({
         id: "user-workflow-1",
@@ -262,7 +267,10 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       render(<TaskPage />);
 
       await waitFor(() => {
-        expect(ChatArea).toHaveBeenCalled();
+        const calls = vi.mocked(ChatArea).mock.calls;
+        const latestProps = calls[calls.length - 1]?.[0];
+        expect(latestProps).toBeDefined();
+        expect(latestProps.isLoading).toBe(false);
       });
 
       const initialCallCount = vi.mocked(ChatArea).mock.calls.length;
@@ -286,7 +294,7 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       props = getLatestProps();
       const messages = props.messages || [];
       const optimisticMessage = messages.find((m: any) => m.message === "Edit this workflow");
-      
+
       expect(optimisticMessage).toBeDefined();
       expect(optimisticMessage.createdBy).toBeUndefined();
     });
@@ -314,7 +322,10 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       render(<TaskPage />);
 
       await waitFor(() => {
-        expect(ChatArea).toHaveBeenCalled();
+        const calls = vi.mocked(ChatArea).mock.calls;
+        const latestProps = calls[calls.length - 1]?.[0];
+        expect(latestProps).toBeDefined();
+        expect(latestProps.isLoading).toBe(false);
       });
 
       const initialCallCount = vi.mocked(ChatArea).mock.calls.length;
@@ -338,7 +349,7 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       props = getLatestProps();
       const messages = props.messages || [];
       const optimisticMessage = messages.find((m: any) => m.message === "Debug this project");
-      
+
       expect(optimisticMessage).toBeDefined();
       expect(optimisticMessage.createdBy).toEqual({
         id: "user-debugger-1",
@@ -362,7 +373,10 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       render(<TaskPage />);
 
       await waitFor(() => {
-        expect(ChatArea).toHaveBeenCalled();
+        const calls = vi.mocked(ChatArea).mock.calls;
+        const latestProps = calls[calls.length - 1]?.[0];
+        expect(latestProps).toBeDefined();
+        expect(latestProps.isLoading).toBe(false);
       });
 
       const initialCallCount = vi.mocked(ChatArea).mock.calls.length;
@@ -386,7 +400,7 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       props = getLatestProps();
       const messages = props.messages || [];
       const optimisticMessage = messages.find((m: any) => m.message === "Debug this project");
-      
+
       expect(optimisticMessage).toBeDefined();
       expect(optimisticMessage.createdBy).toBeUndefined();
     });
@@ -414,7 +428,10 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       render(<TaskPage />);
 
       await waitFor(() => {
-        expect(ChatArea).toHaveBeenCalled();
+        const calls = vi.mocked(ChatArea).mock.calls;
+        const latestProps = calls[calls.length - 1]?.[0];
+        expect(latestProps).toBeDefined();
+        expect(latestProps.isLoading).toBe(false);
       });
 
       const initialCallCount = vi.mocked(ChatArea).mock.calls.length;
@@ -438,7 +455,7 @@ describe("TaskPage - Avatar Fix for workflow_editor and project_debugger", () =>
       props = getLatestProps();
       const messages = props.messages || [];
       const optimisticMessage = messages.find((m: any) => m.message === "Regular chat message");
-      
+
       expect(optimisticMessage).toBeDefined();
       expect(optimisticMessage.createdBy).toEqual({
         id: "user-main-1",

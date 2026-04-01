@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
 import type { StoredFileEntry } from "@/hooks/useWhiteboardImages";
