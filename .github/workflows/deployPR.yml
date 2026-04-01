@@ -339,6 +339,15 @@ jobs:
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
+          # Resolve any known stuck migrations before attempting deploy
+          # (idempotent — safe to run even if migration is not stuck)
+          resolve_stuck() {
+            local name="$1"
+            echo "Resolving potentially stuck migration: $name"
+            npx prisma migrate resolve --rolled-back "$name" 2>/dev/null || true
+          }
+          resolve_stuck "20260301004827_add_fast_track_to_feature"
+
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
           for attempt in 1 2 3 4 5; do
             if npx prisma migrate deploy; then
@@ -350,6 +359,8 @@ jobs:
               exit 1
             fi
             echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+            # Re-attempt resolution in case of transient failures
+            resolve_stuck "20260301004827_add_fast_track_to_feature"
             sleep 15
           done
 
