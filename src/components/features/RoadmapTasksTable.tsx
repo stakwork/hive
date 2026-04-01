@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
@@ -58,7 +59,6 @@ function SortableTableRow({
   phaseId,
   allTasks,
   workspaceRepos,
-  onClick,
   onStatusUpdate,
   onPriorityUpdate,
   onAssigneeUpdate,
@@ -73,7 +73,6 @@ function SortableTableRow({
   phaseId: string;
   allTasks: TicketListItem[];
   workspaceRepos: WorkspaceRepo[];
-  onClick: () => void;
   onStatusUpdate: (status: TaskStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
@@ -152,20 +151,24 @@ function SortableTableRow({
     <TableRow
       ref={setNodeRef}
       style={style}
-      className={`cursor-pointer hover:bg-muted/50 group ${isDragging ? "opacity-50 z-50" : ""
+      className={`relative cursor-pointer hover:bg-muted/50 group ${isDragging ? "opacity-50 z-50" : ""
         }`}
     >
-      <TableCell className="w-[40px]">
+      <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
         <div
           {...attributes}
           {...listeners}
           className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing"
-          onClick={(e) => e.stopPropagation()}
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </TableCell>
-      <TableCell className="w-[300px] font-medium" onClick={onClick}>
+      <TableCell className="w-[300px] font-medium">
+        <Link
+          href={`/w/${workspaceSlug}/task/${task.id}`}
+          className="absolute inset-0"
+          aria-label={task.title}
+        />
         <div className="flex items-center gap-2">
           <span className="truncate">{task.title}</span>
           {task.deploymentStatus && (
@@ -184,20 +187,20 @@ function SortableTableRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="w-[120px]">
+      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="task"
           currentStatus={task.status}
           onUpdate={onStatusUpdate}
         />
       </TableCell>
-      <TableCell className="w-[120px]">
+      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <PriorityPopover
           currentPriority={task.priority}
           onUpdate={onPriorityUpdate}
         />
       </TableCell>
-      <TableCell className="w-[180px]">
+      <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
           currentAssignee={task.assignee}
@@ -278,10 +281,6 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     phaseId,
     onOptimisticUpdate: onTasksReordered,
   });
-
-  const handleRowClick = (taskId: string) => {
-    router.push(`/w/${workspaceSlug}/tickets/${taskId}`);
-  };
 
   const handleStartTask = async (task: TicketListItem) => {
     if (startingTaskId) return; // Prevent multiple simultaneous starts
@@ -384,7 +383,6 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     phaseId={phaseId}
                     allTasks={tasks}
                     workspaceRepos={workspaceRepos}
-                    onClick={() => handleRowClick(task.id)}
                     onStatusUpdate={async (status) => handleUpdateTask(task.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTask(task.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTask(task.id, { assigneeId })}
