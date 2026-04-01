@@ -325,6 +325,101 @@ export function LearnSidebar({
           </AnimatePresence>
         </div>
 
+        {/* Diagrams Section */}
+        <div data-testid="learn-diagrams-section">
+          <Button
+            variant="ghost"
+            className="w-full justify-between p-2 h-auto"
+            onClick={() => setIsDiagramsExpanded(!isDiagramsExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <GitBranch className="h-4 w-4" />
+              <span className="font-medium">Diagrams</span>
+              <Badge variant="secondary" className="ml-1">
+                {diagrams.length}
+              </Badge>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCreateDiagram();
+                }}
+                className="ml-1 h-5 w-5 flex items-center justify-center rounded hover:bg-muted transition-colors"
+                title="New diagram"
+                data-testid="create-diagram-button"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform",
+                isDiagramsExpanded && "rotate-180"
+              )}
+            />
+          </Button>
+
+          <AnimatePresence>
+            {isDiagramsExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2 space-y-1">
+                  {isDiagramsLoading ? (
+                    <div className="space-y-2 p-2">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-8 bg-muted/30 rounded animate-pulse" />
+                      ))}
+                    </div>
+                  ) : diagrams.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground text-center">
+                      No diagrams yet
+                    </div>
+                  ) : (
+                    diagrams.map((diagram) => {
+                      const itemKey = `diagram-${diagram.id}`;
+                      const isActive = activeItemKey === itemKey;
+                      return (
+                        <div key={diagram.id} className="group relative flex items-center gap-1">
+                          <button
+                            data-testid="learn-diagram-item"
+                            onClick={() =>
+                              onDiagramClick(diagram.id, diagram.name, diagram.body, diagram.description)
+                            }
+                            className={cn(
+                              "flex-1 text-left p-2 rounded-md text-sm transition-colors",
+                              isActive
+                                ? "bg-muted/60 font-medium"
+                                : "bg-muted/30 hover:bg-muted/50"
+                            )}
+                          >
+                            {diagram.name}
+                          </button>
+                          <button
+                            data-testid="edit-diagram-button"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditDiagram(diagram);
+                            }}
+                            title="Edit diagram"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* Concepts Section */}
         <div data-testid="learn-concepts-section">
           <Button
@@ -425,101 +520,6 @@ export function LearnSidebar({
                               </motion.div>
                             )}
                           </AnimatePresence>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Diagrams Section */}
-        <div data-testid="learn-diagrams-section">
-          <Button
-            variant="ghost"
-            className="w-full justify-between p-2 h-auto"
-            onClick={() => setIsDiagramsExpanded(!isDiagramsExpanded)}
-          >
-            <div className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4" />
-              <span className="font-medium">Diagrams</span>
-              <Badge variant="secondary" className="ml-1">
-                {diagrams.length}
-              </Badge>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCreateDiagram();
-                }}
-                className="ml-1 h-5 w-5 flex items-center justify-center rounded hover:bg-muted transition-colors"
-                title="New diagram"
-                data-testid="create-diagram-button"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 transition-transform",
-                isDiagramsExpanded && "rotate-180"
-              )}
-            />
-          </Button>
-
-          <AnimatePresence>
-            {isDiagramsExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2 space-y-1">
-                  {isDiagramsLoading ? (
-                    <div className="space-y-2 p-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-8 bg-muted/30 rounded animate-pulse" />
-                      ))}
-                    </div>
-                  ) : diagrams.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground text-center">
-                      No diagrams yet
-                    </div>
-                  ) : (
-                    diagrams.map((diagram) => {
-                      const itemKey = `diagram-${diagram.id}`;
-                      const isActive = activeItemKey === itemKey;
-                      return (
-                        <div key={diagram.id} className="group relative flex items-center gap-1">
-                          <button
-                            data-testid="learn-diagram-item"
-                            onClick={() =>
-                              onDiagramClick(diagram.id, diagram.name, diagram.body, diagram.description)
-                            }
-                            className={cn(
-                              "flex-1 text-left p-2 rounded-md text-sm transition-colors",
-                              isActive
-                                ? "bg-muted/60 font-medium"
-                                : "bg-muted/30 hover:bg-muted/50"
-                            )}
-                          >
-                            {diagram.name}
-                          </button>
-                          <button
-                            data-testid="edit-diagram-button"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditDiagram(diagram);
-                            }}
-                            title="Edit diagram"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
                         </div>
                       );
                     })

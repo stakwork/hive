@@ -15,6 +15,9 @@ export interface Ec2InstanceInfo {
   instanceType: string;
   launchTime: Date | null;
   tags: { key: string; value: string }[];
+  publicIp: string | null;
+  privateIp: string | null;
+  hiveWorkspace: { name: string; slug: string } | null;
 }
 
 function getEc2Client(): EC2Client {
@@ -39,6 +42,9 @@ function mapMockInstance(inst: MockEc2Instance): Ec2InstanceInfo {
     instanceType: inst.instanceType,
     launchTime: inst.launchTime,
     tags: inst.tags.map((t) => ({ key: t.key, value: t.value })),
+    publicIp: inst.publicIp,
+    privateIp: inst.privateIp,
+    hiveWorkspace: null,
   };
 }
 
@@ -73,6 +79,9 @@ export async function listSuperadminInstances(): Promise<Ec2InstanceInfo[]> {
         instanceType: instance.InstanceType ?? 'unknown',
         launchTime: instance.LaunchTime ?? null,
         tags,
+        publicIp: instance.PublicIpAddress ?? null,
+        privateIp: instance.PrivateIpAddress ?? null,
+        hiveWorkspace: null,
       });
     }
   }

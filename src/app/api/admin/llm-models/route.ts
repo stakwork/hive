@@ -1,0 +1,63 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
+import { db } from "@/lib/db";
+
+export async function GET(request: NextRequest) {
+  const authResult = await requireSuperAdmin(request);
+  if (authResult instanceof NextResponse) {
+    return authResult;
+  }
+
+  try {
+    const models = await db.llmModel.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json({ models });
+  } catch (error) {
+    console.error("Error fetching LLM models:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch LLM models" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const authResult = await requireSuperAdmin(request);
+  if (authResult instanceof NextResponse) {
+    return authResult;
+  }
+
+  try {
+    const body = await request.json();
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd } = body;
+
+    if (!name || !provider || inputPricePer1M == null || outputPricePer1M == null) {
+      return NextResponse.json(
+        { error: "name, provider, inputPricePer1M, and outputPricePer1M are required" },
+        { status: 400 }
+      );
+    }
+
+    const model = await db.llmModel.create({
+      data: {
+        name,
+        provider,
+        providerLabel: providerLabel ?? null,
+        inputPricePer1M: Number(inputPricePer1M),
+        outputPricePer1M: Number(outputPricePer1M),
+        dateStart: dateStart ? new Date(dateStart) : null,
+        dateEnd: dateEnd ? new Date(dateEnd) : null,
+      },
+    });
+
+    return NextResponse.json({ model }, { status: 201 });
+  } catch (error) {
+    console.error("Error creating LLM model:", error);
+    return NextResponse.json(
+      { error: "Failed to create LLM model" },
+      { status: 500 }
+    );
+  }
+}

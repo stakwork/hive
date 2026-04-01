@@ -22,6 +22,7 @@ export interface RoutePolicy {
 export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/", strategy: "exact", access: "public" },
   { path: "/auth", strategy: "prefix", access: "public" },
+  { path: "/prototype", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/admin", strategy: "prefix", access: "superadmin" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)
@@ -31,8 +32,10 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/cron", strategy: "prefix", access: "system" },
   { path: "/api/admin", strategy: "prefix", access: "superadmin" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
+  { path: "/api/workspaces/slug-availability", strategy: "exact", access: "public" },
   { path: "/api/mock-agent-log", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
+  { path: "/api/github/fork/config", strategy: "exact", access: "public" },
   { path: "/api/github/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/github/app/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },
@@ -55,6 +58,9 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/agent-logs/*/content", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
   { path: "/api/agent-logs/*/stats", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
+  { path: "/api/stripe/checkout", strategy: "exact", access: "public" },
+  { path: "/api/stripe/webhook", strategy: "prefix", access: "webhook" },
+  { path: "/api/lightning/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },

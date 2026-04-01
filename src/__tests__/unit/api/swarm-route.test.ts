@@ -322,6 +322,20 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.success).toBe(false);
       expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
+
+    test("should reject requests with workspaceId only (no repositoryUrl)", async () => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-123" },
+      });
+
+      const request = createMockRequest({ workspaceId: "workspace-123" });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
+    });
   });
 
   describe("Sensitive Data Handling", () => {
@@ -362,10 +376,12 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(mockGenerateSecurePassword).toHaveBeenCalledWith(20);
 
       // Verify password was used in swarm creation
-      expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith({
-        instance_type: "m6i.xlarge",
-        password: "secure-test-password-123",
-      });
+      expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instance_type: "m6i.xlarge",
+          password: "secure-test-password-123",
+        })
+      );
     });
 
     test("should handle API key securely", async () => {
