@@ -88,6 +88,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(payment!.workspaceName).toBe('My Graph');
       expect(payment!.workspaceSlug).toBe('my-graph');
       expect(payment!.workspaceId).toBeNull();
+      expect(payment!.password).toBeTruthy();
     });
 
     test('creates a PENDING SwarmPayment with stripe_failed_<uuid> when Stripe is down, still returns 500', async () => {
@@ -110,6 +111,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(payments[0].status).toBe('PENDING');
       expect(payments[0].workspaceName).toBe('My Graph');
       expect(payments[0].workspaceId).toBeNull();
+      expect(payments[0].password).toBeTruthy();
     });
   });
 });
