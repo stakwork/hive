@@ -88,5 +88,42 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (event.type === 'payment_intent.payment_failed') {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    const failureCode =
+      intent.last_payment_error?.decline_code ?? intent.last_payment_error?.code ?? null;
+    const failureMessage = intent.last_payment_error?.message ?? null;
+
+    const payment = await db.swarmPayment.findFirst({
+      where: { stripePaymentIntentId: intent.id },
+    });
+
+    if (payment) {
+      if (payment.workspaceId) {
+        await db.$transaction([
+          db.swarmPayment.update({
+            where: { id: payment.id },
+            data: { status: 'FAILED', failureCode, failureMessage },
+          }),
+          db.workspace.update({
+            where: { id: payment.workspaceId },
+            data: { paymentStatus: 'FAILED' },
+          }),
+        ]);
+      } else {
+        await db.swarmPayment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', failureCode, failureMessage },
+        });
+      }
+    } else {
+      logger.info(
+        'payment_intent.payment_failed: no matching SwarmPayment found (pre-auth or unknown)',
+        'stripe-webhook',
+        { paymentIntentId: intent.id },
+      );
+    }
+  }
+
   return NextResponse.json({ received: true });
 }

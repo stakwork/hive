@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/chat/route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { ChatRole, ChatStatus } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { callStakworkAPI } from "@/services/task-workflow";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
   });
 
   it("passes mergedHistory (db + body) to callStakworkAPI when history provided in body", async () => {
-    // DB has one existing message
+    // DB has one existing ASSISTANT message with a PLAN artifact (successful exchange)
     const dbMsg = {
       id: "msg-db-1",
       message: "Existing DB message",
@@ -132,7 +132,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
       status: ChatStatus.SENT,
       createdAt: new Date("2025-01-01T09:00:00Z"),
       contextTags: "[]",
-      artifacts: [],
+      artifacts: [{ id: "art-1", type: ArtifactType.PLAN, content: "{}", icon: null }],
       attachments: [],
     };
     vi.mocked(db.chatMessage.findMany).mockResolvedValue([dbMsg] as any);
@@ -161,7 +161,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
   });
 
   it("behaves identically to current implementation when no history in body", async () => {
-    // DB has two messages
+    // DB has two messages: a USER + ASSISTANT pair with a PLAN artifact (successful exchange)
     const dbMsgs = [
       {
         id: "msg-db-1",
@@ -180,7 +180,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
         status: ChatStatus.SENT,
         createdAt: new Date("2025-01-01T09:01:00Z"),
         contextTags: "[]",
-        artifacts: [],
+        artifacts: [{ id: "art-2", type: ArtifactType.PLAN, content: "{}", icon: null }],
         attachments: [],
       },
     ];
@@ -229,7 +229,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
   });
 
   it("does NOT forward isPrototype when dbHistory is non-empty (subsequent message)", async () => {
-    // DB already has a message — this is not the first message
+    // DB already has a successful ASSISTANT message (with PLAN artifact) — not the first message
     const dbMsg = {
       id: "msg-db-1",
       message: "Previous message",
@@ -237,7 +237,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
       status: ChatStatus.SENT,
       createdAt: new Date("2025-01-01T09:00:00Z"),
       contextTags: "[]",
-      artifacts: [],
+      artifacts: [{ id: "art-1", type: ArtifactType.PLAN, content: "{}", icon: null }],
       attachments: [],
     };
     vi.mocked(db.chatMessage.findMany).mockResolvedValue([dbMsg] as any);

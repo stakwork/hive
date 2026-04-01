@@ -2,7 +2,9 @@ import { db } from '@/lib/db';
 import type { LightningPayment, LightningPaymentStatus } from '@prisma/client';
 
 export interface CreateTestLightningPaymentOptions {
-  workspaceId: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  workspaceSlug?: string;
   paymentHash?: string;
   invoice?: string;
   amount?: number;
@@ -15,7 +17,9 @@ export async function createTestLightningPayment(
   const rand = Math.random().toString(36).substring(7);
   return db.lightningPayment.create({
     data: {
-      workspaceId: options.workspaceId,
+      workspaceId: options.workspaceId ?? null,
+      workspaceName: options.workspaceName ?? null,
+      workspaceSlug: options.workspaceSlug ?? null,
       paymentHash: options.paymentHash ?? `mock_hash_${rand}`,
       invoice: options.invoice ?? `lnbc1mock_${rand}`,
       amount: options.amount ?? 1000,
