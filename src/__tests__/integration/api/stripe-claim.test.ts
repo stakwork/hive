@@ -67,18 +67,18 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data.error).toBe('Unauthorized');
     });
 
-    test('returns 400 on missing/invalid body', async () => {
+    test('returns 400 when no sessionId in body or cookie', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
 
-      // Empty body
+      // Empty body and no cookie
       const req = buildClaimRequest({});
       const response = await POST(req);
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request body');
+      expect(data.error).toBe('No payment session found');
     });
 
     test('returns 400 when Stripe session retrieval throws', async () => {
