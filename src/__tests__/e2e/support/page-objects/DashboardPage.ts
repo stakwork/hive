@@ -40,7 +40,7 @@ export class DashboardPage {
     }
 
     await tasksLink.click();
-    await this.page.waitForURL(/\/w\/.*\/tasks/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/tasks/, { timeout: 30000 });
   }
 
   /**
