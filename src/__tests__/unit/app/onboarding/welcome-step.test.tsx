@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { WelcomeStep } from "@/app/onboarding/workspace/wizard/wizard-steps/welcome-step";
 
 const mockRouterPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockRouterPush }),
-  useSearchParams: () => ({ get: () => null }),
+  useSearchParams: vi.fn(() => ({ get: () => null })),
   redirect: vi.fn(),
 }));
 
@@ -25,6 +25,10 @@ vi.mock("@/components/auth/GitHubAuthModal", () => ({
   GitHubAuthModal: () => null,
 }));
 
+vi.mock("@/components/onboarding/SwarmSetupLoader", () => ({
+  SwarmSetupLoader: () => null,
+}));
+
 vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
   GraphMindsetCard: () => (
     <div>
@@ -37,9 +41,11 @@ vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
 
 import { useSession } from "next-auth/react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useSearchParams } from "next/navigation";
 
 const mockUseSession = useSession as ReturnType<typeof vi.fn>;
 const mockUseWorkspace = useWorkspace as ReturnType<typeof vi.fn>;
+const mockUseSearchParams = useSearchParams as ReturnType<typeof vi.fn>;
 
 describe("WelcomeStep - GraphMindsetCard integration", () => {
   beforeEach(() => {
@@ -116,5 +122,95 @@ describe("WelcomeStep - Go to my workspace button", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /go to my workspace/i }));
     expect(mockRouterPush).toHaveBeenCalledWith("/");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// claimPayment tests — exercise WelcomeStep via payment=success search params
+// ---------------------------------------------------------------------------
+describe("WelcomeStep - claimPayment password handling", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    global.fetch = mockFetch;
+    mockFetch.mockReset();
+  });
+
+  function makeSearchParams(params: Record<string, string>) {
+    return { get: (key: string) => params[key] ?? null };
+  }
+
+  function setupMocks(searchParams: Record<string, string>, sessionUser: object | null) {
+    vi.doMock("next/navigation", () => ({
+      useRouter: () => ({ push: mockRouterPush }),
+      useSearchParams: () => makeSearchParams(searchParams),
+      redirect: vi.fn(),
+    }));
+    mockUseSession.mockReturnValue({ data: sessionUser ? { user: sessionUser } : null });
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+  }
+
+  it("shows error when graphMindsetPassword is missing from localStorage on claim", async () => {
+    mockUseSearchParams.mockReturnValue(
+      makeSearchParams({ payment: "success", session_id: "cs_test_abc" })
+    );
+    mockUseSession.mockReturnValue({ data: { user: { name: "Alice" } } });
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+
+    // No password in localStorage
+    render(<WelcomeStep onNext={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Please restart onboarding from the beginning/i)
+      ).toBeInTheDocument();
+    });
+
+    // fetch (claim) should NOT have been called
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      "/api/stripe/claim",
+      expect.anything()
+    );
+  });
+
+  it("includes password in claim request body and clears it from localStorage on success", async () => {
+    mockUseSearchParams.mockReturnValue(
+      makeSearchParams({ payment: "success", session_id: "cs_test_xyz" })
+    );
+    mockUseSession.mockReturnValue({ data: { user: { name: "Bob" } } });
+    const mockRefresh = vi.fn().mockResolvedValue(undefined);
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: mockRefresh, workspaces: [] });
+
+    localStorage.setItem("graphMindsetPassword", "supersecret");
+
+    // Claim succeeds
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ workspace: { id: "ws-1" } }),
+    });
+    // Swarm poll (never resolves ACTIVE in this test — we just check localStorage)
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ workspace: { id: "ws-1" } }),
+    });
+
+    await act(async () => {
+      render(<WelcomeStep onNext={vi.fn()} />);
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/stripe/claim",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sessionId: "cs_test_xyz", password: "supersecret" }),
+        })
+      );
+    });
+
+    // Password must be cleared after successful claim
+    expect(localStorage.getItem("graphMindsetPassword")).toBeNull();
   });
 });
