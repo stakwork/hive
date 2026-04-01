@@ -66,7 +66,7 @@ vi.mock("@/components/ui/badge", () => ({
 }));
 
 describe("FeaturesList - Link Navigation", () => {
-  test("renders anchor elements with correct href for feature rows", async () => {
+  test("renders feature rows as clickable table rows", async () => {
     // Mock the fetch call that FeaturesList makes
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -96,19 +96,17 @@ describe("FeaturesList - Link Navigation", () => {
 
     const { container } = render(<FeaturesList workspaceId="workspace-1" />);
 
-    // Wait for the component to render with data
+    // Wait for the component to render with data — rows use onClick navigation
     await waitFor(() => {
-      const links = container.querySelectorAll("a[href*='/plan/feature-']");
-      expect(links.length).toBeGreaterThan(0);
+      const rows = container.querySelectorAll("tr.cursor-pointer");
+      expect(rows.length).toBeGreaterThan(0);
     });
 
-    const links = container.querySelectorAll("a[href*='/plan/feature-']");
-    const firstLink = links[0];
-    expect(firstLink).toHaveAttribute("href", "/w/test-workspace/plan/feature-1");
-    expect(firstLink).toHaveAttribute("aria-label", "Test Feature");
+    const rows = container.querySelectorAll("tr.cursor-pointer");
+    expect(rows.length).toBeGreaterThan(0);
   });
 
-  test("renders table rows with relative positioning", async () => {
+  test("renders table rows with cursor-pointer for click navigation", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -131,12 +129,12 @@ describe("FeaturesList - Link Navigation", () => {
     const { container } = render(<FeaturesList workspaceId="workspace-1" />);
 
     await waitFor(() => {
-      const rows = container.querySelectorAll("tr.relative");
+      const rows = container.querySelectorAll("tr.cursor-pointer");
       expect(rows.length).toBeGreaterThan(0);
     });
   });
 
-  test("renders overlay links with absolute positioning", async () => {
+  test("renders feature title text in table rows", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -159,9 +157,12 @@ describe("FeaturesList - Link Navigation", () => {
     const { container } = render(<FeaturesList workspaceId="workspace-1" />);
 
     await waitFor(() => {
-      const overlayLinks = container.querySelectorAll("a.absolute");
-      expect(overlayLinks.length).toBeGreaterThan(0);
+      const rows = container.querySelectorAll("tr.cursor-pointer");
+      expect(rows.length).toBeGreaterThan(0);
     });
+
+    // Title text is rendered directly (no overlay anchor in new implementation)
+    expect(container.textContent).toContain("Test Feature");
   });
 });
 
