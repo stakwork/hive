@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { stakworkService } from '@/lib/service-factory';
 import { logger } from '@/lib/logger';
-import { generateSecurePassword } from '@/lib/utils/password';
+import { EncryptionService } from '@/lib/encryption';
 import { optionalEnvVars } from '@/config/env';
 
 export const runtime = 'nodejs';
@@ -40,7 +40,18 @@ export async function POST(req: NextRequest) {
 
   const { name } = body;
   const slug = name.toLowerCase().replace(/\s+/g, '-');
-  const password = generateSecurePassword(20);
+
+  // Fetch the user's PAID, unlinked SwarmPayment to retrieve the stored password
+  const paymentRecord = await db.swarmPayment.findFirst({
+    where: { userId: session.user.id, status: 'PAID', workspaceId: null },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!paymentRecord || !paymentRecord.password) {
+    return NextResponse.json({ error: 'No valid payment found' }, { status: 400 });
+  }
+
+  const password = EncryptionService.getInstance().decryptField('swarmPaymentPassword', paymentRecord.password);
 
   try {
     // Step 1: Create Stakwork customer
