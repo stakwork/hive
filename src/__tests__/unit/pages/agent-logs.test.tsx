@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import React from "react";
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -127,6 +128,88 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
+
+describe("AgentLogsPage — debounce pagination guard", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("pagination stays on page 2 after 500ms with no search change", async () => {
+    // Simulate page=2 already in URL
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "page" ? "2" : null
+    );
+    mockSearchParamsToString.mockReturnValue("page=2");
+
+    render(<AgentLogsPage />);
+
+    // Advance past the debounce timer — no search change should have occurred
+    vi.advanceTimersByTime(600);
+
+    // mockReplace should never have been called with page=1 or bare pathname
+    const replaceCallsWithPage1 = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return url.includes("page=1") || url === "/w/test-workspace/agent-logs";
+    });
+    expect(replaceCallsWithPage1).toHaveLength(0);
+  });
+
+  test("typing in search resets to page 1", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    const { getByPlaceholderText } = render(<AgentLogsPage />);
+
+    // Advance past initial debounce (no keyword change → no reset)
+    vi.advanceTimersByTime(600);
+    mockReplace.mockClear();
+
+    // Type in the search input
+    const input = getByPlaceholderText("Search logs...");
+    // Simulate a change event
+    input.focus();
+    // Fire a React change event
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, "new-search");
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    vi.advanceTimersByTime(600);
+
+    // Should have called replace without page param (i.e. page 1)
+    const replaceCallsToPage1 = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return !url.includes("page=") || url.includes("page=1");
+    });
+    expect(replaceCallsToPage1.length).toBeGreaterThan(0);
+  });
+
+  test("no page reset on mount — debounce does not fire goToPage(1) on initial render", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    render(<AgentLogsPage />);
+
+    // Advance past debounce
+    vi.advanceTimersByTime(600);
+
+    // mockReplace should not have been called with a bare pathname or page=1
+    // (the goToPageRef.current update effect runs, but debounce should not reset page)
+    const unwantedCalls = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return url === "/w/test-workspace/agent-logs" || url.includes("page=1");
+    });
+    expect(unwantedCalls).toHaveLength(0);
+  });
+});
 
 describe("AgentLogsPage — URL param sync", () => {
   test("initialises dialogOpen=false and selectedLogId=null when no logId param", async () => {
