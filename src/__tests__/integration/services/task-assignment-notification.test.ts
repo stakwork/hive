@@ -83,15 +83,20 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
-      },
-    });
+    // Poll until record has sendAfter populated (fire-and-forget async; CI can be slow)
+    let record = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          targetUserId: assignee.id,
+          notificationType: NotificationTriggerType.TASK_ASSIGNED,
+          taskId: task.id,
+          sendAfter: { not: null },
+        },
+      });
+      if (record) break;
+    }
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
