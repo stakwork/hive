@@ -83,6 +83,8 @@ export const optionalEnvVars = {
   LIGHTNING_NODE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/lnd`
     : process.env.LIGHTNING_NODE_URL || '',
+  LIGHTNING_MACAROON: process.env.LIGHTNING_MACAROON || '',
+  LIGHTNING_TLS_CERT: process.env.LIGHTNING_TLS_CERT || '',
 } as const;
 
 /**
