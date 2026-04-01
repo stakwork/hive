@@ -3,10 +3,15 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
+
+// Mock next-auth/react
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: { user: { id: "user-1", name: "Test User" } }, status: "authenticated" }),
+}));
 
 // Mock Next.js navigation
 const mockRouterPush = vi.fn();
@@ -28,6 +33,8 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     id: "workspace-1",
     slug: "test-workspace",
+    role: "OWNER",
+    workspaces: [],
   }),
 }));
 
@@ -66,6 +73,14 @@ const mockWhiteboards = [
   },
 ];
 
+/** Open a Radix UI DropdownMenu trigger in jsdom. */
+async function openDropdown(trigger: Element) {
+  await act(async () => {
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    fireEvent.click(trigger);
+  });
+}
+
 describe("WhiteboardsPage — delete button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,22 +99,27 @@ describe("WhiteboardsPage — delete button", () => {
     return result;
   }
 
+  /** Open the dropdown for the first whiteboard card and click "Delete". */
+  async function openDeleteDialogForFirstCard() {
+    // Find the MoreHorizontal dropdown trigger (aria-haspopup="menu") for the first card
+    const menuTriggers = screen.getAllByRole("button").filter(
+      (btn) => btn.getAttribute("aria-haspopup") === "menu"
+    );
+    const firstMoreBtn = menuTriggers[0];
+    await openDropdown(firstMoreBtn);
+
+    // Click the Delete menu item
+    await waitFor(() => {
+      expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: /delete/i }));
+  }
+
   it("calls e.preventDefault() and e.stopPropagation() and sets deleteId when delete button is clicked", async () => {
     await renderAndWait();
+    await openDeleteDialogForFirstCard();
 
-    // Hover over first card to reveal the delete button (opacity handled by CSS, button still in DOM)
-    const deleteButtons = screen.getAllByRole("button", { name: "" });
-    // The first icon-only button is the delete button for "Whiteboard One"
-    const firstDeleteBtn = deleteButtons[0];
-
-    const mockEvent = {
-      preventDefault: vi.fn(),
-      stopPropagation: vi.fn(),
-    };
-
-    fireEvent.click(firstDeleteBtn, mockEvent);
-
-    // After clicking the delete button, the confirmation dialog should appear
+    // After clicking Delete in the dropdown, the confirmation dialog should appear
     await waitFor(() => {
       expect(screen.getByText("Delete whiteboard?")).toBeInTheDocument();
     });
@@ -107,9 +127,7 @@ describe("WhiteboardsPage — delete button", () => {
 
   it("opens delete dialog without navigating when delete button is clicked", async () => {
     await renderAndWait();
-
-    const deleteButtons = screen.getAllByRole("button", { name: "" });
-    fireEvent.click(deleteButtons[0]);
+    await openDeleteDialogForFirstCard();
 
     // Dialog should open
     await waitFor(() => {
@@ -137,8 +155,7 @@ describe("WhiteboardsPage — delete button", () => {
     // Setup DELETE response
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
 
-    const deleteButtons = screen.getAllByRole("button", { name: "" });
-    fireEvent.click(deleteButtons[0]);
+    await openDeleteDialogForFirstCard();
 
     await waitFor(() => {
       expect(screen.getByText("Delete whiteboard?")).toBeInTheDocument();
@@ -159,8 +176,7 @@ describe("WhiteboardsPage — delete button", () => {
   it("keeps the whiteboard list intact and closes dialog on cancel", async () => {
     await renderAndWait();
 
-    const deleteButtons = screen.getAllByRole("button", { name: "" });
-    fireEvent.click(deleteButtons[0]);
+    await openDeleteDialogForFirstCard();
 
     await waitFor(() => {
       expect(screen.getByText("Delete whiteboard?")).toBeInTheDocument();
