@@ -157,13 +157,10 @@ export function LightningPaymentClient() {
             stopPaymentPolling();
             setIsPaid(true);
 
-            if (session?.user) {
-              claimLightningPayment(hash);
-            } else {
-              localStorage.setItem("graphMindsetLightningPaymentHash", hash);
-              const returnUrl = `/onboarding/lightning-payment?payment=success`;
-              router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
-            }
+            // Always redirect through sign-in (matching Stripe Pay with Card flow)
+            localStorage.setItem("graphMindsetLightningPaymentHash", hash);
+            const returnUrl = `/onboarding/lightning-payment?payment=success`;
+            router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
           }
         } catch {
           // Silently retry
