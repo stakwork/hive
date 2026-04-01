@@ -1,4 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Hoisted mock for env — used by the mock-endpoint describe block below
+const mockEnv = vi.hoisted(() => ({
+  SWARM_SUPERADMIN_API_KEY: "test-super-token" as string | undefined,
+}));
+vi.mock("@/config/env", () => ({ env: mockEnv }));
 import { POST } from "@/app/api/super/new_swarm/route";
 import {
   createRequestWithHeaders,
@@ -6,6 +12,7 @@ import {
   expectUnauthorized,
   expectError,
 } from "@/__tests__/support/helpers";
+import { mockSwarmState } from "@/lib/mock/swarm-state";
 
 /**
  * Integration tests for POST /api/super/new_swarm
@@ -535,3 +542,4 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
     });
   });
 });
+

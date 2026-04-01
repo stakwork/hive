@@ -12,8 +12,9 @@ import { resetDatabase } from "@/__tests__/support/utilities/database";
 import { NotificationTriggerType, NotificationTriggerStatus } from "@prisma/client";
 
 // Mock Sphinx delivery
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // Mock Pusher
@@ -64,11 +65,11 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     process.env.API_TOKEN = API_TOKEN;
 
     owner = await db.user.create({
-      data: { email: "owner@test.com", name: "Owner", sphinxAlias: "owner-alias" },
+      data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
     });
 
-    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createSphinxEnabledWorkspace({
+    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createTestWorkspace({
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-chat-notif",
@@ -110,7 +111,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates PLAN_AWAITING_APPROVAL notification for PLAN artifact with featureId", async () => {
@@ -132,7 +136,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates PLAN_TASKS_GENERATED notification for TASKS artifact with featureId", async () => {
@@ -154,7 +161,10 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 
   it("creates GRAPH_CHAT_RESPONSE notification for task response without plan artifacts", async () => {
@@ -186,6 +196,9 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
     });
 
     expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
   });
 });

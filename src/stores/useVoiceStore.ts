@@ -10,6 +10,7 @@ export interface AgentMessage {
   id: string;
   timestamp: number;
   message: string;
+  sender: "agent" | "user";
 }
 
 interface Transcription {
@@ -34,6 +35,7 @@ interface VoiceState {
   connect: (slug: string) => Promise<void>;
   disconnect: () => void;
   toggleMic: () => Promise<void>;
+  sendMessage: (text: string) => void;
   clearError: () => void;
 }
 
@@ -70,7 +72,11 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
         if (topic !== "lk-chat-topic") return;
         try {
-          const msg: AgentMessage = JSON.parse(new TextDecoder().decode(payload));
+          const raw = JSON.parse(new TextDecoder().decode(payload));
+          // Messages with a `sender` field are from a user (voice or text);
+          // Jamie's responses never include `sender`.
+          const sender = raw.sender ? "user" : "agent";
+          const msg: AgentMessage = { ...raw, sender };
           set((s) => ({ messages: [...s.messages, msg] }));
         } catch {
           // ignore malformed messages
@@ -134,6 +140,20 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     if (!room) return;
     await room.localParticipant.setMicrophoneEnabled(!isMicEnabled);
     set({ isMicEnabled: !isMicEnabled });
+  },
+
+  sendMessage: (text: string) => {
+    const { room } = get();
+    if (!room) return;
+    const msg: AgentMessage = {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      message: text,
+      sender: "user",
+    };
+    const encoded = new TextEncoder().encode(JSON.stringify(msg));
+    room.localParticipant.publishData(encoded, { topic: "lk-chat-topic", reliable: true });
+    set((s) => ({ messages: [...s.messages, msg] }));
   },
 
   clearError: () => set({ error: null }),

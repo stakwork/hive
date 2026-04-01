@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import CopySwarmPasswordButton from "./CopySwarmPasswordButton";
 import AdminJanitorToggles from "./AdminJanitorToggles";
+import WorkspacePRStats from "./WorkspacePRStats";
+import AdminPodScaleControl from "./AdminPodScaleControl";
 
 export default async function AdminWorkspaceDetailPage({
   params,
@@ -49,6 +51,8 @@ export default async function AdminWorkspaceDetailPage({
           poolState: true,
           podState: true,
           swarmPassword: true,
+          minimumVms: true,
+          poolApiKey: true,
         },
       },
     },
@@ -158,6 +162,15 @@ export default async function AdminWorkspaceDetailPage({
                 <p className="font-medium">{workspace.swarm?.podState || "N/A"}</p>
               </div>
             </div>
+            {workspace.swarm?.poolState === "COMPLETE" && !!workspace.swarm?.poolApiKey && (
+              <div>
+                <p className="text-sm font-medium mb-2">Pod Scaling</p>
+                <AdminPodScaleControl
+                  slug={slug}
+                  initialMinimumVms={workspace.swarm.minimumVms ?? 2}
+                />
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground mb-2">Password</p>
               <CopySwarmPasswordButton
@@ -211,6 +224,16 @@ export default async function AdminWorkspaceDetailPage({
           </CardHeader>
           <CardContent>
             <AdminJanitorToggles workspaceId={workspaceId} />
+          </CardContent>
+        </Card>
+
+        {/* PR Statistics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>PR Statistics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WorkspacePRStats workspaceId={workspaceId} />
           </CardContent>
         </Card>
       </div>

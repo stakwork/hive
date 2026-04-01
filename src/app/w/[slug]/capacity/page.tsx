@@ -7,7 +7,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertCircle, Server, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import React, { useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
 
 import { CapacityControls } from "@/components/capacity/CapacityControls";
 import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
@@ -16,7 +18,7 @@ import { VMCardSkeleton } from "@/components/capacity/VMCardSkeleton";
 import { VMData } from "@/types/pool-manager";
 
 export default function CapacityPage() {
-  const { workspace, slug } = useWorkspace();
+  const { workspace, slug, isAdmin, isOwner } = useWorkspace();
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const { poolStatus, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
@@ -124,6 +126,16 @@ export default function CapacityPage() {
   }, [slug, isPoolActive, basicDataLoading, vmData.length]);
 
   // Manual refresh handler
+  const handleDeletePod = async (vm: VMData) => {
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/workspaces/${vm.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setVmData((prev) => prev.filter((v) => v.id !== vm.id));
+    } catch {
+      toast.error("Failed to delete pod");
+    }
+  };
+
   const handleRefreshMetrics = async () => {
     metricsFetched.current = false;
     setMetricsError(false);
@@ -194,9 +206,10 @@ export default function CapacityPage() {
   }
 
   const queuedCountActions = poolStatus?.queuedCount ? (
-    <span className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span> {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
-    </span>
+    <Link href={`/w/${slug}/tasks?tab=queue`} className="text-sm text-muted-foreground hover:underline">
+      <span className="font-medium text-foreground">{poolStatus.queuedCount}</span>{" "}
+      {poolStatus.queuedCount === 1 ? "task" : "tasks"} queued
+    </Link>
   ) : undefined;
 
   return (
@@ -246,10 +259,12 @@ export default function CapacityPage() {
 
           {/* 2D View */}
           {viewMode === '2d' && (
-            <VMGrid 
-              vms={vmData} 
+            <VMGrid
+              vms={vmData}
               metricsLoading={metricsLoading}
               metricsError={metricsError}
+              isAdmin={isAdmin || isOwner}
+              onDeletePod={handleDeletePod}
             />
           )}
         </>

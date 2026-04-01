@@ -5,6 +5,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
@@ -15,6 +16,7 @@ import {
   createChatMessage,
   WorkflowStatus,
 } from "@/lib/chat";
+import { useStreamContext } from "@/hooks/useStreamContext";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import { diffWords } from "diff";
@@ -87,6 +89,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const { isSuperAdmin } = useWorkspace();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
@@ -98,9 +101,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
   // Project log WebSocket for live thinking logs
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, true);
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, false);
 
   // Resolve initial tab state: URL param → localStorage → default
   const resolveInitialTab = useCallback((): ArtifactType => {
@@ -290,7 +294,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       return [...msgs, message];
     });
     setIsLoading(false);
-  }, []);
+    onStreamMessage(message);
+  }, [onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
@@ -304,8 +309,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
         setIsChainVisible(false);
       }
+      onStreamStatusUpdate(update);
     },
-    [],
+    [onStreamStatusUpdate],
   );
 
   const handleFeatureTitleUpdate = useCallback(
@@ -324,7 +330,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string) => {
+    async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -348,7 +354,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, sourceWebsocketID: getPusherClient().connection.socket_id }),
+          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id }),
         });
 
         if (res.ok) {
@@ -512,14 +518,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     featureId,
     featureTitle,
     taskMode: "live" as const,
-    isChainVisible,
     lastLogLine,
-    logs,
     sphinxInviteEnabled: sphinxReady,
     onTitleSave: handleTitleSave,
     stakworkProjectId: projectId,
     onRetry: handleRetry,
     isRetrying,
+    streamContext,
+    isSuperAdmin,
   };
 
   const artifactsPanelProps = {
@@ -545,7 +551,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   if (isMobile) {
     return (
-      <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <div className="flex flex-col h-dvh">
         {showPreview ? (
           <ArtifactsPanel
             {...artifactsPanelProps}
@@ -567,7 +573,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-dvh">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">

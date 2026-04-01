@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInput } from "@/app/w/[slug]/task/[...taskParams]/components/ChatInput";
 import { WorkflowStatus } from "@/lib/chat";
@@ -72,8 +72,12 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: any) => <>{children}</>,
 }));
 
+let lastWorkflowStatusBadgeProps: Record<string, unknown> = {};
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge", () => ({
-  WorkflowStatusBadge: () => <div data-testid="workflow-status-badge">Status</div>,
+  WorkflowStatusBadge: (props: Record<string, unknown>) => {
+    lastWorkflowStatusBadgeProps = props;
+    return <div data-testid="workflow-status-badge">Status</div>;
+  },
 }));
 
 vi.mock("@/components/InputDebugAttachment", () => ({
@@ -752,6 +756,31 @@ describe("ChatInput - Task Mode", () => {
       );
       expect(screen.queryByText("View on Stakwork")).not.toBeInTheDocument();
     });
+
+    test("forwards isSuperAdmin=false to WorkflowStatusBadge by default", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(false);
+    });
+
+    test("forwards isSuperAdmin=true to WorkflowStatusBadge when passed", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          workflowStatus={WorkflowStatus.IN_PROGRESS}
+          stakworkProjectId="12345"
+          isSuperAdmin={true}
+        />
+      );
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+      expect(lastWorkflowStatusBadgeProps.isSuperAdmin).toBe(true);
+    });
   });
 
   describe("Retry button", () => {
@@ -812,6 +841,37 @@ describe("ChatInput - Task Mode", () => {
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
+
+    test("FAILED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.FAILED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("HALTED + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.HALTED} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("ERROR + PR artifact → Retry button is visible", () => {
+      const onRetry = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.ERROR} hasPrArtifact={true} onRetry={onRetry} />);
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + PR artifact → status area is visible", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={true} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
+
+    test("IN_PROGRESS + no PR artifact → status area is visible", () => {
+      render(<ChatInput {...defaultProps} workflowStatus={WorkflowStatus.IN_PROGRESS} hasPrArtifact={false} />);
+      expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
+    });
   });
 
   describe("Textarea typing while blocking send", () => {
@@ -821,53 +881,43 @@ describe("ChatInput - Task Mode", () => {
       mockSpeechRecognitionState.isListening = false;
     });
 
-    test("textarea remains enabled when disabled=true", () => {
+    test("textarea is disabled when disabled=true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
-      // Textarea should not have disabled attribute
+      // Textarea should have disabled attribute
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is disabled when isLoading=true", () => {
+      render(<ChatInput {...defaultProps} isLoading={true} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should have disabled attribute when loading
+      expect(textarea).toBeDisabled();
+    });
+
+    test("textarea is enabled when both disabled=false and isLoading=false", () => {
+      render(<ChatInput {...defaultProps} disabled={false} isLoading={false} />);
+      
+      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+      
+      // Textarea should NOT have disabled attribute
       expect(textarea).not.toBeDisabled();
     });
 
-    test("allows typing in textarea when disabled=true", async () => {
-      const user = userEvent.setup();
-      
-      render(<ChatInput {...defaultProps} disabled={true} />);
-      
-      const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
-      // Clear any existing content
-      await user.clear(textarea);
-      
-      // Should be able to type
-      await user.type(textarea, "Queued message");
-      
-      expect(textarea.value).toBe("Queued message");
-    });
-
     test("Enter key does not submit when disabled=true", async () => {
-      const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       
       render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
-      // Clear any existing content
-      await user.clear(textarea);
-      
-      // Type message
-      await user.type(textarea, "Test message");
-      
-      // Press Enter (without Shift)
-      await user.keyboard("{Enter}");
-      
-      // onSend should NOT be called
+      // Textarea is disabled — cannot type into it, onSend must not be called
+      expect(textarea).toBeDisabled();
       expect(onSend).not.toHaveBeenCalled();
-      
-      // Message should still be in textarea
-      expect(textarea.value).toBe("Test message");
     });
 
     test("Enter key submits when disabled=false", async () => {
@@ -892,7 +942,6 @@ describe("ChatInput - Task Mode", () => {
     });
 
     test("handleSubmit early returns when disabled=true", async () => {
-      const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       
       render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
@@ -900,11 +949,8 @@ describe("ChatInput - Task Mode", () => {
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       const sendButton = screen.getByTestId("chat-message-submit");
       
-      // Clear and type message
-      await user.clear(textarea);
-      await user.type(textarea, "Test message");
-      
-      // Try to click send button (it should be disabled, but test the guard)
+      // Both textarea and send button should be disabled
+      expect(textarea).toBeDisabled();
       expect(sendButton).toBeDisabled();
       
       // Verify onSend is not called
@@ -912,57 +958,61 @@ describe("ChatInput - Task Mode", () => {
     });
 
     test("Send button remains disabled when disabled=true", async () => {
-      const user = userEvent.setup();
-      
       render(<ChatInput {...defaultProps} disabled={true} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       const sendButton = screen.getByTestId("chat-message-submit");
       
-      // Clear and type some text
-      await user.clear(textarea);
-      await user.type(textarea, "Test message");
+      // Textarea is disabled — use fireEvent to bypass the disabled guard and set a value
+      fireEvent.change(textarea, { target: { value: "Test message" } });
       
-      // Send button should still be disabled
+      // Send button should still be disabled even with text present
       expect(sendButton).toBeDisabled();
     });
 
     test("typed content is preserved when disabled changes from true to false", async () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
-      
-      const { rerender } = render(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
-      
+
+      // Start enabled so we can type into the controlled textarea
+      const { rerender } = render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
-      // Clear and type while disabled
-      await user.clear(textarea);
+
+      // Type content while enabled
       await user.type(textarea, "Queued message");
       expect(textarea.value).toBe("Queued message");
-      
-      // Re-render with disabled=false
-      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
-      
-      // Content should be preserved
+
+      // Now disable — content (React state) should still be there
+      rerender(<ChatInput {...defaultProps} disabled={true} onSend={onSend} />);
+      expect(textarea).toBeDisabled();
       expect(textarea.value).toBe("Queued message");
-      
+
+      // Re-enable — content should still be preserved
+      rerender(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
+      expect(textarea).not.toBeDisabled();
+      expect(textarea.value).toBe("Queued message");
+
       // Now should be able to send
       await user.keyboard("{Enter}");
       expect(onSend).toHaveBeenCalledWith("Queued message", undefined);
     });
 
-    test("Shift+Enter adds newline even when disabled=true", async () => {
+    test("Shift+Enter adds newline instead of submitting when enabled", async () => {
       const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
       
-      render(<ChatInput {...defaultProps} disabled={true} />);
+      // Test with disabled=false: Shift+Enter should add a newline, not submit
+      render(<ChatInput {...defaultProps} disabled={false} onSend={onSend} />);
       
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
       
       // Type message and press Shift+Enter
       await user.type(textarea, "Line 1{Shift>}{Enter}{/Shift}Line 2");
       
-      // Should contain newline
+      // Should contain newline and onSend should NOT have been called
       expect(textarea.value).toContain("\n");
+      expect(onSend).not.toHaveBeenCalled();
     });
 
     test("mic button remains disabled when disabled=true", () => {
@@ -985,6 +1035,139 @@ describe("ChatInput - Task Mode", () => {
       const imageButton = buttons.find(btn => btn.querySelector("svg.lucide-image"));
       
       expect(imageButton).toBeDisabled();
+    });
+  });
+});
+
+// ── uploadToS3 branching tests ─────────────────────────────────────────────────
+
+describe("ChatInput - uploadToS3 branching", () => {
+  const baseProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset fetch mock between tests
+    global.fetch = vi.fn();
+    // jsdom doesn't implement URL.createObjectURL; stub it out
+    global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  test("calls /api/upload/image with featureId when featureId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskMode="task" />);
+
+    // Drop a file to trigger handleFiles → uploadImage → uploadToS3
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // Wait for the fetch calls to resolve
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+    });
+  });
+
+  test("calls /api/upload/presigned-url with taskId when only taskId is provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "tasks/task-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"taskId":"task-1"'),
+        })
+      );
+    });
+  });
+
+  test("shows error toast when neither taskId nor featureId is provided", async () => {
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    // fetch should never be called since the error is thrown before any network call
+    await vi.waitFor(() => {
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  test("featureId takes precedence over taskId when both are provided", async () => {
+    const presignedUrl = "https://s3.example.com/upload";
+    const s3Path = "features/feat-1/image.png";
+
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ presignedUrl, s3Path }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+
+    const file = new File(["img"], "image.png", { type: "image/png" });
+    const dataTransfer = { files: [file] } as unknown as DataTransfer;
+
+    render(<ChatInput {...baseProps} featureId="feat-1" taskId="task-1" taskMode="task" />);
+
+    const form = document.querySelector("form")!;
+    fireEvent.drop(form, { dataTransfer });
+
+    await vi.waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/upload/image",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"featureId":"feat-1"'),
+        })
+      );
+      // Should not have called the task endpoint
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        "/api/upload/presigned-url",
+        expect.anything()
+      );
     });
   });
 });

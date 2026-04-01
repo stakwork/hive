@@ -188,6 +188,25 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
 }
 
 /**
+ * Get and decrypt the user's personal GitHub OAuth token from the Account table.
+ * Used as a fallback when no GitHub App installation token exists yet.
+ */
+export async function getPersonalOAuthToken(userId: string): Promise<string | null> {
+  const account = await db.account.findFirst({
+    where: { userId, provider: "github" },
+    select: { access_token: true },
+  });
+  if (!account?.access_token) return null;
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    return encryptionService.decryptField("access_token", account.access_token);
+  } catch (error) {
+    console.error("Failed to decrypt personal OAuth token:", error);
+    return null;
+  }
+}
+
+/**
  * Check if a GitHub App installation has access to a specific repository
  * @param userId - The user ID
  * @param installationId - The GitHub App installation ID

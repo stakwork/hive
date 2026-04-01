@@ -28,9 +28,25 @@ function isValidColorSwatchArtifact(artifact: QuestionArtifact | undefined): art
   );
 }
 
+function getMermaidCode(artifact: QuestionArtifact): string | null {
+  if (typeof artifact.data === "string" && artifact.data.trim().length > 0) {
+    return artifact.data;
+  }
+  if (
+    typeof artifact.data === "object" &&
+    artifact.data !== null &&
+    !Array.isArray(artifact.data) &&
+    typeof (artifact.data as Record<string, unknown>).code === "string" &&
+    ((artifact.data as Record<string, unknown>).code as string).trim().length > 0
+  ) {
+    return (artifact.data as Record<string, unknown>).code as string;
+  }
+  return null;
+}
+
 function isValidMermaidArtifact(artifact: QuestionArtifact | undefined): boolean {
   if (!artifact || artifact.type !== "mermaid") return false;
-  return typeof artifact.data === "string" && artifact.data.trim().length > 0;
+  return getMermaidCode(artifact) !== null;
 }
 
 function isValidComparisonTableArtifact(artifact: QuestionArtifact | undefined): boolean {

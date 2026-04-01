@@ -6,9 +6,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
-import { getAgentIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
@@ -17,6 +15,7 @@ import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, U
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
+import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
@@ -26,10 +25,7 @@ interface ChatAreaProps {
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
-  hasNonFormArtifacts?: boolean;
-  isChainVisible?: boolean;
   lastLogLine?: string;
-  logs?: LogEntry[];
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
   pendingStepAttachment?: WorkflowTransition | null;
@@ -59,6 +55,8 @@ interface ChatAreaProps {
   isPrototypeTask?: boolean;
   isSavingPlan?: boolean;
   onSaveAndPlan?: () => void;
+  streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatArea({
@@ -67,9 +65,7 @@ export function ChatArea({
   onArtifactAction,
   inputDisabled = false,
   isLoading = false,
-  isChainVisible = false,
   lastLogLine = "",
-  logs = [],
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
   pendingStepAttachment = null,
@@ -99,6 +95,8 @@ export function ChatArea({
   isPrototypeTask = false,
   isSavingPlan = false,
   onSaveAndPlan,
+  streamContext = null,
+  isSuperAdmin = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -367,39 +365,6 @@ export function ChatArea({
             );
           })}
 
-        {isChainVisible && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="flex justify-start"
-          >
-            <div className="max-w-[85%] bg-muted rounded-2xl px-4 py-3 shadow-sm">
-              <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
-                {getAgentIcon()}
-                Hive
-              </div>
-              <div className="text-sm">{lastLogLine ? lastLogLine : `Communicating with workflow...`}</div>
-              {/* Optional: Add a subtle loading indicator */}
-              {isChainVisible && (
-                <div className="flex items-center mt-2 text-xs text-muted-foreground">
-                  <div className="flex space-x-1">
-                    <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.2s" }}
-                    ></div>
-                    <div
-                      className="w-1 h-1 bg-current rounded-full animate-pulse"
-                      style={{ animationDelay: "0.4s" }}
-                    ></div>
-                  </div>
-                  <span className="ml-2">Processing...</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -416,12 +381,16 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         taskId={taskId ?? undefined}
+        featureId={featureId ?? undefined}
         onOpenBountyRequest={onOpenBountyRequest}
         stakworkProjectId={stakworkProjectId}
+        lastLogLine={lastLogLine}
         onRetry={onRetry}
         isRetrying={isRetrying}
         isPlanChat={isPlanChat}
         currentWorkspaceSlug={workspaceSlug}
+        streamContext={streamContext}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {onReleasePod && (

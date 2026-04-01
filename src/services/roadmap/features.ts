@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority, NotificationTriggerType } from "@prisma/client";
+import { releaseTaskPod } from "@/lib/pods/utils";
+import { FeatureStatus, FeaturePriority, NotificationTriggerType, Prisma } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
@@ -18,7 +19,6 @@ export async function listFeatures({
   statuses,
   priorities,
   assigneeId,
-  createdById,
   search,
   sortBy,
   sortOrder,
@@ -31,7 +31,6 @@ export async function listFeatures({
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
   priorities?: FeaturePriority[]; // Array of priorities for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
-  createdById?: string; // String including "UNCREATED" special value
   search?: string; // Text search for feature title
   sortBy?: "title" | "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
@@ -60,21 +59,18 @@ export async function listFeatures({
     whereClause.priority = { in: priorities };
   }
 
-  // Handle assigneeId - convert "UNASSIGNED" to null for Prisma query
+  // Handle assigneeId filter — mirrors the UI Owner column (assignee ?? createdBy)
   if (assigneeId !== undefined) {
     if (assigneeId === "UNASSIGNED") {
+      // Return features with no assignee set (regardless of creator)
       whereClause.assigneeId = null;
     } else {
-      whereClause.assigneeId = assigneeId;
-    }
-  }
-
-  // Handle createdById - convert "UNCREATED" to null for Prisma query
-  if (createdById !== undefined) {
-    if (createdById === "UNCREATED") {
-      whereClause.createdById = null;
-    } else {
-      whereClause.createdById = createdById;
+      // Return features where the user is the explicit assignee OR
+      // the creator when no assignee is set (matching the displayed owner)
+      whereClause.OR = [
+        { assigneeId: assigneeId },
+        { assigneeId: null, createdById: assigneeId },
+      ];
     }
   }
 
@@ -86,27 +82,35 @@ export async function listFeatures({
     };
   }
 
-  // Handle needsAttention filter - features with pending StakworkRuns awaiting user decision
-  // Exclude features that are already COMPLETED
+  // Handle needsAttention filter - features where last chat message is ASSISTANT and no tasks exist
   if (needsAttention) {
-    whereClause.stakworkRuns = {
-      some: {
-        status: "COMPLETED",
-        decision: null,
-        type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-      },
-    };
-    // If status filter is already set, merge with COMPLETED exclusion
-    // Otherwise, just exclude COMPLETED status
-    if (whereClause.status && whereClause.status.in) {
-      // Filter out COMPLETED from the status list if present
-      const filteredStatuses = whereClause.status.in.filter((s: string) => s !== "COMPLETED");
-      whereClause.status = { in: filteredStatuses };
-    } else {
-      whereClause.status = {
-        not: "COMPLETED",
+    const rows = await db.$queryRaw<{ id: string }[]>(
+      Prisma.sql`
+        SELECT f.id
+        FROM features f
+        WHERE f.workspace_id = ${workspaceId}
+          AND f.deleted = false
+          AND NOT EXISTS (
+            SELECT 1 FROM tasks t
+            WHERE t.feature_id = f.id
+              AND t.deleted = false
+              AND t.archived = false
+          )
+          AND (
+            SELECT role FROM chat_messages cm
+            WHERE cm.feature_id = f.id
+            ORDER BY cm.created_at DESC LIMIT 1
+          ) = 'ASSISTANT'::"ChatRole"
+      `
+    );
+    const ids = rows.map(r => r.id);
+    if (ids.length === 0) {
+      return {
+        features: [],
+        pagination: { page, limit, totalCount: 0, totalPages: 0, hasMore: false, totalCountWithoutFilters: 0 },
       };
     }
+    whereClause.id = { in: ids };
   }
 
   // Build orderBy clause
@@ -133,22 +137,13 @@ export async function listFeatures({
         _count: {
           select: {
             userStories: true,
+            tasks: { where: { deleted: false, archived: false } },
           },
         },
-        // Fetch actual stakwork runs to compute count client-side
-        stakworkRuns: {
-          where: {
-            status: "COMPLETED",
-            decision: null,
-            type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-          },
+        chatMessages: {
           orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            type: true,
-            decision: true,
-            createdAt: true,
-          },
+          take: 1,
+          select: { role: true },
         },
         // Fetch tasks for deployment status calculation (excluding archived/deleted)
         phases: {
@@ -183,21 +178,13 @@ export async function listFeatures({
     }),
   ]);
 
-  // Compute correct pending count per feature (only latest run per type)
-  // and calculate deployment status
+  // Compute awaitingFeedback and deployment status per feature
   const features = rawFeatures.map(feature => {
-    const latestPerType = new Map();
-    // Handle case where stakworkRuns might be undefined
-    if (feature.stakworkRuns) {
-      feature.stakworkRuns.forEach(run => {
-        if (!latestPerType.has(run.type)) {
-          latestPerType.set(run.type, run);
-        }
-      });
-    }
-    const pendingCount = Array.from(latestPerType.values())
-      .filter(run => run.decision === null).length;
-    
+    // Compute awaitingFeedback: last chat message is ASSISTANT and no tasks exist
+    const lastMsgRole = feature.chatMessages[0]?.role ?? null;
+    const hasTasks = feature._count.tasks > 0;
+    const awaitingFeedback = lastMsgRole === "ASSISTANT" && !hasTasks;
+
     // Calculate deployment status by aggregating all tasks across phases
     const allTasks = feature.phases?.flatMap(phase => phase.tasks) || [];
     let deploymentStatus: "staging" | "production" | null = null;
@@ -213,13 +200,12 @@ export async function listFeatures({
 
       if (allProduction) {
         deploymentStatus = "production";
-        // Find first production deployment URL (would need to query separately if needed)
         deploymentUrl = null; // Can be enhanced later to fetch actual URL
       } else if (allStagingOrProduction) {
         deploymentStatus = "staging";
       }
     }
-    
+
     return {
       id: feature.id,
       title: feature.title,
@@ -231,8 +217,8 @@ export async function listFeatures({
       createdBy: feature.createdBy,
       _count: {
         userStories: feature._count.userStories,
-        stakworkRuns: pendingCount,
       },
+      awaitingFeedback,
       deploymentStatus,
       deploymentUrl,
     };
@@ -603,6 +589,26 @@ export async function deleteFeature(
   userId: string
 ): Promise<void> {
   await validateFeatureAccess(featureId, userId);
+
+  const tasksWithPods = await db.task.findMany({
+    where: { featureId, deleted: false, podId: { not: null } },
+    select: { id: true, podId: true, workspaceId: true },
+  });
+
+  await Promise.allSettled(
+    tasksWithPods.map((task) =>
+      releaseTaskPod({
+        taskId: task.id,
+        podId: task.podId!,
+        workspaceId: task.workspaceId,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      }).catch((err) =>
+        console.error(`[deleteFeature] Failed to release pod for task ${task.id}:`, err)
+      )
+    )
+  );
 
   await db.feature.update({
     where: { id: featureId },

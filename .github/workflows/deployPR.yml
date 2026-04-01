@@ -58,8 +58,21 @@ jobs:
 
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git fetch origin
-          git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin
+            if git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force; then
+              echo "Push succeeded on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "Push failed after 5 attempts"
+              exit 1
+            fi
+            SLEEP=$((attempt * 10))
+            echo "Push failed (attempt $attempt), retrying in ${SLEEP}s..."
+            sleep $SLEEP
+          done
 
       ############################################################
       # 2b️⃣ Checkout preview branch so Vercel deploys as preview-1/2/3
@@ -80,10 +93,33 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.pull_request.number }}"
           EXPIRY=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "5 hours")
 
-          # Get preview-base branch ID
-          PARENT_BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r '.branches[] | select(.name=="preview-base") | .id')
+          # Helper: curl with retry (up to 5 attempts, 10 s backoff).
+          # Retries on empty body OR on non-JSON / error responses that don't
+          # contain the expected top-level key (passed as $2).
+          # Usage: neon_curl <url> <expected_key> [extra curl args...]
+          neon_curl() {
+            local url="$1"
+            local expected_key="$2"
+            shift 2
+            local response
+            for attempt in 1 2 3 4 5; do
+              response=$(curl -s --retry 2 --retry-delay 5 --retry-connrefused \
+                -H "Authorization: Bearer $NEON_API_KEY" "$@" "$url")
+              if [ -n "$response" ] && echo "$response" | jq -e ".$expected_key" > /dev/null 2>&1; then
+                echo "$response"
+                return 0
+              fi
+              echo "⚠️  Neon API bad/empty response (attempt $attempt/5) for $url — got: ${response:0:120}" >&2
+              sleep 10
+            done
+            echo "❌ Neon API failed after 5 attempts for: $url" >&2
+            echo "$response"   # emit last response so caller can print it
+            return 1
+          }
+
+          # Get preview-base branch ID (expected key: "branches")
+          BRANCHES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branches")
+          PARENT_BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r '.branches[] | select(.name=="preview-base") | .id')
 
           if [ -z "$PARENT_BRANCH_ID" ] || [ "$PARENT_BRANCH_ID" = "null" ]; then
             echo "❌ Could not find preview-base branch"
@@ -91,14 +127,11 @@ jobs:
           fi
 
           # Create or reuse PR branch
-          BRANCH_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+          BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
-            RESPONSE=$(curl -s -X POST \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-              -H "Authorization: Bearer $NEON_API_KEY" \
+            RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branch" \
+              -X POST \
               -H "Content-Type: application/json" \
               -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
             BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
@@ -111,32 +144,55 @@ jobs:
 
           # Wait until branch is ready
           for i in {1..20}; do
-            STATE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" \
-              | jq -r '.branch.current_state')
+            BRANCH_STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" "branch")
+            STATE=$(echo "$BRANCH_STATUS" | jq -r '.branch.current_state')
             if [ "$STATE" = "ready" ]; then break; fi
             echo "Waiting for branch... ($i)"
             sleep 3
           done
 
           # Create or reuse endpoint
-          ENDPOINT_ID=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
-            | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+          ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
+          ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
-            RESPONSE=$(curl -s -X POST \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" \
-              -H "Authorization: Bearer $NEON_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}")
-            ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            # Try to create a new endpoint first
+            RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              -X POST -H "Content-Type: application/json" \
+              -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+
+            if echo "$RESPONSE" | jq -e '.endpoint' > /dev/null 2>&1; then
+              ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            else
+              echo "⚠️  Endpoint creation failed (likely limit exceeded): $(echo "$RESPONSE" | jq -r '.message // .code // empty')"
+              echo "♻️  Looking for a stale endpoint to reassign..."
+
+              # Find an endpoint not belonging to preview-base or the current branch
+              STALE_ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r \
+                --arg bid "$BRANCH_ID" \
+                --arg pbid "$PARENT_BRANCH_ID" \
+                '.endpoints[] | select(.branch_id != $bid and .branch_id != $pbid and .type == "read_write") | .id' \
+                | head -1)
+
+              if [ -z "$STALE_ENDPOINT_ID" ] || [ "$STALE_ENDPOINT_ID" = "null" ]; then
+                echo "❌ No stale endpoint available to reassign"
+                exit 1
+              fi
+
+              echo "♻️  Reassigning endpoint $STALE_ENDPOINT_ID to branch $BRANCH_ID..."
+              RESPONSE=$(neon_curl \
+                "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$STALE_ENDPOINT_ID" "endpoint" \
+                -X PATCH \
+                -H "Content-Type: application/json" \
+                -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\"}}")
+              ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+            fi
           fi
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
-            STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
             DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
@@ -152,8 +208,7 @@ jobs:
           fi
 
           # Get a role name for this branch (Neon GET endpoint does not return credentials)
-          ROLES_JSON=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles")
+          ROLES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID/roles" "roles")
           ROLE_NAME=$(echo "$ROLES_JSON" | jq -r '.roles[0].name // empty')
           if [ -z "$ROLE_NAME" ]; then
             echo "❌ No roles found for branch $BRANCH_ID"
@@ -161,8 +216,7 @@ jobs:
           fi
 
           # Retrieve full connection URI (includes encoded credentials)
-          URI_RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME")
+          URI_RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&endpoint_id=$ENDPOINT_ID&database_name=neondb&role_name=$ROLE_NAME" "uri")
           CONNECTION_URI=$(echo "$URI_RESPONSE" | jq -r '.uri // empty')
           if [ -z "$CONNECTION_URI" ]; then
             echo "❌ Failed to get connection URI: $URI_RESPONSE"
@@ -170,18 +224,27 @@ jobs:
           fi
 
           # Verify actual DB connectivity before proceeding
+          # Neon requires sslmode=require; append if not already present
+          PSQL_URI="$CONNECTION_URI"
+          if [[ "$PSQL_URI" != *"sslmode="* ]]; then
+            if [[ "$PSQL_URI" == *"?"* ]]; then
+              PSQL_URI="${PSQL_URI}&sslmode=require"
+            else
+              PSQL_URI="${PSQL_URI}?sslmode=require"
+            fi
+          fi
           echo "Verifying database connectivity..."
-          for i in {1..20}; do
-            if psql "$CONNECTION_URI" -c "SELECT 1;" > /dev/null 2>&1; then
+          for i in {1..30}; do
+            if psql "$PSQL_URI" -c "SELECT 1;" > /dev/null 2>&1; then
               echo "✅ Database connection verified"
               break
             fi
-            if [ $i -eq 20 ]; then
-              echo "❌ Database connection failed after 20 attempts"
+            if [ $i -eq 30 ]; then
+              echo "❌ Database connection failed after 30 attempts"
               exit 1
             fi
             echo "Waiting for database connectivity... ($i)"
-            sleep 5
+            sleep 10
           done
 
           # Pass URI to next steps (delimiter format for special chars in password)
@@ -216,33 +279,76 @@ jobs:
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
-          
-          # Check if the migration is in a failed state
-          MIGRATION_STATUS=$(npx prisma migrate status 2>&1 || true)
-          
-          if echo "$MIGRATION_STATUS" | grep -q "20260301051356_add_voice_signature_to_user"; then
-            echo "Found voice_signature migration, checking if it needs resolution..."
-            
-            # If the column already exists, mark the migration as applied
-            COLUMN_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';")
-            
-            if [ "$COLUMN_EXISTS" = "1" ]; then
-              echo "Column already exists, marking migration as applied..."
-              npx prisma migrate resolve --applied 20260301051356_add_voice_signature_to_user || echo "Could not mark as applied"
+
+          # Helper: resolve a migration based on whether its DDL column/table already exists
+          resolve_migration() {
+            local MIGRATION_NAME="$1"
+            local CHECK_QUERY="$2"
+
+            # Check if this migration is recorded as failed in _prisma_migrations
+            FAILED=$(psql "$DATABASE_URL" -tAc \
+              "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME}' AND finished_at IS NULL AND applied_steps_count > 0;" 2>/dev/null || echo "0")
+            FAILED=$(echo "$FAILED" | tr -d '[:space:]')
+
+            if [ "$FAILED" = "1" ]; then
+              echo "Migration ${MIGRATION_NAME} is in failed state, resolving..."
+              OBJECT_EXISTS=$(psql "$DATABASE_URL" -tAc "${CHECK_QUERY}" 2>/dev/null | tr -d '[:space:]')
+              if [ "$OBJECT_EXISTS" = "1" ]; then
+                echo "  DDL already applied — marking as applied"
+                npx prisma migrate resolve --applied "${MIGRATION_NAME}" || echo "  Could not mark as applied"
+              else
+                echo "  DDL not applied — marking as rolled-back for retry"
+                npx prisma migrate resolve --rolled-back "${MIGRATION_NAME}" || echo "  Could not mark as rolled-back"
+              fi
             else
-              echo "Column doesn't exist, marking migration as rolled back for retry..."
-              npx prisma migrate resolve --rolled-back 20260301051356_add_voice_signature_to_user || echo "Could not mark as rolled back"
+              echo "Migration ${MIGRATION_NAME} is not in a failed state, skipping"
             fi
-          else
-            echo "Migration not in failed state, proceeding normally"
-          fi
+          }
+
+          resolve_migration \
+            "20260218154809_add_swarm_description" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='swarms' AND column_name='description';"
+
+          resolve_migration \
+            "20260301051356_add_voice_signature_to_user" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';"
+
+          resolve_migration \
+            "20260220101159_add_repository_id_to_janitor_run" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_runs' AND column_name='repository_id';"
+
+          resolve_migration \
+            "20260227180738_add_feature_id_to_screenshots" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';"
+
+          resolve_migration \
+            "20260313120000_fix_mocks_enabled_default" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='repositories' AND column_name='mocks_enabled' AND column_default='false';"
+
+          resolve_migration \
+            "20260228185557_default_ticket_sweep_enabled" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_configs' AND column_name='ticket_sweep_enabled' AND column_default='true';"
 
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
-          npx prisma migrate deploy
+
+          # Retry prisma migrate deploy — Neon endpoint may sleep between steps
+          for attempt in 1 2 3 4 5; do
+            if npx prisma migrate deploy; then
+              echo "✅ Migrations deployed successfully (attempt $attempt)"
+              break
+            fi
+            if [ $attempt -eq 5 ]; then
+              echo "❌ prisma migrate deploy failed after 5 attempts"
+              exit 1
+            fi
+            echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+            sleep 15
+          done
+
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################

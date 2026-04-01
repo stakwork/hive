@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
+import { getS3Service } from "@/services/s3";
 import {
   ChatRole,
   ChatStatus,
@@ -31,7 +32,11 @@ export async function fetchFeatureChatHistory(
       id: { not: excludeMessageId },
     },
     include: {
-      artifacts: true,
+      artifacts: {
+        where: {
+          type: ArtifactType.PLAN,
+        },
+      },
       attachments: true,
     },
     orderBy: {
@@ -107,15 +112,23 @@ const FEATURE_SELECT_FOR_CHAT = {
  * credentials, and return them as extraSwarms for the Stakwork workflow.
  * Silently skips slugs that are not accessible, have no swarm, or have no repos.
  */
+interface SubAgent {
+  name: string,
+  url: string;
+  apiKey: string;
+  repoUrls: string;
+  toolsConfig?: Record<string, string | boolean>;
+}
+
 export async function resolveExtraSwarms(
   message: string,
   userId: string,
-): Promise<{ name: string, url: string; apiKey: string; repoUrls: string }[]> {
+): Promise<SubAgent[]> {
   const slugMatches = [...message.matchAll(/\B@([\w-]+)/g)];
   const uniqueSlugs = [...new Set(slugMatches.map((m) => m[1]))];
 
   const encryptionService = EncryptionService.getInstance();
-  const results: { name: string, url: string; apiKey: string; repoUrls: string }[] = [];
+  const results: SubAgent[] = [];
 
   for (const slug of uniqueSlugs) {
     try {
@@ -145,7 +158,7 @@ export async function resolveExtraSwarms(
         .map((r) => r.repositoryUrl)
         .join(",");
 
-      results.push({ name: slug, url, apiKey, repoUrls });
+      results.push({ name: slug, url, apiKey, repoUrls, toolsConfig: { learn_concepts: true } });
     } catch {
       // Silently skip any workspace that fails to resolve
     }
@@ -168,6 +181,7 @@ export async function sendFeatureChatMessage({
   replyId,
   history: bodyHistory,
   isPrototype,
+  attachments,
 }: {
   featureId: string;
   userId: string;
@@ -178,6 +192,7 @@ export async function sendFeatureChatMessage({
   replyId?: string;
   history?: Record<string, unknown>[];
   isPrototype?: boolean;
+  attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -207,6 +222,14 @@ export async function sendFeatureChatMessage({
       status: ChatStatus.SENT,
       sourceWebsocketID,
       replyId,
+      attachments: {
+        create: (attachments ?? []).map((a) => ({
+          path: a.path,
+          filename: a.filename,
+          mimeType: a.mimeType,
+          size: a.size,
+        })),
+      },
     },
     include: {
       artifacts: true,
@@ -267,8 +290,25 @@ export async function sendFeatureChatMessage({
       featureId,
       chatMessage.id,
     );
-    const isFirstMessage = dbHistory.length === 0;
-    const mergedHistory = [...dbHistory, ...(bodyHistory ?? [])];
+
+    // Drop failed exchanges: keep USER+ASSISTANT pairs only when
+    // the ASSISTANT has a PLAN artifact (i.e. Stakwork responded successfully).
+    const filteredHistory = dbHistory.filter((msg, idx) => {
+      if (msg.role === "ASSISTANT") {
+        const artifacts = msg.artifacts as { type: string }[];
+        return artifacts.length > 0;
+      }
+      if (msg.role === "USER") {
+        const next = dbHistory[idx + 1];
+        if (!next || next.role !== "ASSISTANT") return false;
+        const artifacts = next.artifacts as { type: string }[];
+        return artifacts.length > 0;
+      }
+      return true;
+    });
+
+    const isFirstMessage = filteredHistory.length === 0;
+    const mergedHistory = [...filteredHistory, ...(bodyHistory ?? [])];
 
     // Build feature context using the auto-created Phase 1
     let featureContext = undefined;
@@ -297,6 +337,11 @@ export async function sendFeatureChatMessage({
 
     const extraSwarms = await resolveExtraSwarms(message, userId);
 
+    // Generate presigned download URLs for any attachments
+    const attachmentUrls = await Promise.all(
+      (attachments ?? []).map((a) => getS3Service().generatePresignedDownloadUrl(a.path)),
+    );
+
     stakworkData = await callStakworkAPI({
       taskId: featureId,
       message,
@@ -319,26 +364,28 @@ export async function sendFeatureChatMessage({
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,
+      attachments: attachmentUrls,
     });
 
-    // Set workflow status to IN_PROGRESS as soon as Stakwork is called
-    const updateData: Record<string, unknown> = {
-      workflowStatus: WorkflowStatus.IN_PROGRESS,
-      workflowStartedAt: new Date(),
-    };
-    if (stakworkData?.data?.project_id) {
-      updateData.stakworkProjectId = stakworkData.data.project_id;
+    // Only update workflow status when Stakwork confirms a project was created
+    if (stakworkData?.projectId) {
+      await db.feature.update({
+        where: { id: featureId },
+        data: {
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: new Date(),
+          stakworkProjectId: stakworkData.projectId,
+        },
+      });
+
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      );
     }
-    await db.feature.update({
-      where: { id: featureId },
-      data: updateData,
-    });
-
-    await pusherServer.trigger(
-      getFeatureChannelName(featureId),
-      PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-      { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
-    );
+    // All other cases (network error, non-2xx, body-level failure, missing project_id):
+    // no-op — leave workflowStatus unchanged
   }
 
   return { chatMessage, stakworkData };

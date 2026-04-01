@@ -54,7 +54,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.info("Updated user profile from /person", "SPHINX_PERSON", { userId: matchedUserId });
+    logger.info("Updated user profile from /person", "SPHINX_PERSON", {
+      userId: matchedUserId,
+      owner_route_hint: owner_route_hint ?? null,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

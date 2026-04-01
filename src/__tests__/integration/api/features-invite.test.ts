@@ -241,6 +241,97 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
     expect(body.content).toContain(`/w/${workspace.slug}/plan/${feature.id}`);
   });
 
+  test("sends a single message with '& ' alias prefix for 2 invitees", async () => {
+    const owner = await createTestUser({
+      email: `owner-${generateUniqueId()}@example.com`,
+      name: "Workspace Owner",
+    });
+
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: owner.id, email: owner.email, name: owner.name! },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    } as any);
+
+    const workspace = await createSphinxEnabledWorkspace({
+      ownerId: owner.id,
+      slug: `sphinx-ws-${generateUniqueId()}`,
+    });
+
+    const [alice, bob] = await Promise.all([
+      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice", sphinxAlias: "alice", lightningPubkey: "pk-alice" }),
+      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
+    ]);
+
+    const feature = await db.feature.create({
+      data: { title: "Multi-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
+    });
+
+    const request = createAuthenticatedRequest(
+      `http://localhost:3000/api/features/${feature.id}/invite`,
+      { id: owner.id, email: owner.email, name: owner.name },
+      { inviteeUserIds: [alice.id, bob.id] }
+    );
+
+    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.success).toBe(true);
+    expect(data.sent).toBe(2);
+
+    // Sphinx API called exactly once
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, options] = mockFetch.mock.calls[0];
+    const body = JSON.parse(options?.body as string);
+    expect(body.content).toMatch(/^@alice & @bob/);
+  });
+
+  test("sends a single message with ', & ' alias prefix for 3 invitees", async () => {
+    const owner = await createTestUser({
+      email: `owner-${generateUniqueId()}@example.com`,
+      name: "Workspace Owner",
+    });
+
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: owner.id, email: owner.email, name: owner.name! },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    } as any);
+
+    const workspace = await createSphinxEnabledWorkspace({
+      ownerId: owner.id,
+      slug: `sphinx-ws-${generateUniqueId()}`,
+    });
+
+    const [alice, bob, charlie] = await Promise.all([
+      createTestUser({ email: `alice-${generateUniqueId()}@example.com`, name: "Alice", sphinxAlias: "alice", lightningPubkey: "pk-alice" }),
+      createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
+      createTestUser({ email: `charlie-${generateUniqueId()}@example.com`, name: "Charlie", sphinxAlias: "charlie", lightningPubkey: "pk-charlie" }),
+    ]);
+
+    const feature = await db.feature.create({
+      data: { title: "Three-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
+    });
+
+    const request = createAuthenticatedRequest(
+      `http://localhost:3000/api/features/${feature.id}/invite`,
+      { id: owner.id, email: owner.email, name: owner.name },
+      { inviteeUserIds: [alice.id, bob.id, charlie.id] }
+    );
+
+    const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.success).toBe(true);
+    expect(data.sent).toBe(3);
+
+    // Sphinx API called exactly once
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, options] = mockFetch.mock.calls[0];
+    const body = JSON.parse(options?.body as string);
+    expect(body.content).toMatch(/^@alice, @bob & @charlie/);
+  });
+
   test("returns 500 when Sphinx API fails", async () => {
     // Clear and mock failed Sphinx API response
     mockFetch.mockClear();

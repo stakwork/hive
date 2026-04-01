@@ -9,8 +9,13 @@ on:
       - master
 
 jobs:
-  playwright:
+  playwright-shards:
+    name: Playwright (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     services:
       postgres:
@@ -36,30 +41,38 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}-${{ hashFiles('prisma/schema.prisma') }}
+
       - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
 
-      - name: Generate Prisma client
-        env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: npx prisma generate
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**/*.js', 'src/**/*.ts', 'src/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
+            ${{ runner.os }}-nextjs-
 
-      - name: Resolve Failed Migrations
-        env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: |
-          echo "Checking for failed migrations..."
-          npx prisma migrate resolve --rolled-back 20260301051516_add_voice_signature_to_user || echo "Migration not found or already resolved"
-
-      - name: Run Prisma migrations
-        env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: npx prisma migrate deploy
-
-      - name: Start development server
+      - name: Build app and setup database
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
@@ -81,10 +94,24 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
-        run: npm run dev &
+          NEXT_SKIP_TYPE_CHECK: "true"
+        run: |
+          # Install Playwright OS deps in background if browsers were cached
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium &
+            PW_DEPS_PID=$!
+          fi
+          npx prisma migrate deploy &
+          DB_PID=$!
+          npm run build
+          wait $DB_PID
+          if [ -n "${PW_DEPS_PID:-}" ]; then
+            wait $PW_DEPS_PID
+          fi
+          npm start &
 
       - name: Wait for application to be ready
-        run: npx wait-on http://localhost:3000 --timeout 120000
+        run: npx wait-on http://localhost:3000 --timeout 300000
 
       - name: Run Playwright tests
         env:
@@ -98,7 +125,69 @@ jobs:
           PGDATABASE: hive_db
           PGHOST: localhost
           PGPORT: 5432
-        run: npx playwright test
+        run: npx playwright test --workers=1 --shard=${{ matrix.shard }}/3 --reporter=blob
+
+      - name: Upload Playwright Blob Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-blob-${{ matrix.shard }}
+          path: blob-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  playwright:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: playwright-shards
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Download Playwright Blob Reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: playwright-blob-*
+          path: all-blob-reports
+
+      - name: Merge blob reports into HTML
+        run: |
+          mkdir -p merged-blob-reports
+          if [ -d ./all-blob-reports ]; then
+            find ./all-blob-reports -name '*.zip' -exec cp {} merged-blob-reports/ \;
+            # Remove any corrupted/truncated zip files
+            for f in merged-blob-reports/*.zip; do
+              [ -f "$f" ] || continue
+              if ! unzip -t "$f" > /dev/null 2>&1; then
+                echo "Skipping invalid zip: $f"
+                rm "$f"
+              fi
+            done
+          fi
+          if find merged-blob-reports -name '*.zip' -print -quit 2>/dev/null | grep -q .; then
+            npx playwright merge-reports --reporter html ./merged-blob-reports
+          else
+            mkdir -p playwright-report
+            echo "<html><body><h1>No Playwright blob reports found</h1></body></html>" > playwright-report/index.html
+          fi
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
@@ -107,3 +196,11 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+      - name: Validate shard jobs
+        run: |
+          if [ "${{ needs.playwright-shards.result }}" != "success" ]; then
+            echo "One or more Playwright shard jobs failed."
+            exit 1
+          fi
+          echo "All Playwright shard jobs completed successfully."

@@ -16,6 +16,7 @@ vi.mock("@/hooks/useDebounce", () => ({
 }));
 
 // Mock Next.js router
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("next/navigation", () => ({
     prefetch: vi.fn(),
   }),
   usePathname: () => "/w/test-workspace/tasks",
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock TaskCard component
@@ -47,12 +49,19 @@ vi.mock("@/components/tasks/TaskFilters", () => ({
   ),
 }));
 
-// Mock KanbanView component
+// Mock KanbanView component - captures columns for testing
 vi.mock("@/components/ui/kanban-view", () => ({
-  KanbanView: ({ items, renderCard }: any) => (
+  KanbanView: ({ items, columns, getItemStatus, renderCard }: any) => (
     <div data-testid="kanban-view">
-      {items.map((item: any) => (
-        <div key={item.id}>{renderCard(item)}</div>
+      {columns.map((col: any) => (
+        <div key={col.status} data-testid={`kanban-column-${col.status}`}>
+          <span data-testid={`kanban-column-title-${col.status}`}>{col.title}</span>
+          {items
+            .filter((item: any) => getItemStatus(item) === col.status)
+            .map((item: any) => (
+              <div key={item.id}>{renderCard(item)}</div>
+            ))}
+        </div>
       ))}
     </div>
   ),
@@ -111,6 +120,7 @@ describe("TasksList - Sorting Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockSearchParams = new URLSearchParams();
 
     // Setup default mocks
     vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
@@ -118,13 +128,23 @@ describe("TasksList - Sorting Functionality", () => {
     } as any);
 
     vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
-      stats: { total: 4, active: 4, archived: 0 },
+      stats: { total: 4, active: 4, archived: 0, queuedCount: 0 },
       loading: false,
     } as any);
 
     // Mock useWorkspaceTasks to return sorted tasks based on parameters
     vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
-      (workspaceId, workspaceSlug, enabled, pageLimit, showArchived, searchQuery, filters, showAllStatuses, sortBy = "updatedAt", sortOrder = "desc") => {
+      (workspaceId, workspaceSlug, enabled, pageLimit, showArchived, searchQuery, filters, showAllStatuses, sortBy = "updatedAt", sortOrder = "desc", queue = false) => {
+        if (queue) {
+          return {
+            tasks: [],
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
         const sortedTasks = getSortedTasks(sortBy, sortOrder);
         return {
           tasks: sortedTasks,
@@ -406,5 +426,324 @@ describe("TasksList - Sorting Functionality", () => {
       expect(taskCards[0]).toHaveTextContent("First Task");
       expect(taskCards[1]).toHaveTextContent("Third Task");
     });
+  });
+});
+
+const workflowTasks = [
+  {
+    id: "wf-task-1",
+    title: "Workflow Task A",
+    status: "IN_PROGRESS" as const,
+    mode: "workflow_editor",
+    createdAt: "2024-02-01T10:00:00Z",
+    updatedAt: "2024-02-15T10:00:00Z",
+    hasActionArtifact: false,
+  },
+  {
+    id: "regular-task-1",
+    title: "Regular Task B",
+    status: "TODO" as const,
+    mode: undefined,
+    createdAt: "2024-02-05T10:00:00Z",
+    updatedAt: "2024-02-20T10:00:00Z",
+    hasActionArtifact: false,
+  },
+];
+
+describe("TasksList - Workflows Kanban Column", () => {
+  const mockRefetch = vi.fn();
+  const mockLoadMore = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    localStorage.setItem("tasks-view-preference", "kanban");
+
+    vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
+      waitingForInputCount: 0,
+    } as any);
+
+    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
+      stats: { total: 2, active: 2, archived: 0, queuedCount: 0 },
+      loading: false,
+    } as any);
+  });
+
+  it("shows Workflows column when workspaceSlug is 'stakwork' and workflow_editor tasks exist", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("kanban-column-WORKFLOW_EDITOR")).toBeInTheDocument();
+    expect(screen.getByTestId("kanban-column-title-WORKFLOW_EDITOR")).toHaveTextContent("Workflows");
+  });
+
+  it("puts workflow_editor tasks only in the Workflows column on stakwork workspace", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const workflowColumn = screen.getByTestId("kanban-column-WORKFLOW_EDITOR");
+    expect(within(workflowColumn).getByTestId("task-card-wf-task-1")).toBeInTheDocument();
+
+    // Regular task must NOT appear in Workflows column
+    expect(within(workflowColumn).queryByTestId("task-card-regular-task-1")).not.toBeInTheDocument();
+
+    // Regular task must appear in its normal status column (TODO)
+    const todoColumn = screen.getByTestId("kanban-column-TODO");
+    expect(within(todoColumn).getByTestId("task-card-regular-task-1")).toBeInTheDocument();
+  });
+
+  it("does NOT show Workflows column on stakwork workspace when no workflow_editor tasks exist", async () => {
+    const nonWorkflowTasks = [
+      {
+        id: "reg-1",
+        title: "Regular Task",
+        status: "TODO" as const,
+        mode: undefined,
+        createdAt: "2024-02-01T10:00:00Z",
+        updatedAt: "2024-02-15T10:00:00Z",
+        hasActionArtifact: false,
+      },
+    ];
+
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: nonWorkflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="stakwork" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("kanban-column-WORKFLOW_EDITOR")).not.toBeInTheDocument();
+  });
+
+  it("does NOT show Workflows column on non-stakwork workspace even when workflow_editor tasks exist", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="other-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("kanban-column-WORKFLOW_EDITOR")).not.toBeInTheDocument();
+  });
+
+  it("places workflow_editor tasks in their normal status column on non-stakwork workspace", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockReturnValue({
+      tasks: workflowTasks,
+      loading: false,
+      error: null,
+      pagination: { hasMore: false },
+      loadMore: mockLoadMore,
+      refetch: mockRefetch,
+    } as any);
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="other-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    // workflow_editor task has status IN_PROGRESS, so it should appear there
+    const inProgressColumn = screen.getByTestId("kanban-column-IN_PROGRESS");
+    expect(within(inProgressColumn).getByTestId("task-card-wf-task-1")).toBeInTheDocument();
+  });
+});
+
+describe("TasksList - Queue Tab", () => {
+  const mockRefetch = vi.fn();
+  const mockLoadMore = vi.fn();
+
+  const queuedTaskMocks = [
+    {
+      id: "queued-1",
+      title: "Queued Task One",
+      status: "TODO" as const,
+      systemAssigneeType: "TASK_COORDINATOR" as const,
+      priority: "CRITICAL" as const,
+      createdAt: "2024-01-01T10:00:00Z",
+      updatedAt: "2024-01-01T10:00:00Z",
+      hasActionArtifact: false,
+    },
+    {
+      id: "queued-2",
+      title: "Queued Task Two",
+      status: "TODO" as const,
+      systemAssigneeType: "TASK_COORDINATOR" as const,
+      priority: "HIGH" as const,
+      createdAt: "2024-01-02T10:00:00Z",
+      updatedAt: "2024-01-02T10:00:00Z",
+      hasActionArtifact: false,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockSearchParams = new URLSearchParams();
+
+    vi.spyOn(useWorkspaceModule, "useWorkspace").mockReturnValue({
+      waitingForInputCount: 0,
+    } as any);
+
+    vi.spyOn(useTaskStatsModule, "useTaskStats").mockReturnValue({
+      stats: { total: 4, active: 4, archived: 0, queuedCount: 2 },
+      loading: false,
+    } as any);
+
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+      (_workspaceId, _workspaceSlug, _enabled, _pageLimit, _showArchived, _search, _filters, _showAllStatuses, _sortBy, _sortOrder, queue = false) => {
+        if (queue) {
+          return {
+            tasks: queuedTaskMocks,
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+        return {
+          tasks: mockTasks,
+          loading: false,
+          error: null,
+          pagination: { hasMore: false },
+          loadMore: mockLoadMore,
+          refetch: mockRefetch,
+        } as any;
+      }
+    );
+  });
+
+  it("should render tabs in Queue, Active, Archived order", async () => {
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const tabs = screen.getAllByRole("tab");
+    const tabNames = tabs.map((t) => t.textContent?.trim());
+    const queueIdx = tabNames.findIndex((n) => n?.includes("Queue"));
+    const activeIdx = tabNames.findIndex((n) => n === "Active");
+    const archivedIdx = tabNames.findIndex((n) => n === "Archived");
+
+    expect(queueIdx).toBeLessThan(activeIdx);
+    expect(activeIdx).toBeLessThan(archivedIdx);
+  });
+
+  it("should initialise to Queue tab when ?tab=queue URL param is present", async () => {
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tasks-list-loaded")).toBeInTheDocument();
+    });
+
+    const queueTab = screen.getByTestId("queue-tab");
+    expect(queueTab).toHaveAttribute("data-state", "active");
+  });
+
+  it("should show queued tasks when Queue tab is active", async () => {
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-tab-content")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("task-card-queued-1")).toBeInTheDocument();
+    expect(screen.getByTestId("task-card-queued-2")).toBeInTheDocument();
+  });
+
+  it("should use queued tasks in kanban view when Queue tab is active", async () => {
+    localStorage.setItem("tasks-view-preference", "kanban");
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kanban-view")).toBeInTheDocument();
+    });
+
+    const queueColumn = screen.getByTestId("kanban-column-QUEUE");
+    expect(within(queueColumn).getByTestId("task-card-queued-1")).toBeInTheDocument();
+    expect(within(queueColumn).getByTestId("task-card-queued-2")).toBeInTheDocument();
+    expect(within(queueColumn).queryByTestId("task-card-task-1")).not.toBeInTheDocument();
+  });
+
+  it("should show empty state when no tasks are queued", async () => {
+    vi.spyOn(useWorkspaceTasksModule, "useWorkspaceTasks").mockImplementation(
+      (_workspaceId, _workspaceSlug, _enabled, _pageLimit, _showArchived, _search, _filters, _showAllStatuses, _sortBy, _sortOrder, queue = false) => {
+        if (queue) {
+          return {
+            tasks: [],
+            loading: false,
+            error: null,
+            pagination: { hasMore: false },
+            loadMore: mockLoadMore,
+            refetch: mockRefetch,
+          } as any;
+        }
+        return {
+          tasks: mockTasks,
+          loading: false,
+          error: null,
+          pagination: { hasMore: false },
+          loadMore: mockLoadMore,
+          refetch: mockRefetch,
+        } as any;
+      }
+    );
+
+    mockSearchParams = new URLSearchParams("tab=queue");
+
+    render(<TasksList workspaceId="workspace-1" workspaceSlug="test-workspace" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-empty-state")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No tasks in queue")).toBeInTheDocument();
   });
 });

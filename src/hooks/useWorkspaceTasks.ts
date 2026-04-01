@@ -108,6 +108,37 @@ interface UseWorkspaceTasksResult {
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
 }
 
+interface BuildTasksUrlParams {
+  workspaceId: string;
+  page: number;
+  limit: number;
+  queue?: boolean;
+  includeLatestMessage?: boolean;
+  showArchived?: boolean;
+  search?: string;
+  filters?: { sourceType?: string; status?: string; priority?: string; hasPod?: boolean; createdById?: string };
+  showAllStatuses?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
+function buildTasksUrl({ workspaceId, page, limit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder }: BuildTasksUrlParams): string {
+  if (queue) {
+    return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}&queue=true${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+  }
+  const archivedParam = showArchived ? '&includeArchived=true' : '';
+  const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+  const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
+  const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
+  const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
+  const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
+  const createdByIdParam = filters?.createdById ? `&createdById=${encodeURIComponent(filters.createdById)}` : '';
+  const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
+  const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
+  const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
+  return `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${createdByIdParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
+}
+
 export function useWorkspaceTasks(
   workspaceId: string | null,
   workspaceSlug?: string | null,
@@ -120,10 +151,12 @@ export function useWorkspaceTasks(
     status?: string;
     priority?: string;
     hasPod?: boolean;
+    createdById?: string;
   },
   showAllStatuses: boolean = false,
   sortBy?: string,
-  sortOrder?: string
+  sortOrder?: string,
+  queue?: boolean
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -144,16 +177,7 @@ export function useWorkspaceTasks(
     setError(null);
 
     try {
-      const archivedParam = showArchived ? '&includeArchived=true' : '';
-      const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-      const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
-      const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
-      const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
-      const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-      const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-      const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
-      const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
+      const url = buildTasksUrl({ workspaceId, page, limit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder });
 
       const response = await fetch(url, {
         method: "GET",
@@ -181,7 +205,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses, sortBy, sortOrder]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, filters?.createdById, showAllStatuses, sortBy, sortOrder, queue]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -204,16 +228,7 @@ export function useWorkspaceTasks(
       let finalPagination: PaginationData | null = null;
 
       for (let page = 1; page <= storedPage; page++) {
-        const archivedParam = showArchived ? '&includeArchived=true' : '';
-        const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-        const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
-        const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
-        const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
-        const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-        const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
-        const sortByParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : '';
-        const sortOrderParam = sortOrder ? `&sortOrder=${encodeURIComponent(sortOrder)}` : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}${sortByParam}${sortOrderParam}`;
+        const url = buildTasksUrl({ workspaceId, page, limit: pageLimit, queue, includeLatestMessage, showArchived, search, filters, showAllStatuses, sortBy, sortOrder });
         const response = await fetch(url, {
           method: "GET",
           headers: {

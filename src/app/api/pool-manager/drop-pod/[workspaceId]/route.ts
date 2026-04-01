@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import {
   releasePodById,
@@ -12,8 +9,7 @@ import {
   POD_PORTS,
   buildPodUrl,
 } from "@/lib/pods";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
+import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -36,21 +32,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Check for API token authentication (used by Stakwork/external services)
-    const apiToken = request.headers.get("x-api-token");
-    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
+    const isApiTokenAuth = validateApiToken(request);
 
     if (!isApiTokenAuth) {
-      // Fall back to session-based authentication
-      const session = await getServerSession(authOptions);
-
-      if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      // Authenticate via session cookie (web UI) or Bearer token (iOS app)
+      const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
+      if (userOrResponse instanceof NextResponse) {
+        return userOrResponse;
       }
-
-      const userId = (session.user as { id?: string })?.id;
-      if (!userId) {
-        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-      }
+      const userId = userOrResponse.id;
 
       // Verify user has access to the workspace
       const workspaceAccess = await db.workspace.findFirst({

@@ -21,6 +21,7 @@ import {
   Phone,
   Server,
   Settings,
+  Share2,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -35,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
@@ -98,6 +100,8 @@ interface SidebarContentProps {
   user: SidebarProps['user'];
   isBugReportOpen: boolean;
   setIsBugReportOpen: (open: boolean) => void;
+  canAdmin: boolean;
+  workspaceKind?: string | null;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -131,6 +135,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: BookOpen, label: "Learn", href: "/learn" },
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
+      { icon: Share2, label: "Graph", href: "/context/graph" },
     ],
   },
 ];
@@ -168,6 +173,8 @@ function SidebarContent({
   user,
   isBugReportOpen,
   setIsBugReportOpen,
+  canAdmin,
+  workspaceKind,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -335,23 +342,46 @@ function SidebarContent({
       </div>
       {/* Voice Agent Indicator */}
       <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
-      {/* Settings */}
-      <div className="px-4 pb-2">
-        <Button
-          asChild
-          data-testid="settings-button"
-          variant="ghost"
-          className="w-full justify-start"
-        >
-          <Link
-            href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
-            onClick={() => setIsOpen(false)}
+      {/* GraphMindset Admin */}
+      {workspaceKind === "graph_mindset" && workspaceSlug && (
+        <div className="px-4 pb-2">
+          <Button
+            asChild
+            variant="ghost"
+            className="w-full justify-start"
           >
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </Link>
-        </Button>
-      </div>
+            <a
+              href={`https://${workspaceSlug}.sphinx.chat:8800`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setIsOpen(false)}
+              data-testid="graphmindset-admin-button"
+            >
+              <Brain className="w-4 h-4 mr-2" />
+              GraphMindset Admin
+            </a>
+          </Button>
+        </div>
+      )}
+      {/* Settings */}
+      {canAdmin && (
+        <div className="px-4 pb-2">
+          <Button
+            asChild
+            data-testid="settings-button"
+            variant="ghost"
+            className="w-full justify-start"
+          >
+            <Link
+              href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
+              onClick={() => setIsOpen(false)}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </Link>
+          </Button>
+        </div>
+      )}
       <Separator />
       {/* User Popover */}
       <div className="p-4">
@@ -374,6 +404,8 @@ function SidebarContent({
 
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { canAdmin } = useWorkspaceAccess();
+  const workspaceKind = workspace?.workspaceKind;
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
@@ -406,7 +438,6 @@ export function Sidebar({ user }: SidebarProps) {
       children: [
         { icon: FileText, label: "Prompts", href: "/prompts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
-        { icon: Workflow, label: "Projects", href: "/projects" },
       ],
     },
   ] : [];
@@ -421,9 +452,18 @@ export function Sidebar({ user }: SidebarProps) {
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 
-  const navigationItems = allNavigationItems.filter(
-    (item) => !excludeLabels.includes(item.label),
-  );
+  const navigationItems = allNavigationItems
+    .filter((item) => !excludeLabels.includes(item.label))
+    .map((item) => {
+      // Filter Graph child from Context for non-admins
+      if (item.label === "Context" && item.children && !canAdmin) {
+        return {
+          ...item,
+          children: item.children.filter((child) => child.label !== "Graph"),
+        };
+      }
+      return item;
+    });
 
   const [isOpen, setIsOpen] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
@@ -456,6 +496,8 @@ export function Sidebar({ user }: SidebarProps) {
               user={user}
               isBugReportOpen={isBugReportOpen}
               setIsBugReportOpen={setIsBugReportOpen}
+              canAdmin={canAdmin}
+              workspaceKind={workspaceKind}
             />
           </SheetContent>
         </Sheet>
@@ -476,6 +518,8 @@ export function Sidebar({ user }: SidebarProps) {
             user={user}
             isBugReportOpen={isBugReportOpen}
             setIsBugReportOpen={setIsBugReportOpen}
+            canAdmin={canAdmin}
+            workspaceKind={workspaceKind}
           />
         </div>
       </div>

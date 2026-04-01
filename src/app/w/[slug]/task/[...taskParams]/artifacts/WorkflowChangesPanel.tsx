@@ -22,6 +22,28 @@ interface WorkflowChangesPanelProps {
   updatedJson: string | null;
 }
 
+const NOISE_FIELDS = ["position", "unique_id", "subskill_id", "skill_icon"] as const;
+
+function omitNoiseFields(data: unknown): unknown {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const obj = data as Record<string, unknown>;
+  const transitions = obj.transitions;
+  if (!transitions || typeof transitions !== "object" || Array.isArray(transitions)) return data;
+
+  const cleanedTransitions: Record<string, unknown> = {};
+  for (const [key, step] of Object.entries(transitions as Record<string, unknown>)) {
+    if (step && typeof step === "object" && !Array.isArray(step)) {
+      const cleaned = { ...(step as Record<string, unknown>) };
+      for (const field of NOISE_FIELDS) delete cleaned[field];
+      cleanedTransitions[key] = cleaned;
+    } else {
+      cleanedTransitions[key] = step;
+    }
+  }
+
+  return { ...obj, transitions: cleanedTransitions };
+}
+
 function parseAndFormat(jsonString: string | null): string {
   if (!jsonString) return "";
 
@@ -47,8 +69,8 @@ function parseAndFormat(jsonString: string | null): string {
       }
     }
 
-    // Format with consistent indentation
-    return JSON.stringify(data, null, 2);
+    // Format with consistent indentation (noise fields stripped)
+    return JSON.stringify(omitNoiseFields(data), null, 2);
   } catch (e) {
     console.error("Failed to parse JSON:", e);
     return jsonString;

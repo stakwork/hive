@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { TaskStatus, Prisma } from "@prisma/client";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 /**
  * Task sanitization helpers
@@ -41,6 +42,81 @@ interface PrArtifactContent {
   [key: string]: Prisma.JsonValue;
 }
 
+interface TaskPrContext {
+  id: string;
+  status: TaskStatus;
+  podId?: string | null;
+  workspaceId?: string;
+  chatMessages?: Array<{
+    artifacts?: Array<{
+      id: string;
+      type: string;
+      content: Prisma.JsonValue;
+    }>;
+  }>;
+}
+
+async function syncMergedTaskFallback(
+  task: TaskPrContext,
+  { queryTaskForPodContext = false }: { queryTaskForPodContext?: boolean } = {},
+): Promise<void> {
+  let podId = task.podId;
+  let workspaceId = task.workspaceId;
+
+  if (task.status !== TaskStatus.DONE) {
+    try {
+      await db.task.update({
+        where: { id: task.id },
+        data: { status: TaskStatus.DONE },
+      });
+    } catch (error) {
+      console.error("Error syncing merged PR task status:", error);
+    }
+  }
+
+  if (queryTaskForPodContext && (!workspaceId || podId === undefined)) {
+    try {
+      const currentTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: {
+          workspaceId: true,
+          podId: true,
+        },
+      });
+
+      workspaceId = currentTask?.workspaceId;
+      podId = currentTask?.podId;
+    } catch (error) {
+      console.error("Error loading merged PR task pod context:", error);
+    }
+  }
+
+  if (!workspaceId || !podId) {
+    return;
+  }
+
+  try {
+    const result = await releaseTaskPod({
+      taskId: task.id,
+      podId,
+      workspaceId,
+      verifyOwnership: true,
+      clearTaskFields: true,
+      newWorkflowStatus: null,
+    });
+
+    if (!result.success) {
+      console.error("Merged PR fallback failed to release pod:", {
+        taskId: task.id,
+        podId,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.error("Error releasing pod for merged PR fallback:", error);
+  }
+}
+
 /**
  * Extract PR artifact from task chat messages and update status from GitHub
  *
@@ -53,17 +129,7 @@ interface PrArtifactContent {
  * @returns PR artifact with updated status, or null if no PR found
  */
 export async function extractPrArtifact(
-  task: {
-    id: string;
-    status: TaskStatus;
-    chatMessages?: Array<{
-      artifacts?: Array<{
-        id: string;
-        type: string;
-        content: Prisma.JsonValue;
-      }>;
-    }>;
-  },
+  task: TaskPrContext,
   userId: string,
 ): Promise<{ id: string; type: string; content: PrArtifactContent } | null> {
   if (!task.chatMessages || task.chatMessages.length === 0) {
@@ -81,6 +147,9 @@ export async function extractPrArtifact(
         // Skip GitHub API check if status is already DONE (merged PRs can't change)
         // Note: CANCELLED is not terminal - a closed PR can be re-opened or replaced with a new PR
         if (content.status === "DONE") {
+          await syncMergedTaskFallback(task, {
+            queryTaskForPodContext: task.podId !== undefined || task.workspaceId !== undefined,
+          });
           return { id: prArt.id, type: prArt.type, content };
         }
 
@@ -114,12 +183,8 @@ export async function extractPrArtifact(
                     data: { content: content },
                   });
 
-                  // If PR is merged, update task status
-                  if (newStatus === "DONE" && task.status !== TaskStatus.DONE) {
-                    await db.task.update({
-                      where: { id: task.id },
-                      data: { status: TaskStatus.DONE },
-                    });
+                  if (newStatus === "DONE") {
+                    await syncMergedTaskFallback(task, { queryTaskForPodContext: true });
                   }
                 }
               }

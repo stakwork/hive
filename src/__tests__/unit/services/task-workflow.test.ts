@@ -755,7 +755,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
     });
 
-    test("should update task to FAILED on Stakwork API error", async () => {
+    test("should leave workflowStatus unchanged on Stakwork API error (non-2xx)", async () => {
       MockSetup.setupFailedWorkflow();
 
       await sendMessageToStakwork({
@@ -764,10 +764,11 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      TestHelpers.expectTaskStatusUpdated("FAILED");
+      // Non-2xx → no project_id → no status update
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
-    test("should update task to FAILED on Stakwork API exception", async () => {
+    test("should leave workflowStatus unchanged on Stakwork API exception (network error)", async () => {
       TestHelpers.setupValidTask();
       TestHelpers.setupValidUser();
       TestHelpers.setupValidChatMessage();
@@ -783,7 +784,8 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      TestHelpers.expectTaskStatusUpdated("FAILED");
+      // Network error → no project_id → no status update
+      expect(mockDb.task.update).not.toHaveBeenCalled();
     });
 
     test("should set workflowStartedAt timestamp on success", async () => {
@@ -844,7 +846,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       expect(result.chatMessage.id).toBe("message-id");
       expect(result.chatMessage.message).toBe("Test message");
       expect(result.stakworkData).toEqual({
-        success: true,
+        projectId: 123,
         data: { project_id: 123 },
       });
     });
@@ -860,7 +862,6 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
 
       expect(result.chatMessage).toBeDefined();
       expect(result.stakworkData).toEqual({
-        success: false,
         error: "API Error",
       });
     });
@@ -1808,9 +1809,7 @@ describe("Timestamp and Metadata Handling", () => {
     expect(updateCall.data.stakworkProjectId).toBe(12345);
   });
 
-  test("should log warning when project_id missing in success response", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
+  test("should leave workflowStatus unchanged when project_id is missing (Timestamp block)", async () => {
     TestHelpers.setupValidTask();
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
@@ -1829,16 +1828,8 @@ describe("Timestamp and Metadata Handling", () => {
       userId: "test-user-id",
     });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "No project_id found in Stakwork response:",
-      expect.objectContaining({ success: true })
-    );
-
-    const updateCall = mockDb.task.update.mock.calls[0][0];
-    expect(updateCall.data.stakworkProjectId).toBeUndefined();
-    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
-
-    consoleWarnSpy.mockRestore();
+    // No project_id → no status update at all
+    expect(mockDb.task.update).not.toHaveBeenCalled();
   });
 
   test("should include workspaceId in Stakwork payload", async () => {
@@ -2507,9 +2498,7 @@ describe("Timestamp and Metadata Handling", () => {
     expect(updateCall.data.stakworkProjectId).toBe(12345);
   });
 
-  test("should log warning when project_id missing in success response", async () => {
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
+  test("should leave workflowStatus unchanged when project_id is missing (startTaskWorkflow block)", async () => {
     TestHelpers.setupValidTask();
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
@@ -2528,18 +2517,9 @@ describe("Timestamp and Metadata Handling", () => {
       userId: "test-user-id",
     });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "No project_id found in Stakwork response:",
-      expect.objectContaining({ success: true })
-    );
-
-    const updateCall = mockDb.task.update.mock.calls[0][0];
-    expect(updateCall.data.stakworkProjectId).toBeUndefined();
-    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
-
-    consoleWarnSpy.mockRestore();
+    // No project_id → no status update at all
+    expect(mockDb.task.update).not.toHaveBeenCalled();
   });
-
   test("should include workspaceId in Stakwork payload", async () => {
     MockSetup.setupSuccessfulWorkflow();
 
@@ -2771,7 +2751,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       });
     });
 
-    test("should set payload name to 'hive_autogen'", async () => {
+    test("should set payload name to 'hive-task-<taskId>'", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
@@ -2784,7 +2764,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
 
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.name).toBe("hive_autogen");
+      expect(payload.name).toBe("hive-task-test-task-id");
     });
 
     test("should normalize taskSource to lowercase", async () => {
@@ -3004,7 +2984,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
   });
 
   describe("Successful API Responses", () => {
-    test("should return success: true with project_id on successful response", async () => {
+    test("should return projectId and data on successful response with project_id", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => TestDataFactory.createStakworkSuccessResponse(12345),
@@ -3016,12 +2996,12 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: true,
+        projectId: 12345,
         data: { project_id: 12345 },
       });
     });
 
-    test("should return success: true without project_id", async () => {
+    test("should return no projectId when response has no project_id", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ success: true, data: {} }),
@@ -3033,7 +3013,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: true,
+        projectId: undefined,
         data: {},
       });
     });
@@ -3055,7 +3035,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const { callStakworkAPI } = await import("@/services/task-workflow");
       const result = await callStakworkAPI(params);
 
-      expect(result.success).toBe(true);
+      expect(result.projectId).toBe(999);
       expect(result.data).toEqual({
         project_id: 999,
         additional_field: "extra_data",
@@ -3076,7 +3056,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Bad Request",
       });
     });
@@ -3093,7 +3072,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Unauthorized",
       });
     });
@@ -3110,7 +3088,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Not Found",
       });
     });
@@ -3127,7 +3104,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Internal Server Error",
       });
     });
@@ -3164,7 +3140,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Error: Network connection failed",
       });
     });
@@ -3179,7 +3154,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Error: Request timeout",
       });
     });
@@ -3199,7 +3173,6 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const result = await callStakworkAPI(params);
 
       expect(result).toEqual({
-        success: false,
         error: "Error: Invalid JSON",
       });
     });

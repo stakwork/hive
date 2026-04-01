@@ -21,9 +21,11 @@ interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
   onStepSelect?: (step: WorkflowTransition) => void;
+  onVersionChange?: (versionId: string) => void;
+  isSuperAdmin?: boolean;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,6 +70,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     let workflowRefId: string | undefined;
     let projectInfo: any = undefined;
     let debuggerProjectId: string | undefined;
+    let workflowVersionId: string | number | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
     for (const artifact of artifacts) {
@@ -80,6 +83,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       if (content?.workflowRefId) workflowRefId = content.workflowRefId;
       if (content?.projectInfo) projectInfo = content.projectInfo;
       if (content?.debuggerProjectId) debuggerProjectId = content.debuggerProjectId;
+      if (content?.workflowVersionId) workflowVersionId = content.workflowVersionId;
     }
 
     return {
@@ -91,10 +95,11 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       workflowRefId,
       projectInfo,
       debuggerProjectId,
+      workflowVersionId,
     };
   }, [artifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId } = mergedContent;
+  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -197,7 +202,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="mb-2 self-start ml-2 mt-2">
             <StakworkRunDropdown
               projectId={projectId}
@@ -229,11 +234,12 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 projectId: "",
                 isAdmin: false,
                 workflowId: workflowId?.toString() || "",
-                workflowVersion: "",
+                workflowVersion: workflowVersionId ? String(workflowVersionId) : "",
                 defaultZoomLevel: 0.65,
                 useAssistantDimensions: false,
                 rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                 onStepClick: onStepSelect ? handleStepClick : undefined,
+                onVersionChange,
                 changedStepIds,
                 changedConnectionIds,
               }}
@@ -369,7 +375,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
       <div className="overflow-y-auto flex-1">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="px-4 pt-4">
             <StakworkRunDropdown
               projectId={projectId}

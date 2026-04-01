@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET as GET_LIST, POST as POST_CREATE } from "@/app/api/workspaces/[slug]/chat/conversations/route";
 import { GET as GET_ONE, PUT as PUT_UPDATE, DELETE as DELETE_ONE } from "@/app/api/workspaces/[slug]/chat/conversations/[conversationId]/route";
+import { GET as GET_RECENT } from "@/app/api/workspaces/[slug]/chat/recent/route";
 import { POST as POST_SHARE } from "@/app/api/workspaces/[slug]/chat/share/route";
 import { db } from "@/lib/db";
 import {
@@ -726,6 +727,344 @@ describe("Conversation Management API Integration Tests", () => {
 
       // API returns 403 because user has workspace access but not conversation ownership
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe("settings field persistence", () => {
+    test("POST should persist settings field", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const settings = { extraWorkspaceSlugs: ["workspace-a", "workspace-b"] };
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/conversations`,
+        {
+          messages: [{ role: "user", content: "Hello" }],
+          followUpQuestions: [],
+          source: "dashboard",
+          settings,
+        }
+      );
+
+      const response = await POST_CREATE(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.settings).toEqual(settings);
+
+      // Verify persisted in DB
+      const saved = await db.sharedConversation.findUnique({ where: { id: data.id } });
+      expect(saved?.settings).toEqual(settings);
+    });
+
+    test("PUT should update settings field", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      const conv = await createTestConversation(testWorkspace.id, testUser.id, {
+        source: "dashboard",
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const newSettings = { extraWorkspaceSlugs: ["workspace-x"] };
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/conversations/${conv.id}`,
+        {
+          messages: [{ role: "assistant", content: "Updated response" }],
+          settings: newSettings,
+        }
+      );
+
+      const response = await PUT_UPDATE(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug, conversationId: conv.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.settings).toEqual(newSettings);
+
+      // Verify persisted in DB
+      const saved = await db.sharedConversation.findUnique({ where: { id: conv.id } });
+      expect(saved?.settings).toEqual(newSettings);
+    });
+
+    test("GET single conversation should return settings field", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      const settings = { extraWorkspaceSlugs: ["workspace-c"] };
+
+      const conv = await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: testUser.id,
+          title: "Test with settings",
+          messages: [{ role: "user", content: "Hello" }],
+          followUpQuestions: [],
+          source: "dashboard",
+          lastMessageAt: new Date(),
+          settings,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/conversations/${conv.id}`
+      );
+
+      const response = await GET_ONE(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug, conversationId: conv.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.settings).toEqual(settings);
+    });
+  });
+
+  describe("GET /api/workspaces/[slug]/chat/recent", () => {
+    async function createMemberUser(workspaceId: string, name: string) {
+      const user = await db.user.create({
+        data: {
+          id: generateUniqueId("member"),
+          email: `member-${generateUniqueId()}@example.com`,
+          name,
+        },
+      });
+      await db.workspaceMember.create({
+        data: {
+          workspaceId,
+          userId: user.id,
+          role: "DEVELOPER",
+        },
+      });
+      return user;
+    }
+
+    test("should return 401 for unauthenticated request", async () => {
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
+
+      const request = new Request(
+        "http://localhost:3000/api/workspaces/test/chat/recent"
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: "test" }),
+      });
+
+      await expectUnauthorized(response);
+    });
+
+    test("should return 403 for non-member user", async () => {
+      const { testWorkspace } = await createTestUserWithWorkspace();
+
+      const nonMember = await db.user.create({
+        data: {
+          id: generateUniqueId("non-member"),
+          email: `nonmember-${generateUniqueId()}@example.com`,
+          name: "Non Member",
+        },
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(nonMember)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/recent`
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    test("should return workspace-wide dashboard conversations ordered by lastMessageAt desc", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+      const otherUser = await createMemberUser(testWorkspace.id, "Other Member");
+
+      const now = new Date();
+      const minus1h = new Date(now.getTime() - 60 * 60 * 1000);
+      const minus3h = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+
+      // Create conversations from two different users
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: testUser.id,
+          title: "First question",
+          messages: [{ role: "user", content: "First question" }],
+          followUpQuestions: [],
+          source: "dashboard",
+          lastMessageAt: now,
+        },
+      });
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: otherUser.id,
+          title: "Second question",
+          messages: [{ role: "user", content: "Second question" }],
+          followUpQuestions: [],
+          source: "dashboard",
+          lastMessageAt: minus1h,
+        },
+      });
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: testUser.id,
+          title: "Third question",
+          messages: [{ role: "user", content: "Third question" }],
+          followUpQuestions: [],
+          source: "dashboard",
+          lastMessageAt: minus3h,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/recent?limit=10`
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      expect(data.items).toHaveLength(3);
+
+      // Verify ordering by lastMessageAt desc
+      expect(data.items[0].title).toBe("First question");
+      expect(data.items[1].title).toBe("Second question");
+      expect(data.items[2].title).toBe("Third question");
+
+      // Verify creatorName and creatorId are present
+      expect(data.items[0].creatorId).toBe(testUser.id);
+      expect(data.items[1].creatorId).toBe(otherUser.id);
+      expect(data.items[1].creatorName).toBe("Other Member");
+
+      // Verify source is included
+      expect(data.items[0].source).toBe("dashboard");
+    });
+
+    test("should not return non-dashboard source conversations", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      // Create a dashboard and a non-dashboard conversation
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: testUser.id,
+          title: "Dashboard chat",
+          messages: [],
+          followUpQuestions: [],
+          source: "dashboard",
+          lastMessageAt: new Date(),
+        },
+      });
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          userId: testUser.id,
+          title: "Logs agent chat",
+          messages: [],
+          followUpQuestions: [],
+          source: "logs-agent",
+          lastMessageAt: new Date(),
+        },
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/recent`
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      expect(data.items).toHaveLength(1);
+      expect(data.items[0].title).toBe("Dashboard chat");
+    });
+
+    test("should respect the limit parameter (max 10)", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      // Create 12 dashboard conversations
+      for (let i = 0; i < 12; i++) {
+        await db.sharedConversation.create({
+          data: {
+            workspaceId: testWorkspace.id,
+            userId: testUser.id,
+            title: `Conversation ${i}`,
+            messages: [],
+            followUpQuestions: [],
+            source: "dashboard",
+            lastMessageAt: new Date(Date.now() - i * 1000),
+          },
+        });
+      }
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/recent?limit=10`
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.items).toHaveLength(10);
+    });
+
+    test("should return empty items array when no dashboard conversations exist", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(testUser)
+      );
+
+      const request = new Request(
+        `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/recent`
+      );
+
+      const response = await GET_RECENT(request, {
+        params: Promise.resolve({ slug: testWorkspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.items).toEqual([]);
     });
   });
 

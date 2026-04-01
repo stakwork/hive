@@ -112,6 +112,7 @@ describe("WorkflowArtifactPanel — hiveUrl prop", () => {
         artifacts={[artifact]}
         isActive={true}
         onStepSelect={undefined}
+        isSuperAdmin={true}
       />
     );
 
@@ -129,6 +130,7 @@ describe("WorkflowArtifactPanel — hiveUrl prop", () => {
         artifacts={[artifact]}
         isActive={true}
         onStepSelect={undefined}
+        isSuperAdmin={true}
       />
     );
 

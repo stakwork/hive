@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { useNodeTypes } from "@/stores/useDataStore";
 import type { SchemaExtended } from "@/stores/useSchemaStore";
 import type { DragEndEvent } from "@dnd-kit/core";
@@ -111,6 +112,7 @@ function SortableNodeTypeRow({ item, onValueChange, onRemove, canRemove = false 
 
 export function NodeTypeOrderSettings() {
   const { workspace, updateWorkspace } = useWorkspace();
+  const { canAdmin } = useWorkspaceAccess();
   const nodeTypesFromGraph = useNodeTypes(); // Node types from current graph data
   const [schemas, setSchemas] = useState<SchemaExtended[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -353,6 +355,7 @@ export function NodeTypeOrderSettings() {
   }, [existingConfig, nodeTypeConfig]);
 
   if (!workspace) return null;
+  if (!canAdmin) return null;
 
   return (
     <Card>

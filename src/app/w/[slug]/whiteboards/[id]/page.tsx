@@ -8,13 +8,14 @@ import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { useMermaidPaste } from "@/hooks/useMermaidPaste";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
+import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
-import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -151,13 +152,34 @@ export default function WhiteboardDetailPage() {
         // Upload any new images to S3 before saving; store only s3Key refs in DB
         const cleanedFiles = await uploadNewFiles(whiteboard.id, files);
 
+        // Merge newly-uploaded entries with previously-persisted DB entries so no
+        // prior image is silently dropped when cleanedFiles only contains this
+        // save's uploads.
+        const existingFiles = (whiteboard.files as Record<string, StoredFileEntry>) ?? {};
+        const mergedFiles = { ...existingFiles, ...cleanedFiles };
+
+        // Write s3Key back into Excalidraw's in-memory registry for any files
+        // that were just uploaded. This ensures the next save sees s3Key on those
+        // entries and short-circuits the upload (no re-upload, no omission).
+        if (excalidrawAPI) {
+          const enriched = Object.entries(cleanedFiles)
+            .filter(([id]) => !(files[id] as BinaryFileData & { s3Key?: string })?.s3Key)
+            .map(([id, entry]) => ({
+              ...entry,
+              id: entry.id as FileId,
+              dataURL: ((files[id] as BinaryFileData)?.dataURL ?? "") as BinaryFileData["dataURL"],
+              mimeType: entry.mimeType as BinaryFileData["mimeType"],
+            }));
+          if (enriched.length > 0) excalidrawAPI.addFiles(enriched as BinaryFileData[]);
+        }
+
         const data = {
           elements,
           appState: {
             viewBackgroundColor: appState.viewBackgroundColor,
             gridSize: appState.gridSize,
           },
-          files: cleanedFiles,
+          files: mergedFiles,
           expectedVersion: versionRef.current,
           broadcast: false, // Don't broadcast again, we already did real-time
           senderId,
@@ -239,6 +261,16 @@ export default function WhiteboardDetailPage() {
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
 
+      // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        return;
+      }
+
       // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
       if (onChangeSaveTimeoutRef.current) {
         clearTimeout(onChangeSaveTimeoutRef.current);
@@ -249,6 +281,13 @@ export default function WhiteboardDetailPage() {
     },
     [broadcastElements, saveToDatabase]
   );
+
+  useMermaidPaste({
+    excalidrawAPI,
+    programmaticUpdateCountRef,
+    saveToDatabase,
+    isEnabled: !savePausedRef.current,
+  });
 
   // Save on user interaction (pointerup) — never fires from programmatic updateScene
   const handlePointerUp = useCallback(() => {
@@ -397,6 +436,21 @@ export default function WhiteboardDetailPage() {
     if (Object.keys(resolved).length > 0) {
       excalidrawAPI.addFiles(Object.values(resolved));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
+
+  // Auto-fit all content into view on initial load
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const timer = setTimeout(() => {
+      excalidrawAPI.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: false,
+        duration: 0,
+      });
+    }, 100);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI]);
 
@@ -611,11 +665,18 @@ export default function WhiteboardDetailPage() {
           )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: whiteboard.elements as readonly ExcalidrawElement[],
-              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-              files: resolvedFilesRef.current,
-            }}
+            initialData={(() => {
+              const hasElements = (whiteboard.elements as unknown[]).length > 0;
+              const initialAppState = {
+                ...getInitialAppState(whiteboard.appState as Partial<AppState>),
+                ...(!hasElements ? { zoom: { value: 1 } } : {}),
+              };
+              return {
+                elements: whiteboard.elements as readonly ExcalidrawElement[],
+                appState: initialAppState as Partial<AppState>,
+                files: resolvedFilesRef.current,
+              };
+            })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}

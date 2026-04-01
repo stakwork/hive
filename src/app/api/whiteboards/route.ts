@@ -82,8 +82,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    const createdByIdParam = searchParams.get("createdById");
+    const whereClause: Record<string, unknown> = { workspaceId };
+    if (createdByIdParam && createdByIdParam !== "ALL") {
+      whereClause.createdById = createdByIdParam;
+    }
+
     const whiteboards = await db.whiteboard.findMany({
-      where: { workspaceId },
+      where: whereClause,
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
@@ -94,6 +100,9 @@ export async function GET(request: NextRequest) {
         },
         createdAt: true,
         updatedAt: true,
+        createdBy: {
+          select: { id: true, name: true, image: true },
+        },
       },
     });
 
@@ -151,6 +160,7 @@ export async function POST(request: NextRequest) {
         name,
         workspaceId,
         featureId: featureId || null,
+        createdById: userOrResponse.id,
         elements: elements || [],
         appState: appState || {},
         files: files || {},

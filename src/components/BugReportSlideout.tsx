@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -16,7 +15,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 interface BugReportSlideoutProps {
@@ -42,10 +40,8 @@ export function BugReportSlideout({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isFastTrack, setIsFastTrack] = useState(false);
 
   const { workspace, slug } = useWorkspace();
-  const { data: session } = useSession();
   const router = useRouter();
 
   // Cleanup preview URL when file changes or component unmounts
@@ -99,7 +95,6 @@ export function BugReportSlideout({
     setDescription("");
     handleRemoveFile();
     setIsSubmitting(false);
-    setIsFastTrack(false);
   };
 
   // Drag-and-drop handlers
@@ -179,8 +174,6 @@ export function BugReportSlideout({
     setIsSubmitting(true);
 
     try {
-      const currentUrl = window.location.href;
-
       // Step 1: Create Feature
       const featureResponse = await fetch("/api/features", {
         method: "POST",
@@ -190,8 +183,6 @@ export function BugReportSlideout({
           workspaceId: workspace.id,
           status: "BACKLOG",
           priority: "HIGH",
-          brief: `**Reported from:** ${currentUrl}\n\n${description}`,
-          isFastTrack,
         }),
       });
 
@@ -203,7 +194,9 @@ export function BugReportSlideout({
       const featureResult = await featureResponse.json();
       const feature = featureResult.data;
 
-      // Step 2: If screenshot attached, upload it
+      // Step 2: If screenshot attached, upload it and collect attachments
+      let attachments: { path: string; filename: string; mimeType: string; size: number }[] = [];
+
       if (selectedFile && feature?.id) {
         try {
           // Get presigned upload URL
@@ -223,7 +216,7 @@ export function BugReportSlideout({
             throw new Error(error.message || "Failed to get upload URL");
           }
 
-          const { presignedUrl, publicUrl } = await uploadResponse.json();
+          const { presignedUrl, s3Path } = await uploadResponse.json();
 
           // Upload file to S3
           const s3Response = await fetch(presignedUrl, {
@@ -238,68 +231,31 @@ export function BugReportSlideout({
             throw new Error("Failed to upload screenshot to S3");
           }
 
-          // Update feature brief with image
-          const updateResponse = await fetch(`/api/features/${feature.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              brief: `![Bug Screenshot](${publicUrl})\n\n**Reported from:** ${currentUrl}\n\n${description}`,
-            }),
-          });
-
-          if (!updateResponse.ok) {
-            const error = await updateResponse.json();
-            throw new Error(
-              error.message || "Failed to update feature with screenshot"
-            );
-          }
+          attachments = [
+            {
+              path: s3Path,
+              filename: selectedFile.name,
+              mimeType: selectedFile.type,
+              size: selectedFile.size,
+            },
+          ];
         } catch (uploadError) {
-          // Feature was created but image upload failed
+          // Screenshot upload failed — log and fall through with empty attachments
           console.error("Image upload error:", uploadError);
-          toast.error(
-            uploadError instanceof Error
-              ? uploadError.message
-              : "Failed to upload screenshot, but bug report was created."
-          );
-          // Still close and reset since the bug report was created
-          resetForm();
-          onOpenChange(false);
-          return;
         }
       }
 
-      // Step 3: If Fast Track is enabled, trigger REQUIREMENTS generation and navigate
-      if (isFastTrack && feature?.id && slug) {
-        try {
-          await fetch("/api/stakwork/ai/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "REQUIREMENTS",
-              featureId: feature.id,
-              workspaceId: workspace.id,
-              autoAccept: true,
-              params: { skipClarifyingQuestions: true },
-            }),
-          });
+      // Step 3: Send chat message to Plan Mode
+      await fetch(`/api/features/${feature.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: description, attachments }),
+      });
 
-          // Navigate to feature page (navigation is the feedback)
-          resetForm();
-          onOpenChange(false);
-          router.push(`/w/${slug}/plan/${feature.id}`);
-        } catch (generateError) {
-          console.error("Fast Track generation error:", generateError);
-          // Still navigate to feature page even if generation fails
-          resetForm();
-          onOpenChange(false);
-          router.push(`/w/${slug}/plan/${feature.id}`);
-        }
-      } else {
-        // Standard flow: show success toast and close
-        toast.success("Bug report submitted. Thank you for helping us improve!");
-        resetForm();
-        onOpenChange(false);
-      }
+      // Step 4: Navigate to Plan Mode
+      router.push(`/w/${slug}/plan/${feature.id}`);
+      resetForm();
+      onOpenChange(false);
     } catch (error) {
       console.error("Bug report submission error:", error);
       toast.error(
@@ -319,7 +275,7 @@ export function BugReportSlideout({
         <SheetHeader>
           <SheetTitle>Report a Bug</SheetTitle>
           <SheetDescription>
-            Help us improve by reporting issues you encounter
+            Describe a bug in your codebase
           </SheetDescription>
         </SheetHeader>
 
@@ -417,22 +373,6 @@ export function BugReportSlideout({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Fast Track Toggle */}
-            <div className="flex items-center justify-between gap-3 py-2">
-              <div className="flex flex-col gap-0.5">
-                <Label htmlFor="fast-track-toggle">Fast Track</Label>
-                <p className="text-xs text-muted-foreground">
-                  Automatically generate and apply a fix without manual approval.
-                </p>
-              </div>
-              <Switch
-                id="fast-track-toggle"
-                checked={isFastTrack}
-                onCheckedChange={setIsFastTrack}
-                data-testid="fast-track-toggle"
-              />
             </div>
 
             {/* Submit Button */}

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/github/app/check/route';
 import { getServerSession } from 'next-auth/next';
-import { getUserAppTokens } from '@/lib/githubApp';
+import { getUserAppTokens, getPersonalOAuthToken } from '@/lib/githubApp';
 import { db } from '@/lib/db';
 
 // Mock dependencies
@@ -12,7 +12,10 @@ vi.mock('@/lib/githubApp');
 vi.mock('@/lib/db', () => ({
   db: {
     sourceControlOrg: {
-      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    account: {
+      findFirst: vi.fn(),
     },
   },
 }));
@@ -74,7 +77,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -134,7 +137,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -164,7 +167,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -194,7 +197,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -221,23 +224,72 @@ describe('GET /api/github/app/check', () => {
   });
 
   describe('GitHub App token retrieval', () => {
-    it('should return 403 when user has no GitHub App tokens', async () => {
+    it('should return 200 with app_not_installed when no SourceControlOrg exists', async () => {
       mockAuthenticatedSession();
+      // No SourceControlOrg for this owner
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue(null);
+      vi.mocked(getPersonalOAuthToken).mockResolvedValue(null);
+
+      const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        hasPushAccess: false,
+        error: 'app_not_installed',
+      });
+    });
+
+    it('should return 200 with app_not_installed and use personal OAuth fallback when available', async () => {
+      mockAuthenticatedSession();
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue(null);
+      vi.mocked(getPersonalOAuthToken).mockResolvedValue('gho_personal_token');
+
+      const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        hasPushAccess: false,
+        error: 'app_not_installed',
+      });
+    });
+
+    it('should return 200 with user_not_authorised when SourceControlOrg exists but no token', async () => {
+      mockAuthenticatedSession();
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
+        id: 'org-123',
+        githubLogin: 'owner',
+        githubInstallationId: '12345',
+        workspaceId: 'workspace-123',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
       vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
       const response = await GET(request);
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toEqual({
         hasPushAccess: false,
-        error: 'No GitHub App tokens found for this repository owner',
+        error: 'user_not_authorised',
       });
     });
 
-    it('should return 403 when access token is missing', async () => {
+    it('should return 200 with user_not_authorised when SourceControlOrg exists but accessToken is missing', async () => {
       mockAuthenticatedSession();
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
+        id: 'org-123',
+        githubLogin: 'owner',
+        githubInstallationId: '12345',
+        workspaceId: 'workspace-123',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
       vi.mocked(getUserAppTokens).mockResolvedValue({
         accessToken: null,
         refreshToken: null,
@@ -247,24 +299,20 @@ describe('GET /api/github/app/check', () => {
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
       const response = await GET(request);
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toEqual({
         hasPushAccess: false,
-        error: 'No GitHub App tokens found for this repository owner',
+        error: 'user_not_authorised',
       });
     });
   });
 
   describe('installation lookup', () => {
-    it('should return 200 with hasPushAccess=false when no installation found', async () => {
+    it('should return 200 with app_not_installed when no SourceControlOrg found', async () => {
       mockAuthenticatedSession();
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: 'ghs_mock_token',
-        refreshToken: null,
-        expiresAt: null,
-      });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue(null);
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue(null);
+      vi.mocked(getPersonalOAuthToken).mockResolvedValue(null);
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
       const response = await GET(request);
@@ -273,18 +321,13 @@ describe('GET /api/github/app/check', () => {
       const data = await response.json();
       expect(data).toEqual({
         hasPushAccess: false,
-        error: 'No GitHub App installation found for this repository owner',
+        error: 'app_not_installed',
       });
     });
 
     it('should return 200 with hasPushAccess=false when installation ID is missing', async () => {
       mockAuthenticatedSession();
-      vi.mocked(getUserAppTokens).mockResolvedValue({
-        accessToken: 'ghs_mock_token',
-        refreshToken: null,
-        expiresAt: null,
-      });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: null,
@@ -292,6 +335,11 @@ describe('GET /api/github/app/check', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as any);
+      vi.mocked(getUserAppTokens).mockResolvedValue({
+        accessToken: 'ghs_mock_token',
+        refreshToken: null,
+        expiresAt: null,
+      });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
       const response = await GET(request);
@@ -313,7 +361,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -464,7 +512,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',
@@ -591,7 +639,7 @@ describe('GET /api/github/app/check', () => {
         refreshToken: null,
         expiresAt: null,
       });
-      vi.mocked(db.sourceControlOrg.findUnique).mockResolvedValue({
+      vi.mocked(db.sourceControlOrg.findFirst).mockResolvedValue({
         id: 'org-123',
         githubLogin: 'owner',
         githubInstallationId: '12345',

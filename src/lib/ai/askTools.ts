@@ -16,6 +16,17 @@ export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promi
   return await r.json();
 }
 
+export interface SubAgent {
+  name?: string;
+  description?: string;
+  url: string;
+  apiToken: string;
+  repoUrl?: string;
+  model?: string;
+  toolsConfig?: Record<string, unknown>;
+  timeoutSeconds?: number;
+}
+
 export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
@@ -29,6 +40,8 @@ export async function repoAgent(
     toolsConfig?: unknown;
     jsonSchema?: Record<string, unknown>;
     model?: string;
+    skills?: Record<string, boolean>;
+    subAgents?: SubAgent[];
   }
 ): Promise<Record<string, string>> {
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {

@@ -14,6 +14,14 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/w/test-workspace/plan",
 }));
 
+// Mock tooltip so TooltipContent renders into the DOM
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div>{children}</div>,
+  TooltipProvider: ({ children }: any) => <>{children}</>,
+}));
+
 // Mock workspace hook
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
@@ -37,10 +45,11 @@ describe("FeatureCard", () => {
     deploymentStatus: null,
     deployedToStagingAt: null,
     deployedToProductionAt: null,
+    awaitingFeedback: false,
     _count: {
-      stakworkRuns: 0,
+      userStories: 0,
     },
-  };
+  } as any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,7 +57,7 @@ describe("FeatureCard", () => {
 
   describe("Navigation Link", () => {
     it("renders as a link with correct href", () => {
-      const { container } = render(<FeatureCard feature={mockFeature} />);
+      const { container } = render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
       const link = container.querySelector('a');
       
       expect(link).toBeInTheDocument();
@@ -61,17 +70,17 @@ describe("FeatureCard", () => {
 
   describe("Content Display", () => {
     it("displays feature title", () => {
-      render(<FeatureCard feature={mockFeature} />);
+      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
       expect(screen.getByText("Test Feature")).toBeInTheDocument();
     });
 
     it("displays feature status", () => {
-      render(<FeatureCard feature={mockFeature} />);
+      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
       expect(screen.getByText("In Progress")).toBeInTheDocument();
     });
 
     it("displays priority badge", () => {
-      render(<FeatureCard feature={mockFeature} />);
+      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
       expect(screen.getByText("High")).toBeInTheDocument();
     });
   });
@@ -84,7 +93,7 @@ describe("FeatureCard", () => {
         deployedToStagingAt: "2024-01-15T12:00:00Z",
       };
 
-      render(<FeatureCard feature={featureWithStaging} />);
+      render(<FeatureCard feature={featureWithStaging} workspaceSlug="test-workspace" />);
       expect(screen.getByText("Staging")).toBeInTheDocument();
     });
 
@@ -95,14 +104,31 @@ describe("FeatureCard", () => {
         deployedToProductionAt: "2024-01-15T14:00:00Z",
       };
 
-      render(<FeatureCard feature={featureWithProduction} />);
+      render(<FeatureCard feature={featureWithProduction} workspaceSlug="test-workspace" />);
       expect(screen.getByText("Production")).toBeInTheDocument();
     });
 
     it("hides deployment badge when not deployed", () => {
-      render(<FeatureCard feature={mockFeature} />);
+      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
       expect(screen.queryByText("Staging")).not.toBeInTheDocument();
       expect(screen.queryByText("Production")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Awaiting Feedback Bell", () => {
+    it("shows bell icon when awaitingFeedback is true", () => {
+      render(<FeatureCard feature={{ ...mockFeature, awaitingFeedback: true }} workspaceSlug="test-workspace" />);
+      expect(screen.getByText("Awaiting your feedback")).toBeInTheDocument();
+    });
+
+    it("hides bell icon when awaitingFeedback is false", () => {
+      render(<FeatureCard feature={{ ...mockFeature, awaitingFeedback: false }} workspaceSlug="test-workspace" />);
+      expect(screen.queryByText("Awaiting your feedback")).not.toBeInTheDocument();
+    });
+
+    it("hides bell icon when awaitingFeedback is undefined", () => {
+      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
+      expect(screen.queryByText("Awaiting your feedback")).not.toBeInTheDocument();
     });
   });
 });

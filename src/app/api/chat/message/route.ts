@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
         featureId: true,
         phaseId: true,
         sourceType: true,
+        model: true,
         repository: {
           select: {
             name: true,
@@ -334,23 +335,19 @@ export async function POST(request: NextRequest) {
         podPassword,
         history,
         webhook,
+        taskModel: task.model ?? undefined,
       });
 
-      if (stakworkData.success) {
+      if (stakworkData.projectId) {
         await updateTaskWorkflowStatus({
           taskId,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
-          additionalData: stakworkData.data?.project_id
-            ? { stakworkProjectId: stakworkData.data.project_id }
-            : undefined,
-        });
-      } else {
-        await updateTaskWorkflowStatus({
-          taskId,
-          workflowStatus: WorkflowStatus.FAILED,
+          additionalData: { stakworkProjectId: stakworkData.projectId },
         });
       }
+      // All other cases (network error, non-2xx, body-level failure, missing project_id):
+      // no-op — leave workflowStatus unchanged
     } else {
       // Fetch chat history for this task (excluding the current message)
       const history = await fetchChatHistory(taskId, chatMessage.id);

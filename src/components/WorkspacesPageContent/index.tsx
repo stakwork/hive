@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Building2, Users, Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { WorkspaceWithRole } from "@/types/workspace";
@@ -32,6 +33,8 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
                       alt={workspace.name}
                       className="w-full h-full object-cover"
                     />
+                  ) : canAccessWorkspaceLogo && workspace.logoKey ? (
+                    <Skeleton className="w-full h-full rounded-none" />
                   ) : (
                     <Building2 className="w-5 h-5" />
                   )}

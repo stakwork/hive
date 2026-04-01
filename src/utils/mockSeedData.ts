@@ -76,7 +76,7 @@ export async function seedMockData(
   }
 
   // Seed Attachments linked to chat messages
-  await seedAttachments(workspaceId, allTasks);
+  await seedAttachments(workspaceId, allTasks, userId);
 
   console.log("[MockSeed] Mock data seeding complete");
 }
@@ -2117,7 +2117,8 @@ async function seedScreenshots(
  */
 async function seedAttachments(
   workspaceId: string,
-  tasks: Array<{ id: string; title: string }>
+  tasks: Array<{ id: string; title: string }>,
+  userId: string
 ): Promise<void> {
   // Get chat messages to link attachments to
   const messagesWithTasks = await db.chatMessage.findMany({
@@ -2285,4 +2286,37 @@ async function seedAttachments(
   }
 
   console.log(`[MockSeed] Created ${imageAttachmentCount} image attachments for feature tasks`);
+
+  // Seed mock diagrams
+  const existingDiagrams = await db.diagram.count({
+    where: { workspaces: { some: { workspaceId } } },
+  });
+
+  if (existingDiagrams === 0) {
+    const diagramSeeds = [
+      {
+        name: "Authentication Flow",
+        body: "graph TD\n  A[User] --> B[Login Page]\n  B --> C{Valid?}\n  C -->|Yes| D[Dashboard]\n  C -->|No| B",
+      },
+      {
+        name: "API Request Lifecycle",
+        body: "sequenceDiagram\n  Client->>API: POST /api/request\n  API->>DB: Query\n  DB-->>API: Result\n  API-->>Client: Response",
+      },
+      {
+        name: "Workspace Data Model",
+        body: "erDiagram\n  WORKSPACE ||--o{ REPOSITORY : has\n  WORKSPACE ||--o{ FEATURE : contains\n  FEATURE ||--o{ TASK : breaks-into",
+      },
+    ];
+
+    for (const seed of diagramSeeds) {
+      const diagram = await db.diagram.create({
+        data: { name: seed.name, body: seed.body, description: null, createdBy: userId },
+      });
+      await db.diagramWorkspace.create({
+        data: { diagramId: diagram.id, workspaceId },
+      });
+    }
+
+    console.log(`[MockSeed] Created ${diagramSeeds.length} seed diagrams`);
+  }
 }

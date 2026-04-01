@@ -31,11 +31,15 @@ export async function getPoolStatusFromPods(
     }),
     db.task.count({
       where: {
-        workspaceId,
-        deleted: false,
-        status: "TODO",
-        systemAssigneeType: "TASK_COORDINATOR",
-        OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }],
+        AND: [
+          { workspaceId },
+          { deleted: false },
+          { archived: false },
+          { status: "TODO" },
+          { systemAssigneeType: "TASK_COORDINATOR" },
+          { sourceType: { not: "USER_JOURNEY" } },
+          { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
+        ],
       },
     }),
   ]);

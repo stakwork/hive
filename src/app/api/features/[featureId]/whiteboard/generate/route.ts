@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import type { LayoutAlgorithm } from "@/services/excalidraw-layout";
+import { serializeDiagramContext } from "@/services/excalidraw-layout";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { createDiagramStakworkRun } from "@/services/stakwork-run";
 
@@ -81,6 +82,15 @@ export async function POST(
       });
     }
 
+    // Fetch current whiteboard elements to provide spatial context to the AI
+    const existingWb = await db.whiteboard.findUnique({
+      where: { featureId: feature.id },
+      select: { elements: true },
+    });
+    const diagramContext = serializeDiagramContext(
+      (existingWb?.elements as Record<string, unknown>[] | null) ?? []
+    );
+
     // Fire-and-forget: create a Stakwork run for async diagram generation
     const run = await createDiagramStakworkRun({
       workspaceId: feature.workspaceId,
@@ -89,6 +99,7 @@ export async function POST(
       architectureText: feature.architecture,
       layout,
       userId: userOrResponse.id,
+      diagramContext: diagramContext ?? undefined,
     });
 
     return NextResponse.json(

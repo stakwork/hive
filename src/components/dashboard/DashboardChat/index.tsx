@@ -1,8 +1,9 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useSession } from "next-auth/react";
 import { useStreamProcessor } from "@/lib/streaming";
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
@@ -12,7 +13,8 @@ import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
-import { X } from "lucide-react";
+import { Sparkles, BookOpen, Share2, X, EyeOff } from "lucide-react";
+import { RecentChatsPopup, type LoadConversationParams } from "./RecentChatsPopup";
 
 interface ToolCall {
   id: string;
@@ -34,9 +36,12 @@ interface Message {
 
 export function DashboardChat() {
   const { slug, workspace } = useWorkspace();
+  const { data: session } = useSession();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const conversationIdRef = useRef<string | null>(null);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -50,6 +55,7 @@ export function DashboardChat() {
   const [_isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const assistantMsgsRef = useRef<Message[]>([]);
   const { processStream } = useStreamProcessor();
 
   // Auto-scroll to bottom when messages change
@@ -91,8 +97,40 @@ export function DashboardChat() {
       .reverse()
       .find((m) => m.imageData)?.imageData || null;
 
+  // Fire-and-forget auto-save helpers
+  const autoSaveCreate = (msgs: Message[], workspaceSlugs: string[]) => {
+    if (!slug) return;
+    fetch(`/api/workspaces/${slug}/chat/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: msgs,
+        settings: { extraWorkspaceSlugs: workspaceSlugs },
+        source: "dashboard",
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.id) conversationIdRef.current = data.id;
+      })
+      .catch(() => {});
+  };
+
+  const autoSaveAppend = (msgs: Message[], workspaceSlugs: string[]) => {
+    if (!slug || !conversationIdRef.current) return;
+    fetch(`/api/workspaces/${slug}/chat/conversations/${conversationIdRef.current}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: msgs,
+        settings: { extraWorkspaceSlugs: workspaceSlugs },
+      }),
+    }).catch(() => {});
+  };
+
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
+    if (isReadOnly) return;
 
     // Clear follow-up questions and provenance when user sends a message
     setFollowUpQuestions([]);
@@ -132,6 +170,14 @@ export function DashboardChat() {
     setMessages(updatedMessages);
     setIsLoading(true);
     hasReceivedContentRef.current = false;
+
+    // Auto-save: create on first message, append on subsequent
+    if (conversationIdRef.current === null) {
+      autoSaveCreate(updatedMessages, extraWorkspaceSlugs);
+    } else {
+      const lastUserMsg = updatedMessages[updatedMessages.length - 1];
+      autoSaveAppend([lastUserMsg], extraWorkspaceSlugs);
+    }
 
     try {
       const response = await fetch(`/api/ask/quick`, {
@@ -309,6 +355,9 @@ export function DashboardChat() {
           setActiveToolCalls([]);
         }
 
+        // Track assistant messages for auto-save
+        assistantMsgsRef.current = timelineMessages;
+
         // Update messages state
         setMessages((prev) => {
           // Remove old messages for this response
@@ -331,6 +380,14 @@ export function DashboardChat() {
       setActiveToolCalls([]); // Clear tool calls on error
     } finally {
       setIsLoading(false);
+      // Auto-save: append assistant messages after stream completes
+      if (conversationIdRef.current) {
+        const assistantMsgs = assistantMsgsRef.current;
+        if (assistantMsgs.length > 0) {
+          autoSaveAppend(assistantMsgs, extraWorkspaceSlugs);
+        }
+      }
+      assistantMsgsRef.current = [];
     }
   };
 
@@ -340,6 +397,9 @@ export function DashboardChat() {
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
     setExtraWorkspaceSlugs([]);
+    conversationIdRef.current = null;
+    assistantMsgsRef.current = [];
+    setIsReadOnly(false);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -365,6 +425,21 @@ export function DashboardChat() {
       if (lastImageIndex === undefined) return prev;
       return prev.filter((_, i) => i !== lastImageIndex);
     });
+  };
+
+  const handleLoadConversation = ({
+    messages: loadedMessages,
+    extraWorkspaceSlugs: loadedSlugs,
+    conversationId,
+    isReadOnly: readOnly,
+  }: LoadConversationParams) => {
+    setMessages(loadedMessages as Message[]);
+    setExtraWorkspaceSlugs(loadedSlugs);
+    conversationIdRef.current = conversationId;
+    setIsReadOnly(readOnly);
+    setFollowUpQuestions([]);
+    setProvenanceData(null);
+    setIsProvenanceSidebarOpen(false);
   };
 
   const handleFollowUpClick = (question: string) => {
@@ -495,7 +570,7 @@ export function DashboardChat() {
         const err = await featureRes.json().catch(() => ({}));
         throw new Error(err.error || "Failed to create feature");
       }
-      const feature = await featureRes.json();
+      const { data: feature } = await featureRes.json();
 
       // 2. Send description as first Plan Mode chat message
       const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
@@ -539,7 +614,7 @@ export function DashboardChat() {
         const err = await taskRes.json().catch(() => ({}));
         throw new Error(err.error || "Failed to create task");
       }
-      const task = await taskRes.json();
+      const { data: task } = await taskRes.json();
 
       // 2. Send description as first chat message
       const chatRes = await fetch("/api/chat/message", {
@@ -623,16 +698,6 @@ export function DashboardChat() {
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="flex flex-col min-h-0">
-          {/* Clear all button - above scrollable area */}
-          <div className="flex justify-end px-2 pb-0.5">
-            <button
-              onClick={handleClearAll}
-              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-70 hover:opacity-100 transition-opacity"
-              aria-label="Clear all messages"
-            >
-              <X className="w-5 h-5" strokeWidth={2.5} />
-            </button>
-          </div>
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
             <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
@@ -678,22 +743,77 @@ export function DashboardChat() {
         </div>
       )}
 
+      {/* Action pill row — only when messages exist */}
+      {hasMessages && (
+        <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1 flex-wrap">
+          <button
+            type="button"
+            onClick={handleOpenFeatureModal}
+            disabled={isExtracting || isLaunching || isLoading || isReadOnly}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate Plan
+          </button>
+          {hasProvenanceFiles && (
+            <button
+              type="button"
+              onClick={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
+              className={`pointer-events-auto rounded-full border px-3 py-1.5 text-xs transition-all flex items-center gap-1.5 ${
+                isProvenanceSidebarOpen
+                  ? "border-primary/60 bg-primary/10 text-primary hover:bg-primary/20"
+                  : "border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              Sources
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={isLoading}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+          {slug && session?.user && (session.user as { id?: string }).id && (
+            <RecentChatsPopup
+              slug={slug}
+              currentUserId={(session.user as { id: string }).id}
+              onLoadConversation={handleLoadConversation}
+            />
+          )}
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Read-only badge */}
+      {isReadOnly && (
+        <div className="pointer-events-auto flex justify-center pb-1">
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-600 dark:text-amber-400">
+            <EyeOff className="w-3 h-3" />
+            View only
+          </span>
+        </div>
+      )}
+
       {/* Input field */}
       <div className="pointer-events-auto shrink-0">
         <ChatInput
           onSend={handleSend}
-          disabled={isLoading}
-          showCreateFeature={hasMessages}
-          onCreateFeature={handleOpenFeatureModal}
-          isCreatingFeature={isExtracting || isLaunching}
+          disabled={isLoading || isReadOnly}
           imageData={currentImageData}
           onImageUpload={handleImageUpload}
           onImageRemove={handleImageRemove}
-          showProvenanceToggle={hasProvenanceFiles}
-          isProvenanceSidebarOpen={isProvenanceSidebarOpen}
-          onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
-          showShareButton={messages.length > 0}
-          onShare={handleShare}
           extraWorkspaceSlugs={extraWorkspaceSlugs}
           onAddWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => [...prev, ws])}
           onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}

@@ -11,8 +11,9 @@ import { resetDatabase } from "@/__tests__/support/utilities/database";
 import { NotificationTriggerType, NotificationTriggerStatus } from "@prisma/client";
 
 // Mock Sphinx delivery so no real HTTP calls are made
-vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
-  sendToSphinx: vi.fn().mockResolvedValue({ success: true }),
+vi.mock("@/lib/sphinx/direct-message", () => ({
+  sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
+  isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // Mock pusher so it doesn't fail in test env
@@ -42,11 +43,11 @@ describe("FEATURE_ASSIGNED notification", () => {
       data: { email: "owner@test.com", name: "Owner" },
     });
     assignee = await db.user.create({
-      data: { email: "assignee@test.com", name: "Assignee", sphinxAlias: "assignee-alias" },
+      data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
     });
 
-    const { createSphinxEnabledWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createSphinxEnabledWorkspace({
+    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
+    workspace = await createTestWorkspace({
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-assign",
@@ -70,28 +71,41 @@ describe("FEATURE_ASSIGNED notification", () => {
   });
 
   it("creates a FEATURE_ASSIGNED notification_trigger row when assigning to another user", async () => {
+    const { sendDirectMessage } = await import("@/lib/sphinx/direct-message");
+
     await updateFeature(feature.id, owner.id, { assigneeId: assignee.id });
 
-    // Give async fire-and-forget a moment to settle
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll for the notification record since fire-and-forget timing is non-deterministic
+    let record = null;
+    const maxWaitMs = 5000;
+    const pollIntervalMs = 100;
+    const startTime = Date.now();
 
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
-        featureId: feature.id,
-      },
-    });
+    while (!record && Date.now() - startTime < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          targetUserId: assignee.id,
+          notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
+          featureId: feature.id,
+        },
+      });
+    }
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.SENT);
-  });
+    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record!.sendAfter).not.toBeNull();
+    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record!.message).toBeTruthy();
+    expect(sendDirectMessage).not.toHaveBeenCalled();
+  }, 10000);
 
   it("does NOT create a notification when self-assigning", async () => {
     await updateFeature(feature.id, owner.id, { assigneeId: owner.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    // Give async fire-and-forget a moment to settle
+    await new Promise((r) => setTimeout(r, 500));
 
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.FEATURE_ASSIGNED },

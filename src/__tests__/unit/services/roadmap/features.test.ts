@@ -94,9 +94,9 @@ describe("createFeature", () => {
     vi.clearAllMocks();
 
     // Default successful mocks
-    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess);
-    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser);
-    vi.mocked(db.feature.create).mockResolvedValue(mockCreatedFeature);
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess as any);
+    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser as any);
+    vi.mocked(db.feature.create).mockResolvedValue(mockCreatedFeature as any);
   });
 
   afterEach(() => {
@@ -425,7 +425,7 @@ describe("createFeature", () => {
     });
 
     test("accepts valid assignee", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee);
+      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
 
       await createFeature(mockUserId, {
         title: "Test Feature",
@@ -694,7 +694,7 @@ describe("createFeature", () => {
     });
 
     test("creates feature with all fields provided", async () => {
-      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee);
+      vi.mocked(db.user.findFirst).mockResolvedValue(mockAssignee as any);
 
       const featureData = {
         title: "Complete Feature",
@@ -730,7 +730,7 @@ describe("createFeature", () => {
       vi.mocked(db.feature.create).mockResolvedValue({
         ...mockCreatedFeature,
         isFastTrack: true,
-      });
+      } as any);
 
       const result = await createFeature(mockUserId, {
         title: "Test Feature",
@@ -834,28 +834,32 @@ describe("listFeatures", () => {
       updatedAt: new Date(),
       assignee: null,
       createdBy: { id: mockCreatorId, name: "Creator", email: "creator@test.com", image: null },
-      _count: { userStories: 0 },
+      _count: { userStories: 0, tasks: 0 },
+      chatMessages: [],
+      phases: [],
     },
   ];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess);
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess as any);
   });
 
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  describe("createdById filter", () => {
-    test("filters features by specific creator ID", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+  describe("assigneeId owner filter (OR logic)", () => {
+    const ownerId = "owner-user-001";
+
+    test("uses OR logic: returns features where user is explicit assignee OR creator with no assignee", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
-        createdById: mockCreatorId,
+        assigneeId: ownerId,
       });
 
       expect(db.feature.findMany).toHaveBeenCalledWith(
@@ -863,113 +867,37 @@ describe("listFeatures", () => {
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
             deleted: false,
-            createdById: mockCreatorId,
+            OR: [
+              { assigneeId: ownerId },
+              { assigneeId: null, createdById: ownerId },
+            ],
           }),
         })
       );
     });
 
-    test("does not filter by createdById when not provided", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+    test("does NOT set direct assigneeId on where clause when a specific user is passed", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
+        assigneeId: ownerId,
       });
 
-      expect(db.feature.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            workspaceId: mockWorkspaceId,
-            deleted: false,
-          }),
-        })
-      );
-
-      // Verify createdById is not in the where clause
-      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0][0];
-      expect(callArgs.where).not.toHaveProperty("createdById");
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      expect(callArgs?.where).not.toHaveProperty("assigneeId");
+      expect(callArgs?.where).toHaveProperty("OR");
     });
 
-    test("combines createdById with status filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+    test("UNASSIGNED still sets assigneeId = null directly (no OR)", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
-        createdById: mockCreatorId,
-        statuses: [FeatureStatus.BACKLOG],
-      });
-
-      expect(db.feature.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            workspaceId: mockWorkspaceId,
-            deleted: false,
-            createdById: mockCreatorId,
-            status: { in: [FeatureStatus.BACKLOG] },
-          }),
-        })
-      );
-    });
-
-    test("combines createdById with priority filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
-
-      await listFeatures({
-        workspaceId: mockWorkspaceId,
-        userId: mockUserId,
-        createdById: mockCreatorId,
-        priorities: [FeaturePriority.HIGH],
-      });
-
-      expect(db.feature.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            workspaceId: mockWorkspaceId,
-            deleted: false,
-            createdById: mockCreatorId,
-            priority: { in: [FeaturePriority.HIGH] },
-          }),
-        })
-      );
-    });
-
-    test("combines createdById with assigneeId filter", async () => {
-      const assigneeId = "assignee-999";
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
-
-      await listFeatures({
-        workspaceId: mockWorkspaceId,
-        userId: mockUserId,
-        createdById: mockCreatorId,
-        assigneeId: assigneeId,
-      });
-
-      expect(db.feature.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            workspaceId: mockWorkspaceId,
-            deleted: false,
-            createdById: mockCreatorId,
-            assigneeId: assigneeId,
-          }),
-        })
-      );
-    });
-
-    test("combines createdById with UNASSIGNED assigneeId", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
-      vi.mocked(db.feature.count).mockResolvedValue(1);
-
-      await listFeatures({
-        workspaceId: mockWorkspaceId,
-        userId: mockUserId,
-        createdById: mockCreatorId,
         assigneeId: "UNASSIGNED",
       });
 
@@ -978,22 +906,38 @@ describe("listFeatures", () => {
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
             deleted: false,
-            createdById: mockCreatorId,
             assigneeId: null,
           }),
         })
       );
+
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      expect(callArgs?.where).not.toHaveProperty("OR");
     });
 
-    test("combines createdById with search filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+    test("no assigneeId param → no OR and no assigneeId filter applied", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
-        createdById: mockCreatorId,
-        search: "test",
+      });
+
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0]?.[0];
+      expect(callArgs?.where).not.toHaveProperty("OR");
+      expect(callArgs?.where).not.toHaveProperty("assigneeId");
+    });
+
+    test("OR filter combines correctly with status filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        assigneeId: ownerId,
+        statuses: [FeatureStatus.BACKLOG],
       });
 
       expect(db.feature.findMany).toHaveBeenCalledWith(
@@ -1001,24 +945,76 @@ describe("listFeatures", () => {
           where: expect.objectContaining({
             workspaceId: mockWorkspaceId,
             deleted: false,
-            createdById: mockCreatorId,
-            title: {
-              contains: "test",
-              mode: "insensitive",
-            },
+            status: { in: [FeatureStatus.BACKLOG] },
+            OR: [
+              { assigneeId: ownerId },
+              { assigneeId: null, createdById: ownerId },
+            ],
           }),
         })
       );
     });
 
-    test("respects pagination with createdById filter", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+    test("OR filter combines correctly with priority filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        assigneeId: ownerId,
+        priorities: [FeaturePriority.HIGH],
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            priority: { in: [FeaturePriority.HIGH] },
+            OR: [
+              { assigneeId: ownerId },
+              { assigneeId: null, createdById: ownerId },
+            ],
+          }),
+        })
+      );
+    });
+
+    test("OR filter combines correctly with search filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        assigneeId: ownerId,
+        search: "auth",
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            title: { contains: "auth", mode: "insensitive" },
+            OR: [
+              { assigneeId: ownerId },
+              { assigneeId: null, createdById: ownerId },
+            ],
+          }),
+        })
+      );
+    });
+
+    test("respects pagination with OR owner filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(25);
 
       await listFeatures({
         workspaceId: mockWorkspaceId,
         userId: mockUserId,
-        createdById: mockCreatorId,
+        assigneeId: ownerId,
         page: 2,
         limit: 10,
       });
@@ -1026,7 +1022,10 @@ describe("listFeatures", () => {
       expect(db.feature.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            createdById: mockCreatorId,
+            OR: [
+              { assigneeId: ownerId },
+              { assigneeId: null, createdById: ownerId },
+            ],
           }),
           skip: 10,
           take: 10,
@@ -1058,7 +1057,7 @@ describe("listFeatures", () => {
     });
 
     test("allows listing when user has workspace access", async () => {
-      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
       vi.mocked(db.feature.count).mockResolvedValue(1);
 
       await listFeatures({

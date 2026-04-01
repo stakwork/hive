@@ -11,7 +11,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
-import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { WorkflowStatusBadge, type StreamContext } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -46,12 +46,16 @@ interface ChatInputProps {
   hasPrArtifact?: boolean;
   taskMode?: string;
   taskId?: string;
+  featureId?: string;
   onOpenBountyRequest?: () => void;
   stakworkProjectId?: string | null;
+  lastLogLine?: string;
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
   isPlanChat?: boolean;
   currentWorkspaceSlug?: string;
+  streamContext?: StreamContext | null;
+  isSuperAdmin?: boolean;
 }
 
 export function ChatInput({
@@ -66,12 +70,16 @@ export function ChatInput({
   hasPrArtifact = false,
   taskMode,
   taskId,
+  featureId,
   onOpenBountyRequest,
   stakworkProjectId,
+  lastLogLine,
   onRetry,
   isRetrying = false,
   isPlanChat = false,
   currentWorkspaceSlug,
+  streamContext = null,
+  isSuperAdmin = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -138,20 +146,24 @@ export function ChatInput({
   };
 
   const uploadToS3 = async (image: PendingImage): Promise<string> => {
-    if (!taskId) {
+    let endpoint: string;
+    let body: Record<string, unknown>;
+
+    if (featureId) {
+      endpoint = "/api/upload/image";
+      body = { featureId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else if (taskId) {
+      endpoint = "/api/upload/presigned-url";
+      body = { taskId, filename: image.filename, contentType: image.mimeType, size: image.size };
+    } else {
       throw new Error("Task ID is required for image upload");
     }
 
     // Request presigned URL
-    const presignedResponse = await fetch("/api/upload/presigned-url", {
+    const presignedResponse = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId,
-        filename: image.filename,
-        contentType: image.mimeType,
-        size: image.size,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!presignedResponse.ok) {
@@ -401,14 +413,14 @@ export function ChatInput({
       const before = input.slice(0, cursor);
       const after = input.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setInput(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       // Restore focus and position cursor after the inserted slug
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },
@@ -433,6 +445,11 @@ export function ChatInput({
         insertMention(filteredWorkspaces[mentionIndex].slug);
         return;
       }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         setMentionQuery(null);
@@ -452,10 +469,9 @@ export function ChatInput({
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const showStatusIndicator = !hasPrArtifact && (
+  const showStatusIndicator =
     workflowStatus === WorkflowStatus.IN_PROGRESS ||
-    isTerminalState
-  );
+    isTerminalState;
 
   return (
     <div className={cn(
@@ -474,7 +490,7 @@ export function ChatInput({
             <div className={cn("px-4 py-2 md:px-6")}>
               {isTerminalState && onRetry ? (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
                   <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
                     {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                     Retry
@@ -482,7 +498,7 @@ export function ChatInput({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} />
+                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
                 </div>
               )}
             </div>
@@ -632,6 +648,7 @@ export function ChatInput({
 
         <Textarea
           ref={textareaRef}
+          disabled={disabled || isLoading}
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
           onChange={(e) => {

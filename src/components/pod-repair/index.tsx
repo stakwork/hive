@@ -47,7 +47,7 @@ function PodStateInline({ state, repoCount }: { state: PodState; repoCount: numb
 }
 
 export function PodRepairSection() {
-  const { slug, id: workspaceId, workspace, isOwner, isAdmin } = useWorkspace();
+  const { slug, id: workspaceId, workspace, isOwner, isAdmin, isSuperAdmin } = useWorkspace();
   const { formData, handleProjectInfoChange, saveSettings } = useStakgraphStore();
 
   const [runs, setRuns] = useState<StakworkRun[]>([]);
@@ -227,10 +227,10 @@ export function PodRepairSection() {
                   <span className="text-muted-foreground">
                     {formatRelativeOrDate(run.createdAt)}
                   </span>
-                  {run.projectId && (
+                  {isSuperAdmin && run.projectId && (
                     <StakworkRunDropdown
                       projectId={run.projectId.toString()}
-                      hiveUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${slug}/stakgraph`}
+                      hiveUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${slug}/settings?tab=pool`}
                       variant="link"
                     />
                   )}

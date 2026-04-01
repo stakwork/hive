@@ -24,9 +24,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const hasPod = searchParams.get("hasPod") || undefined;
     const priority = searchParams.get("priority") || undefined;
+    const createdById = searchParams.get("createdById") || undefined;
     const showAllStatuses = searchParams.get("showAllStatuses") === "true";
     const sortBy = searchParams.get("sortBy") || "updatedAt";
     const sortOrder = searchParams.get("sortOrder") || "desc";
+    const queue = searchParams.get("queue") === "true";
     const requestContext = {
       workspaceId,
       page,
@@ -103,7 +105,6 @@ export async function GET(request: NextRequest) {
     const whereClause: Prisma.TaskWhereInput = {
       workspaceId,
       deleted: false,
-      archived: isShowingArchived,
       // Exclude user journey tasks - they have their own dedicated page
       sourceType: { not: TaskSourceType.USER_JOURNEY },
       // Exclude tasks from cancelled features
@@ -117,19 +118,27 @@ export async function GET(request: NextRequest) {
       ],
     };
 
-    // If showing non-archived tasks (Recent tab), apply visibility rules
-    // Unless showAllStatuses is true (for Kanban view)
-    if (!isShowingArchived && !showAllStatuses) {
-      whereClause.OR = [
-        // Show non-TODO tasks (active work)
-        { status: { not: TaskStatus.TODO } },
-        // Show agent mode tasks regardless of status
-        { mode: "agent" },
-        // Show Stakwork tasks regardless of status
-        { stakworkProjectId: { not: null } },
-        // Hide user journey tasks regardless of status
-        // { sourceType: TaskSourceType.USER_JOURNEY },
-      ];
+    if (queue) {
+      // Queue mode: coordinator-queued TODO tasks only, never archived
+      whereClause.archived = false;
+      whereClause.status = TaskStatus.TODO;
+      whereClause.systemAssigneeType = "TASK_COORDINATOR";
+    } else {
+      // Normal mode: respect archived param and visibility rules
+      whereClause.archived = isShowingArchived;
+
+      // If showing non-archived tasks (Recent tab), apply visibility rules
+      // Unless showAllStatuses is true (for Kanban view)
+      if (!isShowingArchived && !showAllStatuses) {
+        whereClause.OR = [
+          // Show non-TODO tasks (active work)
+          { status: { not: TaskStatus.TODO } },
+          // Show agent mode tasks regardless of status
+          { mode: "agent" },
+          // Show Stakwork tasks regardless of status
+          { stakworkProjectId: { not: null } },
+        ];
+      }
     }
 
     // Add sourceType filter if provided
@@ -185,6 +194,11 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+
+    // Add createdById filter if provided
+    if (createdById) {
+      whereClause.createdById = createdById;
     }
 
     // Add search filter if provided
@@ -250,6 +264,8 @@ export async function GET(request: NextRequest) {
           deploymentStatus: true,
           deployedToStagingAt: true,
           deployedToProductionAt: true,
+          createdById: true,
+          updatedById: true,
           createdAt: true,
           updatedAt: true,
           feature: {
@@ -319,9 +335,9 @@ export async function GET(request: NextRequest) {
             }),
           },
         },
-        orderBy: {
-          [sortBy]: sortOrder,
-        },
+        orderBy: queue
+          ? [{ priority: "desc" as const }, { createdAt: "asc" as const }]
+          : { [sortBy]: sortOrder },
         skip,
         take: limit,
       }),

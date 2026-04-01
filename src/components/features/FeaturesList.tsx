@@ -70,7 +70,7 @@ function FeatureRow({
   onRenameStart: () => void;
   onRenameSave: (featureId: string, newTitle: string) => Promise<void>;
 }) {
-  const needsReview = feature._count.stakworkRuns > 0;
+  const needsReview = feature.awaitingFeedback;
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(feature.title);
 
@@ -117,7 +117,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[469px] font-medium truncate">
+      <TableCell className="w-[320px] font-medium truncate">
         <div className="flex items-center gap-2">
           {isRenaming ? (
             <input
@@ -145,13 +145,17 @@ function FeatureRow({
               </TooltipContent>
             </Tooltip>
           )}
-          {!isRenaming && feature.deploymentStatus && (
-            <DeploymentStatusBadge
-              environment={feature.deploymentStatus}
-              deploymentUrl={feature.deploymentUrl}
-            />
-          )}
         </div>
+      </TableCell>
+      <TableCell className="w-[130px]" onClick={(e) => e.stopPropagation()}>
+        {feature.deploymentStatus ? (
+          <DeploymentStatusBadge
+            environment={feature.deploymentStatus}
+            deploymentUrl={feature.deploymentUrl}
+          />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
@@ -167,13 +171,10 @@ function FeatureRow({
           showLowPriority={true}
         />
       </TableCell>
-      <TableCell className="w-[120px] text-muted-foreground text-sm">
-        {feature.createdBy?.name || "Unknown"}
-      </TableCell>
       <TableCell className="w-[150px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
-          currentAssignee={feature.assignee}
+          currentAssignee={feature.assignee ?? (feature.createdBy ? { ...feature.createdBy } : null)}
           onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
         />
       </TableCell>
@@ -259,21 +260,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         try {
           const parsed = JSON.parse(saved);
           return parsed.assigneeFilter || "ALL";
-        } catch {
-          return "ALL";
-        }
-      }
-    }
-    return "ALL";
-  });
-
-  const [createdByFilter, setCreatedByFilter] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("features-filters-sort-preference");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          return parsed.createdByFilter || "ALL";
         } catch {
           return "ALL";
         }
@@ -392,9 +378,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
       }
-      if (createdByFilter !== "ALL") {
-        params.append("createdById", createdByFilter);
-      }
 
       // Add sort params if set
       if (sortBy) {
@@ -437,7 +420,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   };
 
   // Check if any filters are active (excluding default sort)
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || createdByFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "" || needsAttentionFilter;
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "" || needsAttentionFilter;
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -469,7 +452,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
 
   // Pusher integration for real-time deployment updates
   const handleDeploymentStatusChange = useCallback((event: DeploymentStatusChangeEvent) => {
@@ -492,13 +475,12 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         statusFilters,
         priorityFilters,
         assigneeFilter,
-        createdByFilter,
         sortBy,
         sortOrder,
       };
       localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
     }
-  }, [statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder]);
+  }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
 
   // Save show canceled preference to localStorage
   useEffect(() => {
@@ -536,13 +518,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     goToPage(1);
   };
 
-  const handleCreatedByFilterChange = (value: string | string[]) => {
-    // Created by filter is single-select, so always get first value if array
-    const createdById = Array.isArray(value) ? value[0] : value;
-    setCreatedByFilter(createdById);
-    goToPage(1);
-  };
-
   const handlePriorityFiltersChange = (priorities: string | string[]) => {
     const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
     setPriorityFilters(priorityArray);
@@ -572,7 +547,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setCreatedByFilter("ALL");
     setSortBy("updatedAt");
     setSortOrder("desc");
     setSearchQuery("");
@@ -717,19 +691,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   ];
 
   const assigneeOptions = [
-    { value: "ALL", label: "All Assignees", image: null, name: null },
+    { value: "ALL", label: "All Owners", image: null, name: null },
     { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
-    ...members.map((member) => ({
-      value: member.user.id,
-      label: member.user.name || member.user.email || "Unknown",
-      image: member.user.image,
-      name: member.user.name,
-    })),
-  ];
-
-  const createdByOptions = [
-    { value: "ALL", label: "All Creators", image: null, name: null },
-    { value: "UNCREATED", label: "Unset", image: null, name: null },
     ...members.map((member) => ({
       value: member.user.id,
       label: member.user.name || member.user.email || "Unknown",
@@ -781,11 +744,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[469px]">Title</TableHead>
+                  <TableHead className="w-[320px]">Title</TableHead>
+                  <TableHead className="w-[130px]">Deployment</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
-                  <TableHead className="w-[120px]">Created by</TableHead>
-                  <TableHead className="w-[150px]">Assigned</TableHead>
+                  <TableHead className="w-[150px]">Owner</TableHead>
                   <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -794,17 +757,17 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-[469px]">
+                    <TableCell className="w-[320px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
+                    </TableCell>
+                    <TableCell className="w-[130px]">
+                      <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[100px]">
                       <Skeleton className="h-6 w-20" />
-                    </TableCell>
-                    <TableCell className="w-[120px]">
-                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell className="w-[150px]">
                       <Skeleton className="h-6 w-32" />
@@ -894,7 +857,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                   <Table className="table-fixed">
                     <TableHeader className="bg-muted/50">
                       <TableRow>
-                        <TableHead className="w-[469px]">
+                        <TableHead className="w-[320px]">
                           <SortableColumnHeader
                             label="Title"
                             field="title"
@@ -902,6 +865,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onSort={(order) => handleSort("title", order)}
                           />
                         </TableHead>
+                        <TableHead className="w-[130px]">Deployment</TableHead>
                         <TableHead className="w-[120px]">
                           <FilterDropdownHeader
                             label="Status"
@@ -924,19 +888,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             showPriorityBadges={true}
                           />
                         </TableHead>
-                        <TableHead className="w-[120px]">
-                          <FilterDropdownHeader
-                            label="Created by"
-                            options={createdByOptions}
-                            value={createdByFilter}
-                            onChange={handleCreatedByFilterChange}
-                            showSearch={true}
-                            showAvatars={true}
-                          />
-                        </TableHead>
                         <TableHead className="w-[150px]">
                           <FilterDropdownHeader
-                            label="Assigned"
+                            label="Owner"
                             options={assigneeOptions}
                             value={assigneeFilter}
                             onChange={handleAssigneeFilterChange}

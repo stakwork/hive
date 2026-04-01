@@ -1,5 +1,7 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
+import type { StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { FileId } from "@excalidraw/excalidraw/element/types";
 
@@ -150,6 +152,74 @@ describe("useWhiteboardImages", () => {
       expect(result["file-existing"].s3Key).toBe("whiteboards/ws/wb/file-existing.jpg");
       // Only one POST + one PUT (for the new file)
       expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("s3Key short-circuit: files with s3Key already set are never re-uploaded (no fetch calls for them)", async () => {
+      // Simulate three files: two already uploaded (s3Key present), one new
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            presignedUploadUrl: "https://s3.example.com/upload-c",
+            s3Key: "whiteboards/ws/wb/file-c.png",
+          }),
+        } as Response)
+        .mockResolvedValueOnce({ ok: true } as Response);
+
+      const files: BinaryFiles = {
+        "file-a": makeFile("file-a", { s3Key: "whiteboards/ws/wb/file-a.png" }),
+        "file-b": makeFile("file-b", { s3Key: "whiteboards/ws/wb/file-b.png" }),
+        "file-c": makeFile("file-c"), // new — no s3Key
+      };
+
+      const result = await uploadNewFiles("wb-id", files);
+
+      // Already-uploaded files pass through with their original s3Keys
+      expect(result["file-a"].s3Key).toBe("whiteboards/ws/wb/file-a.png");
+      expect(result["file-b"].s3Key).toBe("whiteboards/ws/wb/file-b.png");
+      // New file gets uploaded and returned with s3Key
+      expect(result["file-c"].s3Key).toBe("whiteboards/ws/wb/file-c.png");
+      // Exactly one POST (presigned URL) + one PUT (S3 upload) for file-c only
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("merging existingFiles with cleanedFiles preserves all file IDs across saves", async () => {
+      // Simulate save 1: file-a was uploaded previously (in DB), file-b is new this save
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            presignedUploadUrl: "https://s3.example.com/upload-b",
+            s3Key: "whiteboards/ws/wb/file-b.png",
+          }),
+        } as Response)
+        .mockResolvedValueOnce({ ok: true } as Response);
+
+      // Excalidraw's in-memory registry only has file-b (file-a was from a prior
+      // session and is not in memory — simulating the real bug scenario)
+      const currentFiles: BinaryFiles = {
+        "file-b": makeFile("file-b"), // new upload, no s3Key in memory
+      };
+
+      const cleanedFiles = await uploadNewFiles("wb-id", currentFiles);
+
+      // Existing DB entries (file-a was saved in a previous session)
+      const existingDBFiles: Record<string, StoredFileEntry> = {
+        "file-a": {
+          id: "file-a",
+          s3Key: "whiteboards/ws/wb/file-a.png",
+          mimeType: "image/png",
+          created: 500,
+        },
+      };
+
+      // The merge that saveToDatabase now performs
+      const mergedFiles = { ...existingDBFiles, ...cleanedFiles };
+
+      // Both file-a (from DB) and file-b (newly uploaded) must be present
+      expect(Object.keys(mergedFiles)).toHaveLength(2);
+      expect(mergedFiles["file-a"].s3Key).toBe("whiteboards/ws/wb/file-a.png");
+      expect(mergedFiles["file-b"].s3Key).toBe("whiteboards/ws/wb/file-b.png");
     });
   });
 

@@ -2,8 +2,12 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Play, Trash2, RefreshCw, FolderOpen } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { DependencyGraph } from "@/components/features/DependencyGraph";
+import { RoadmapTaskNode } from "@/components/features/DependencyGraph/nodes";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   Select,
   SelectContent,
@@ -79,8 +83,12 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const router = useRouter();
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
+  const isMobile = useIsMobile();
+  const [graphOpen, setGraphOpen] = useState(false);
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const [duplicatingTaskId, setDuplicatingTaskId] = useState<string | null>(null);
   const [queueStats, setQueueStats] = useState<{ queuedCount: number; unusedVms: number } | null>(null);
 
   const defaultPhase = feature.phases?.[0];
@@ -90,6 +98,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [defaultPhase?.tasks]);
+
+  const hasDependencies = useMemo(
+    () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
+    [tasks]
+  );
 
   const workspaceRepos = useMemo(
     () =>
@@ -231,6 +244,65 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     }
   };
 
+  const handleStartTask = async (taskId: string) => {
+    if (startingTaskId) return;
+    setStartingTaskId(taskId);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startWorkflow: true }),
+      });
+      if (!response.ok) throw new Error("Failed to start task");
+      // Pusher real-time updates handle the visual status transition automatically
+    } catch (error) {
+      console.error("Failed to start task:", error);
+      toast.error("Failed to start task");
+    } finally {
+      setStartingTaskId(null);
+    }
+  };
+
+  const handleDuplicateTask = async (task: TaskWithPrArtifact) => {
+    if (duplicatingTaskId) return;
+    setDuplicatingTaskId(task.id);
+    try {
+      const response = await fetch(`/api/features/${featureId}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: task.title,
+          description: task.description ?? undefined,
+          phaseId: task.phaseId ?? undefined,
+          repositoryId: task.repository?.id ?? undefined,
+          priority: task.priority,
+          status: "TODO",
+          autoMerge: false,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to duplicate task");
+      const result = await response.json();
+      if (result.success && defaultPhase) {
+        const updatedPhases = feature.phases.map((phase) => {
+          if (phase.id === defaultPhase.id) {
+            return {
+              ...phase,
+              tasks: [...phase.tasks, result.data],
+            };
+          }
+          return phase;
+        });
+        onUpdate({ ...feature, phases: updatedPhases });
+        toast.success("Task duplicated");
+      }
+    } catch (error) {
+      console.error("Failed to duplicate task:", error);
+      toast.error("Failed to duplicate task");
+    } finally {
+      setDuplicatingTaskId(null);
+    }
+  };
+
   const handleRetryTask = async (taskId: string) => {
     if (retryingTaskId) return;
     setRetryingTaskId(taskId);
@@ -336,6 +408,44 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         </div>
       </div>
 
+      {hasDependencies && (
+        <Collapsible open={graphOpen} onOpenChange={setGraphOpen}>
+          <CollapsibleTrigger asChild>
+            <button className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">Dependencies</span>
+                <span className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none">
+                  {tasks.filter((t) => (t.dependsOnTaskIds ?? []).length > 0).length}
+                </span>
+              </div>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${graphOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <DependencyGraph
+              entities={tasks}
+              getDependencies={(t) => t.dependsOnTaskIds ?? []}
+              renderNode={(t) => <RoadmapTaskNode data={t} direction="TB" />}
+              direction="TB"
+              onNodeClick={(taskId) => {
+                const task = tasks.find((t) => t.id === taskId);
+                if (task) {
+                  const route =
+                    task.status === "IN_PROGRESS" || task.status === "DONE"
+                      ? `/w/${workspaceSlug}/task/${task.id}`
+                      : `/w/${workspaceSlug}/tickets/${task.id}`;
+                  router.push(route);
+                }
+              }}
+              className={isMobile ? "h-[280px]" : "h-[380px]"}
+              open={graphOpen}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
       {startableTasks.length > 0 && (
         <Button
           onClick={handleBulkAssignTasks}
@@ -385,6 +495,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               onClick: () => router.push(getTaskRoute(task)),
             },
             {
+              label: "Duplicate",
+              icon: Copy,
+              variant: "default" as const,
+              disabled: duplicatingTaskId === task.id,
+              onClick: () => handleDuplicateTask(task),
+            },
+            {
               label: "Delete",
               icon: Trash2,
               variant: "destructive" as const,
@@ -395,6 +512,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               },
             },
           ];
+
+          if (task.status === "TODO") {
+            actionMenuItems.unshift({
+              label: "Start Task",
+              icon: Play,
+              variant: "default",
+              disabled: startingTaskId === task.id,
+              onClick: () => handleStartTask(task.id),
+              separator: true,
+            });
+          }
 
           const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
           const isRetrying = retryingTaskId === task.id;

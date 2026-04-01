@@ -15,6 +15,7 @@ import {
   ArtifactType,
   PullRequestContent,
   BountyContent,
+  WorkflowContent,
 } from "@/lib/chat";
 import { getPusherClient } from "@/lib/pusher";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
@@ -31,6 +32,8 @@ import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal, BountyRequestModal } from "./components";
 import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
+import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
+import { mapStakworkStatus } from "@/utils/conversions";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -38,6 +41,7 @@ import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useStreamContext } from "@/hooks/useStreamContext";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
@@ -52,7 +56,7 @@ export default function TaskChatPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { id: workspaceId, workspace } = useWorkspace();
+  const { id: workspaceId, workspace, isSuperAdmin } = useWorkspace();
   const { data: session } = useSession();
   const isMobile = useIsMobile();
   const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST) && workspace?.slug === "hive";
@@ -120,6 +124,7 @@ export default function TaskChatPage() {
     workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
+    workflowVersionId?: string;
   } | null>(null);
   const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
   const [currentProjectContext, setCurrentProjectContext] = useState<{
@@ -139,11 +144,21 @@ export default function TaskChatPage() {
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
   const [isPrototypeTask, setIsPrototypeTask] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, false);
+
+  // Reconciliation polling: recover stuck IN_PROGRESS workflow status on page/tab load
+  const { workflowData: reconcilingWorkflowData } = useWorkflowPolling(
+    isReconciling && projectId ? projectId : null,
+    isReconciling,
+    5000,
+  );
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -161,6 +176,19 @@ export default function TaskChatPage() {
       return [...prev, message];
     });
 
+    // Update workflowRefId from incoming WORKFLOW artifact (workflow_editor mode only)
+    if (taskMode === "workflow_editor") {
+      const workflowArtifact = message.artifacts?.find(
+        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowRefId
+      );
+      if (workflowArtifact) {
+        const incomingRefId = (workflowArtifact.content as WorkflowContent).workflowRefId!;
+        setCurrentWorkflowContext((prev) =>
+          prev ? { ...prev, workflowRefId: incomingRefId } : prev
+        );
+      }
+    }
+
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
     const hasActionArtifact = message.artifacts?.some((artifact) => artifact.type === "FORM");
@@ -168,10 +196,14 @@ export default function TaskChatPage() {
     if (hasActionArtifact) {
       setIsChainVisible(false);
     }
-  }, []);
+
+    onStreamMessage(message);
+  }, [taskMode, onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
+    // Stop reconciliation polling when Pusher delivers the real status — prevents duplicate PATCH
+    setIsReconciling(false);
     // Hide processing indicator when workflow finishes
     if (update.workflowStatus === WorkflowStatus.COMPLETED) {
       setIsChainVisible(false);
@@ -179,7 +211,23 @@ export default function TaskChatPage() {
         setBrowserRefreshTrigger(prev => prev + 1);
       }
     }
-  }, [taskMode]);
+    onStreamStatusUpdate(update);
+  }, [taskMode, onStreamStatusUpdate]);
+
+  // When reconciliation polling returns a terminal state, persist it to the DB and update UI
+  useEffect(() => {
+    if (!reconcilingWorkflowData || !currentTaskId || !isReconciling) return;
+    const mapped = mapStakworkStatus(reconcilingWorkflowData.status);
+    if (mapped && mapped !== WorkflowStatus.IN_PROGRESS) {
+      setWorkflowStatus(mapped);
+      setIsReconciling(false);
+      fetch(`/api/tasks/${currentTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowStatus: mapped }),
+      }).catch((err) => console.error("Failed to reconcile workflowStatus:", err));
+    }
+  }, [reconcilingWorkflowData, currentTaskId, isReconciling]);
 
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -307,6 +355,13 @@ export default function TaskChatPage() {
           console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
 
+          // Begin reconciliation polling if the task loaded with an IN_PROGRESS workflow status
+          if (result.data.task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+            setIsReconciling(true);
+          } else {
+            setIsReconciling(false);
+          }
+
           // Create ephemeral WORKFLOW artifact for existing tasks with workflows
           // This artifact is not stored in DB - it's always generated client-side
           const projectId = result.data.task.stakworkProjectId.toString();
@@ -329,6 +384,9 @@ export default function TaskChatPage() {
               ),
             );
           }
+        } else {
+          // No stakworkProjectId — reconciliation cannot run
+          setIsReconciling(false);
         }
 
         // Set task title and description from API response
@@ -357,23 +415,43 @@ export default function TaskChatPage() {
 
         // Restore workflow context for workflow_editor mode
         if (result.data.task?.mode === "workflow_editor" && result.data.messages) {
-          // Find the WORKFLOW artifact with workflowId and workflowName
+          // Scan ALL messages/artifacts (oldest → newest) so the last match wins,
+          // ensuring we restore the most recent workflowVersionId rather than the
+          // initial "Loaded" artifact's version.
+          type WorkflowArtifactContent = {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+          type RestoredWorkflowContext = {
+            workflowId: number | string;
+            workflowName: string;
+            workflowRefId: string;
+            workflowVersionId?: string;
+          };
+          const matchedContexts: RestoredWorkflowContext[] = [];
+
           for (const msg of result.data.messages) {
-            const workflowArtifact = msg.artifacts?.find(
-              (a: {
-                type: string;
-                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
-              }) => a.type === "WORKFLOW" && a.content?.workflowId,
-            );
-            if (workflowArtifact?.content?.workflowId) {
-              setCurrentWorkflowContext({
-                workflowId: workflowArtifact.content.workflowId,
-                workflowName:
-                  workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
-                workflowRefId: workflowArtifact.content.workflowRefId || "",
-              });
-              break;
+            for (const a of msg.artifacts ?? []) {
+              const artifact = a as { type: string; content?: WorkflowArtifactContent };
+              if (artifact.type === "WORKFLOW" && artifact.content?.workflowId) {
+                const c = artifact.content;
+                const prevVersionId = matchedContexts.length > 0
+                  ? matchedContexts[matchedContexts.length - 1].workflowVersionId
+                  : undefined;
+                matchedContexts.push({
+                  workflowId: c.workflowId!,
+                  workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+                  workflowRefId: c.workflowRefId || "",
+                  workflowVersionId: c.workflowVersionId != null ? String(c.workflowVersionId) : prevVersionId,
+                });
+              }
             }
+          }
+
+          if (matchedContexts.length > 0) {
+            setCurrentWorkflowContext(matchedContexts[matchedContexts.length - 1]);
           }
         }
 
@@ -605,8 +683,8 @@ export default function TaskChatPage() {
       }
 
       // Create new task with workflow info
-      const taskTitle = workflowName 
-        ? `${workflowName}${workflowVersionId ? ` (v${workflowVersionId.substring(0, 8)})` : ''}`
+      const taskTitle = workflowName
+        ? `${workflowName} (ID: ${workflowId}${workflowVersionId ? ` · V${workflowVersionId.substring(0, 8)}` : ''})`
         : `Workflow ${workflowId}`;
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -702,9 +780,10 @@ export default function TaskChatPage() {
 
       // Store workflow context for later use in step editing
       setCurrentWorkflowContext({
-        workflowId: workflowId,
+        workflowId,
         workflowName: workflowName || `Workflow ${workflowId}`,
-        workflowRefId: workflowData.ref_id,
+        workflowRefId: versionRefId,
+        workflowVersionId,
       });
       // Clear webhook for fresh workflow conversation
       setWorkflowEditorWebhook(null);
@@ -953,6 +1032,9 @@ export default function TaskChatPage() {
 
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
+      if (!currentWorkflowContext.workflowRefId) {
+        return;
+      }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
       if (!messageText) return; // Need a message if no step selected
 
@@ -989,6 +1071,8 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            // Include latest workflow version ID if tracked
+            ...(currentWorkflowContext.workflowVersionId && { workflowVersionId: currentWorkflowContext.workflowVersionId }),
             // Include webhook if available for continuing existing workflow
             ...(webhookToUse && { webhook: webhookToUse }),
             // Only include step data if a step is selected
@@ -1028,6 +1112,7 @@ export default function TaskChatPage() {
 
         setSelectedStep(null); // Clear step after sending
         setIsChainVisible(true);
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
         clearLogs();
       } catch (error) {
         console.error("Error in workflow editor:", error);
@@ -1036,6 +1121,7 @@ export default function TaskChatPage() {
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
         setIsChainVisible(false);
+        setWorkflowStatus(WorkflowStatus.PENDING);
       } finally {
         setIsLoading(false);
       }
@@ -1327,6 +1413,7 @@ export default function TaskChatPage() {
           console.log("Project ID:", result.workflow.project_id);
           setProjectId(result.workflow.project_id);
           setIsChainVisible(true);
+          setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
           clearLogs();
 
           // Create a WORKFLOW artifact with the project_id
@@ -1377,6 +1464,7 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
 
+        setWorkflowStatus(WorkflowStatus.PENDING);
         toast.error("Error", { description: "Failed to send message. Please try again." });
       } finally {
         setIsLoading(false);
@@ -1417,6 +1505,31 @@ export default function TaskChatPage() {
   const handleStepSelect = useCallback((step: WorkflowTransition) => {
     setSelectedStep(step);
   }, []);
+
+  const handleVersionChange = useCallback(async (versionId: string) => {
+    if (!currentWorkflowContext) return;
+    const { workflowId, workflowRefId: prevWorkflowRefId } = currentWorkflowContext;
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/workflows/${workflowId}/versions`);
+      if (!response.ok) throw new Error(`Failed to fetch versions: ${response.statusText}`);
+      const data = await response.json();
+      const versions: Array<{ workflow_version_id: string; ref_id: string }> = data.versions ?? data ?? [];
+      const match = versions.find((v) => v.workflow_version_id === versionId);
+      if (!match) {
+        console.error(`handleVersionChange: version "${versionId}" not found in versions list — retaining previous workflowRefId`);
+        setCurrentWorkflowContext(prev => prev ? { ...prev, workflowVersionId: versionId } : prev);
+        return;
+      }
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: match.ref_id } : prev,
+      );
+    } catch (error) {
+      console.error("handleVersionChange: failed to resolve workflowRefId, retaining previous value", error);
+      setCurrentWorkflowContext(prev =>
+        prev ? { ...prev, workflowVersionId: versionId, workflowRefId: prevWorkflowRefId } : prev,
+      );
+    }
+  }, [currentWorkflowContext, slug]);
 
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
@@ -1512,13 +1625,54 @@ Plan and implement the real feature from this branch.`;
   const handleRetry = async () => {
     if (!currentTaskId || isRetrying) return;
     setIsRetrying(true);
+
     try {
-      const res = await fetch(`/api/tasks/${currentTaskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retryWorkflow: true }),
-      });
-      if (!res.ok) throw new Error('Retry failed');
+      if (taskMode === 'workflow_editor' && currentWorkflowContext) {
+        // Find last USER message text from messages state
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((m) => m.role === ChatRole.USER);
+        const messageText = lastUserMessage?.message ?? '';
+
+        if (!messageText || !currentWorkflowContext.workflowRefId) {
+          toast.error('Cannot retry: missing workflow context.');
+          return;
+        }
+
+        const webhookToUse = workflowEditorWebhook || undefined;
+
+        const res = await fetch('/api/workflow-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: currentTaskId,
+            message: messageText,
+            workflowId: currentWorkflowContext.workflowId,
+            workflowName: currentWorkflowContext.workflowName,
+            workflowRefId: currentWorkflowContext.workflowRefId,
+            ...(currentWorkflowContext.workflowVersionId && {
+              workflowVersionId: currentWorkflowContext.workflowVersionId,
+            }),
+            ...(webhookToUse && { webhook: webhookToUse }),
+          }),
+        });
+
+        if (!res.ok) throw new Error('Retry failed');
+
+        const result = await res.json();
+        if (result.workflow?.webhook) setWorkflowEditorWebhook(result.workflow.webhook);
+        if (result.workflow?.project_id) setProjectId(result.workflow.project_id.toString());
+        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+        setIsChainVisible(true);
+      } else {
+        // Existing path: all other modes
+        const res = await fetch(`/api/tasks/${currentTaskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retryWorkflow: true }),
+        });
+        if (!res.ok) throw new Error('Retry failed');
+      }
     } catch {
       toast.error('Failed to retry task. Please try again.');
     } finally {
@@ -1733,6 +1887,7 @@ Plan and implement the real feature from this branch.`;
   const inputDisabled =
     isLoading ||
     !isConnected ||
+    (taskMode === "workflow_editor" && workflowStatus === WorkflowStatus.IN_PROGRESS) ||
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
@@ -1785,6 +1940,7 @@ Plan and implement the real feature from this branch.`;
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <AgentChatArea
@@ -1816,6 +1972,7 @@ Plan and implement the real feature from this branch.`;
                     onRetry={handleRetry}
                     isRetrying={isRetrying}
                     stakworkProjectId={projectId}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 )}
               </div>
@@ -1849,6 +2006,7 @@ Plan and implement the real feature from this branch.`;
                       onRetry={handleRetry}
                       isRetrying={isRetrying}
                       stakworkProjectId={projectId}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -1861,6 +2019,7 @@ Plan and implement the real feature from this branch.`;
                       taskId={currentTaskId || undefined}
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -1894,6 +2053,7 @@ Plan and implement the real feature from this branch.`;
                 onRetry={handleRetry}
                 isRetrying={isRetrying}
                 stakworkProjectId={projectId}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1909,18 +2069,17 @@ Plan and implement the real feature from this branch.`;
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                    onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                     browserRefreshTrigger={browserRefreshTrigger}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 ) : (
                   <ChatArea
-                    logs={logs}
                     messages={messages}
                     onSend={handleSend}
                     onArtifactAction={handleArtifactAction}
                     inputDisabled={inputDisabled}
                     isLoading={isLoading}
-                    hasNonFormArtifacts={hasNonFormArtifacts}
-                    isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
                     onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -1948,6 +2107,8 @@ Plan and implement the real feature from this branch.`;
                     isPrototypeTask={isPrototypeTask}
                     isSavingPlan={isSavingPlan}
                     onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                    isSuperAdmin={isSuperAdmin}
+                    streamContext={streamContext}
                   />
                 )}
               </div>
@@ -1956,14 +2117,11 @@ Plan and implement the real feature from this branch.`;
                 <ResizablePanel defaultSize={40} minSize={25}>
                   <div className="h-full min-h-0 min-w-0">
                     <ChatArea
-                      logs={logs}
                       messages={messages}
                       onSend={handleSend}
                       onArtifactAction={handleArtifactAction}
                       inputDisabled={inputDisabled}
                       isLoading={isLoading}
-                      hasNonFormArtifacts={hasNonFormArtifacts}
-                      isChainVisible={isChainVisible}
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
                       onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
@@ -1988,6 +2146,8 @@ Plan and implement the real feature from this branch.`;
                       isPrototypeTask={isPrototypeTask}
                       isSavingPlan={isSavingPlan}
                       onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                      isSuperAdmin={isSuperAdmin}
+                      streamContext={streamContext}
                     />
                   </div>
                 </ResizablePanel>
@@ -2001,7 +2161,9 @@ Plan and implement the real feature from this branch.`;
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
+                      onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                       browserRefreshTrigger={browserRefreshTrigger}
+                      isSuperAdmin={isSuperAdmin}
                     />
                   </div>
                 </ResizablePanel>
@@ -2015,10 +2177,7 @@ Plan and implement the real feature from this branch.`;
                 onArtifactAction={handleArtifactAction}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}
-                hasNonFormArtifacts={hasNonFormArtifacts}
-                isChainVisible={isChainVisible}
                 lastLogLine={lastLogLine}
-                logs={logs}
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 pendingStepAttachment={selectedStep}
@@ -2042,6 +2201,8 @@ Plan and implement the real feature from this branch.`;
                 isPrototypeTask={isPrototypeTask}
                 isSavingPlan={isSavingPlan}
                 onSaveAndPlan={latestDiffArtifact ? handleSaveAndPlan : undefined}
+                isSuperAdmin={isSuperAdmin}
+                streamContext={streamContext}
               />
             </div>
           )}

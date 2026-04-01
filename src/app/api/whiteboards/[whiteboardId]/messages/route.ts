@@ -157,6 +157,7 @@ export async function POST(
       layout,
       userId: user.id,
       diagramContext,
+      currentMessageId: message.id,
     });
 
     return NextResponse.json(

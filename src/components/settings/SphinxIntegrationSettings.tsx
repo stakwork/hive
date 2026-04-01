@@ -157,7 +157,7 @@ export function SphinxIntegrationSettings() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="chat-pubkey">Chat Public Key</Label>
+          <Label htmlFor="chat-pubkey">Tribe Public Key</Label>
           <Input
             id="chat-pubkey"
             value={chatPubkey}
@@ -196,7 +196,7 @@ export function SphinxIntegrationSettings() {
           <h4 className="font-medium mb-2">Setup Instructions</h4>
           <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
             <li>Create a Sphinx bot and obtain your bot credentials</li>
-            <li>Enter the chat public key, bot ID, and bot secret above</li>
+            <li>Enter the tribe public key, bot ID, and bot secret above</li>
             <li>Enable Sphinx notifications and save settings</li>
             <li>Use the test button to verify the integration works</li>
             <li>Daily PR summaries will be sent automatically at 1:00 AM UTC</li>

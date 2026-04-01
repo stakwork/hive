@@ -35,10 +35,14 @@ vi.mock("@/lib/utils/workflow-diff", () => ({
   }),
 }));
 
-// Heavy visual components not relevant to these tests
+// Heavy visual components — capture last props so tests can inspect them
+let lastWorkflowComponentProps: Record<string, unknown> = {};
 vi.mock("@/components/workflow", () => ({
   __esModule: true,
-  default: () => React.createElement("div", { "data-testid": "workflow-component" }),
+  default: ({ props }: { props: Record<string, unknown> }) => {
+    lastWorkflowComponentProps = props ?? {};
+    return React.createElement("div", { "data-testid": "workflow-component" });
+  },
 }));
 
 vi.mock("@/components/StepDetailsModal", () => ({
@@ -54,7 +58,8 @@ vi.mock("@/components/ProjectInfoCard", () => ({
 }));
 
 vi.mock("@/components/StakworkRunDropdown", () => ({
-  StakworkRunDropdown: () => null,
+  StakworkRunDropdown: ({ projectId }: { projectId: string }) =>
+    React.createElement("div", { "data-testid": "stakwork-run-dropdown", "data-project-id": projectId }),
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
@@ -84,7 +89,7 @@ function makeArtifact(overrides: Partial<Artifact["content"]> = {}): Artifact {
       workflowJson: makeWorkflowJson({}),
       ...overrides,
     } as Artifact["content"],
-  } as Artifact;
+  } as unknown as Artifact;
 }
 
 const loopTransition = {
@@ -126,6 +131,10 @@ const nonLoopTransition = {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+beforeEach(() => {
+  lastWorkflowComponentProps = {};
+});
 
 describe("WorkflowArtifactPanel — Child Workflows tab", () => {
   beforeEach(() => {
@@ -329,5 +338,76 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
       const tabsList = container.querySelector('[role="tablist"]');
       expect(tabsList?.className).toContain("grid-cols-5");
     });
+  });
+});
+
+describe("WorkflowArtifactPanel — StakworkRunDropdown isSuperAdmin gating", () => {
+  const artifactWithProject = makeArtifact({
+    workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+    projectId: "test-project-123",
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=false (default)", () => {
+    render(<WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} />);
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=false explicitly", () => {
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} isSuperAdmin={false} />,
+    );
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
+  });
+
+  it("DOES render StakworkRunDropdown when isSuperAdmin=true and projectId is present", () => {
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactWithProject]} isActive={true} isSuperAdmin={true} />,
+    );
+    expect(screen.getByTestId("stakwork-run-dropdown")).toBeInTheDocument();
+  });
+
+  it("does NOT render StakworkRunDropdown when isSuperAdmin=true but projectId is absent", () => {
+    const artifactNoProject = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+    });
+    render(
+      <WorkflowArtifactPanel artifacts={[artifactNoProject]} isActive={true} isSuperAdmin={true} />,
+    );
+    expect(screen.queryByTestId("stakwork-run-dropdown")).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkflowArtifactPanel — workflowVersion prop", () => {
+  it("passes workflowVersion=\"174726\" when artifact has workflowVersionId: 174726", () => {
+    const artifact = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      workflowVersionId: 174726 as unknown as string,
+    });
+    render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+    expect(lastWorkflowComponentProps.workflowVersion).toBe("174726");
+  });
+
+  it("passes workflowVersion from the last artifact when multiple artifacts have different workflowVersionId values", () => {
+    const first = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      workflowVersionId: "111",
+    });
+    const second = {
+      ...makeArtifact({
+        workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+        workflowVersionId: "222",
+      }),
+      id: "art-2",
+    };
+    render(<WorkflowArtifactPanel artifacts={[first, second]} isActive={false} />);
+    expect(lastWorkflowComponentProps.workflowVersion).toBe("222");
+  });
+
+  it("passes workflowVersion=\"\" when no artifact has workflowVersionId", () => {
+    const artifact = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+    });
+    render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
+    expect(lastWorkflowComponentProps.workflowVersion).toBe("");
   });
 });
