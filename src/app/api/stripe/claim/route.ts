@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
         stripeSessionId: sessionId,
         stripePaymentIntentId,
         status: 'PAID',
+        userId,
       },
     });
     await tx.workspace.update({
