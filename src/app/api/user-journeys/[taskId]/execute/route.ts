@@ -27,6 +27,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { claimPodAndGetFrontend, POD_PORTS } from "@/lib/pods";
+import { updatePodRepositories } from "@/lib/pods/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import crypto from "crypto";
@@ -143,6 +144,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       if (!controlUrl) {
         return NextResponse.json({ error: "Control port not available on claimed pod" }, { status: 500 });
+      }
+
+      // Pull latest repository code onto the pod before running the test (non-fatal)
+      const repositories = task.workspace.repositories.map((r) => ({ url: r.repositoryUrl }));
+      try {
+        await updatePodRepositories(controlUrl, podPassword, repositories);
+        console.log("[user-journeys] Updated repositories on pod");
+      } catch (error) {
+        console.error("[user-journeys] Failed to update pod repositories (non-fatal):", error);
       }
     }
 

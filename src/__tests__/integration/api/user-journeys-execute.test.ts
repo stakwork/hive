@@ -23,11 +23,13 @@ vi.mock('@/lib/pods/utils', async () => {
   return {
     ...actual,
     claimPodAndGetFrontend: vi.fn(),
+    updatePodRepositories: vi.fn().mockResolvedValue(undefined),
   };
 });
 
 describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
   const mockGetServerSession = vi.mocked(getServerSession);
+  const mockUpdateRepos = vi.mocked(podsUtils.updatePodRepositories);
   let originalFetch: typeof global.fetch;
   let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -216,6 +218,18 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         expect.anything() // services (can be undefined or array)
       );
 
+      // Verify updatePodRepositories was called with the correct arguments
+      expect(mockUpdateRepos).toHaveBeenCalledWith(
+        controlPortUrl,
+        'test-pod-password',
+        [{ url: expect.stringContaining('github.com/testuser/test-repo') }]
+      );
+
+      // Verify updatePodRepositories was called before /playwright_test
+      const updateReposOrder = mockUpdateRepos.mock.invocationCallOrder[0];
+      const playwrightFetchOrder = mockFetch.mock.invocationCallOrder[0];
+      expect(updateReposOrder).toBeLessThan(playwrightFetchOrder);
+
       // Verify control port /playwright_test call
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/playwright_test'),
@@ -262,6 +276,9 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
         // Should only call control port test trigger (no pool manager calls, no /jlist)
         expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // updatePodRepositories must NOT be called in local dev mode
+        expect(mockUpdateRepos).not.toHaveBeenCalled();
       } finally {
         // Restore environment variable
         if (originalEnv !== undefined) {
@@ -331,6 +348,73 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+    });
+
+    it('should proceed with test execution even if updatePodRepositories fails', async () => {
+      const { user, task, pod } = await createTestSetup();
+
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      // Make updatePodRepositories throw for this test only
+      mockUpdateRepos.mockRejectedValueOnce(new Error('git pull failed'));
+
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      const controlPortUrl = 'https://test-pod.example.com:40001';
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': controlPortUrl,
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      // Only the /playwright_test fetch call should happen (PUT /latest is mocked at module level)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
+
+      const request = new Request(
+        `http://localhost:3000/api/user-journeys/${task.id}/execute`,
+        { method: 'POST' }
+      );
+
+      const response = await POST(request, { params: { taskId: task.id } });
+
+      // Still succeeds despite updatePodRepositories failure
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Playwright test was still triggered
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/playwright_test'),
+        expect.anything()
+      );
     });
   });
 
