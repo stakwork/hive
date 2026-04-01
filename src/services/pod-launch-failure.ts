@@ -92,7 +92,6 @@ async function bumpPoolMemory(
       poolApiKey: workspace.swarm.poolApiKey,
       poolCpu: workspace.swarm.poolCpu,
       poolMemory: newMemory,
-      // No userId - webhook context doesn't have user session
     });
 
     if (!syncResult.success) {
