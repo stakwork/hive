@@ -21,18 +21,14 @@ export async function POST(req: NextRequest) {
     const stripeSessionId = stripeSession.id;
     const stripePaymentIntentId =
       typeof stripeSession.payment_intent === 'string' ? stripeSession.payment_intent : null;
-    const workspaceId = stripeSession.metadata?.workspaceId;
+    const workspaceName = stripeSession.metadata?.workspaceName;
 
-    if (workspaceId) {
+    if (workspaceName) {
       // Path A: workspace already existed at checkout time — update payment status
       await db.$transaction([
         db.swarmPayment.update({
           where: { stripeSessionId },
           data: { status: 'PAID', stripePaymentIntentId },
-        }),
-        db.workspace.update({
-          where: { id: workspaceId },
-          data: { paymentStatus: 'PAID' },
         }),
       ]);
     } else {
@@ -65,16 +61,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (payment) {
-      if (payment.workspaceId) {
+      if (payment.workspaceName) {
         await db.$transaction([
           db.swarmPayment.update({
             where: { id: payment.id },
             data: { status: 'FAILED', failureCode, failureMessage },
-          }),
-          db.workspace.update({
-            where: { id: payment.workspaceId },
-            data: { paymentStatus: 'FAILED' },
-          }),
+          })
         ]);
       } else {
         await db.swarmPayment.update({
