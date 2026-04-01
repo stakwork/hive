@@ -1247,7 +1247,9 @@ enum SwarmPaymentStatus {
 
 model SwarmPayment {
   id                    String             @id @default(cuid())
-  workspaceId           String             @map("workspace_id")
+  workspaceId           String?            @map("workspace_id")
+  workspaceName         String?            @map("workspace_name")
+  workspaceSlug         String?            @map("workspace_slug")
   stripeSessionId       String             @unique @map("stripe_session_id")
   stripePaymentIntentId String?            @map("stripe_payment_intent_id")
   status                SwarmPaymentStatus @default(PENDING)
@@ -1255,7 +1257,7 @@ model SwarmPayment {
   currency              String?
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
-  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([stripeSessionId])
