@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
   Blocks,
-  BookOpen,
   Bot,
   Brain,
   Bug,
@@ -18,10 +17,8 @@ import {
   Menu,
   Mic,
   PenLine,
-  Phone,
   Server,
   Settings,
-  Share2,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -127,17 +124,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: Bot, label: "Janitors", href: "/janitors" },
     ],
   },
-  {
-    icon: Brain,
-    label: "Context",
-    href: "/context",
-    children: [
-      { icon: BookOpen, label: "Learn", href: "/learn" },
-      { icon: Phone, label: "Calls", href: "/calls" },
-      { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
-      { icon: Share2, label: "Graph", href: "/context/graph" },
-    ],
-  },
+  { icon: Brain, label: "Context", href: "/context" },
 ];
 
 function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate: () => void }) {
@@ -150,7 +137,7 @@ function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate:
         variant="ghost"
         className="w-full justify-start text-green-600 dark:text-green-400"
       >
-        <Link href={`/w/${slug}/calls`} onClick={onNavigate}>
+        <Link href={`/w/${slug}/context/calls`} onClick={onNavigate}>
           <div className="relative mr-2">
             <Mic className="w-4 h-4" />
             <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
@@ -453,17 +440,7 @@ export function Sidebar({ user }: SidebarProps) {
   ];
 
   const navigationItems = allNavigationItems
-    .filter((item) => !excludeLabels.includes(item.label))
-    .map((item) => {
-      // Filter Graph child from Context for non-admins
-      if (item.label === "Context" && item.children && !canAdmin) {
-        return {
-          ...item,
-          children: item.children.filter((child) => child.label !== "Graph"),
-        };
-      }
-      return item;
-    });
+    .filter((item) => !excludeLabels.includes(item.label));
 
   const [isOpen, setIsOpen] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);

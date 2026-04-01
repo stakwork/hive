@@ -110,7 +110,7 @@ vi.mock("lucide-react", () => ({
 }));
 
 // --- Import page after all mocks are set up ---
-import AgentLogsPage from "@/app/w/[slug]/agent-logs/page";
+import AgentLogsPage from "@/app/w/[slug]/context/agent-logs/page";
 
 // Helper: reset fetch to return an empty log list
 function mockEmptyFetch() {

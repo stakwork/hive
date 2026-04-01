@@ -12,7 +12,7 @@ export class ContextLearnPage {
    * Navigate to Context Learn page for a specific workspace
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/learn`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/context/learn`);
     await this.waitForLoad();
   }
 
@@ -32,35 +32,22 @@ export class ContextLearnPage {
    * Navigate to Context Learn page via sidebar navigation
    */
   async navigateViaNavigation(): Promise<void> {
-    // First expand the Context section if not already expanded
-    const contextButton = this.page.locator(selectors.navigation.contextButton);
-    const learnLink = this.page.locator(selectors.navigation.learnLink).first();
-
-    // Check if learn link is visible, if not, click Context to expand
-    const isLearnVisible = await learnLink.isVisible().catch(() => false);
-    if (!isLearnVisible) {
-      await contextButton.click();
-      await learnLink.waitFor({ state: 'visible', timeout: 15000 });
-    }
+    // Click the single Context link in the sidebar
+    const contextLink = this.page.locator(selectors.navigation.contextButton);
 
     // Ensure page is fully loaded and network is idle before navigation
     await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {
-      // If networkidle times out, fall back to domcontentloaded
       return this.page.waitForLoadState('domcontentloaded');
     });
-    
-    // Wait for the link to be attached and stable
-    await learnLink.waitFor({ state: 'attached', timeout: 15000 });
-    
-    // Small delay to ensure link is fully interactive (reduces race conditions)
-    await this.page.waitForTimeout(100);
-    
-    // Wait for navigation to complete after clicking (using Promise.all for coordination)
+
+    await contextLink.waitFor({ state: 'attached', timeout: 15000 });
+
+    // Wait for navigation to complete after clicking
     await Promise.all([
-      this.page.waitForURL(/\/w\/.*\/learn/, { timeout: 30000 }),
-      learnLink.click()
+      this.page.waitForURL(/\/w\/.*\/context\/learn/, { timeout: 30000 }),
+      contextLink.click()
     ]);
-    
+
     await this.waitForLoad();
   }
 

@@ -172,7 +172,7 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
     if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
     } else {
-      router.push(`/w/${workspaceSlug}/agent-logs`);
+      router.push(`/w/${workspaceSlug}/context/agent-logs`);
     }
   };
 

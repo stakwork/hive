@@ -12,7 +12,7 @@ test('Capture /learn documentation viewer UI', async ({ page }) => {
   console.log('Workspace slug:', workspaceSlug);
   
   // Navigate to learn page
-  await page.goto(`http://localhost:3000/w/${workspaceSlug}/learn`);
+  await page.goto(`http://localhost:3000/w/${workspaceSlug}/context/learn`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(3000);
   
