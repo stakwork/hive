@@ -86,6 +86,9 @@ export async function resetDatabase() {
     await db.repository.deleteMany();
     await db.pod.deleteMany();
     await db.swarm.deleteMany();
+    await db.workspaceTransaction.deleteMany();
+    await db.lightningPayment.deleteMany();
+    await db.swarmPayment.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
     await db.session.deleteMany();
@@ -125,6 +128,9 @@ async function aggressiveReset() {
       "repositories",
       "pods",
       "swarms",
+      "workspace_transactions",
+      "lightning_payments",
+      "swarm_payments",
       "workspace_members",
       "workspaces",
       "sessions",
