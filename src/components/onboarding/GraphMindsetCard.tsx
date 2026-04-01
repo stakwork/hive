@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 
 export function GraphMindsetCard() {
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [nameError, setNameError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
@@ -64,9 +63,8 @@ export function GraphMindsetCard() {
     setSubmitError("");
 
     try {
-      // 1. Persist name and password so WelcomeStep.claimPayment can use them after sign-in
+      // 1. Persist name so WelcomeStep.claimPayment can use it after sign-in
       localStorage.setItem("graphMindsetWorkspaceName", name);
-      localStorage.setItem("graphMindsetPassword", password);
 
       // 2. Create Stripe checkout session
       const stripeRes = await fetch("/api/stripe/checkout", {
@@ -102,11 +100,10 @@ export function GraphMindsetCard() {
     setIsLightningLoading(true);
     localStorage.setItem("graphMindsetWorkspaceName", name);
     localStorage.setItem("graphMindsetWorkspaceSlug", name);
-    localStorage.setItem("graphMindsetPassword", password);
     router.push("/onboarding/lightning-payment");
   };
 
-  const isButtonDisabled = !name.trim() || !password.trim() || !isAvailable || isValidating || isLoading;
+  const isButtonDisabled = !name.trim() || !isAvailable || isValidating || isLoading;
 
   return (
     <Card className="overflow-hidden border border-blue-500/30 bg-card">
@@ -163,16 +160,6 @@ export function GraphMindsetCard() {
               {!isValidating && !nameError && isAvailable && name.trim() && (
                 <p className="text-xs text-green-600 dark:text-green-400">Name is available ✓</p>
               )}
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Graph password</label>
-              <Input
-                type="password"
-                placeholder="Min. 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
             </div>
 
             <ul className="text-xs text-muted-foreground space-y-1.5 pl-1">
