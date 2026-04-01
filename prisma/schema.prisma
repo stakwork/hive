@@ -85,6 +85,8 @@ model User {
   revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
   workspaceMembers         WorkspaceMember[]
   ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
+  swarmPayments            SwarmPayment[]
+  lightningPayments        LightningPayment[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -1260,12 +1262,15 @@ model SwarmPayment {
   failureMessage        String?            @map("failure_message")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
-  workspace             Workspace?         @relation(fields: [workspaceId], references: [id])
+  userId                String?            @map("user_id")
+  workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceTransaction  WorkspaceTransaction?
 
   @@index([workspaceId])
   @@index([stripeSessionId])
   @@index([stripePaymentIntentId])
+  @@index([userId])
   @@map("swarm_payments")
 }
 
@@ -1310,11 +1315,14 @@ model LightningPayment {
   status         LightningPaymentStatus @default(UNPAID)
   createdAt      DateTime               @default(now()) @map("created_at")
   updatedAt      DateTime               @updatedAt @map("updated_at")
-  workspace            Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId         String?                @map("user_id")
+  workspace      Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceTransaction WorkspaceTransaction?
 
   @@index([workspaceId])
   @@index([paymentHash])
+  @@index([userId])
   @@map("lightning_payments")
 }
 

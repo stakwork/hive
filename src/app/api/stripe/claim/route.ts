@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { sessionId } = body;
+  const userId = session.user.id;
 
   // Idempotency: if already claimed as PAID, return the existing payment
   const existing = await db.swarmPayment.findUnique({
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
         stripeSessionId: sessionId,
         stripePaymentIntentId,
         status: 'PAID',
-        workspaceId: null,
+        userId,
       },
     });
   }
