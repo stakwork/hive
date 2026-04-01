@@ -1253,12 +1253,15 @@ model SwarmPayment {
   status                SwarmPaymentStatus @default(PENDING)
   amount                Int?
   currency              String?
+  failureCode           String?            @map("failure_code")
+  failureMessage        String?            @map("failure_message")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
   workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([stripeSessionId])
+  @@index([stripePaymentIntentId])
   @@map("swarm_payments")
 }
 
