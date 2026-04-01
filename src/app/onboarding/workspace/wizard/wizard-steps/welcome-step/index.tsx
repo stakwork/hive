@@ -2,7 +2,6 @@
 
 import { GitHubAuthModal } from "@/components/auth/GitHubAuthModal";
 import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
-import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,9 +15,6 @@ import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useRef, useEffect, useCallback } from "react";
-
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
@@ -34,8 +30,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
   // Payment return state
   const [showCancelBanner, setShowCancelBanner] = useState(false);
-  const [isPollingSwarm, setIsPollingSwarm] = useState(false);
-  const [pollError, setPollError] = useState("");
+  const [claimError, setClaimError] = useState("");
   const [isClaiming, setIsClaiming] = useState(false);
 
   const { data: session } = useSession();
@@ -43,61 +38,10 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isCreatingRef = useRef(false);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const claimCalledRef = useRef(false);
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
-
-  const startSwarmPolling = useCallback(
-    (workspaceId: string) => {
-      const poll = async () => {
-        try {
-          const res = await fetch("/api/swarm/poll", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspaceId }),
-          });
-          const data = await res.json();
-
-          if (data?.status === "ACTIVE") {
-            stopPolling();
-            const wsRes = await fetch("/api/workspaces");
-            const wsData = await wsRes.json();
-            const ws = wsData?.workspaces?.find(
-              (w: { id: string; slug: string }) => w.id === workspaceId
-            );
-            router.push(ws?.slug ? `/w/${ws.slug}` : "/");
-          }
-        } catch {
-          // Silently retry on transient errors
-        }
-      };
-
-      poll();
-      pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
-      pollTimeoutRef.current = setTimeout(() => {
-        stopPolling();
-        setIsPollingSwarm(false);
-        setPollError(
-          "Swarm provisioning is taking longer than expected. Please contact support."
-        );
-      }, POLL_TIMEOUT_MS);
-    },
-    [router, stopPolling]
-  );
-
   const claimPayment = useCallback(
-    async (stripeSessionId: string) => {
+    async (stripeSessionId?: string) => {
       if (claimCalledRef.current) return;
       claimCalledRef.current = true;
 
@@ -106,32 +50,29 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         const res = await fetch("/api/stripe/claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: stripeSessionId }),
+          body: JSON.stringify(stripeSessionId ? { sessionId: stripeSessionId } : {}),
         });
         const data = await res.json();
 
         if (!res.ok) {
-          setPollError(data?.error || "Failed to set up your workspace. Please contact support.");
+          setClaimError(data?.error || "Failed to link payment. Please contact support.");
           setIsClaiming(false);
           return;
         }
 
-        const workspaceId = data?.workspace?.id;
-        if (workspaceId) {
-          await refreshWorkspaces();
+        if (data?.payment) {
           setIsClaiming(false);
-          setIsPollingSwarm(true);
-          startSwarmPolling(workspaceId);
+          // Payment linked to user — stay on page for now
         } else {
-          setPollError("Workspace creation succeeded but no ID was returned. Please contact support.");
+          setClaimError("Failed to confirm payment. Please contact support.");
           setIsClaiming(false);
         }
       } catch {
-        setPollError("Something went wrong setting up your workspace. Please contact support.");
+        setClaimError("Something went wrong linking your payment. Please contact support.");
         setIsClaiming(false);
       }
     },
-    [refreshWorkspaces, startSwarmPolling]
+    []
   );
 
   // Handle Stripe return on mount
@@ -139,33 +80,31 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     const paymentState = searchParams.get("payment");
     const stripeSessionId = searchParams.get("session_id");
 
-    if (paymentState === "success" && stripeSessionId) {
+    if (paymentState === "success") {
       if (session?.user) {
-        // Signed in — claim immediately
-        claimPayment(stripeSessionId);
+        // Signed in — claim with session ID from URL (or cookie fallback)
+        claimPayment(stripeSessionId || undefined);
       } else {
-        // Not signed in — redirect to sign-in and come back here with all params intact
-        const returnUrl = `/onboarding/workspace?payment=success&session_id=${stripeSessionId}`;
+        // Not signed in — redirect to sign-in; cookie carries the session ID
+        const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}`;
         router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
       }
     } else if (paymentState === "cancelled") {
       setShowCancelBanner(true);
     }
 
-    return () => stopPolling();
   // Run once on mount; session is handled in the effect below
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the user was redirected to sign-in and came back already signed in,
-  // the mount effect above already ran without a session. This effect handles
-  // the case where the session loads asynchronously after mount.
+  // When session loads asynchronously after mount, try to claim
   useEffect(() => {
     if (!session?.user) return;
     const paymentState = searchParams.get("payment");
-    const stripeSessionId = searchParams.get("session_id");
-    if (paymentState === "success" && stripeSessionId) {
-      claimPayment(stripeSessionId);
+    if (paymentState === "success") {
+      // Session ID from URL or cookie — claim route handles both
+      const stripeSessionId = searchParams.get("session_id");
+      claimPayment(stripeSessionId || undefined);
     }
   // Only re-run when session becomes available
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,19 +211,22 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     if (e.key === "Enter") handleNext();
   };
 
-  if (isClaiming || (isPollingSwarm && !pollError)) {
+  if (isClaiming) {
     return (
       <div className="max-w-2xl mx-auto">
-        <SwarmSetupLoader />
+        <Card className="p-8 text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+          <p className="text-sm text-muted-foreground">Linking your payment...</p>
+        </Card>
       </div>
     );
   }
 
-  if (pollError) {
+  if (claimError) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card className="p-8 text-center space-y-4">
-          <p className="text-destructive font-medium">{pollError}</p>
+          <p className="text-destructive font-medium">{claimError}</p>
           <p className="text-sm text-muted-foreground">
             Please{" "}
             <a href="mailto:support@stakwork.com" className="underline text-primary">

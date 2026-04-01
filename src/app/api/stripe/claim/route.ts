@@ -7,7 +7,7 @@ import { getStripeClient } from '@/services/stripe';
 import { logger } from '@/lib/logger';
 
 const claimBodySchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -15,27 +15,35 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const userId = (session.user as { id: string }).id;
 
-  let body: z.infer<typeof claimBodySchema>;
+  let body: z.infer<typeof claimBodySchema> = {};
   try {
     const raw = await req.json();
     body = claimBodySchema.parse(raw);
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    // Body is optional — sessionId can come from cookie
   }
 
-  const { sessionId } = body;
-  const userId = session.user.id;
+  // Prefer body sessionId, fall back to cookie
+  const sessionId = body.sessionId || req.cookies.get('stripe_session_id')?.value;
+  if (!sessionId) {
+    return NextResponse.json({ error: 'No payment session found' }, { status: 400 });
+  }
 
-  // Idempotency: if already claimed as PAID, return the existing payment
+  // Look up existing payment record (created at checkout time)
   const existing = await db.swarmPayment.findUnique({
     where: { stripeSessionId: sessionId },
   });
-  if (existing?.status === 'PAID') {
-    return NextResponse.json({ payment: existing });
+
+  // Idempotency: if already claimed by this user, return it
+  if (existing?.status === 'PAID' && existing?.userId === userId) {
+    const res = NextResponse.json({ payment: existing });
+    res.cookies.delete('stripe_session_id');
+    return res;
   }
 
-  // Retrieve and validate the Stripe session
+  // Retrieve and validate the Stripe session with Stripe API
   const stripe = getStripeClient();
   let stripeSession;
   try {
@@ -54,22 +62,28 @@ export async function POST(req: NextRequest) {
 
   let payment;
   if (existing) {
-    // Record was created at checkout time (PENDING) — update it to PAID
+    // Record was created at checkout time — update with userId and mark PAID
     payment = await db.swarmPayment.update({
       where: { stripeSessionId: sessionId },
-      data: { status: 'PAID', stripePaymentIntentId },
+      data: { status: 'PAID', stripePaymentIntentId, userId },
     });
   } else {
-    // No prior record (e.g. checkout bypassed) — create one
+    // Create new PAID record (pre-auth: no SwarmPayment yet)
+    const workspaceName = stripeSession.metadata?.workspaceName ?? null;
+    const workspaceSlug = stripeSession.metadata?.workspaceSlug ?? null;
     payment = await db.swarmPayment.create({
       data: {
         stripeSessionId: sessionId,
         stripePaymentIntentId,
+        workspaceName,
+        workspaceSlug,
         status: 'PAID',
         userId,
       },
     });
   }
 
-  return NextResponse.json({ payment });
+  const res = NextResponse.json({ payment });
+  res.cookies.delete('stripe_session_id');
+  return res;
 }
