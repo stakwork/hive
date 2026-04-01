@@ -1107,3 +1107,127 @@ describe('Sidebar - Graph Explorer Nav Item', () => {
     expect(contextGraphLinks()).toHaveLength(0);
   });
 });
+
+describe('Sidebar - GraphMindset Admin button', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: true,
+      hasAccess: true,
+      role: 'OWNER',
+    } as any);
+  });
+
+  it('renders GraphMindset Admin button when workspaceKind is "graph_mindset"', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
+      slug: 'my-graph',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const buttons = screen.getAllByTestId('graphmindset-admin-button');
+    expect(buttons.length).toBeGreaterThan(0);
+  });
+
+  it('generates correct href for GraphMindset Admin button', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
+      slug: 'my-graph',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    const buttons = screen.getAllByTestId('graphmindset-admin-button');
+    expect(buttons[0]).toHaveAttribute('href', 'https://my-graph.sphinx.chat:8800');
+    expect(buttons[0]).toHaveAttribute('target', '_blank');
+    expect(buttons[0]).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('does not render GraphMindset Admin button when workspaceKind is undefined', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Standard WS', slug: 'my-workspace', poolState: null },
+      slug: 'my-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryAllByTestId('graphmindset-admin-button')).toHaveLength(0);
+  });
+
+  it('does not render GraphMindset Admin button when workspaceKind is "standard"', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Standard WS', slug: 'my-workspace', poolState: null, workspaceKind: 'standard' },
+      slug: 'my-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryAllByTestId('graphmindset-admin-button')).toHaveLength(0);
+  });
+
+  it('does not render GraphMindset Admin button when workspaceKind is null', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Null Kind WS', slug: 'my-workspace', poolState: null, workspaceKind: null },
+      slug: 'my-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryAllByTestId('graphmindset-admin-button')).toHaveLength(0);
+  });
+
+  it('renders button in both mobile and desktop sidebars', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'graph-slug', poolState: null, workspaceKind: 'graph_mindset' },
+      slug: 'graph-slug',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Both mobile and desktop sidebars are rendered
+    const buttons = screen.getAllByTestId('graphmindset-admin-button');
+    expect(buttons).toHaveLength(2);
+  });
+});

@@ -56,9 +56,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { password: bodyPassword, workspace_type } = body as {
+    const { password: bodyPassword } = body as {
       password?: string;
-      workspace_type?: string;
     };
 
     const password = bodyPassword ?? generateSecurePassword();
@@ -68,7 +67,6 @@ export async function POST(request: NextRequest) {
     const result = await swarmService.createSwarm({
       instance_type,
       password,
-      ...(workspace_type ? { workspace_type } : {}),
     });
 
     return NextResponse.json({ ...result, password });

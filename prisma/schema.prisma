@@ -213,6 +213,7 @@ model Workspace {
   stakworkRuns           StakworkRun[]
   swarm                  Swarm?
   swarmPayments          SwarmPayment[]
+  lightningPayments      LightningPayment[]
   tasks                  Task[]
   whiteboards            Whiteboard[]
   apiKeys                WorkspaceApiKey[]
@@ -299,7 +300,6 @@ model Swarm {
   pendingRepairTrigger    Json?                 @map("pending_repair_trigger")
   podCompletedAt          DateTime?             @map("pod_completed_at")
   description             String?
-  workspaceType           String?               @map("workspace_type")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1247,18 +1247,23 @@ enum SwarmPaymentStatus {
 
 model SwarmPayment {
   id                    String             @id @default(cuid())
-  workspaceId           String             @map("workspace_id")
+  workspaceId           String?            @map("workspace_id")
+  workspaceName         String?            @map("workspace_name")
+  workspaceSlug         String?            @map("workspace_slug")
   stripeSessionId       String             @unique @map("stripe_session_id")
   stripePaymentIntentId String?            @map("stripe_payment_intent_id")
   status                SwarmPaymentStatus @default(PENDING)
   amount                Int?
   currency              String?
+  failureCode           String?            @map("failure_code")
+  failureMessage        String?            @map("failure_message")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
-  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([stripeSessionId])
+  @@index([stripePaymentIntentId])
   @@map("swarm_payments")
 }
 
@@ -1284,4 +1289,28 @@ model LlmModel {
 
   @@index([provider])
   @@map("llm_models")
+}
+
+enum LightningPaymentStatus {
+  UNPAID
+  PAID
+  EXPIRED
+}
+
+model LightningPayment {
+  id             String                 @id @default(cuid())
+  workspaceId    String?                @map("workspace_id")
+  workspaceName  String?                @map("workspace_name")
+  workspaceSlug  String?                @map("workspace_slug")
+  paymentHash    String                 @unique @map("payment_hash")
+  invoice        String
+  amount         Int
+  status         LightningPaymentStatus @default(UNPAID)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  workspace      Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([paymentHash])
+  @@map("lightning_payments")
 }
