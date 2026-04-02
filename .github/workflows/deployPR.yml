@@ -333,9 +333,15 @@ jobs:
             "20260319000000_add_created_by_id_to_whiteboards" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
 
-          resolve_migration \
-            "20260401174012" \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='__nonexistent_check__';"
+          # Resolve any failed migration with timestamp prefix 20260401174012 (full suffix unknown)
+          FAILED_NAME=$(psql "$DATABASE_URL" -tAc \
+            "SELECT migration_name FROM _prisma_migrations WHERE migration_name LIKE '20260401174012%' AND finished_at IS NULL AND applied_steps_count > 0 LIMIT 1;" 2>/dev/null | tr -d '[:space:]')
+          if [ -n "$FAILED_NAME" ]; then
+            echo "Found failed migration: ${FAILED_NAME}, marking as rolled-back..."
+            npx prisma migrate resolve --rolled-back "${FAILED_NAME}" || echo "  Could not mark as rolled-back"
+          else
+            echo "No failed migration matching 20260401174012% found, skipping"
+          fi
 
       - name: Build
         run: |
