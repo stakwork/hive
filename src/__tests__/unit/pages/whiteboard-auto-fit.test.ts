@@ -135,21 +135,18 @@ describe("Whiteboard page — auto-fit on initial load", () => {
 describe("initialAppState zoom override", () => {
   it("forces zoom to { value: 1 } when whiteboard has no elements", () => {
     const savedAppState = { zoom: { value: 30 } }; // simulates 3000%
-    const hasElements = false;
-    const initialAppState = {
-      ...getInitialAppState(savedAppState),
-      ...(!hasElements ? { zoom: { value: 1 } } : {}),
-    };
+    const initialAppState = getInitialAppState(savedAppState);
     expect(initialAppState.zoom).toEqual({ value: 1 });
   });
 
-  it("preserves zoom from appState when whiteboard has elements", () => {
+  it("forces zoom to { value: 1 } even when whiteboard has elements", () => {
     const savedAppState = { zoom: { value: 30 } };
-    const hasElements = true;
-    const initialAppState = {
-      ...getInitialAppState(savedAppState),
-      ...(!hasElements ? { zoom: { value: 1 } } : {}),
-    };
-    expect(initialAppState.zoom).toEqual({ value: 30 });
+    const initialAppState = getInitialAppState(savedAppState);
+    expect(initialAppState.zoom).toEqual({ value: 1 });
+  });
+
+  it("strips zoom from savedAppState — getInitialAppState with zoom:30 returns zoom:1", () => {
+    const result = getInitialAppState({ zoom: { value: 30 } });
+    expect(result.zoom).toEqual({ value: 1 });
   });
 });
