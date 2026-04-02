@@ -97,15 +97,18 @@ describe("FEATURE_COMPLETED notification", () => {
 
     await updateFeatureStatusFromTasks(feature.id);
 
-    // Give async fire-and-forget a moment to settle
-    await new Promise((r) => setTimeout(r, 200));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        notificationType: NotificationTriggerType.FEATURE_COMPLETED,
-        featureId: feature.id,
-      },
-    });
+    // Poll for the fire-and-forget notification record (up to 5 seconds)
+    let record = null;
+    for (let i = 0; i < 50; i++) {
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          notificationType: NotificationTriggerType.FEATURE_COMPLETED,
+          featureId: feature.id,
+        },
+      });
+      if (record) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
 
     expect(record).not.toBeNull();
     // Target should be the feature's assigneeId
@@ -135,14 +138,19 @@ describe("FEATURE_COMPLETED notification", () => {
     });
 
     await updateFeatureStatusFromTasks(feature.id);
-    await new Promise((r) => setTimeout(r, 200));
 
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        notificationType: NotificationTriggerType.FEATURE_COMPLETED,
-        featureId: feature.id,
-      },
-    });
+    // Poll for the fire-and-forget notification record (up to 5 seconds)
+    let record = null;
+    for (let i = 0; i < 50; i++) {
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          notificationType: NotificationTriggerType.FEATURE_COMPLETED,
+          featureId: feature.id,
+        },
+      });
+      if (record) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(owner.id);

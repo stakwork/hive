@@ -23,26 +23,33 @@ export async function POST(req: NextRequest) {
   const { workspaceName, workspaceSlug } = body;
   const amount = optionalEnvVars.LIGHTNING_AMOUNT_SATS;
 
+  const placeholderHash = `pending_${crypto.randomUUID()}`;
+
+  await db.lightningPayment.create({
+    data: {
+      workspaceId: null,
+      workspaceName,
+      workspaceSlug,
+      paymentHash: placeholderHash,
+      invoice: '',
+      amount,
+      status: 'UNPAID',
+    },
+  });
+
   try {
     const { payment_hash, payment_request } = await createLndInvoice(amount);
+
+    await db.lightningPayment.update({
+      where: { paymentHash: placeholderHash },
+      data: { paymentHash: payment_hash, invoice: payment_request },
+    });
 
     const qrCodeDataUrl = await QRCode.toDataURL(payment_request, {
       errorCorrectionLevel: 'M',
       type: 'image/png',
       width: 300,
       margin: 2,
-    });
-
-    await db.lightningPayment.create({
-      data: {
-        workspaceId: null,
-        workspaceName,
-        workspaceSlug,
-        paymentHash: payment_hash,
-        invoice: payment_request,
-        amount,
-        status: 'UNPAID',
-      },
     });
 
     return NextResponse.json({ invoice: payment_request, paymentHash: payment_hash, amount, qrCodeDataUrl });
