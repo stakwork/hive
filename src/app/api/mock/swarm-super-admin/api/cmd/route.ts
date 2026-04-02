@@ -25,6 +25,15 @@ const MOCK_RESPONSES: Record<string, unknown> = {
       "lightninglabs/lnd": "v0.18",
     },
   },
+  GetBoltwallAccessibility: { isPublic: false },
+  UpdateBoltwallAccessibility: { success: true },
+  ListPaidEndpoint: {
+    endpoints: [
+      { id: 1, route: "v2/search", method: "GET", status: true, fee: 10 },
+      { id: 2, route: "node/content", method: "POST", status: true, fee: 10 },
+    ],
+  },
+  UpdatePaidEndpoint: { success: true },
 };
 
 /**
@@ -44,14 +53,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing txt param" }, { status: 400 });
   }
 
-  let parsed: { cmd?: string };
+  let parsed: { cmd?: string; data?: { cmd?: string } };
   try {
     parsed = JSON.parse(txt);
   } catch {
     return NextResponse.json({ error: "Invalid JSON in txt param" }, { status: 400 });
   }
 
-  const cmd = parsed.cmd;
+  // SwarmCmd shape: { type: "Swarm", data: { cmd: "..." } }
+  // Fall back to top-level .cmd for legacy callers
+  const cmd = parsed.data?.cmd ?? parsed.cmd;
   if (!cmd || !(cmd in MOCK_RESPONSES)) {
     return NextResponse.json({ error: `Unknown cmd: ${cmd}` }, { status: 400 });
   }
