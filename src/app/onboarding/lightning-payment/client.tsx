@@ -75,9 +75,8 @@ export function LightningPaymentClient() {
 
     const workspaceName = localStorage.getItem("graphMindsetWorkspaceName");
     const workspaceSlug = localStorage.getItem("graphMindsetWorkspaceSlug");
-    const password = localStorage.getItem("graphMindsetPassword");
 
-    if (!workspaceName || !workspaceSlug || !password) {
+    if (!workspaceName || !workspaceSlug) {
       router.push("/onboarding/workspace");
       return;
     }
