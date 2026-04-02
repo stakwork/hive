@@ -1157,6 +1157,181 @@ describe("PlanChatView", () => {
       expect(body.message).toBe("Follow up question");
     });
 
+  describe("inputDisabled behaviour", () => {
+    let capturedChatAreaProps: any = null;
+
+    beforeEach(() => {
+      capturedChatAreaProps = null;
+    });
+
+    it("disables input when feature.status is CANCELLED", async () => {
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Cancelled Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "CANCELLED",
+          priority: "MEDIUM",
+          workflowStatus: "COMPLETED",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: false,
+        error: null,
+      });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(capturedChatAreaProps?.inputDisabled).toBe(true);
+    });
+
+    it.each(["BACKLOG", "PLANNED", "IN_PROGRESS", "COMPLETED"] as const)(
+      "does not disable input when feature.status is %s (and workflow is not IN_PROGRESS)",
+      async (status) => {
+        mockUseDetailResource.mockReturnValue({
+          data: {
+            id: "feature-123",
+            title: "Active Feature",
+            brief: null,
+            requirements: null,
+            architecture: null,
+            userStories: [],
+            phases: [],
+            assignee: null,
+            personas: [],
+            diagramUrl: null,
+            diagramS3Key: null,
+            status,
+            priority: "MEDIUM",
+            workflowStatus: "COMPLETED",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          setData: mockSetData,
+          updateData: vi.fn(),
+          loading: false,
+          error: null,
+        });
+
+        const chatModule = await import("@/components/chat");
+        vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+          capturedChatAreaProps = props;
+          return <div data-testid="chat-area" />;
+        });
+
+        render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+        await waitFor(() => {
+          expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+        });
+
+        expect(capturedChatAreaProps?.inputDisabled).toBe(false);
+      }
+    );
+
+    it("disables input when workflowStatus is IN_PROGRESS (regardless of feature status)", async () => {
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Active Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "IN_PROGRESS",
+          priority: "MEDIUM",
+          workflowStatus: "IN_PROGRESS",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: false,
+        error: null,
+      });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(capturedChatAreaProps?.inputDisabled).toBe(true);
+    });
+
+    it("disables input when loading is true", async () => {
+      mockUseDetailResource.mockReturnValue({
+        data: {
+          id: "feature-123",
+          title: "Active Feature",
+          brief: null,
+          requirements: null,
+          architecture: null,
+          userStories: [],
+          phases: [],
+          assignee: null,
+          personas: [],
+          diagramUrl: null,
+          diagramS3Key: null,
+          status: "PLANNED",
+          priority: "MEDIUM",
+          workflowStatus: "COMPLETED",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        setData: mockSetData,
+        updateData: vi.fn(),
+        loading: true,
+        error: null,
+      });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(capturedChatAreaProps?.inputDisabled).toBe(true);
+    });
+  });
+
     it("does nothing when messages is empty", async () => {
       mockFetch
         .mockResolvedValueOnce({
