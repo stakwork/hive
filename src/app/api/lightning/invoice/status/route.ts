@@ -24,8 +24,12 @@ export async function GET(req: NextRequest) {
 
   // UNPAID — check LND directly as fallback in case webhook was missed
   try {
-    const { settled } = await lookupLndInvoice(paymentHash);
-    if (settled) {
+    logger.info('Looking up invoice on LND', 'lightning-status', { paymentHash });
+    const lookupResult = await lookupLndInvoice(paymentHash);
+    logger.info('LND lookup result', 'lightning-status', { paymentHash, settled: lookupResult.settled });
+
+    if (lookupResult.settled) {
+      logger.info('Invoice settled, updating DB', 'lightning-status', { paymentHash });
       const btcPriceUsd = await fetchBtcPriceUsd();
       const amountUsd = btcPriceUsd ? (payment.amount / 100_000_000) * btcPriceUsd : null;
       await db.$transaction([
@@ -44,10 +48,14 @@ export async function GET(req: NextRequest) {
           },
         }),
       ]);
+      logger.info('DB updated to PAID', 'lightning-status', { paymentHash });
       return NextResponse.json({ status: 'PAID' });
     }
   } catch (err) {
-    logger.error('LND invoice lookup failed, falling back to DB status', 'lightning-status', { err });
+    const errDetail = err instanceof Error
+      ? { message: err.message, stack: err.stack, code: (err as Record<string, unknown>).code, address: (err as Record<string, unknown>).address, port: (err as Record<string, unknown>).port }
+      : { raw: String(err) };
+    logger.error('LND invoice lookup failed, falling back to DB status', 'lightning-status', errDetail);
   }
 
   return NextResponse.json({ status: payment.status });
