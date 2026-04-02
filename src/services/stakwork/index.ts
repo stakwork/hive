@@ -58,7 +58,7 @@ export class StakworkService extends BaseServiceClass {
     const requestFn = () => {
       return client.post<unknown>(
         endpoint,
-        { customer: { name: customerName } },
+        { customer: { name: customerName, create_workflow: true } },
         headers,
         this.serviceName,
       );
