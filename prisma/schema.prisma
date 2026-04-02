@@ -85,7 +85,7 @@ model User {
   revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
   workspaceMembers         WorkspaceMember[]
   ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
-  swarmPayments            SwarmPayment[]
+  fiatPayments             FiatPayment[]
   lightningPayments        LightningPayment[]
 
   @@index([createdAt])
@@ -214,7 +214,7 @@ model Workspace {
   sharedConversations    SharedConversation[]
   stakworkRuns           StakworkRun[]
   swarm                  Swarm?
-  swarmPayments          SwarmPayment[]
+  fiatPayments           FiatPayment[]
   lightningPayments      LightningPayment[]
   workspaceTransactions  WorkspaceTransaction[]
   tasks                  Task[]
@@ -1241,38 +1241,38 @@ enum PaymentStatus {
   FAILED
 }
 
-enum SwarmPaymentStatus {
+enum FiatPaymentStatus {
   PENDING
   PAID
   FAILED
   EXPIRED
 }
 
-model SwarmPayment {
-  id                    String             @id @default(cuid())
-  workspaceId           String?            @map("workspace_id")
-  workspaceName         String?            @map("workspace_name")
-  workspaceSlug         String?            @map("workspace_slug")
-  stripeSessionId       String             @unique @map("stripe_session_id")
-  stripePaymentIntentId String?            @map("stripe_payment_intent_id")
-  status                SwarmPaymentStatus @default(PENDING)
+model FiatPayment {
+  id                    String            @id @default(cuid())
+  workspaceId           String?           @map("workspace_id")
+  workspaceName         String?           @map("workspace_name")
+  workspaceSlug         String?           @map("workspace_slug")
+  stripeSessionId       String            @unique @map("stripe_session_id")
+  stripePaymentIntentId String?           @map("stripe_payment_intent_id")
+  status                FiatPaymentStatus @default(PENDING)
   amount                Int?
   currency              String?
-  failureCode           String?            @map("failure_code")
-  failureMessage        String?            @map("failure_message")
-  password              String?            @map("password")
-  createdAt             DateTime           @default(now()) @map("created_at")
-  updatedAt             DateTime           @updatedAt @map("updated_at")
-  userId                String?            @map("user_id")
-  workspace             Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user                  User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  failureCode           String?           @map("failure_code")
+  failureMessage        String?           @map("failure_message")
+  password              String?           @map("password")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  userId                String?           @map("user_id")
+  workspace             Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceTransaction  WorkspaceTransaction?
 
   @@index([workspaceId])
   @@index([stripeSessionId])
   @@index([stripePaymentIntentId])
   @@index([userId])
-  @@map("swarm_payments")
+  @@map("fiat_payments")
 }
 
 enum LlmProvider {
@@ -1341,11 +1341,11 @@ model WorkspaceTransaction {
   amountUsd          Float?                   @map("amount_usd")
   currency           String?
   lightningPaymentId String?                  @unique @map("lightning_payment_id")
-  swarmPaymentId     String?                  @unique @map("swarm_payment_id")
+  fiatPaymentId      String?                  @unique @map("fiat_payment_id")
   createdAt          DateTime                 @default(now()) @map("created_at")
   workspace          Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lightningPayment   LightningPayment?        @relation(fields: [lightningPaymentId], references: [id])
-  swarmPayment       SwarmPayment?            @relation(fields: [swarmPaymentId], references: [id])
+  fiatPayment        FiatPayment?             @relation(fields: [fiatPaymentId], references: [id])
 
   @@index([workspaceId])
   @@map("workspace_transactions")

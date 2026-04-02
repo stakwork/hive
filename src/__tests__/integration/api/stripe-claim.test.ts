@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/stripe/claim/route';
 import { db } from '@/lib/db';
 import { createTestUser } from '@/__tests__/support/factories';
-import { createTestSwarmPayment } from '@/__tests__/support/factories/swarm-payment.factory';
+import { createTestFiatPayment } from '@/__tests__/support/factories/fiat-payment.factory';
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 
@@ -117,7 +117,7 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data.error).toBe('Payment not completed');
     });
 
-    test('first call: creates SwarmPayment with status PAID and workspaceId null, returns { payment }', async () => {
+    test('first call: creates FiatPayment with status PAID and workspaceId null, returns { payment }', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
@@ -137,13 +137,13 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data.payment.stripePaymentIntentId).toBe('pi_test_first_123');
 
       // Verify DB record
-      const dbPayment = await db.swarmPayment.findUnique({ where: { stripeSessionId: sessionId } });
+      const dbPayment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
       expect(dbPayment).not.toBeNull();
       expect(dbPayment!.status).toBe('PAID');
       expect(dbPayment!.workspaceId).toBeNull();
     });
 
-    test('idempotency: second call with same sessionId returns existing SwarmPayment without duplicate', async () => {
+    test('idempotency: second call with same sessionId returns existing FiatPayment without duplicate', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
@@ -171,21 +171,21 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data2.payment.workspaceId).toBeNull();
 
       // Only one DB record exists
-      const allPayments = await db.swarmPayment.findMany({ where: { stripeSessionId: sessionId } });
+      const allPayments = await db.fiatPayment.findMany({ where: { stripeSessionId: sessionId } });
       expect(allPayments).toHaveLength(1);
 
       // Stripe was only called once (idempotency skips it on second call)
       expect(mockRetrieveSession).toHaveBeenCalledTimes(1);
     });
 
-    test('updates existing PENDING SwarmPayment to PAID when checkout record already exists', async () => {
+    test('updates existing PENDING FiatPayment to PAID when checkout record already exists', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
 
       const sessionId = `cs_test_claim_update_${Date.now()}`;
       // Pre-create the PENDING record as checkout would (with encrypted password)
-      const pendingPayment = await createTestSwarmPayment({
+      const pendingPayment = await createTestFiatPayment({
         stripeSessionId: sessionId,
         workspaceName: 'Test Workspace',
         workspaceSlug: 'test-workspace',
@@ -208,7 +208,7 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data.payment.workspaceId).toBeNull();
 
       // No duplicates
-      const allPayments = await db.swarmPayment.findMany({ where: { stripeSessionId: sessionId } });
+      const allPayments = await db.fiatPayment.findMany({ where: { stripeSessionId: sessionId } });
       expect(allPayments).toHaveLength(1);
     });
   });

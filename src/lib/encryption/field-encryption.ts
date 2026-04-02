@@ -68,7 +68,7 @@ export class FieldEncryptionService {
       "agentPassword",
       "agentWebhookSecret",
       "vercelApiToken",
-      "swarmPaymentPassword",
+      "fiatPaymentPassword",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
