@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const password = generateSecurePassword(20);
   const encryptedPassword = JSON.stringify(
-    EncryptionService.getInstance().encryptField('swarmPaymentPassword', password)
+    EncryptionService.getInstance().encryptField('fiatPaymentPassword', password)
   );
 
   try {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       metadata: { workspaceName, workspaceSlug },
     });
 
-    await db.swarmPayment.create({
+    await db.fiatPayment.create({
       data: {
         stripeSessionId: stripeSession.id,
         workspaceName,
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logger.error('Failed to create Stripe checkout session', 'stripe-checkout', { err });
 
-    await db.swarmPayment.create({
+    await db.fiatPayment.create({
       data: {
         stripeSessionId: `stripe_failed_${crypto.randomUUID()}`,
         workspaceName,

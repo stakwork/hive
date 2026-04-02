@@ -9,7 +9,7 @@ export interface CreateTestWorkspaceTransactionOptions {
   amountUsd?: number | null;
   currency?: string | null;
   lightningPaymentId?: string | null;
-  swarmPaymentId?: string | null;
+  fiatPaymentId?: string | null;
 }
 
 export async function createTestWorkspaceTransaction(
@@ -24,7 +24,7 @@ export async function createTestWorkspaceTransaction(
       amountUsd: options.amountUsd ?? null,
       currency: options.currency ?? null,
       lightningPaymentId: options.lightningPaymentId ?? null,
-      swarmPaymentId: options.swarmPaymentId ?? null,
+      fiatPaymentId: options.fiatPaymentId ?? null,
     },
   });
 }

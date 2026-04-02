@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Look up existing payment record (created at checkout time)
-  const existing = await db.swarmPayment.findUnique({
+  const existing = await db.fiatPayment.findUnique({
     where: { stripeSessionId: sessionId },
   });
 
@@ -63,15 +63,15 @@ export async function POST(req: NextRequest) {
   let payment;
   if (existing) {
     // Record was created at checkout time — update with userId and mark PAID
-    payment = await db.swarmPayment.update({
+    payment = await db.fiatPayment.update({
       where: { stripeSessionId: sessionId },
       data: { status: 'PAID', stripePaymentIntentId, userId },
     });
   } else {
-    // Create new PAID record (pre-auth: no SwarmPayment yet)
+    // Create new PAID record (pre-auth: no FiatPayment yet)
     const workspaceName = stripeSession.metadata?.workspaceName ?? null;
     const workspaceSlug = stripeSession.metadata?.workspaceSlug ?? null;
-    payment = await db.swarmPayment.create({
+    payment = await db.fiatPayment.create({
       data: {
         stripeSessionId: sessionId,
         stripePaymentIntentId,
