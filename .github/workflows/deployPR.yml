@@ -333,9 +333,10 @@ jobs:
             "20260319000000_add_created_by_id_to_whiteboards" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
 
-          # Force-resolve the stale failed migration 20260401174012 that is blocking deploys
-          echo "Attempting to resolve stale failed migration 20260401174012..."
-          npx prisma migrate resolve --rolled-back "20260401174012" 2>&1 || true
+          # Resolve migration 20260401174012 — mark as applied since its DDL was already run
+          # (rolling it back causes Prisma to re-run it against fiat_payments which breaks)
+          echo "Attempting to resolve migration 20260401174012 as applied..."
+          npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
 
       - name: Build
         run: |

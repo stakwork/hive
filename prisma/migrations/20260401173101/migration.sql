@@ -1,5 +1,28 @@
--- DropForeignKey
-ALTER TABLE "swarm_payments" DROP CONSTRAINT "swarm_payments_workspace_id_fkey";
+-- DropForeignKey / AddForeignKey (idempotent: works on swarm_payments or fiat_payments)
+DO $$
+DECLARE tbl TEXT;
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'swarm_payments' AND table_schema = 'public') THEN
+    tbl := 'swarm_payments';
+  ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'fiat_payments' AND table_schema = 'public') THEN
+    tbl := 'fiat_payments';
+  ELSE
+    RETURN;
+  END IF;
 
--- AddForeignKey
-ALTER TABLE "swarm_payments" ADD CONSTRAINT "swarm_payments_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  -- Drop existing FK (any known name)
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = tbl || '_workspace_id_fkey') THEN
+    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', tbl, tbl || '_workspace_id_fkey');
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'swarm_payments_workspace_id_fkey') THEN
+    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT "swarm_payments_workspace_id_fkey"', tbl);
+  END IF;
+
+  -- Re-add with CASCADE
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = tbl || '_workspace_id_fkey') THEN
+    EXECUTE format(
+      'ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE',
+      tbl, tbl || '_workspace_id_fkey'
+    );
+  END IF;
+END $$;
