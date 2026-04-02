@@ -91,10 +91,20 @@ export default function AgentLogsPage() {
     () => !!searchParams?.get("logId")
   );
 
+  // Mirror searchParams into a ref so goToPage can read the latest value
+  // without listing searchParams as a reactive dep (which would cause a loop)
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => {
+    searchParamsRef.current = searchParams;
+  }, [searchParams]);
+
   // Navigate to a specific page and update URL
+  // NOTE: searchParams intentionally removed from deps — read via ref to avoid
+  // a goToPage recreation loop (router.replace → new searchParams → goToPage
+  // recreated → debounce effect fires → goToPage(1) → snaps back to page 1)
   const goToPage = useCallback((n: number) => {
     setPage(n);
-    const params = new URLSearchParams(searchParams?.toString() || "");
+    const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
     if (n <= 1) {
       params.delete("page");
     } else {
@@ -102,7 +112,7 @@ export default function AgentLogsPage() {
     }
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [pathname, router]); // searchParams intentionally omitted — use ref above
 
   // Keep a ref to the latest goToPage to avoid it being a dep in the debounce effect
   const goToPageRef = useRef(goToPage);
