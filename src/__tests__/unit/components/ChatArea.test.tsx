@@ -158,6 +158,16 @@ vi.mock("@/lib/icons", () => ({
   getAgentIcon: () => <span data-testid="agent-icon">🤖</span>,
 }));
 
+vi.mock("@/components/ui/status-popover", () => ({
+  StatusPopover: ({ statusType, currentStatus, onUpdate }: any) => (
+    <div data-testid="status-popover" data-status-type={statusType} data-current-status={currentStatus}>
+      <button data-testid="status-popover-trigger" onClick={() => onUpdate("COMPLETED")}>
+        {currentStatus}
+      </button>
+    </div>
+  ),
+}));
+
 // Test data factories
 const TestDataFactories = {
   message: (overrides: Partial<ChatMessageType> = {}): ChatMessageType => ({
@@ -975,6 +985,100 @@ describe("ChatArea", () => {
 
       expect(router.back).toHaveBeenCalledTimes(1);
       expect(router.push).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Feature Status Badge (isPlanChat)", () => {
+    test("renders StatusPopover when isPlanChat, featureStatus, and onStatusSave are provided", () => {
+      const onStatusSave = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Feature",
+        isPlanChat: true,
+        featureStatus: "IN_PROGRESS",
+        onStatusSave,
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("feature-status-popover")).toBeInTheDocument();
+    });
+
+    test("does not render StatusPopover when isPlanChat is false", () => {
+      const onStatusSave = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Feature",
+        isPlanChat: false,
+        featureStatus: "IN_PROGRESS",
+        onStatusSave,
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByTestId("feature-status-popover")).not.toBeInTheDocument();
+    });
+
+    test("does not render StatusPopover when featureStatus is null", () => {
+      const onStatusSave = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Feature",
+        isPlanChat: true,
+        featureStatus: null,
+        onStatusSave,
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByTestId("feature-status-popover")).not.toBeInTheDocument();
+    });
+
+    test("does not render StatusPopover when onStatusSave is not provided", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Feature",
+        isPlanChat: true,
+        featureStatus: "BACKLOG",
+        onStatusSave: undefined,
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByTestId("feature-status-popover")).not.toBeInTheDocument();
+    });
+
+    test("renders two-row layout in plan chat mode with action buttons in row 2", () => {
+      const onStatusSave = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Feature",
+        isPlanChat: true,
+        featureStatus: "PLANNED",
+        onStatusSave,
+        sphinxInviteEnabled: true,
+        workspaceSlug: "test-workspace",
+        featureId: "feature-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Status badge in row 1
+      expect(screen.getByTestId("feature-status-popover")).toBeInTheDocument();
+      // Invite button in row 2
+      expect(screen.getByTestId("invite-button")).toBeInTheDocument();
+    });
+
+    test("task chat header (isPlanChat false) shows invite button in single-row layout", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "My Task",
+        isPlanChat: false,
+        sphinxInviteEnabled: true,
+        workspaceSlug: "test-workspace",
+        featureId: "feature-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // No status badge in task chat
+      expect(screen.queryByTestId("feature-status-popover")).not.toBeInTheDocument();
+      // Invite button still present in single-row
+      expect(screen.getByTestId("invite-button")).toBeInTheDocument();
     });
   });
 });

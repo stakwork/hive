@@ -19,6 +19,7 @@ import {
 import { useStreamContext } from "@/hooks/useStreamContext";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
+import type { FeatureStatus } from "@prisma/client";
 import { diffWords } from "diff";
 import { ClipboardList } from "lucide-react";
 import { useSession } from "next-auth/react";
@@ -490,6 +491,18 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     [featureId, updateFeature]
   );
 
+  const handleStatusSave = useCallback(
+    async (status: FeatureStatus) => {
+      await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      updateFeature({ status });
+    },
+    [featureId, updateFeature]
+  );
+
   const handleRetry = useCallback(async () => {
     if (isRetrying || messages.length === 0) return;
     const hasAssistantMessage = messages.some((m) => m.role === ChatRole.ASSISTANT);
@@ -521,6 +534,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     lastLogLine,
     sphinxInviteEnabled: sphinxReady,
     onTitleSave: handleTitleSave,
+    featureStatus: feature?.status ?? null,
+    onStatusSave: handleStatusSave,
     stakworkProjectId: projectId,
     onRetry: handleRetry,
     isRetrying,

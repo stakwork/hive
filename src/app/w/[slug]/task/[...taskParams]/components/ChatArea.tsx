@@ -3,6 +3,7 @@
 import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StatusPopover } from "@/components/ui/status-popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -10,6 +11,7 @@ import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { FeatureStatus } from "@prisma/client";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -51,6 +53,8 @@ interface ChatAreaProps {
   isRetrying?: boolean;
   isPlanChat?: boolean;
   onTitleSave?: (newTitle: string) => Promise<void>;
+  featureStatus?: FeatureStatus | null;
+  onStatusSave?: (status: FeatureStatus) => Promise<void>;
   stakworkProjectId?: string | null;
   isPrototypeTask?: boolean;
   isSavingPlan?: boolean;
@@ -91,6 +95,8 @@ export function ChatArea({
   isRetrying = false,
   isPlanChat = false,
   onTitleSave,
+  featureStatus = null,
+  onStatusSave,
   stakworkProjectId,
   isPrototypeTask = false,
   isSavingPlan = false,
@@ -203,34 +209,28 @@ export function ChatArea({
       {/* Task Title Header */}
       {taskTitle && (
         <div className={cn("px-4 py-3 border-b bg-muted/20", isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b")}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {/* Back Button */}
-              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
+          {isPlanChat ? (
+            /* Two-row layout for plan chat */
+            <div className="flex flex-col gap-0">
+              {/* Row 1: Back button + title + status badge */}
+              <div className="flex items-center gap-2">
+                {/* Back Button */}
+                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
 
-              {/* Task Title with inline breadcrumbs - with animation only when title changes */}
-              {!isEditingTitle ? (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={taskTitle}
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
-                    data-testid="task-title"
-                  >
-                    {/* Inline Breadcrumbs - only show in task chat context */}
-                    {workspaceSlug && taskId && (
-                      <TaskBreadcrumbs
-                        featureId={featureId ?? null}
-                        featureTitle={featureTitle ?? null}
-                        workspaceSlug={workspaceSlug}
-                      />
-                    )}
-                    <div className="flex items-center gap-2 w-full min-w-0">
+                {/* Task Title */}
+                {!isEditingTitle ? (
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={taskTitle}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="text-lg font-semibold text-foreground flex items-center gap-2 min-w-0 group"
+                      data-testid="task-title"
+                    >
                       <span
                         className="truncate cursor-pointer"
                         title={taskTitle}
@@ -244,103 +244,257 @@ export function ChatArea({
                           onClick={handleTitleEdit}
                         />
                       )}
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              ) : (
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onBlur={handleTitleSaveInternal}
-                  onKeyDown={handleTitleKeyDown}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                  data-testid="task-title-input"
-                />
+                    </motion.div>
+                  </AnimatePresence>
+                ) : (
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={handleTitleSaveInternal}
+                    onKeyDown={handleTitleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    data-testid="task-title-input"
+                  />
+                )}
+
+                {/* Feature Status Badge */}
+                {featureStatus && onStatusSave && (
+                  <div className="flex-shrink-0" data-testid="feature-status-popover">
+                    <StatusPopover
+                      statusType="feature"
+                      currentStatus={featureStatus}
+                      onUpdate={onStatusSave}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Row 2: Action buttons */}
+              <div className="flex items-center gap-2 mt-1.5 justify-end">
+                {/* Presence Avatars */}
+                {collaborators && collaborators.length > 0 && (
+                  <div className="flex-shrink-0 self-center">
+                    <CollaboratorAvatars collaborators={collaborators} />
+                  </div>
+                )}
+
+                {/* Invite Button */}
+                {sphinxInviteEnabled && workspaceSlug && featureId && (
+                  <InvitePopover
+                    open={inviteOpen}
+                    onOpenChange={setInviteOpen}
+                    workspaceSlug={workspaceSlug}
+                    featureId={featureId}
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setInviteOpen(true)}
+                      className="flex-shrink-0 gap-2"
+                      data-testid="invite-button"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Invite
+                    </Button>
+                  </InvitePopover>
+                )}
+
+                {/* Preview Toggle Button (Mobile Only) */}
+                {showPreviewToggle && onTogglePreview && (
+                  <Button
+                    variant={showPreview ? "default" : "ghost"}
+                    size="sm"
+                    onClick={onTogglePreview}
+                    className="flex-shrink-0"
+                    title={showPreview ? "Show Chat" : "Show Preview"}
+                  >
+                    <PreviewToggleIcon className="w-4 h-4" />
+                  </Button>
+                )}
+
+                {/* Pod Indicator with Release */}
+                {podId && onReleasePod && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowReleaseConfirm(true)}
+                          disabled={isReleasingPod}
+                          className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
+                        >
+                          <span className="relative w-4 h-4">
+                            <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
+                            <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
+                          </span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                {/* Save and Plan (Prototype tasks only) */}
+                {isPrototypeTask && onSaveAndPlan && (
+                  <Button
+                    size="sm"
+                    onClick={onSaveAndPlan}
+                    disabled={isSavingPlan}
+                    className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
+                  >
+                    {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                    {isSavingPlan ? "Saving…" : "Save"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Single-row layout for task chat (unchanged) */
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Back Button */}
+                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+
+                {/* Task Title with inline breadcrumbs - with animation only when title changes */}
+                {!isEditingTitle ? (
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={taskTitle}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1 min-w-0 group"
+                      data-testid="task-title"
+                    >
+                      {/* Inline Breadcrumbs - only show in task chat context */}
+                      {workspaceSlug && taskId && (
+                        <TaskBreadcrumbs
+                          featureId={featureId ?? null}
+                          featureTitle={featureTitle ?? null}
+                          workspaceSlug={workspaceSlug}
+                        />
+                      )}
+                      <div className="flex items-center gap-2 w-full min-w-0">
+                        <span
+                          className="truncate cursor-pointer"
+                          title={taskTitle}
+                          onClick={handleTitleEdit}
+                        >
+                          {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                        </span>
+                        {featureId && onTitleSave && (
+                          <Pencil
+                            className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                            onClick={handleTitleEdit}
+                          />
+                        )}
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                ) : (
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={handleTitleSaveInternal}
+                    onKeyDown={handleTitleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-lg font-semibold text-foreground flex-1 bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    data-testid="task-title-input"
+                  />
+                )}
+              </div>
+
+              {/* Presence Avatars */}
+              {collaborators && collaborators.length > 0 && (
+                <div className="flex-shrink-0 self-center">
+                  <CollaboratorAvatars collaborators={collaborators} />
+                </div>
+              )}
+
+              {/* Invite Button (Plan Chat Only) */}
+              {sphinxInviteEnabled && workspaceSlug && featureId && (
+                <InvitePopover
+                  open={inviteOpen}
+                  onOpenChange={setInviteOpen}
+                  workspaceSlug={workspaceSlug}
+                  featureId={featureId}
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setInviteOpen(true)}
+                    className="flex-shrink-0 gap-2"
+                    data-testid="invite-button"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Invite
+                  </Button>
+                </InvitePopover>
+              )}
+
+              {/* Preview Toggle Button (Mobile Only) */}
+              {showPreviewToggle && onTogglePreview && (
+                <Button
+                  variant={showPreview ? "default" : "ghost"}
+                  size="sm"
+                  onClick={onTogglePreview}
+                  className="flex-shrink-0"
+                  title={showPreview ? "Show Chat" : "Show Preview"}
+                >
+                  <PreviewToggleIcon className="w-4 h-4" />
+                </Button>
+              )}
+
+              {/* Pod Indicator with Release */}
+              {podId && onReleasePod && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setShowReleaseConfirm(true)}
+                        disabled={isReleasingPod}
+                        className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
+                      >
+                        <span className="relative w-4 h-4">
+                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
+                          <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              {/* Save and Plan (Prototype tasks only) */}
+              {isPrototypeTask && onSaveAndPlan && (
+                <Button
+                  size="sm"
+                  onClick={onSaveAndPlan}
+                  disabled={isSavingPlan}
+                  className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
+                >
+                  {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                  {isSavingPlan ? "Saving…" : "Save"}
+                </Button>
               )}
             </div>
-
-            {/* Presence Avatars */}
-            {collaborators && collaborators.length > 0 && (
-              <div className="flex-shrink-0 self-center">
-                <CollaboratorAvatars collaborators={collaborators} />
-              </div>
-            )}
-
-            {/* Invite Button (Plan Chat Only) */}
-            {sphinxInviteEnabled && workspaceSlug && featureId && (
-              <InvitePopover
-                open={inviteOpen}
-                onOpenChange={setInviteOpen}
-                workspaceSlug={workspaceSlug}
-                featureId={featureId}
-              >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setInviteOpen(true)}
-                  className="flex-shrink-0 gap-2"
-                  data-testid="invite-button"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  Invite
-                </Button>
-              </InvitePopover>
-            )}
-
-            {/* Preview Toggle Button (Mobile Only) */}
-            {showPreviewToggle && onTogglePreview && (
-              <Button
-                variant={showPreview ? "default" : "ghost"}
-                size="sm"
-                onClick={onTogglePreview}
-                className="flex-shrink-0"
-                title={showPreview ? "Show Chat" : "Show Preview"}
-              >
-                <PreviewToggleIcon className="w-4 h-4" />
-              </Button>
-            )}
-
-            {/* Pod Indicator with Release */}
-            {podId && onReleasePod && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowReleaseConfirm(true)}
-                      disabled={isReleasingPod}
-                      className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
-                    >
-                      <span className="relative w-4 h-4">
-                        <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
-                        <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
-                      </span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
-            {/* Save and Plan (Prototype tasks only) */}
-            {isPrototypeTask && onSaveAndPlan && (
-              <Button
-                size="sm"
-                onClick={onSaveAndPlan}
-                disabled={isSavingPlan}
-                className="flex-shrink-0 gap-1.5 text-white bg-violet-600 hover:bg-violet-700 shadow-sm"
-              >
-                {isSavingPlan ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
-                {isSavingPlan ? "Saving…" : "Save"}
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       )}
 
