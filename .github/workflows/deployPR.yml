@@ -339,6 +339,13 @@ jobs:
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
+          # Always mark 20260401174012 as applied before every deploy attempt.
+          # This migration references swarm_payments which no longer exists (renamed to
+          # fiat_payments). It is safe to skip because its DDL was already applied on the
+          # base branch before the rename migration ran.
+          echo "Pre-resolving migration 20260401174012 as applied..."
+          npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
+
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
           for attempt in 1 2 3 4 5; do
             if npx prisma migrate deploy; then
@@ -350,6 +357,8 @@ jobs:
               exit 1
             fi
             echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+            # Re-resolve before each retry in case the previous attempt re-failed it
+            npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
             sleep 15
           done
 

@@ -7,7 +7,7 @@ import {
   createTestMembership,
   createTestSwarm,
 } from "@/__tests__/support/factories";
-import { createTestSwarmPayment } from "@/__tests__/support/factories/swarm-payment.factory";
+import { createTestFiatPayment } from "@/__tests__/support/factories/fiat-payment.factory";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -117,7 +117,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
 
   afterEach(async () => {
     if (createdEntityIds.paymentIds.length) {
-      await db.swarmPayment.deleteMany({ where: { id: { in: createdEntityIds.paymentIds } } });
+      await db.fiatPayment.deleteMany({ where: { id: { in: createdEntityIds.paymentIds } } });
       createdEntityIds.paymentIds.length = 0;
     }
     if (createdEntityIds.swarmIds.length) {
@@ -188,7 +188,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     expect(data.error).toMatch(/swarm not configured/i);
   });
 
-  test("returns 400 when no PAID swarmPayment exists", async () => {
+  test("returns 400 when no PAID fiatPayment exists", async () => {
     getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
     const swarm = await createTestSwarm({
@@ -217,7 +217,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     });
     createdEntityIds.swarmIds.push(swarm.id);
 
-    const payment = await createTestSwarmPayment({
+    const payment = await createTestFiatPayment({
       workspaceId: workspace.id,
       status: "PAID",
       password: "test-password",
@@ -240,7 +240,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
 
   describe("200 success for all four cmd types", () => {
     let swarm: Awaited<ReturnType<typeof createTestSwarm>>;
-    let payment: Awaited<ReturnType<typeof createTestSwarmPayment>>;
+    let payment: Awaited<ReturnType<typeof createTestFiatPayment>>;
 
     beforeEach(async () => {
       swarm = await createTestSwarm({
@@ -249,7 +249,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       });
       createdEntityIds.swarmIds.push(swarm.id);
 
-      payment = await createTestSwarmPayment({
+      payment = await createTestFiatPayment({
         workspaceId: workspace.id,
         status: "PAID",
         password: "test-password-123",
@@ -358,7 +358,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     });
     createdEntityIds.swarmIds.push(swarm.id);
 
-    const payment = await createTestSwarmPayment({
+    const payment = await createTestFiatPayment({
       workspaceId: workspace.id,
       status: "PAID",
       password: "test-password",

@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 /**
  * GET /api/graphmindset/payment
  *
- * Returns the authenticated user's most recent PAID SwarmPayment
+ * Returns the authenticated user's most recent PAID FiatPayment
  * that hasn't been linked to a workspace yet.
  */
 export async function GET() {
@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const payment = await db.swarmPayment.findFirst({
+  const payment = await db.fiatPayment.findFirst({
     where: {
       userId: session.user.id,
       status: 'PAID',
