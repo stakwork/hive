@@ -1,17 +1,17 @@
 import { db } from '@/lib/db';
-import type { SwarmPayment, SwarmPaymentStatus } from '@prisma/client';
+import type { FiatPayment, FiatPaymentStatus } from '@prisma/client';
 import { EncryptionService } from '@/lib/encryption';
 import { generateSecurePassword } from '@/lib/utils/password';
 
 const encryptionService = EncryptionService.getInstance();
 
-export interface CreateTestSwarmPaymentOptions {
+export interface CreateTestFiatPaymentOptions {
   workspaceId?: string;
   workspaceName?: string;
   workspaceSlug?: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string | null;
-  status?: SwarmPaymentStatus;
+  status?: FiatPaymentStatus;
   amount?: number | null;
   currency?: string | null;
   failureCode?: string | null;
@@ -22,13 +22,13 @@ export interface CreateTestSwarmPaymentOptions {
   password?: string | null;
 }
 
-export async function createTestSwarmPayment(
-  options: CreateTestSwarmPaymentOptions,
-): Promise<SwarmPayment> {
+export async function createTestFiatPayment(
+  options: CreateTestFiatPaymentOptions,
+): Promise<FiatPayment> {
   const timestamp = Date.now();
   const uniqueId = Math.random().toString(36).substring(7);
 
-  const createData: Parameters<typeof db.swarmPayment.create>[0]['data'] = {
+  const createData: Parameters<typeof db.fiatPayment.create>[0]['data'] = {
     workspaceId: options.workspaceId ?? null,
     workspaceName: options.workspaceName ?? null,
     workspaceSlug: options.workspaceSlug ?? null,
@@ -51,9 +51,9 @@ export async function createTestSwarmPayment(
 
   if (plaintextPassword && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.password = JSON.stringify(
-      encryptionService.encryptField('swarmPaymentPassword', plaintextPassword)
+      encryptionService.encryptField('fiatPaymentPassword', plaintextPassword)
     );
   }
 
-  return db.swarmPayment.create({ data: createData });
+  return db.fiatPayment.create({ data: createData });
 }

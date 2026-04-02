@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
   const { name } = body;
   const slug = name.toLowerCase().replace(/\s+/g, '-');
 
-  // Fetch the user's PAID, unlinked SwarmPayment to retrieve the stored password
-  const paymentRecord = await db.swarmPayment.findFirst({
+  // Fetch the user's PAID, unlinked FiatPayment to retrieve the stored password
+  const paymentRecord = await db.fiatPayment.findFirst({
     where: { userId: session.user.id, status: 'PAID', workspaceId: null },
     orderBy: { createdAt: 'desc' },
   });
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No valid payment found' }, { status: 400 });
   }
 
-  const password = EncryptionService.getInstance().decryptField('swarmPaymentPassword', paymentRecord.password);
+  const password = EncryptionService.getInstance().decryptField('fiatPaymentPassword', paymentRecord.password);
 
   try {
     // Step 1: Create Stakwork customer
