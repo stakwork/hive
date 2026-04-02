@@ -119,18 +119,18 @@ export async function POST(request: NextRequest) {
       workspaceKind,
     });
 
-    // For graph_mindset workspaces: link the user's pending SwarmPayment and save swarm details
+    // For graph_mindset workspaces: link the user's pending FiatPayment and save swarm details
     if (workspaceKind === "graph_mindset") {
       const { swarmId, graphUrl } = body;
 
       // Link the most recent unclaimed PAID payment to this workspace
-      const payment = await db.swarmPayment.findFirst({
+      const payment = await db.fiatPayment.findFirst({
         where: { userId: ownerId, status: "PAID", workspaceId: null },
         orderBy: { createdAt: "desc" },
       });
       if (payment) {
         await db.$transaction([
-          db.swarmPayment.update({
+          db.fiatPayment.update({
             where: { id: payment.id },
             data: { workspaceId: workspace.id },
           }),
