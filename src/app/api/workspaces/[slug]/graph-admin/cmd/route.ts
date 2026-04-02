@@ -71,8 +71,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Swarm not configured" }, { status: 404 });
   }
 
-  // 5. Source password from swarmPayment
-  const payment = await db.swarmPayment.findFirst({
+  // 5. Source password from fiatPayment
+  const payment = await db.fiatPayment.findFirst({
     where: { workspaceId, status: "PAID" },
     orderBy: { createdAt: "desc" },
   });
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const encryptionService = EncryptionService.getInstance();
   let password: string;
   try {
-    password = encryptionService.decryptField("swarmPaymentPassword", payment.password);
+    password = encryptionService.decryptField("fiatPaymentPassword", payment.password);
   } catch {
     return NextResponse.json({ error: "Failed to decrypt payment password" }, { status: 500 });
   }
