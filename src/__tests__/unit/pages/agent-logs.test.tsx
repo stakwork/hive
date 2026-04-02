@@ -211,6 +211,62 @@ describe("AgentLogsPage — debounce pagination guard", () => {
   });
 });
 
+describe("AgentLogsPage — goToPage stable reference", () => {
+  test("goToPage does not snap back to page 1 when called sequentially", async () => {
+    // Simulate router.replace updating searchParams (the loop scenario):
+    // After goToPage(2) is called, searchParams.toString() returns "page=2".
+    // The stable-ref fix means goToPage is NOT recreated, so the debounce
+    // effect does NOT re-fire and page does NOT reset to 1.
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    const user = userEvent.setup();
+
+    // Mock fetch to return 20 items (hasMore = true) so pagination buttons appear
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: Array.from({ length: 20 }, (_, i) => ({
+          id: `log-${i}`,
+          agent: "test-agent",
+          blobUrl: "http://example.com/blob",
+          stakworkRunId: null,
+          taskId: null,
+          featureId: null,
+          featureTitle: null,
+          createdAt: new Date().toISOString(),
+        })),
+        hasMore: true,
+      }),
+    });
+
+    render(<AgentLogsPage />);
+
+    // Wait for logs to load and Next button to appear
+    await waitFor(() => expect(screen.getByText("Next")).toBeInTheDocument());
+
+    // Simulate searchParams updating after goToPage(2) — as happens in the browser
+    mockSearchParamsToString.mockReturnValue("page=2");
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "page" ? "2" : null
+    );
+
+    // Click Next
+    await user.click(screen.getByText("Next"));
+
+    // router.replace should have been called with page=2
+    const calls = mockReplace.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((url) => url.includes("page=2"))).toBe(true);
+
+    // Critically: replace should NOT have been called with bare pathname (page reset)
+    // after the searchParams update
+    const resetCalls = calls.filter(
+      (url) => url === "/w/test-workspace/agent-logs"
+    );
+    expect(resetCalls).toHaveLength(0);
+  });
+});
+
 describe("AgentLogsPage — URL param sync", () => {
   test("initialises dialogOpen=false and selectedLogId=null when no logId param", async () => {
     render(<AgentLogsPage />);
