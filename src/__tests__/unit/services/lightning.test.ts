@@ -50,10 +50,13 @@ describe('createLndInvoice', () => {
     vi.clearAllMocks();
   });
 
-  it('resolves with payment_hash and payment_request on success', async () => {
+  it('resolves with payment_hash (hex) and payment_request on success', async () => {
+    const hexHash = 'abc123ff';
+    const r_hash = Buffer.from(hexHash, 'hex').toString('base64');
+
     const mockReq = makeMockRequest();
     const mockRes = makeMockResponse(200, JSON.stringify({
-      payment_hash: 'abc123',
+      r_hash,
       payment_request: 'lnbc...',
     }));
 
@@ -66,7 +69,7 @@ describe('createLndInvoice', () => {
     const { createLndInvoice } = await import('@/services/lightning');
     const result = await createLndInvoice(1000);
 
-    expect(result).toEqual({ payment_hash: 'abc123', payment_request: 'lnbc...' });
+    expect(result).toEqual({ payment_hash: hexHash, payment_request: 'lnbc...' });
     expect(mockReq.write).toHaveBeenCalledWith(JSON.stringify({ value: 1000 }));
     expect(mockReq.end).toHaveBeenCalled();
   });
@@ -80,7 +83,7 @@ describe('createLndInvoice', () => {
 
     const mockReq = makeMockRequest();
     const mockRes = makeMockResponse(200, JSON.stringify({
-      payment_hash: 'hash1',
+      r_hash: Buffer.from('hash1').toString('base64'),
       payment_request: 'lnbc1',
     }));
 
@@ -107,7 +110,7 @@ describe('createLndInvoice', () => {
 
     const mockReq = makeMockRequest();
     const mockRes = makeMockResponse(200, JSON.stringify({
-      payment_hash: 'hash2',
+      r_hash: Buffer.from('hash2').toString('base64'),
       payment_request: 'lnbc2',
     }));
 
@@ -139,7 +142,7 @@ describe('createLndInvoice', () => {
   it('sends Grpc-Metadata-Macaroon header with macaroon value', async () => {
     const mockReq = makeMockRequest();
     const mockRes = makeMockResponse(200, JSON.stringify({
-      payment_hash: 'h',
+      r_hash: Buffer.from('deadbeef', 'hex').toString('base64'),
       payment_request: 'p',
     }));
 
