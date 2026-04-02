@@ -14,6 +14,7 @@ interface MockStakworkCustomer {
   id: string;
   name: string;
   token: string;
+  workflow_id: number;
   createdAt: Date;
 }
 
@@ -29,6 +30,7 @@ class MockStakworkStateManager {
   private secrets: Map<string, MockStakworkSecret> = new Map();
   private projectIdCounter = 10000;
   private customerIdCounter = 1;
+  private workflowIdCounter = 1000;
   private webhookCallbacks: Map<number, string> = new Map();
 
   createProject(input: {
@@ -106,7 +108,7 @@ class MockStakworkStateManager {
   }
 
   createCustomer(name: string): {
-    customer: { id: string; name: string; token: string };
+    customer: { id: string; name: string; token: string; workflow_id: number };
   } {
     const existing = this.customers.get(name);
     if (existing) {
@@ -115,6 +117,7 @@ class MockStakworkStateManager {
           id: existing.id,
           name: existing.name,
           token: existing.token,
+          workflow_id: existing.workflow_id,
         },
       };
     }
@@ -123,6 +126,7 @@ class MockStakworkStateManager {
       id: `customer_${this.customerIdCounter++}`,
       name,
       token: `mock_token_${Math.random().toString(36).substring(7)}`,
+      workflow_id: this.workflowIdCounter++,
       createdAt: new Date(),
     };
 
@@ -133,6 +137,7 @@ class MockStakworkStateManager {
         id: customer.id,
         name: customer.name,
         token: customer.token,
+        workflow_id: customer.workflow_id,
       },
     };
   }
@@ -170,6 +175,7 @@ class MockStakworkStateManager {
     this.webhookCallbacks.clear();
     this.projectIdCounter = 10000;
     this.customerIdCounter = 1;
+    this.workflowIdCounter = 1000;
   }
 }
 
