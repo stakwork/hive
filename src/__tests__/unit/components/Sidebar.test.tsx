@@ -1151,7 +1151,7 @@ describe('Sidebar - GraphMindset Admin button', () => {
     expect(buttons.length).toBeGreaterThan(0);
   });
 
-  it('generates correct href for GraphMindset Admin button', () => {
+  it('generates correct internal href for GraphMindset Admin button', () => {
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
       workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
       slug: 'my-graph',
@@ -1164,9 +1164,7 @@ describe('Sidebar - GraphMindset Admin button', () => {
     render(<Sidebar user={mockUser} />);
 
     const buttons = screen.getAllByTestId('graphmindset-admin-button');
-    expect(buttons[0]).toHaveAttribute('href', 'https://my-graph.sphinx.chat:8800');
-    expect(buttons[0]).toHaveAttribute('target', '_blank');
-    expect(buttons[0]).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(buttons[0]).toHaveAttribute('href', '/w/my-graph/graph-admin');
   });
 
   it('does not render GraphMindset Admin button when workspaceKind is undefined', () => {
