@@ -9,9 +9,7 @@ export async function lookupLndInvoice(
   const macaroon = optionalEnvVars.LIGHTNING_MACAROON;
   const tlsCertB64 = optionalEnvVars.LIGHTNING_TLS_CERT;
 
-  // LND REST requires the r_hash as base64url in the URL path
-  const r_hash_b64url = Buffer.from(paymentHashHex, 'hex').toString('base64url');
-  const url = new URL(`${baseUrl}/v1/invoice/${r_hash_b64url}`);
+  const url = new URL(`${baseUrl}/v1/invoice/${paymentHashHex}`);
 
   const agentOptions = tlsCertB64
     ? { ca: Buffer.from(tlsCertB64, 'base64').toString('utf-8') }
