@@ -58,11 +58,12 @@ export async function POST(req: NextRequest) {
     const customerResponse = await stakworkService().createCustomer(name);
     const customerData =
       customerResponse && typeof customerResponse === 'object' && 'data' in customerResponse
-        ? (customerResponse as { data?: { id?: number | string; token?: string } }).data
+        ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
         : undefined;
 
     const customerId = customerData?.id != null ? String(customerData.id) : undefined;
     const token = customerData?.token;
+    const workflowId = customerData?.workflow_id ?? null;
 
     // Step 2: Create swarm via super admin
     const swarmAdminUrl = optionalEnvVars.SWARM_SUPER_ADMIN_URL;
@@ -76,12 +77,13 @@ export async function POST(req: NextRequest) {
       vanity_address: `${slug}.sphinx.chat`,
       password,
       workspace_type: 'graph_mindset',
-      ...(token || pubkey || customerId
+      ...(token || pubkey || customerId || workflowId
         ? {
             env: {
               ...(token ? { STAKWORK_ADD_NODE_TOKEN: token, STAKWORK_RADAR_REQUEST_TOKEN: token } : {}),
               ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
               ...(customerId ? { STAKWORK_CUSTOMER_ID: customerId } : {}),
+              ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
             },
           }
         : {}),
