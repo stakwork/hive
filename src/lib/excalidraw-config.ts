@@ -1,4 +1,4 @@
-import type { AppState } from "@excalidraw/excalidraw/types";
+import type { AppState, NormalizedZoomValue } from "@excalidraw/excalidraw/types";
 
 /**
  * Default Excalidraw configuration for whiteboards
@@ -23,12 +23,16 @@ export const EXCALIDRAW_DEFAULTS: Partial<AppState> = {
 export function getInitialAppState(
   savedAppState: Partial<AppState> = {}
 ): Partial<AppState> {
+  // Strip zoom so a persisted/internal zoom value never bleeds through
+  const { zoom: _zoom, ...safeAppState } = savedAppState;
   return {
     ...EXCALIDRAW_DEFAULTS,
-    ...savedAppState,
+    ...safeAppState,
     // Always apply our defaults for new element creation
     currentItemFontFamily: EXCALIDRAW_DEFAULTS.currentItemFontFamily,
     currentItemRoughness: EXCALIDRAW_DEFAULTS.currentItemRoughness,
     currentItemStrokeStyle: EXCALIDRAW_DEFAULTS.currentItemStrokeStyle,
+    // Always start at 100% zoom — never inherit a persisted/internal zoom value
+    zoom: { value: 1 as NormalizedZoomValue },
   };
 }
