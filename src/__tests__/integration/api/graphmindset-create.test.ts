@@ -179,7 +179,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
       expect(response.status).toBe(400);
     });
 
-    test('forwards graphmindset_content_workflow_id to swarm admin API when workflow_id is present', async () => {
+    test('forwards GRAPHMINDSET_STAKWORK_WORKFLOW_ID to swarm admin API when workflow_id is present', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
@@ -199,10 +199,10 @@ describe('GraphMindset Create Route Integration Tests', () => {
 
       const [, fetchOptions] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchOptions.body);
-      expect(body.env.graphmindset_content_workflow_id).toBe('99');
+      expect(body.env.GRAPHMINDSET_STAKWORK_WORKFLOW_ID).toBe('99');
     });
 
-    test('omits graphmindset_content_workflow_id from swarm env when workflow_id is null', async () => {
+    test('omits GRAPHMINDSET_STAKWORK_WORKFLOW_ID from swarm env when workflow_id is null', async () => {
       const { stakworkService } = await import('@/lib/service-factory');
       vi.mocked(stakworkService).mockReturnValue({
         createCustomer: vi.fn().mockResolvedValue({
@@ -229,7 +229,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
 
       const [, fetchOptions] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchOptions.body);
-      expect(body.env).not.toHaveProperty('graphmindset_content_workflow_id');
+      expect(body.env).not.toHaveProperty('GRAPHMINDSET_STAKWORK_WORKFLOW_ID');
     });
   });
 });
