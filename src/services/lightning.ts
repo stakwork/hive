@@ -39,7 +39,9 @@ export async function createLndInvoice(
           if (!res.statusCode || res.statusCode >= 300) {
             return reject(new Error(`LND invoice creation failed: ${res.statusCode}`));
           }
-          resolve(JSON.parse(data));
+          const parsed = JSON.parse(data);
+          const payment_hash = Buffer.from(parsed.r_hash, 'base64').toString('hex');
+          resolve({ payment_hash, payment_request: parsed.payment_request });
         });
       },
     );
