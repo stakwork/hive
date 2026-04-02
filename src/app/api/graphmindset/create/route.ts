@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
               ...(token ? { STAKWORK_ADD_NODE_TOKEN: token, STAKWORK_RADAR_REQUEST_TOKEN: token } : {}),
               ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
               ...(customerId ? { STAKWORK_CUSTOMER_ID: customerId } : {}),
-              ...(workflowId ? { graphmindset_content_workflow_id: String(workflowId) } : {}),
+              ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
             },
           }
         : {}),
