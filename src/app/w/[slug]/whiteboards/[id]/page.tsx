@@ -8,7 +8,6 @@ import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
-import { useMermaidPaste } from "@/hooks/useMermaidPaste";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState } from "@/lib/excalidraw-config";
@@ -282,12 +281,6 @@ export default function WhiteboardDetailPage() {
     [broadcastElements, saveToDatabase]
   );
 
-  useMermaidPaste({
-    excalidrawAPI,
-    programmaticUpdateCountRef,
-    saveToDatabase,
-    isEnabled: !savePausedRef.current,
-  });
 
   // Save on user interaction (pointerup) — never fires from programmatic updateScene
   const handlePointerUp = useCallback(() => {
