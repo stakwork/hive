@@ -33,6 +33,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/admin", strategy: "prefix", access: "superadmin" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
   { path: "/api/workspaces/slug-availability", strategy: "exact", access: "public" },
+  { path: "/api/graphmindset/slug-availability", strategy: "exact", access: "public" },
   { path: "/api/mock-agent-log", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
   { path: "/api/github/fork/config", strategy: "exact", access: "public" },

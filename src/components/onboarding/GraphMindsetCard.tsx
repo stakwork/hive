@@ -33,7 +33,7 @@ export function GraphMindsetCard() {
     setIsValidating(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(value)}`);
+        const res = await fetch(`/api/graphmindset/slug-availability?slug=${encodeURIComponent(value)}`);
         const json = await res.json();
         if (json?.data?.isAvailable) {
           setIsAvailable(true);
