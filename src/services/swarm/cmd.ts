@@ -10,7 +10,11 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "GetConfig" } }
   | { type: "Swarm"; data: { cmd: "UpdateNode"; content: Record<string, unknown> } }
   | { type: "Swarm"; data: { cmd: "ListVersions"; content: Record<string, unknown> } }
-  | { type: "Swarm"; data: { cmd: "GetAllImageActualVersion" } };
+  | { type: "Swarm"; data: { cmd: "GetAllImageActualVersion" } }
+  | { type: "Swarm"; data: { cmd: "GetBoltwallAccessibility" } }
+  | { type: "Swarm"; data: { cmd: "UpdateBoltwallAccessibility"; content: boolean } }
+  | { type: "Swarm"; data: { cmd: "ListPaidEndpoint" } }
+  | { type: "Swarm"; data: { cmd: "UpdatePaidEndpoint"; content: { id: number; status: boolean } } };
 
 export interface SwarmCmdResponse {
   ok: boolean;
