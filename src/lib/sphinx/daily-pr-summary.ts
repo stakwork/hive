@@ -28,7 +28,7 @@ export async function getMergedPRsForRepo(
 
     // Use GitHub Search API to find PRs merged in the last 24 hours
     const searchQuery = `repo:${repoFullName} is:pr is:merged merged:>=${since}`;
-    const url = `https://api.github.com/search/issues?q=${encodeURIComponent(searchQuery)}`;
+    const url = `https://api.github.com/search/issues?q=${encodeURIComponent(searchQuery)}&per_page=100`;
 
     logger.debug("[PR SUMMARY] Fetching merged PRs from GitHub", "SPHINX_PR_SUMMARY", { repoFullName, since });
 
