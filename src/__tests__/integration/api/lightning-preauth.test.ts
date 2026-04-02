@@ -44,6 +44,11 @@ describe('Lightning Pre-auth Invoice API Integration Tests', () => {
       expect(payment!.workspaceName).toBe('My Graph');
       expect(payment!.workspaceSlug).toBe('my-graph');
       expect(payment!.status).toBe('UNPAID');
+
+      const pendingRecord = await db.lightningPayment.findFirst({
+        where: { paymentHash: { startsWith: 'pending_' } },
+      });
+      expect(pendingRecord).toBeNull();
     });
 
     test('returns 400 when workspaceName is missing', async () => {
@@ -78,6 +83,13 @@ describe('Lightning Pre-auth Invoice API Integration Tests', () => {
       });
       const response = await POST(req);
       expect(response.status).toBe(500);
+
+      const placeholder = await db.lightningPayment.findFirst({
+        where: { paymentHash: { startsWith: 'pending_' } },
+      });
+      expect(placeholder).not.toBeNull();
+      expect(placeholder!.invoice).toBe('');
+      expect(placeholder!.status).toBe('UNPAID');
     });
   });
 });
