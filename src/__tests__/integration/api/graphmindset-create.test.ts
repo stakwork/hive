@@ -184,7 +184,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
 
-      const payment = await createTestSwarmPayment({
+      const payment = await createTestFiatPayment({
         userId: testUser.id,
         status: 'PAID',
         workspaceId: undefined,
@@ -214,7 +214,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
 
-      const payment = await createTestSwarmPayment({
+      const payment = await createTestFiatPayment({
         userId: testUser.id,
         status: 'PAID',
         workspaceId: undefined,
