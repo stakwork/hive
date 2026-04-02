@@ -451,9 +451,10 @@ export default function WhiteboardDetailPage() {
   useEffect(() => {
     if (whiteboard && excalidrawAPI && programmaticUpdateCountRef.current === 0) {
       programmaticUpdateCountRef.current++;
+      const { zoom: _zoom, ...safeAppState } = whiteboard.appState as Record<string, unknown>;
       excalidrawAPI.updateScene({
         elements: whiteboard.elements as readonly ExcalidrawElement[],
-        appState: whiteboard.appState as unknown as AppState,
+        appState: safeAppState as unknown as AppState,
       });
       setTimeout(() => {
         excalidrawAPI.scrollToContent(undefined, {
@@ -659,11 +660,8 @@ export default function WhiteboardDetailPage() {
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
             initialData={(() => {
-              const hasElements = (whiteboard.elements as unknown[]).length > 0;
-              const initialAppState = {
-                ...getInitialAppState(whiteboard.appState as Partial<AppState>),
-                ...(!hasElements ? { zoom: { value: 1 } } : {}),
-              };
+              // getInitialAppState always sets zoom: { value: 1 } — no hasElements guard needed
+              const initialAppState = getInitialAppState(whiteboard.appState as Partial<AppState>);
               return {
                 elements: whiteboard.elements as readonly ExcalidrawElement[],
                 appState: initialAppState as Partial<AppState>,
