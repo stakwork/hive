@@ -350,16 +350,14 @@ function SidebarContent({
             variant="ghost"
             className="w-full justify-start"
           >
-            <a
-              href={`https://${workspaceSlug}.sphinx.chat:8800`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href={`/w/${workspaceSlug}/graph-admin`}
               onClick={() => setIsOpen(false)}
               data-testid="graphmindset-admin-button"
             >
               <Brain className="w-4 h-4 mr-2" />
               GraphMindset Admin
-            </a>
+            </Link>
           </Button>
         </div>
       )}
