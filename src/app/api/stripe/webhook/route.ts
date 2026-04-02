@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const stripePaymentIntentId =
       typeof stripeSession.payment_intent === 'string' ? stripeSession.payment_intent : null;
 
-    await db.swarmPayment.update({
+    await db.fiatPayment.update({
       where: { stripeSessionId: stripeSession.id },
       data: { status: 'PAID', stripePaymentIntentId },
     });
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.expired') {
     const stripeSession = event.data.object as Stripe.Checkout.Session;
-    await db.swarmPayment.updateMany({
+    await db.fiatPayment.updateMany({
       where: { stripeSessionId: stripeSession.id },
       data: { status: 'EXPIRED' },
     });
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       intent.last_payment_error?.decline_code ?? intent.last_payment_error?.code ?? null;
     const failureMessage = intent.last_payment_error?.message ?? null;
 
-    await db.swarmPayment.updateMany({
+    await db.fiatPayment.updateMany({
       where: { stripePaymentIntentId: intent.id },
       data: { status: 'FAILED', failureCode, failureMessage },
     });

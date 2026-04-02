@@ -30,7 +30,7 @@ describe('Stripe Checkout API Integration Tests', () => {
   });
 
   afterEach(async () => {
-    await db.swarmPayment.deleteMany({
+    await db.fiatPayment.deleteMany({
       where: {
         OR: [
           { stripeSessionId: 'cs_test_mock_session_id' },
@@ -72,7 +72,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(response.status).toBe(400);
     });
 
-    test('creates a PENDING SwarmPayment with session ID, workspaceName, and workspaceSlug on success', async () => {
+    test('creates a PENDING FiatPayment with session ID, workspaceName, and workspaceSlug on success', async () => {
       const req = createPostRequest('/api/stripe/checkout', {
         workspaceName: 'My Graph',
         workspaceSlug: 'my-graph',
@@ -80,7 +80,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       const response = await POST(req);
       expect(response.status).toBe(200);
 
-      const payment = await db.swarmPayment.findUnique({
+      const payment = await db.fiatPayment.findUnique({
         where: { stripeSessionId: 'cs_test_mock_session_id' },
       });
       expect(payment).not.toBeNull();
@@ -91,7 +91,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(payment!.password).toBeTruthy();
     });
 
-    test('creates a PENDING SwarmPayment with stripe_failed_<uuid> when Stripe is down, still returns 500', async () => {
+    test('creates a PENDING FiatPayment with stripe_failed_<uuid> when Stripe is down, still returns 500', async () => {
       vi.mocked(getStripeClient).mockReturnValueOnce({
         checkout: { sessions: { create: vi.fn().mockRejectedValue(new Error('Stripe down')) } },
       } as any);
@@ -103,7 +103,7 @@ describe('Stripe Checkout API Integration Tests', () => {
       const response = await POST(req);
       expect(response.status).toBe(500);
 
-      const payments = await db.swarmPayment.findMany({
+      const payments = await db.fiatPayment.findMany({
         where: { workspaceSlug: 'my-graph' },
       });
       expect(payments).toHaveLength(1);
