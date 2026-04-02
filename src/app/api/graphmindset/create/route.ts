@@ -116,6 +116,21 @@ export async function POST(req: NextRequest) {
         ? String(swarmData.data.id)
         : undefined;
 
+    // Step 3: Persist tokens to SwarmPayment (best-effort)
+    const xApiKey = swarmData.data?.x_api_key as string | undefined;
+    try {
+      const enc = EncryptionService.getInstance();
+      await db.swarmPayment.update({
+        where: { id: paymentRecord.id },
+        data: {
+          ...(xApiKey ? { xApiToken: JSON.stringify(enc.encryptField('swarmPaymentXApiToken', xApiKey)) } : {}),
+          ...(token ? { customerToken: JSON.stringify(enc.encryptField('swarmPaymentCustomerToken', token)) } : {}),
+        },
+      });
+    } catch (err) {
+      logger.error('Failed to store tokens on SwarmPayment', 'graphmindset-create', { err });
+    }
+
     return NextResponse.json({
       success: true,
       graph: {

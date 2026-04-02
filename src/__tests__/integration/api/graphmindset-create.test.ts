@@ -5,6 +5,7 @@ import { createTestUser } from '@/__tests__/support/factories';
 import { createTestSwarmPayment } from '@/__tests__/support/factories/swarm-payment.factory';
 import { createPostRequest } from '@/__tests__/support/helpers/request-builders';
 import { getServerSession } from 'next-auth/next';
+import { EncryptionService } from '@/lib/encryption';
 
 // Mock next-auth
 vi.mock('next-auth/next', () => ({
@@ -200,6 +201,72 @@ describe('GraphMindset Create Route Integration Tests', () => {
       const [, fetchOptions] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchOptions.body);
       expect(body.env.GRAPHMINDSET_STAKWORK_WORKFLOW_ID).toBe('99');
+    });
+
+    test('stores encrypted xApiToken and customerToken on SwarmPayment after successful create', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const payment = await createTestSwarmPayment({
+        userId: testUser.id,
+        status: 'PAID',
+        workspaceId: undefined,
+        password: 'TestPassword123!',
+      });
+      createdPaymentIds.push(payment.id);
+
+      // Mock swarm admin to return x_api_key
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, id: 123, data: { x_api_key: 'swarm-x-api-key-abc' } }),
+        text: async () => '',
+      });
+
+      const req = createPostRequest('/api/graphmindset/create', { name: 'my-graph' });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Fetch the updated SwarmPayment from the DB
+      const updated = await db.swarmPayment.findUnique({ where: { id: payment.id } });
+      expect(updated?.xApiToken).not.toBeNull();
+      expect(updated?.customerToken).not.toBeNull();
+
+      // Verify both fields decrypt correctly
+      const enc = EncryptionService.getInstance();
+      const decryptedXApiToken = enc.decryptField('swarmPaymentXApiToken', updated!.xApiToken!);
+      const decryptedCustomerToken = enc.decryptField('swarmPaymentCustomerToken', updated!.customerToken!);
+      expect(decryptedXApiToken).toBe('swarm-x-api-key-abc');
+      expect(decryptedCustomerToken).toBe('mock-stakwork-token');
+    });
+
+    test('still returns 200 when SwarmPayment token update fails', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const payment = await createTestSwarmPayment({
+        userId: testUser.id,
+        status: 'PAID',
+        workspaceId: undefined,
+        password: 'TestPassword123!',
+      });
+      createdPaymentIds.push(payment.id);
+
+      // Force db.swarmPayment.update to throw
+      const updateSpy = vi.spyOn(db.swarmPayment, 'update').mockRejectedValueOnce(new Error('DB error'));
+
+      const req = createPostRequest('/api/graphmindset/create', { name: 'my-graph' });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      updateSpy.mockRestore();
     });
 
     test('omits GRAPHMINDSET_STAKWORK_WORKFLOW_ID from swarm env when workflow_id is null', async () => {

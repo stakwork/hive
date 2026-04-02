@@ -20,6 +20,10 @@ export interface CreateTestSwarmPaymentOptions {
   /** Plaintext password; will be encrypted before storage if TOKEN_ENCRYPTION_KEY is set.
    *  Defaults to a generated secure password. Pass null to explicitly store no password. */
   password?: string | null;
+  /** Plaintext x-api-token; will be encrypted before storage if TOKEN_ENCRYPTION_KEY is set. */
+  xApiToken?: string | null;
+  /** Plaintext customer token; will be encrypted before storage if TOKEN_ENCRYPTION_KEY is set. */
+  customerToken?: string | null;
 }
 
 export async function createTestSwarmPayment(
@@ -41,6 +45,8 @@ export async function createTestSwarmPayment(
     failureMessage: options.failureMessage ?? null,
     userId: options.userId ?? null,
     password: null,
+    xApiToken: null,
+    customerToken: null,
   };
 
   // Determine the plaintext password to use
@@ -52,6 +58,18 @@ export async function createTestSwarmPayment(
   if (plaintextPassword && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.password = JSON.stringify(
       encryptionService.encryptField('swarmPaymentPassword', plaintextPassword)
+    );
+  }
+
+  if (options.xApiToken && process.env.TOKEN_ENCRYPTION_KEY) {
+    createData.xApiToken = JSON.stringify(
+      encryptionService.encryptField('swarmPaymentXApiToken', options.xApiToken)
+    );
+  }
+
+  if (options.customerToken && process.env.TOKEN_ENCRYPTION_KEY) {
+    createData.customerToken = JSON.stringify(
+      encryptionService.encryptField('swarmPaymentCustomerToken', options.customerToken)
     );
   }
 

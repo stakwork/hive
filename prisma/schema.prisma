@@ -1261,6 +1261,8 @@ model SwarmPayment {
   failureCode           String?            @map("failure_code")
   failureMessage        String?            @map("failure_message")
   password              String?            @map("password")
+  xApiToken             String?            @map("x_api_token")
+  customerToken         String?            @map("customer_token")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
   userId                String?            @map("user_id")
