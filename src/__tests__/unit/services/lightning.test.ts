@@ -230,9 +230,8 @@ describe('lookupLndInvoice', () => {
     await expect(lookupLndInvoice('deadbeef')).rejects.toThrow('LND invoice lookup failed: 404');
   });
 
-  it('correctly converts hex payment hash to base64url in the URL path', async () => {
+  it('uses paymentHashHex directly in the URL path without encoding', async () => {
     const hexHash = 'deadbeef01234567';
-    const expectedB64url = Buffer.from(hexHash, 'hex').toString('base64url');
 
     const mockReq = makeMockRequest();
     const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
@@ -246,7 +245,7 @@ describe('lookupLndInvoice', () => {
     await lookupLndInvoice(hexHash);
 
     const callOptions = vi.mocked(https.request).mock.calls[0][0] as Record<string, unknown>;
-    expect(callOptions.path).toBe(`/v1/invoice/${expectedB64url}`);
+    expect(callOptions.path).toBe(`/v1/invoice/${hexHash}`);
   });
 
   it('passes Grpc-Metadata-Macaroon header', async () => {
