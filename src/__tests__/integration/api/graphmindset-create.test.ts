@@ -19,7 +19,7 @@ vi.mock('@/lib/auth/nextauth', () => ({
 vi.mock('@/lib/service-factory', () => ({
   stakworkService: vi.fn(() => ({
     createCustomer: vi.fn().mockResolvedValue({
-      data: { id: 42, token: 'mock-stakwork-token' },
+      data: { id: 42, token: 'mock-stakwork-token', workflow_id: 99 },
     }),
   })),
 }));
@@ -177,6 +177,59 @@ describe('GraphMindset Create Route Integration Tests', () => {
       const response = await POST(req);
 
       expect(response.status).toBe(400);
+    });
+
+    test('forwards graphmindset_content_workflow_id to swarm admin API when workflow_id is present', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const payment = await createTestSwarmPayment({
+        userId: testUser.id,
+        status: 'PAID',
+        workspaceId: undefined,
+        password: 'TestPassword123!',
+      });
+      createdPaymentIds.push(payment.id);
+
+      const req = createPostRequest('/api/graphmindset/create', { name: 'my-graph' });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+
+      const [, fetchOptions] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchOptions.body);
+      expect(body.env.graphmindset_content_workflow_id).toBe('99');
+    });
+
+    test('omits graphmindset_content_workflow_id from swarm env when workflow_id is null', async () => {
+      const { stakworkService } = await import('@/lib/service-factory');
+      vi.mocked(stakworkService).mockReturnValue({
+        createCustomer: vi.fn().mockResolvedValue({
+          data: { id: 42, token: 'mock-stakwork-token', workflow_id: null },
+        }),
+      } as any);
+
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const payment = await createTestSwarmPayment({
+        userId: testUser.id,
+        status: 'PAID',
+        workspaceId: undefined,
+        password: 'TestPassword123!',
+      });
+      createdPaymentIds.push(payment.id);
+
+      const req = createPostRequest('/api/graphmindset/create', { name: 'my-graph' });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+
+      const [, fetchOptions] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchOptions.body);
+      expect(body.env).not.toHaveProperty('graphmindset_content_workflow_id');
     });
   });
 });
