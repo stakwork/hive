@@ -159,3 +159,171 @@ describe('createLndInvoice', () => {
     expect(headers['Grpc-Metadata-Macaroon']).toBe('test-macaroon');
   });
 });
+
+describe('lookupLndInvoice', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    // Reset to default test env values
+    vi.mocked(envConfig).optionalEnvVars = {
+      LIGHTNING_NODE_URL: 'https://lnd.example.com',
+      LIGHTNING_MACAROON: 'test-macaroon',
+      LIGHTNING_TLS_CERT: '',
+    };
+  });
+
+  it('returns { settled: true } when LND responds with settled: true', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: true }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    const result = await lookupLndInvoice('deadbeef');
+
+    expect(result).toEqual({ settled: true });
+  });
+
+  it('returns { settled: false } when LND responds with settled: false', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    const result = await lookupLndInvoice('deadbeef');
+
+    expect(result).toEqual({ settled: false });
+  });
+
+  it('returns { settled: false } when LND responds without settled field', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({}));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    const result = await lookupLndInvoice('deadbeef');
+
+    expect(result).toEqual({ settled: false });
+  });
+
+  it('rejects on non-2xx response', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(404, 'Not Found');
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await expect(lookupLndInvoice('deadbeef')).rejects.toThrow('LND invoice lookup failed: 404');
+  });
+
+  it('uses paymentHashHex directly in the URL path without encoding', async () => {
+    const hexHash = 'deadbeef01234567';
+
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await lookupLndInvoice(hexHash);
+
+    const callOptions = vi.mocked(https.request).mock.calls[0][0] as Record<string, unknown>;
+    expect(callOptions.path).toBe(`/v1/invoice/${hexHash}`);
+  });
+
+  it('passes Grpc-Metadata-Macaroon header', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await lookupLndInvoice('deadbeef');
+
+    const callOptions = vi.mocked(https.request).mock.calls[0][0] as Record<string, unknown>;
+    const headers = callOptions.headers as Record<string, string>;
+    expect(headers['Grpc-Metadata-Macaroon']).toBe('test-macaroon');
+  });
+
+  it('passes ca option when LIGHTNING_TLS_CERT is set', async () => {
+    const fakePem = '-----BEGIN CERTIFICATE-----\nfakecert\n-----END CERTIFICATE-----';
+    const fakePemB64 = Buffer.from(fakePem).toString('base64');
+
+    vi.mocked(envConfig).optionalEnvVars = {
+      LIGHTNING_NODE_URL: 'https://lnd.example.com',
+      LIGHTNING_MACAROON: 'test-macaroon',
+      LIGHTNING_TLS_CERT: fakePemB64,
+    };
+
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await lookupLndInvoice('deadbeef');
+
+    const callOptions = vi.mocked(https.request).mock.calls[0][0] as Record<string, unknown>;
+    expect(callOptions.ca).toBe(fakePem);
+  });
+
+  it('does not pass ca option when LIGHTNING_TLS_CERT is empty', async () => {
+    const mockReq = makeMockRequest();
+    const mockRes = makeMockResponse(200, JSON.stringify({ settled: false }));
+
+    vi.mocked(https.request).mockImplementation((_opts, cb) => {
+      cb?.(mockRes);
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await lookupLndInvoice('deadbeef');
+
+    const callOptions = vi.mocked(https.request).mock.calls[0][0] as Record<string, unknown>;
+    expect(callOptions).not.toHaveProperty('ca');
+  });
+
+  it('rejects when request emits an error', async () => {
+    const mockReq = makeMockRequest();
+    let errorCb: ((err: Error) => void) | undefined;
+    mockReq.on = vi.fn((event: string, cb: (err: Error) => void) => {
+      if (event === 'error') errorCb = cb;
+      return mockReq;
+    });
+
+    vi.mocked(https.request).mockImplementation((_opts, _cb) => {
+      // Emit error asynchronously after end() is called
+      const originalEnd = mockReq.end as ReturnType<typeof vi.fn>;
+      originalEnd.mockImplementation(() => {
+        errorCb?.(new Error('ECONNREFUSED'));
+      });
+      return mockReq;
+    });
+
+    const { lookupLndInvoice } = await import('@/services/lightning');
+    await expect(lookupLndInvoice('deadbeef')).rejects.toThrow('ECONNREFUSED');
+  });
+});
