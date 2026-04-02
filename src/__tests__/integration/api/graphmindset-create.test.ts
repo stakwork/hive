@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { POST } from '@/app/api/graphmindset/create/route';
 import { db } from '@/lib/db';
 import { createTestUser } from '@/__tests__/support/factories';
-import { createTestSwarmPayment } from '@/__tests__/support/factories/swarm-payment.factory';
+import { createTestFiatPayment } from '@/__tests__/support/factories/fiat-payment.factory';
 import { createPostRequest } from '@/__tests__/support/helpers/request-builders';
 import { getServerSession } from 'next-auth/next';
 
@@ -54,7 +54,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
 
   afterEach(async () => {
     if (createdPaymentIds.length > 0) {
-      await db.swarmPayment.deleteMany({
+      await db.fiatPayment.deleteMany({
         where: { id: { in: createdPaymentIds } },
       });
     }
@@ -71,7 +71,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    test('returns 400 when no PAID SwarmPayment exists for user', async () => {
+    test('returns 400 when no PAID FiatPayment exists for user', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
@@ -84,13 +84,13 @@ describe('GraphMindset Create Route Integration Tests', () => {
       expect(data.error).toBe('No valid payment found');
     });
 
-    test('returns 400 when SwarmPayment exists but password is null', async () => {
+    test('returns 400 when FiatPayment exists but password is null', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
 
       // Create a PAID payment with no password
-      const payment = await createTestSwarmPayment({
+      const payment = await createTestFiatPayment({
         userId: testUser.id,
         status: 'PAID',
         workspaceId: undefined,
@@ -106,7 +106,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
       expect(data.error).toBe('No valid payment found');
     });
 
-    test('returns 400 when SwarmPayment is PAID but workspaceId is already set (already claimed)', async () => {
+    test('returns 400 when FiatPayment is PAID but workspaceId is already set (already claimed)', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
       } as any);
@@ -121,7 +121,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
         },
       });
 
-      const payment = await createTestSwarmPayment({
+      const payment = await createTestFiatPayment({
         userId: testUser.id,
         status: 'PAID',
         workspaceId: workspace.id, // already linked
@@ -146,7 +146,7 @@ describe('GraphMindset Create Route Integration Tests', () => {
 
       const knownPassword = 'MyKnownTestPassword123!';
 
-      const payment = await createTestSwarmPayment({
+      const payment = await createTestFiatPayment({
         userId: testUser.id,
         status: 'PAID',
         workspaceId: undefined,
