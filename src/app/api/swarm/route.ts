@@ -2,6 +2,7 @@ import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { stakworkService } from "@/lib/service-factory";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch, vanity_address, workspace_type } = body;
+    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch, vanity_address, workspace_type, env: bodyEnv } = body;
 
     console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`);
 
@@ -192,6 +193,41 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SWARM_CREATE] Generated password length: ${swarmPassword.length}, instance type: ${instance_type}`);
 
+    // For graph_mindset workspaces: create Stakwork customer and build env vars
+    let graphmindsetEnv: Record<string, string> = {};
+    if (workspace_type === "graph_mindset") {
+      try {
+        console.log(`[SWARM_CREATE] Creating Stakwork customer for graph_mindset workspace ${workspaceId}`);
+        const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
+        const customerResponse = await stakworkService().createCustomer(workspaceId);
+        const customerData =
+          customerResponse && typeof customerResponse === "object" && "data" in customerResponse
+            ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
+            : undefined;
+
+        const customerId = customerData?.id != null ? String(customerData.id) : undefined;
+        const token = customerData?.token;
+        const workflowId = customerData?.workflow_id ?? null;
+
+        graphmindsetEnv = {
+          ...(token ? { STAKWORK_ADD_NODE_TOKEN: token, STAKWORK_RADAR_REQUEST_TOKEN: token } : {}),
+          ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
+          ...(customerId ? { STAKWORK_CUSTOMER_ID: customerId } : {}),
+          ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
+        };
+        console.log(`[SWARM_CREATE] Stakwork customer created for graph_mindset - customerId: ${customerId}, workflowId: ${workflowId}`);
+      } catch (err) {
+        console.error(`[SWARM_CREATE] Failed to create Stakwork customer for graph_mindset:`, err);
+        // Non-fatal: proceed without Stakwork env vars
+      }
+    }
+
+    // Merge caller-supplied env with graphmindset env (graphmindset takes precedence)
+    const mergedEnv: Record<string, string> = {
+      ...(bodyEnv && typeof bodyEnv === "object" ? bodyEnv : {}),
+      ...graphmindsetEnv,
+    };
+
     try {
       console.log(`[SWARM_CREATE] Calling external SwarmService.createSwarm()`);
       const startTime = Date.now();
@@ -202,6 +238,7 @@ export async function POST(request: NextRequest) {
         password: swarmPassword,
         ...(vanity_address ? { vanity_address } : {}),
         ...(workspace_type ? { workspace_type } : {}),
+        ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
       });
 
       const apiCallDuration = Date.now() - startTime;
