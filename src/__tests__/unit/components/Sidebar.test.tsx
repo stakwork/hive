@@ -1228,4 +1228,28 @@ describe('Sidebar - GraphMindset Admin button', () => {
     const buttons = screen.getAllByTestId('graphmindset-admin-button');
     expect(buttons).toHaveLength(2);
   });
+
+  it('does not render GraphMindset Admin button when canAdmin is false', () => {
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'MEMBER',
+    } as any);
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Graph WS', slug: 'my-graph', poolState: null, workspaceKind: 'graph_mindset' },
+      slug: 'my-graph',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryAllByTestId('graphmindset-admin-button')).toHaveLength(0);
+  });
 });
