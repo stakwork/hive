@@ -63,13 +63,11 @@ export function LightningPaymentClient() {
   useEffect(() => {
     const paymentState = searchParams.get("payment");
 
-    // Returning from sign-in after payment — redirect to onboarding
+    // Returning from sign-in after payment — claim then redirect to onboarding
     if (paymentState === "success") {
       setIsLoadingInvoice(false);
       setIsPaid(true);
-      if (session?.user) {
-        router.push("/onboarding/graphmindset");
-      }
+      // Session-aware claim is handled in the effect below; skip here to avoid double-call
       return;
     }
 
@@ -120,9 +118,29 @@ export function LightningPaymentClient() {
   useEffect(() => {
     if (!session?.user) return;
     const paymentState = searchParams.get("payment");
-    if (paymentState === "success") {
-      router.push("/onboarding/graphmindset");
-    }
+    if (paymentState !== "success") return;
+
+    const claimAndRedirect = async () => {
+      const hash = localStorage.getItem("graphMindsetLightningPaymentHash");
+      if (!hash) {
+        router.push("/onboarding/graphmindset");
+        return;
+      }
+      try {
+        const res = await fetch("/api/lightning/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentHash: hash }),
+        });
+        const data = await res.json();
+        const redirect = data?.redirect || "/onboarding/graphmindset";
+        router.push(redirect);
+      } catch {
+        router.push("/onboarding/graphmindset");
+      }
+    };
+
+    claimAndRedirect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user]);
 
