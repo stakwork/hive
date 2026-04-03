@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // Idempotency: if already claimed by this user, return it
   if (existing?.status === 'PAID' && existing?.userId === userId) {
-    const res = NextResponse.json({ payment: existing, workspaceType, repositoryUrl });
+    const res = NextResponse.json({ payment: existing, workspaceType, repositoryUrl, redirect: '/onboarding/graphmindset?paymentType=fiat' });
     res.cookies.delete('stripe_session_id');
     return res;
   }
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const res = NextResponse.json({ payment, workspaceType, repositoryUrl });
+  const res = NextResponse.json({ payment, workspaceType, repositoryUrl, redirect: '/onboarding/graphmindset?paymentType=fiat' });
   res.cookies.delete('stripe_session_id');
   return res;
 }
